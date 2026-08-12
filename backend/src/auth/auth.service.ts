@@ -4,8 +4,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -25,9 +26,15 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    const user = await this.usersService.create(dto.email, passwordHash, dto.fullName);
 
-    return this.buildAuthResponse(user.id, user.email, user.fullName);
+    // The very first person to register on a fresh install becomes admin
+    // automatically, so there's always someone who can manage users/projects.
+    const isFirstUser = (await this.usersService.count()) === 0;
+    const role = isFirstUser ? UserRole.ADMIN : UserRole.USER;
+
+    const user = await this.usersService.create(dto.email, passwordHash, dto.fullName, role);
+
+    return this.buildAuthResponse(user.id, user.email, user.fullName, user.role);
   }
 
   async login(dto: LoginDto) {
@@ -43,15 +50,15 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return this.buildAuthResponse(user.id, user.email, user.fullName);
+    return this.buildAuthResponse(user.id, user.email, user.fullName, user.role);
   }
 
-  private buildAuthResponse(id: number, email: string, fullName?: string) {
+  private buildAuthResponse(id: number, email: string, fullName: string, role: UserRole) {
     const payload = { sub: id, email };
     const accessToken = this.jwtService.sign(payload);
     return {
       accessToken,
-      user: { id, email, fullName },
+      user: { id, email, fullName, role },
     };
   }
 }

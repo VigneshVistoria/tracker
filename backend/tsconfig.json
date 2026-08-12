@@ -6,6 +6,8 @@
     "emitDecoratorMetadata": true,
     "outDir": "./dist",
     "baseUrl": "./",
-    "strict": false
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true
   }
 }

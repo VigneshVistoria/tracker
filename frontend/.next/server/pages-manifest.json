@@ -1,8 +1,11 @@
 {
-  "/_app": "pages/_app.js",
   "/_error": "pages/_error.js",
   "/_document": "pages/_document.js",
+  "/_app": "pages/_app.js",
+  "/admin/teams-integration": "pages/admin/teams-integration.js",
+  "/admin/projects": "pages/admin/projects.js",
   "/dashboard": "pages/dashboard.js",
-  "/": "pages/index.js",
-  "/register": "pages/register.js"
+  "/admin/users": "pages/admin/users.js",
+  "/daily-update": "pages/daily-update.js",
+  "/admin/team-updates": "pages/admin/team-updates.js"
 }

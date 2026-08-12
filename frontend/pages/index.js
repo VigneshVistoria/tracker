@@ -49,6 +49,7 @@ export default function LoginPage() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
+        <div className={styles.brand}><span className={styles.brandMark}>IT</span>IssueTrack</div>
         <h1 className={styles.title}>Sign in</h1>
 
         {error && <div className={styles.error}>{error}</div>}

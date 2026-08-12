@@ -3,99 +3,126 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f4f5f7;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-paper);
+  padding: var(--space-4);
 }
 
 .card {
-  background: #fff;
-  padding: 2.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  background: var(--color-surface);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
   width: 100%;
-  max-width: 380px;
+  max-width: 400px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: center;
+  margin-bottom: var(--space-5);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.brandMark {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-amber);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.8rem;
 }
 
 .title {
-  margin: 0 0 1.5rem;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #1a1a1a;
+  margin: 0 0 var(--space-5);
+  font-size: 1.4rem;
   text-align: center;
 }
 
 .field {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
 }
 
 .label {
   display: block;
-  margin-bottom: 0.35rem;
+  margin-bottom: var(--space-2);
   font-size: 0.85rem;
-  font-weight: 500;
-  color: #444;
+  font-weight: 600;
+  color: var(--color-ink-soft);
 }
 
 .input {
   width: 100%;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #d5d7dc;
-  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
   box-sizing: border-box;
+  background: var(--color-surface);
+  color: var(--color-ink);
 }
 
 .input:focus {
   outline: none;
-  border-color: #5b6cff;
-  box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.15);
+  border-color: var(--color-amber);
+  box-shadow: 0 0 0 3px var(--color-amber-tint);
 }
 
 .button {
   width: 100%;
-  padding: 0.7rem;
-  margin-top: 0.5rem;
+  padding: 0.75rem;
+  margin-top: var(--space-2);
   border: none;
-  border-radius: 8px;
-  background: #5b6cff;
-  color: #fff;
+  border-radius: var(--radius-md);
+  background: var(--color-amber);
+  color: var(--color-ink);
   font-size: 0.95rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-.button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
+.button:hover { background: var(--color-amber-dark); color: #fff; }
+.button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .error {
-  background: #fdecea;
-  color: #b3261e;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
+  background: var(--color-red-tint);
+  color: var(--color-red-dark);
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
+  border-left: 3px solid var(--color-red);
 }
 
 .success {
-  background: #e6f6ea;
-  color: #1e7b34;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
+  background: var(--status-open-tint);
+  color: var(--color-teal-dark);
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
+  border-left: 3px solid var(--color-teal);
 }
 
 .footer {
   text-align: center;
-  margin-top: 1.25rem;
+  margin-top: var(--space-4);
   font-size: 0.85rem;
-  color: #666;
+  color: var(--color-slate);
 }
 
 .footer a {
-  color: #5b6cff;
+  color: var(--color-amber-dark);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
 }

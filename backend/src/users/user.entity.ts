@@ -3,7 +3,15 @@ import {
   Column,
   PrimaryGeneratedColumn,
   CreateDateColumn,
+  ManyToMany,
+  JoinTable,
 } from 'typeorm';
+import { Project } from '../projects/project.entity';
+
+export enum UserRole {
+  ADMIN = 'admin',
+  USER = 'user',
+}
 
 @Entity('users')
 export class User {
@@ -19,6 +27,14 @@ export class User {
 
   @Column({ nullable: true })
   fullName: string;
+
+  @Column({ type: 'enum', enum: UserRole, default: UserRole.USER })
+  role: UserRole;
+
+  // The projects this user is allowed to see/work in.
+  @ManyToMany(() => Project)
+  @JoinTable({ name: 'user_projects' })
+  projects: Project[];
 
   @CreateDateColumn()
   createdAt: Date;

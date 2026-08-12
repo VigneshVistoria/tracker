@@ -1,0 +1,138 @@
+/* ============================================================
+   Design tokens
+   Direction: a technical "workshop/blueprint" feel appropriate
+   for a tool people use to track and resolve concrete problems.
+   Ink/paper neutrals, amber for action, teal/plum/slate for
+   status - deliberately not generic indigo-SaaS or AI-cliche
+   cream+terracotta.
+   ============================================================ */
+
+:root {
+  /* Core palette */
+  --color-ink: #14181f;
+  --color-ink-soft: #3a4150;
+  --color-paper: #f6f6f4;
+  --color-surface: #ffffff;
+  --color-border: #e3e5e8;
+  --color-border-strong: #c9cdd3;
+
+  --color-amber: #e8871e;
+  --color-amber-dark: #c96f12;
+  --color-amber-tint: #fdf1e2;
+
+  --color-teal: #0f8b8d;
+  --color-teal-dark: #0b6b6d;
+  --color-teal-tint: #e6f4f4;
+
+  --color-plum: #6b4c93;
+  --color-plum-dark: #55397a;
+  --color-plum-tint: #f0eaf7;
+
+  --color-red: #d64545;
+  --color-red-dark: #b23333;
+  --color-red-tint: #fbe9e9;
+
+  --color-slate: #6b7280;
+  --color-slate-tint: #eef0f2;
+
+  /* Status semantics - used consistently everywhere a status appears */
+  --status-open: var(--color-teal);
+  --status-open-tint: var(--color-teal-tint);
+  --status-inprogress: var(--color-amber);
+  --status-inprogress-tint: var(--color-amber-tint);
+  --status-review: var(--color-plum);
+  --status-review-tint: var(--color-plum-tint);
+  --status-closed: var(--color-slate);
+  --status-closed-tint: var(--color-slate-tint);
+
+  /* Typography */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-8: 48px;
+
+  /* Radius / shadow */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(20, 24, 31, 0.06);
+  --shadow-md: 0 4px 16px rgba(20, 24, 31, 0.10);
+  --shadow-lg: 0 12px 32px rgba(20, 24, 31, 0.16);
+
+  /* Layout */
+  --sidebar-width: 248px;
+  --topbar-height: 60px;
+  --max-content-width: 1100px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+code, .mono {
+  font-family: var(--font-mono);
+}
+
+a {
+  color: inherit;
+}
+
+/* Accessible, visible keyboard focus everywhere - never suppressed */
+:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Scrollbar tuning (webkit) - subtle, not intrusive */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
