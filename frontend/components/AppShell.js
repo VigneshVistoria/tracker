@@ -11,10 +11,20 @@ const NAV_ITEMS = [
   { href: '/daily-update', label: 'Daily Update', icon: '\u270E' },
 ];
 
+// Executives get read-only access to just the dashboard and weekly
+// reports - no ticket list, no project management, nothing editable.
+const EXECUTIVE_NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: '\u25A6' },
+  { href: '/admin/reports', label: 'Weekly Reports', icon: '\u25A6' },
+];
+
 const ADMIN_NAV_ITEMS = [
   { href: '/admin/users', label: 'Users', icon: '\u25CE' },
+  { href: '/admin/sprints', label: 'Sprints', icon: '\u25C9' },
+  { href: '/admin/reports', label: 'Weekly Reports', icon: '\u25A6' },
   { href: '/admin/team-updates', label: 'Team Updates', icon: '\u25A4' },
   { href: '/admin/teams-integration', label: 'Teams Integration', icon: '\u2388' },
+  { href: '/admin/regression-testing', label: 'Regression Testing', icon: '\u2713' },
 ];
 
 function initialsFor(user) {
@@ -107,7 +117,7 @@ export default function AppShell({ children }) {
           onClick={() => setDrawerOpen(false)}
         />
         <nav className={`${styles.sidebar} ${drawerOpen ? styles.open : ''}`} aria-label="Main navigation">
-          {NAV_ITEMS.map((item) => (
+          {(user.role === 'executive' ? EXECUTIVE_NAV_ITEMS : NAV_ITEMS).map((item) => (
             <Link
               key={item.href}
               href={item.href}

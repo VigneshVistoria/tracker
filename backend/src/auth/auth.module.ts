@@ -8,5 +8,6 @@ import { GuardsModule } from '../common/guards.module';
   imports: [UsersModule, GuardsModule],
   controllers: [AuthController],
   providers: [AuthService],
+  exports: [AuthService],
 })
 export class AuthModule {}

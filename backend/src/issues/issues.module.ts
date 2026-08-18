@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Issue } from './issue.entity';
+import { Sprint } from '../sprints/sprint.entity';
 import { IssuesService } from './issues.service';
 import { IssuesController } from './issues.controller';
 import { IssueAnalyzerService } from './issue-analyzer.service';
@@ -10,9 +11,9 @@ import { ProjectsModule } from '../projects/projects.module';
 import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Issue]), GuardsModule, UsersModule, ProjectsModule, EventsModule],
+  imports: [TypeOrmModule.forFeature([Issue, Sprint]), GuardsModule, UsersModule, ProjectsModule, EventsModule],
   controllers: [IssuesController],
   providers: [IssuesService, IssueAnalyzerService],
-  exports: [IssuesService],
+  exports: [IssuesService, IssueAnalyzerService],
 })
 export class IssuesModule {}

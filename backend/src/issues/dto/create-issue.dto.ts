@@ -1,5 +1,5 @@
 import { IsString, MinLength, IsOptional, IsInt, IsEnum, IsBoolean } from 'class-validator';
-import { IssueMode } from '../issue.entity';
+import { IssueMode, IssueCategory } from '../issue.entity';
 
 export class CreateIssueDto {
   @IsString()
@@ -19,10 +19,22 @@ export class CreateIssueDto {
   projectId?: number;
 
   @IsOptional()
+  @IsInt()
+  sprintId?: number;
+
+  @IsOptional()
+  @IsInt()
+  storyPoints?: number;
+
+  @IsOptional()
   @IsEnum(IssueMode)
   mode?: IssueMode;
 
   @IsOptional()
   @IsBoolean()
   showstopper?: boolean;
+
+  @IsOptional()
+  @IsEnum(IssueCategory)
+  category?: IssueCategory;
 }

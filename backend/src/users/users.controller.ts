@@ -7,6 +7,7 @@ import {
   Body,
   UseGuards,
   ParseIntPipe,
+  Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -19,6 +20,15 @@ import { User } from './user.entity';
 @UseGuards(JwtAuthGuard) // every route requires login; admin-only ones add AdminGuard below
 export class UsersController {
   constructor(private usersService: UsersService) {}
+
+  // Any logged-in user can see their own full profile - used by the
+  // frontend to know things like "am I the Program Manager" without
+  // needing admin access to /users/:id.
+  @Get('me')
+  async findMe(@Req() req: any) {
+    const user = await this.usersService.findById(req.user.sub);
+    return this.toSafeUser(user);
+  }
 
   // Any logged-in user can see this minimal list - needed to populate the
   // "Assignee" dropdown when creating/editing an issue.

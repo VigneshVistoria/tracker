@@ -14,7 +14,7 @@ export default function NewUser() {
     email: '',
     password: '',
     fullName: '',
-    role: 'user',
+    role: 'developer',
     projectIds: [],
   });
   const [error, setError] = useState('');
@@ -118,8 +118,10 @@ export default function NewUser() {
               value={form.role}
               onChange={handleChange}
             >
-              <option value="user">User</option>
               <option value="admin">Admin</option>
+              <option value="developer">Developer</option>
+              <option value="qa">QA</option>
+              <option value="executive">Executive</option>
             </select>
           </div>
 

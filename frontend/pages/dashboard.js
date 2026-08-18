@@ -56,10 +56,10 @@ export default function Dashboard() {
   if (!user) return <AppShell>{null}</AppShell>;
 
   const counts = {
-    Open: issues.filter((i) => i.status === 'Open').length,
+    Backlog: issues.filter((i) => i.status === 'Backlog').length,
     'In Progress': issues.filter((i) => i.status === 'In Progress').length,
-    'Client Review': issues.filter((i) => i.status === 'Client Review').length,
-    Closed: issues.filter((i) => i.status === 'Closed').length,
+    'In Review': issues.filter((i) => i.status === 'In Review').length,
+    Completed: issues.filter((i) => i.status === 'Completed').length,
   };
 
   const recentIssues = issues.slice(0, 5);
@@ -84,20 +84,20 @@ export default function Dashboard() {
 
       <div className={styles.statsGrid}>
         <div className={`${styles.statCard} ${styles.accentOpen}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts.Open}</div>
-          <div className={styles.statLabel}>Open</div>
+          <div className={styles.statValue}>{loading ? '\u2013' : counts.Backlog}</div>
+          <div className={styles.statLabel}>Backlog</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentInProgress}`}>
           <div className={styles.statValue}>{loading ? '\u2013' : counts['In Progress']}</div>
           <div className={styles.statLabel}>In Progress</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentReview}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts['Client Review']}</div>
-          <div className={styles.statLabel}>Client Review</div>
+          <div className={styles.statValue}>{loading ? '\u2013' : counts['In Review']}</div>
+          <div className={styles.statLabel}>In Review</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentClosed}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts.Closed}</div>
-          <div className={styles.statLabel}>Closed</div>
+          <div className={styles.statValue}>{loading ? '\u2013' : counts.Completed}</div>
+          <div className={styles.statLabel}>Completed</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentNeutral}`}>
           <div className={styles.statValue}>{loading ? '\u2013' : projectCount}</div>

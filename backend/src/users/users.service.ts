@@ -37,7 +37,7 @@ export class UsersService {
   }
 
   // Used by the plain registration flow (no role/projects choice there).
-  async create(email: string, passwordHash: string, fullName?: string, role: UserRole = UserRole.USER): Promise<User> {
+  async create(email: string, passwordHash: string, fullName?: string, role: UserRole = UserRole.DEVELOPER): Promise<User> {
     const user = this.usersRepository.create({ email, passwordHash, fullName, role });
     return this.usersRepository.save(user);
   }
@@ -56,7 +56,7 @@ export class UsersService {
       email: dto.email,
       passwordHash,
       fullName: dto.fullName,
-      role: dto.role || UserRole.USER,
+      role: dto.role || UserRole.DEVELOPER,
       projects,
     });
 
@@ -77,7 +77,20 @@ export class UsersService {
     if (dto.password) user.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     if (dto.projectIds !== undefined) user.projects = await this.resolveProjects(dto.projectIds);
 
+    if (dto.isProgramManager !== undefined) {
+      if (dto.isProgramManager) {
+        // Only one Program Manager at a time - clear the flag from
+        // everyone else before setting it here.
+        await this.usersRepository.update({ isProgramManager: true }, { isProgramManager: false });
+      }
+      user.isProgramManager = dto.isProgramManager;
+    }
+
     return this.usersRepository.save(user);
+  }
+
+  findProgramManager(): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { isProgramManager: true } });
   }
 
   private async resolveProjects(projectIds?: number[]): Promise<Project[]> {

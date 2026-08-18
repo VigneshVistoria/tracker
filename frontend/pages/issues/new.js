@@ -5,7 +5,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { MODE_OPTIONS } from '../../lib/status';
+import { MODE_OPTIONS, CATEGORY_OPTIONS } from '../../lib/status';
 
 const STATUS_LABEL = {
   invalid: 'Needs a lot more detail',
@@ -24,7 +24,7 @@ const STATUS_BADGE_CLASS = {
 export default function NewIssue() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [form, setForm] = useState({ title: '', description: '', assigneeUserId: '', projectId: '', mode: 'Manual', showstopper: false });
+  const [form, setForm] = useState({ title: '', description: '', assigneeUserId: '', projectId: '', mode: 'Manual', showstopper: false, storyPoints: '', category: '' });
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [error, setError] = useState('');
@@ -76,6 +76,8 @@ export default function NewIssue() {
           projectId: form.projectId ? Number(form.projectId) : undefined,
           mode: form.mode,
           showstopper: form.showstopper,
+          storyPoints: form.storyPoints !== '' ? Number(form.storyPoints) : undefined,
+          category: form.category || undefined,
         }),
       });
       showToast(`Issue #${issue.id} created`, 'success');
@@ -173,6 +175,20 @@ export default function NewIssue() {
               {MODE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
             <p className={styles.helpText}>Manual = filed by a person. Auto = raised by a system/integration.</p>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="category">Category</label>
+            <select
+              className={styles.select}
+              id="category"
+              name="category"
+              value={form.category}
+              onChange={handleChange}
+            >
+              <option value="">No category</option>
+              {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
 
           <div className={styles.field}>

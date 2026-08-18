@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsArray, IsInt, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsArray, IsInt, IsBoolean, MinLength } from 'class-validator';
 import { UserRole } from '../user.entity';
 
 export class UpdateUserDto {
@@ -19,4 +19,10 @@ export class UpdateUserDto {
   @IsArray()
   @IsInt({ each: true })
   projectIds?: number[];
+
+  // Setting this true on one user automatically clears it from every
+  // other user - only one Program Manager at a time.
+  @IsOptional()
+  @IsBoolean()
+  isProgramManager?: boolean;
 }

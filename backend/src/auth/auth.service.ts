@@ -30,7 +30,7 @@ export class AuthService {
     // The very first person to register on a fresh install becomes admin
     // automatically, so there's always someone who can manage users/projects.
     const isFirstUser = (await this.usersService.count()) === 0;
-    const role = isFirstUser ? UserRole.ADMIN : UserRole.USER;
+    const role = isFirstUser ? UserRole.ADMIN : UserRole.DEVELOPER;
 
     const user = await this.usersService.create(dto.email, passwordHash, dto.fullName, role);
 

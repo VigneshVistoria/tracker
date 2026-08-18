@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Issue, IssueMode, IssueStatus } from './issue.entity';
+import { Sprint } from '../sprints/sprint.entity';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
+import { CreateDependencyDto } from './dto/create-dependency.dto';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/user.entity';
 import { ProjectsService } from '../projects/projects.service';
 import { EventsGateway } from '../events/events.gateway';
 
@@ -14,6 +17,8 @@ export class IssuesService {
   constructor(
     @InjectRepository(Issue)
     private issuesRepository: Repository<Issue>,
+    @InjectRepository(Sprint)
+    private sprintsRepository: Repository<Sprint>,
     private usersService: UsersService,
     private projectsService: ProjectsService,
     private eventsGateway: EventsGateway,
@@ -31,12 +36,33 @@ export class IssuesService {
     });
   }
 
+  // Used for Developer/QA visibility - everything in any project they're
+  // assigned to, not just their own assigned issues.
+  findByProjects(projectIds: number[]): Promise<Issue[]> {
+    if (projectIds.length === 0) return Promise.resolve([]);
+    return this.issuesRepository.find({
+      where: { projectId: In(projectIds) },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findOne(id: number): Promise<Issue> {
     const issue = await this.issuesRepository.findOne({ where: { id } });
     if (!issue) {
       throw new NotFoundException(`Issue #${id} not found`);
     }
     return issue;
+  }
+
+  // Same as findOne, but also returns the dependency tickets spun off
+  // from this issue, if any - used by the issue detail page.
+  async findOneWithDependencies(id: number): Promise<Issue & { dependencies: Issue[] }> {
+    const issue = await this.findOne(id);
+    const dependencies = await this.issuesRepository.find({
+      where: { parentIssueId: id },
+      order: { createdAt: 'ASC' },
+    });
+    return { ...issue, dependencies };
   }
 
   async create(dto: CreateIssueDto, userId: number | null, userEmail: string): Promise<Issue> {
@@ -47,6 +73,8 @@ export class IssuesService {
       createdByEmail: userEmail,
       mode: dto.mode || IssueMode.MANUAL,
       showstopper: dto.showstopper ?? false,
+      storyPoints: dto.storyPoints,
+      category: dto.category,
     });
 
     await this.applyAssigneeAndProject(issue, dto);
@@ -59,7 +87,52 @@ export class IssuesService {
     return saved;
   }
 
-  async update(id: number, dto: UpdateIssueDto): Promise<Issue> {
+  // Spins off a new issue from a parent, linked via parentIssueId, and
+  // assigns it to the chosen "dependency owner". A normal issue in every
+  // other respect - same default status (Backlog), same workflow.
+  async createDependency(
+    parentId: number,
+    dto: CreateDependencyDto,
+    userId: number,
+    userEmail: string,
+  ): Promise<Issue> {
+    const parent = await this.findOne(parentId);
+
+    const issue = this.issuesRepository.create({
+      title: dto.title,
+      description: dto.description,
+      createdByUserId: userId,
+      createdByEmail: userEmail,
+      mode: IssueMode.MANUAL,
+      showstopper: false,
+      storyPoints: dto.storyPoints,
+      parentIssueId: parent.id,
+    });
+
+    await this.applyAssigneeAndProject(issue, {
+      assigneeUserId: dto.assigneeUserId,
+      projectId: dto.projectId ?? parent.projectId ?? undefined,
+    } as UpdateIssueDto);
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueCreated(saved);
+    if (saved.assigneeUserId) {
+      this.eventEmitter.emit('issue.assigned', { issue: saved });
+    }
+    return saved;
+  }
+
+  // Only these forward moves are allowed for a regular (non-admin) user via
+  // the generic update endpoint. Moving into "In Review" or "Completed"
+  // must go through submitForReview()/approve() instead, since those steps
+  // carry side effects (notifications, approval tracking) that a plain
+  // field edit shouldn't silently trigger.
+  private static ALLOWED_SELF_SERVICE_TRANSITIONS: Partial<Record<IssueStatus, IssueStatus[]>> = {
+    [IssueStatus.BACKLOG]: [IssueStatus.IN_PROGRESS],
+    [IssueStatus.IN_PROGRESS]: [IssueStatus.BACKLOG],
+  };
+
+  async update(id: number, dto: UpdateIssueDto, actingUser?: { id: number; role: UserRole }): Promise<Issue> {
     const issue = await this.findOne(id);
     const previousAssigneeUserId = issue.assigneeUserId;
 
@@ -67,12 +140,24 @@ export class IssuesService {
     if (dto.description !== undefined) issue.description = dto.description;
     if (dto.mode !== undefined) issue.mode = dto.mode;
     if (dto.showstopper !== undefined) issue.showstopper = dto.showstopper;
+    if (dto.storyPoints !== undefined) issue.storyPoints = dto.storyPoints;
+    if (dto.category !== undefined) issue.category = dto.category;
 
-    if (dto.status !== undefined) {
+    if (dto.status !== undefined && dto.status !== issue.status) {
+      const isAdmin = actingUser?.role === UserRole.ADMIN;
+      if (!isAdmin) {
+        const allowed = IssuesService.ALLOWED_SELF_SERVICE_TRANSITIONS[issue.status] || [];
+        if (!allowed.includes(dto.status)) {
+          throw new BadRequestException(
+            `Can't move an issue from "${issue.status}" to "${dto.status}" this way. ` +
+              'Use "Submit for Review" or the Program Manager approval actions instead.',
+          );
+        }
+      }
       issue.status = dto.status;
-      // closedOn tracks the moment a status change lands on Closed, and
-      // clears itself if the issue is later reopened.
-      if (dto.status === IssueStatus.CLOSED) {
+      // closedOn tracks the moment a status change lands on Completed, and
+      // clears itself if the issue is later reopened/sent back.
+      if (dto.status === IssueStatus.COMPLETED) {
         if (!issue.closedOn) issue.closedOn = new Date();
       } else {
         issue.closedOn = null;
@@ -90,6 +175,68 @@ export class IssuesService {
       this.eventEmitter.emit('issue.assigned', { issue: saved });
     }
 
+    return saved;
+  }
+
+  // The assignee marks their work done and hands it to the Program
+  // Manager. Only valid from "In Progress".
+  async submitForReview(id: number, userId: number, userEmail: string): Promise<Issue> {
+    const issue = await this.findOne(id);
+    if (issue.status !== IssueStatus.IN_PROGRESS) {
+      throw new BadRequestException(
+        `Only an issue that's "In Progress" can be submitted for review (this one is "${issue.status}").`,
+      );
+    }
+    issue.status = IssueStatus.IN_REVIEW;
+    issue.submittedForReviewAt = new Date();
+    issue.lastRejectionReason = null;
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+    this.eventEmitter.emit('issue.submittedForReview', { issue: saved, submittedByEmail: userEmail });
+    return saved;
+  }
+
+  // Program Manager approves - moves to Completed and records who/when.
+  // Only valid from "In Review".
+  async approve(id: number, reviewerId: number, reviewerEmail: string): Promise<Issue> {
+    const issue = await this.findOne(id);
+    if (issue.status !== IssueStatus.IN_REVIEW) {
+      throw new BadRequestException(
+        `Only an issue that's "In Review" can be approved (this one is "${issue.status}").`,
+      );
+    }
+    issue.status = IssueStatus.COMPLETED;
+    issue.closedOn = new Date();
+    issue.reviewedByUserId = reviewerId;
+    issue.reviewedByEmail = reviewerEmail;
+    issue.reviewedAt = new Date();
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+    this.eventEmitter.emit('issue.approved', { issue: saved });
+    return saved;
+  }
+
+  // Program Manager sends it back - returns to In Progress with an
+  // optional note on what needs fixing. Only valid from "In Review".
+  async reject(id: number, reviewerId: number, reviewerEmail: string, reason?: string): Promise<Issue> {
+    const issue = await this.findOne(id);
+    if (issue.status !== IssueStatus.IN_REVIEW) {
+      throw new BadRequestException(
+        `Only an issue that's "In Review" can be sent back (this one is "${issue.status}").`,
+      );
+    }
+    issue.status = IssueStatus.IN_PROGRESS;
+    issue.submittedForReviewAt = null;
+    issue.reviewedByUserId = reviewerId;
+    issue.reviewedByEmail = reviewerEmail;
+    issue.reviewedAt = new Date();
+    issue.lastRejectionReason = reason || null;
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+    this.eventEmitter.emit('issue.rejected', { issue: saved, reason });
     return saved;
   }
 
@@ -120,6 +267,20 @@ export class IssuesService {
         const project = await this.projectsService.findOne(dto.projectId);
         issue.projectId = project.id;
         issue.projectName = project.name;
+      }
+    }
+
+    if (dto.sprintId !== undefined) {
+      if (dto.sprintId === null) {
+        issue.sprintId = null;
+        issue.sprintName = null;
+      } else {
+        const sprint = await this.sprintsRepository.findOne({ where: { id: dto.sprintId } });
+        if (!sprint) {
+          throw new NotFoundException(`Sprint #${dto.sprintId} not found`);
+        }
+        issue.sprintId = sprint.id;
+        issue.sprintName = sprint.name;
       }
     }
   }

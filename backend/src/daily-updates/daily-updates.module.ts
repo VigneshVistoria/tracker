@@ -11,5 +11,6 @@ import { EventsModule } from '../events/events.module';
   imports: [TypeOrmModule.forFeature([DailyUpdate]), GuardsModule, EventsModule],
   controllers: [DailyUpdatesController],
   providers: [DailyUpdatesService, DailyUpdateAnalyzerService],
+  exports: [DailyUpdatesService],
 })
 export class DailyUpdatesModule {}

@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsEnum, IsInt, IsBoolean } from 'class-validator';
-import { IssueStatus, IssueMode } from '../issue.entity';
+import { IssueStatus, IssueMode, IssueCategory } from '../issue.entity';
 
 export class UpdateIssueDto {
   @IsOptional()
@@ -12,7 +12,7 @@ export class UpdateIssueDto {
 
   @IsOptional()
   @IsEnum(IssueStatus, {
-    message: 'Status must be one of: Open, In Progress, Client Review, Closed',
+    message: 'Status must be one of: Backlog, In Progress, In Review, Completed',
   })
   status?: IssueStatus;
 
@@ -25,10 +25,22 @@ export class UpdateIssueDto {
   projectId?: number;
 
   @IsOptional()
+  @IsInt()
+  sprintId?: number;
+
+  @IsOptional()
+  @IsInt()
+  storyPoints?: number;
+
+  @IsOptional()
   @IsEnum(IssueMode)
   mode?: IssueMode;
 
   @IsOptional()
   @IsBoolean()
   showstopper?: boolean;
+
+  @IsOptional()
+  @IsEnum(IssueCategory)
+  category?: IssueCategory;
 }
