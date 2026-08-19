@@ -23,6 +23,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 
 import { WeeklyReportModule } from './reports/weekly-report.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -58,6 +59,7 @@ import { WeeklyReportModule } from './reports/weekly-report.module';
     NotificationsModule,
     ReportsModule,
   WeeklyReportModule,
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
 export class AppModule {}
