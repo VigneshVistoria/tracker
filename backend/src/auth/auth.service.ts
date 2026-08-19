@@ -1,5 +1,5 @@
 import {
-  Injectable,
+  Injectable, ForbiddenException,
   ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -19,7 +19,7 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto) { const userCount = await this.usersService.count(); if (userCount > 0) { throw new ForbiddenException('Public registration is disabled. Ask an admin to create your account.'); }
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) {
       throw new ConflictException('An account with this email already exists');

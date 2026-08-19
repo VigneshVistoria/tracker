@@ -22,6 +22,7 @@ import { SprintsModule } from './sprints/sprints.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 
+import { WeeklyReportModule } from './reports/weekly-report.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -40,7 +41,7 @@ import { ReportsModule } from './reports/reports.module';
         entities: [User, Issue, Project, DailyUpdate, TeamsSubscription, RegressionTestRun, Sprint, WeeklyReport],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
-        synchronize: true,
+        synchronize: false,
         // Supabase requires SSL. rejectUnauthorized: false is the standard
         // setting for Supabase's connection pooler / direct connection.
         ssl: { rejectUnauthorized: false },
@@ -56,6 +57,7 @@ import { ReportsModule } from './reports/reports.module';
     SprintsModule,
     NotificationsModule,
     ReportsModule,
+  WeeklyReportModule,
   ],
 })
 export class AppModule {}
