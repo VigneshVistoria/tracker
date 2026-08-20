@@ -7,7 +7,7 @@ import {
   RegressionRunStatus,
   RegressionCheckResult,
 } from './regression-test-run.entity';
-import { User } from '../users/user.entity';
+import { User, UserRole } from '../users/user.entity';
 import { Project } from '../projects/project.entity';
 import { Issue, IssueMode, IssueStatus } from '../issues/issue.entity';
 import { DailyUpdate } from '../daily-updates/daily-update.entity';
@@ -17,6 +17,7 @@ import { ProjectsService } from '../projects/projects.service';
 import { DailyUpdatesService } from '../daily-updates/daily-updates.service';
 import { IssueAnalyzerService } from '../issues/issue-analyzer.service';
 import { EventsGateway } from '../events/events.gateway';
+import * as bcrypt from 'bcryptjs';
 
 // All test data this run creates gets this prefix in its title/name/email,
 // so it's unmistakable if cleanup ever fails and something is left behind.
@@ -137,11 +138,7 @@ export class RegressionTestingService {
     try {
       results.push(
         await this.check('feature', 'User registration', async () => {
-          const { user } = await this.authService.register({
-            email: testEmail,
-            password: testPassword,
-            fullName: `${TEST_TAG} User`,
-          });
+          const passwordHash = await bcrypt.hash(testPassword, 10); const user = await this.usersRepository.save(this.usersRepository.create({ email: testEmail, passwordHash, fullName: `${TEST_TAG} User`, role: UserRole.DEVELOPER }));
           testUserId = user.id;
           return `Registered test user #${user.id}.`;
         }),
