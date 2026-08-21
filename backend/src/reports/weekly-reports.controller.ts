@@ -25,6 +25,17 @@ export class WeeklyReportsController {
     return report;
   }
 
+  // Manual trigger for the per-assignee PDF performance reports, so this
+  // can be tested/run on demand instead of waiting for the Saturday
+  // scheduled job. Admin-only, same rationale as generate() above.
+  @Post('generate-performance')
+  @UseGuards(AdminGuard)
+  async generatePerformanceReports(@Req() req: any) {
+    const report = await this.weeklyReportsService.generate(new Date(), req.user.sub);
+    const result = await this.weeklyReportsService.emailPerformanceReports(report);
+    return { report, ...result };
+  }
+
   @Get('history')
   async findHistory(@Req() req: any) {
     await this.assertCanView(req);

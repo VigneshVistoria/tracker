@@ -37,11 +37,20 @@ export class MailService {
       .filter(Boolean);
   }
 
-  async send(to: string, subject: string, html: string, cc?: string[]): Promise<void> {
+  async send(
+    to: string,
+    subject: string,
+    html: string,
+    cc?: string[],
+    attachments?: { filename: string; content: Buffer; contentType?: string }[],
+  ): Promise<void> {
     if (!this.transporter) {
       this.logger.debug(
         `Email not sent (SMTP not configured yet) - would have sent "${subject}" to ${to}` +
-          (cc && cc.length ? ` (cc: ${cc.join(', ')})` : ''),
+          (cc && cc.length ? ` (cc: ${cc.join(', ')})` : '') +
+          (attachments && attachments.length
+            ? ` (attachments: ${attachments.map((a) => a.filename).join(', ')})`
+            : ''),
       );
       return;
     }
@@ -53,6 +62,7 @@ export class MailService {
         cc: cc && cc.length ? cc.join(',') : undefined,
         subject,
         html,
+        attachments,
       });
     } catch (err: any) {
       // A broken mail server should never break the workflow action that
@@ -63,7 +73,12 @@ export class MailService {
 
   // Convenience for the common case: notify one person, cc every
   // configured executive.
-  sendToAssignee(to: string, subject: string, html: string): Promise<void> {
-    return this.send(to, subject, html, this.getExecutiveEmails());
+  sendToAssignee(
+    to: string,
+    subject: string,
+    html: string,
+    attachments?: { filename: string; content: Buffer; contentType?: string }[],
+  ): Promise<void> {
+    return this.send(to, subject, html, this.getExecutiveEmails(), attachments);
   }
 }

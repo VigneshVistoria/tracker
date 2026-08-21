@@ -21,8 +21,6 @@ import { RegressionTestingModule } from './regression-testing/regression-testing
 import { SprintsModule } from './sprints/sprints.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
-
-import { WeeklyReportModule } from './reports/weekly-report.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -58,7 +56,6 @@ import { ThrottlerModule } from '@nestjs/throttler';
     SprintsModule,
     NotificationsModule,
     ReportsModule,
-  WeeklyReportModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })

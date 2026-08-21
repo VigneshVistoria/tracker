@@ -2,8 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, LessThan, Not, Repository } from 'typeorm';
 import { WeeklyReport } from './weekly-report.entity';
-import { Issue, IssueStatus } from '../issues/issue.entity';
+import { Issue, IssueStatus, IssueCategory } from '../issues/issue.entity';
 import { MailService } from '../mail/mail.service';
+import { PdfPerformanceReportService, AssigneePerformanceStat } from './pdf-performance-report.service';
 
 // A simple, tunable heuristic turning an issue's current status into a
 // "how healthy is this work" score. Not a precise measurement - just a
@@ -24,6 +25,7 @@ export class WeeklyReportsService {
     @InjectRepository(Issue)
     private issuesRepository: Repository<Issue>,
     private mailService: MailService,
+    private pdfPerformanceReportService: PdfPerformanceReportService,
   ) {}
 
   // Business week = Monday through Friday. Given any date, returns the
@@ -73,16 +75,63 @@ export class WeeklyReportsService {
 
     const allCompletedEver = await this.issuesRepository.find({ where: { status: IssueStatus.COMPLETED } });
 
-    // Assignee-wise stats: completion percentage (all-time) and a
-    // status-weighted "performance" score based on their current open work.
+    // Most recent prior report (any week before this one) - used purely to
+    // compute a week-over-week trend per assignee below. Best-effort: if
+    // there isn't one yet (first report ever), everyone is just "new".
+    const prevReport = await this.reportsRepository.findOne({
+      where: { weekStartDate: LessThan(this.toDateOnly(weekStart)) },
+      order: { weekStartDate: 'DESC' },
+    });
+    const prevStatsByEmail = new Map<string, any>(
+      ((prevReport?.data?.assigneeStats as any[]) || []).map((s: any) => [s.assigneeEmail, s]),
+    );
+
+    // Dependency Log lookups: only OPEN children can still be "blocking" -
+    // a completed dependency ticket no longer holds anything up. Built from
+    // allActive so this stays a simple in-memory index, no extra query.
+    const openChildrenByParentId = new Map<number, Issue[]>();
+    for (const issue of allActive) {
+      if (issue.parentIssueId == null) continue;
+      if (!openChildrenByParentId.has(issue.parentIssueId)) {
+        openChildrenByParentId.set(issue.parentIssueId, []);
+      }
+      openChildrenByParentId.get(issue.parentIssueId).push(issue);
+    }
+
+    const DELAYED_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days with no status movement
+    const now = new Date();
+    const isDelayed = (issue: Issue) => now.getTime() - new Date(issue.updatedAt).getTime() >= DELAYED_AFTER_MS;
+    const isRiskCategory = (issue: Issue) =>
+      issue.showstopper === true ||
+      issue.category === IssueCategory.CRITICAL ||
+      issue.category === IssueCategory.SHOWSTOPPER;
+
+    // Assignee-wise stats: completion percentage (all-time), the existing
+    // status-weighted "performance" score, plus the richer breakdown the
+    // per-assignee PDF performance report needs (delayed/blocked/risk
+    // items, this-week completions, and a penalty-adjusted performance
+    // rate). All of this is additive - the original fields above are
+    // untouched, so the existing admin Weekly Reports UI keeps working.
     const byAssignee = new Map<
       string,
-      { assigneeEmail: string; totalAssigned: number; completedAllTime: number; currentOpen: Issue[] }
+      {
+        assigneeEmail: string;
+        totalAssigned: number;
+        completedAllTime: number;
+        currentOpen: Issue[];
+        completedThisWeek: Issue[];
+      }
     >();
 
     const touch = (email: string) => {
       if (!byAssignee.has(email)) {
-        byAssignee.set(email, { assigneeEmail: email, totalAssigned: 0, completedAllTime: 0, currentOpen: [] });
+        byAssignee.set(email, {
+          assigneeEmail: email,
+          totalAssigned: 0,
+          completedAllTime: 0,
+          currentOpen: [],
+          completedThisWeek: [],
+        });
       }
       return byAssignee.get(email);
     };
@@ -98,6 +147,9 @@ export class WeeklyReportsService {
       const entry = touch(issue.assigneeEmail);
       entry.totalAssigned += 1;
       entry.completedAllTime += 1;
+      if (issue.closedOn && issue.closedOn >= weekStart && issue.closedOn <= weekEnd) {
+        entry.completedThisWeek.push(issue);
+      }
     }
 
     const assigneeStats = Array.from(byAssignee.values())
@@ -111,6 +163,40 @@ export class WeeklyReportsService {
                   entry.currentOpen.length,
               )
             : 100; // nothing open = nothing dragging their score down
+
+        const blockedItems = entry.currentOpen.filter((i) => (openChildrenByParentId.get(i.id) || []).length > 0);
+        const blockedIds = new Set(blockedItems.map((i) => i.id));
+        const delayedItems = entry.currentOpen.filter((i) => isDelayed(i));
+        const carryForwardItems = entry.currentOpen.filter((i) => new Date(i.createdAt) < weekStart);
+        const dependencyItems = Array.from(
+          new Map(
+            blockedItems
+              .flatMap((i) => (openChildrenByParentId.get(i.id) || []).map((dep) => [dep.id, dep] as const))
+          ).values(),
+        );
+        const riskItems = entry.currentOpen.filter((i) => blockedIds.has(i.id) || isRiskCategory(i));
+
+        // Performance Rate: completion % minus a flat penalty per Delayed
+        // and per Blocked item, floored at 0. Deliberately simple and
+        // tunable - see the report doc for the agreed definition.
+        const performanceRate = Math.max(
+          0,
+          completionPercent - delayedItems.length * 5 - blockedItems.length * 5,
+        );
+
+        // Week-over-week trend vs the most recent prior report, if any.
+        const prevStat = prevStatsByEmail.get(entry.assigneeEmail);
+        const trend =
+          !prevStat || prevStat.performanceRate == null
+            ? { direction: 'new' as const, performanceRateDelta: null, completionPercentDelta: null }
+            : (() => {
+                const performanceRateDelta = performanceRate - prevStat.performanceRate;
+                const completionPercentDelta = completionPercent - prevStat.completionPercent;
+                const direction =
+                  performanceRateDelta > 0 ? ('up' as const) : performanceRateDelta < 0 ? ('down' as const) : ('flat' as const);
+                return { direction, performanceRateDelta, completionPercentDelta };
+              })();
+
         return {
           assigneeEmail: entry.assigneeEmail,
           totalAssigned: entry.totalAssigned,
@@ -118,6 +204,15 @@ export class WeeklyReportsService {
           completionPercent,
           currentOpenCount: entry.currentOpen.length,
           performancePercent,
+          currentOpenItems: entry.currentOpen.map(this.toSummary),
+          completedThisWeek: entry.completedThisWeek.map(this.toSummary),
+          carryForwardItems: carryForwardItems.map(this.toSummary),
+          delayedItems: delayedItems.map(this.toSummary),
+          blockedItems: blockedItems.map(this.toSummary),
+          dependencyItems: dependencyItems.map(this.toSummary),
+          riskItems: riskItems.map(this.toSummary),
+          performanceRate,
+          trend,
         };
       })
       .sort((a, b) => a.assigneeEmail.localeCompare(b.assigneeEmail));
@@ -168,6 +263,12 @@ export class WeeklyReportsService {
       storyPoints: issue.storyPoints,
       createdAt: issue.createdAt,
       closedOn: issue.closedOn,
+      // Additive fields for the per-assignee PDF performance report -
+      // existing consumers (admin Weekly Reports UI) simply ignore these.
+      updatedAt: issue.updatedAt,
+      category: issue.category,
+      showstopper: issue.showstopper,
+      parentIssueId: issue.parentIssueId,
     };
   }
 
@@ -214,5 +315,70 @@ export class WeeklyReportsService {
       html,
       rest,
     );
+  }
+
+  // Builds one PDF per assignee (executive summary, KPIs, task details,
+  // carry-forward, dependencies & risks, performance insights) and emails
+  // it to that assignee with a short summary in the body. Skips anyone
+  // with no assigneeEmail on file. A broken PDF or send for one assignee
+  // is logged-and-skipped by the underlying services rather than aborting
+  // the whole batch, so one bad record can't block everyone else's report.
+  async emailPerformanceReports(report: WeeklyReport): Promise<{ sent: string[]; skipped: string[] }> {
+    const { data } = report;
+    const meta = {
+      weekStartDate: data.weekStartDate,
+      weekEndDate: data.weekEndDate,
+      previousWeekStartDate: data.previousWeekStartDate,
+      previousWeekEndDate: data.previousWeekEndDate,
+    };
+
+    const sent: string[] = [];
+    const skipped: string[] = [];
+
+    for (const stat of data.assigneeStats as AssigneePerformanceStat[]) {
+      if (!stat.assigneeEmail) {
+        skipped.push('(no email on file)');
+        continue;
+      }
+      try {
+        const pdfBuffer = await this.pdfPerformanceReportService.buildAssigneeReport(meta, stat);
+        const subject = `Weekly Performance Report – ${meta.weekEndDate}`;
+        const html = this.buildPerformanceEmailHtml(meta, stat);
+        await this.mailService.sendToAssignee(stat.assigneeEmail, subject, html, [
+          {
+            filename: `weekly-performance-report-${meta.weekEndDate}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ]);
+        sent.push(stat.assigneeEmail);
+      } catch (err: any) {
+        skipped.push(stat.assigneeEmail);
+      }
+    }
+
+    return { sent, skipped };
+  }
+
+  private buildPerformanceEmailHtml(meta: any, stat: AssigneePerformanceStat): string {
+    const dependencyNote =
+      stat.dependencyItems.length > 0
+        ? `${stat.dependencyItems.length} open dependency ticket(s): ${stat.dependencyItems
+            .map((d: any) => `#${d.id} ${d.title}`)
+            .join(', ')}`
+        : 'None';
+    return `
+      <h2>Weekly Performance Report – ${meta.weekEndDate}</h2>
+      <p>Hi ${stat.assigneeEmail},</p>
+      <p>Your performance report for the week of ${meta.weekStartDate} to ${meta.weekEndDate} is attached as a PDF. Summary:</p>
+      <ul>
+        <li><strong>Overall completion:</strong> ${stat.completionPercent}%</li>
+        <li><strong>Performance rate:</strong> ${stat.performanceRate}%</li>
+        <li><strong>Open items:</strong> ${stat.currentOpenCount} (${stat.delayedItems.length} delayed, ${stat.blockedItems.length} blocked)</li>
+        <li><strong>Carry-forward items:</strong> ${stat.carryForwardItems.length}</li>
+        <li><strong>Key dependencies:</strong> ${dependencyNote}</li>
+      </ul>
+      <p>See the attached PDF for full task details, risks, and recommended next steps.</p>
+    `;
   }
 }
