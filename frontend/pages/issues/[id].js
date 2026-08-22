@@ -224,7 +224,7 @@ export default function IssueDetail() {
   const isAdmin = currentUser?.role === 'admin';
   const isExecutive = currentUser?.role === 'executive';
   const isAssignee = currentUser && issue.assigneeUserId === currentUser.id;
-  const isProgramManager = Boolean(currentUser?.isProgramManager);
+  const isProgramManager = currentUser?.role === 'program_manager';
   const canSubmitForReview = issue.status === 'In Progress' && (isAdmin || isAssignee);
   const canReview = issue.status === 'In Review' && (isAdmin || isProgramManager);
 

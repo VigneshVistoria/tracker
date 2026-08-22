@@ -28,18 +28,25 @@ export class IssueNotificationsService {
 
   @OnEvent('issue.submittedForReview')
   async onSubmittedForReview({ issue, submittedByEmail }: { issue: Issue; submittedByEmail: string }): Promise<void> {
-    const programManager = await this.usersService.findProgramManager();
-    if (!programManager) {
+    // Program Manager is a normal role now (ReleaseBot, 2026-08-22), so
+    // more than one person can hold it - notify all of them rather than
+    // a single designated person.
+    const programManagers = await this.usersService.findProgramManagers();
+    if (programManagers.length === 0) {
       this.logger.debug(
-        `Issue #${issue.id} was submitted for review, but no Program Manager is currently designated - ` +
-          'set one from User Management to enable this notification.',
+        `Issue #${issue.id} was submitted for review, but no Program Manager is currently assigned - ` +
+          'assign that role to someone from User Management to enable this notification.',
       );
       return;
     }
-    await this.mailService.sendToAssignee(
-      programManager.email,
-      `Issue #${issue.id} submitted for your review`,
-      `<p>${escapeHtml(submittedByEmail)} submitted issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> for your review.</p>`,
+    await Promise.all(
+      programManagers.map((programManager) =>
+        this.mailService.sendToAssignee(
+          programManager.email,
+          `Issue #${issue.id} submitted for your review`,
+          `<p>${escapeHtml(submittedByEmail)} submitted issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> for your review.</p>`,
+        ),
+      ),
     );
   }
 

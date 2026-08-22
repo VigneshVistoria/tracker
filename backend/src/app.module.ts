@@ -11,6 +11,9 @@ import { TeamsSubscription } from './teams-integration/teams-subscription.entity
 import { RegressionTestRun } from './regression-testing/regression-test-run.entity';
 import { Sprint } from './sprints/sprint.entity';
 import { WeeklyReport } from './reports/weekly-report.entity';
+import { Dependency } from './dependencies/dependency.entity';
+import { Evidence } from './evidence/evidence.entity';
+import { AuditLog } from './audit/audit-log.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -21,6 +24,9 @@ import { RegressionTestingModule } from './regression-testing/regression-testing
 import { SprintsModule } from './sprints/sprints.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
+import { DependenciesModule } from './dependencies/dependencies.module';
+import { EvidenceModule } from './evidence/evidence.module';
+import { AuditModule } from './audit/audit.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -37,7 +43,19 @@ import { ThrottlerModule } from '@nestjs/throttler';
         username: config.get<string>('DB_USERNAME'),
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
-        entities: [User, Issue, Project, DailyUpdate, TeamsSubscription, RegressionTestRun, Sprint, WeeklyReport],
+        entities: [
+          User,
+          Issue,
+          Project,
+          DailyUpdate,
+          TeamsSubscription,
+          RegressionTestRun,
+          Sprint,
+          WeeklyReport,
+          Dependency,
+          Evidence,
+          AuditLog,
+        ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
         synchronize: false,
@@ -56,6 +74,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
     SprintsModule,
     NotificationsModule,
     ReportsModule,
+    DependenciesModule,
+    EvidenceModule,
+    AuditModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })

@@ -17,7 +17,6 @@ export default function EditUser() {
     role: 'developer',
     password: '',
     projectIds: [],
-    isProgramManager: false,
   });
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
@@ -35,7 +34,6 @@ export default function EditUser() {
           role: user.role,
           password: '',
           projectIds: (user.projects || []).map((p) => p.id),
-          isProgramManager: Boolean(user.isProgramManager),
         });
         setProjects(allProjects);
       })
@@ -118,13 +116,15 @@ export default function EditUser() {
               onChange={handleChange}
             >
               <option value="admin">Admin</option>
+              <option value="program_manager">Program Manager</option>
               <option value="developer">Developer</option>
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
             </select>
             <p className={styles.helpText}>
               Developers and QA see issues in their assigned projects. Executives get read-only
-              access to the Dashboard and Weekly Reports only.
+              access to the Dashboard and Weekly Reports only. Program Managers can approve or send
+              back issues submitted for review (more than one person can hold this role at once).
             </p>
           </div>
 
@@ -155,22 +155,6 @@ export default function EditUser() {
                 {p.name}
               </label>
             ))}
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={form.isProgramManager}
-                onChange={(e) => setForm({ ...form, isProgramManager: e.target.checked })}
-              />
-              Program Manager
-            </label>
-            <p className={styles.helpText}>
-              Only one person can be the Program Manager at a time - the only person who can approve
-              or send back issues submitted for review. Checking this box here will automatically
-              un-check it for whoever currently holds it.
-            </p>
           </div>
 
           <div className={styles.actions}>

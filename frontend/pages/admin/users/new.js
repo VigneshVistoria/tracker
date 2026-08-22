@@ -119,6 +119,7 @@ export default function NewUser() {
               onChange={handleChange}
             >
               <option value="admin">Admin</option>
+              <option value="program_manager">Program Manager</option>
               <option value="developer">Developer</option>
               <option value="qa">QA</option>
               <option value="executive">Executive</option>

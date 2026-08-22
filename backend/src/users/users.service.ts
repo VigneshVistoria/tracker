@@ -77,20 +77,14 @@ export class UsersService {
     if (dto.password) user.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     if (dto.projectIds !== undefined) user.projects = await this.resolveProjects(dto.projectIds);
 
-    if (dto.isProgramManager !== undefined) {
-      if (dto.isProgramManager) {
-        // Only one Program Manager at a time - clear the flag from
-        // everyone else before setting it here.
-        await this.usersRepository.update({ isProgramManager: true }, { isProgramManager: false });
-      }
-      user.isProgramManager = dto.isProgramManager;
-    }
-
     return this.usersRepository.save(user);
   }
 
-  findProgramManager(): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { isProgramManager: true } });
+  // Program Manager is a normal role now (ReleaseBot, 2026-08-22) - more
+  // than one person can hold it, so this returns all of them rather than
+  // a single singleton like the old isProgramManager flag did.
+  findProgramManagers(): Promise<User[]> {
+    return this.usersRepository.find({ where: { role: UserRole.PROGRAM_MANAGER } });
   }
 
   private async resolveProjects(projectIds?: number[]): Promise<Project[]> {

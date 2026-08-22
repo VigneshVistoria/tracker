@@ -5,12 +5,18 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Priority } from '../common/priority.enum';
 
 export enum IssueStatus {
   BACKLOG = 'Backlog',
   IN_PROGRESS = 'In Progress',
   IN_REVIEW = 'In Review',
   COMPLETED = 'Completed',
+  // The QA workflow's new statuses (QA Ready For Testing, QA Passed, QA
+  // Failed, Ready For Training, Ready For Production) are Phase 5's job,
+  // not Phase 0's - deliberately left out for now to keep this migration
+  // scoped to what was actually agreed (role model + priority + the three
+  // new entities).
 }
 
 export enum IssueMode {
@@ -121,6 +127,13 @@ export class Issue {
   // any time after.
   @Column({ type: 'enum', enum: IssueCategory, nullable: true })
   category: IssueCategory;
+
+  // ReleaseBot: drives SLA targets (Section 21) and auto-set to High for
+  // Executive/Program-Manager-created tickets (Section 34, Phase 1).
+  // Nullable so existing issues don't need a forced default - application
+  // logic decides what new tickets get, not the schema.
+  @Column({ type: 'enum', enum: Priority, nullable: true })
+  priority: Priority;
 
   // If set, this issue is a "dependency ticket" spun off from a parent
   // issue - a normal issue in every other respect, just linked back to

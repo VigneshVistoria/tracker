@@ -13,6 +13,12 @@ export enum UserRole {
   DEVELOPER = 'developer',
   QA = 'qa',
   EXECUTIVE = 'executive',
+  // Added for ReleaseBot: previously this was just a singleton
+  // `isProgramManager` flag any one user could hold rather than a real
+  // role. Promoted to a normal role (2026-08-22, per Vignesh) so more than
+  // one person can hold it and it behaves like every other role for
+  // authorization purposes (ticket creation, approvals, etc.).
+  PROGRAM_MANAGER = 'program_manager',
 }
 
 @Entity('users')
@@ -32,12 +38,6 @@ export class User {
 
   @Column({ type: 'enum', enum: UserRole, default: UserRole.DEVELOPER })
   role: UserRole;
-
-  // Exactly one person at a time can hold this - not a role, just a flag
-  // marking who currently has authority to approve/reject issues
-  // submitted for review. Enforced as a singleton in UsersService.
-  @Column({ type: 'boolean', default: false })
-  isProgramManager: boolean;
 
   // The projects this user is allowed to see/work in.
   @ManyToMany(() => Project)

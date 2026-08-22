@@ -115,7 +115,7 @@ export class IssuesController {
     if (currentUser.role === UserRole.EXECUTIVE) {
       throw new ForbiddenException('Executives have read-only access.');
     }
-    if (currentUser.role !== UserRole.ADMIN && !currentUser.isProgramManager) {
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.PROGRAM_MANAGER) {
       throw new ForbiddenException('Only the Program Manager can approve issues.');
     }
     return this.issuesService.approve(id, currentUser.id, currentUser.email);
@@ -127,7 +127,7 @@ export class IssuesController {
     if (currentUser.role === UserRole.EXECUTIVE) {
       throw new ForbiddenException('Executives have read-only access.');
     }
-    if (currentUser.role !== UserRole.ADMIN && !currentUser.isProgramManager) {
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.PROGRAM_MANAGER) {
       throw new ForbiddenException('Only the Program Manager can send issues back.');
     }
     return this.issuesService.reject(id, currentUser.id, currentUser.email, dto.reason);
