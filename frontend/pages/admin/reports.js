@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 
 function Section({ title, children }) {
@@ -108,6 +108,8 @@ export default function WeeklyReportsPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [downloading, setDownloading] = useState(false);
 
   const load = () => {
     apiFetch('/reports/weekly/history')
@@ -117,6 +119,20 @@ export default function WeeklyReportsPage() {
   };
 
   useEffect(load, []);
+
+  // Assignee list for the PDF-download picker, pulled from the most recent
+  // report's stats so it always reflects who currently has assigned work -
+  // no separate "list all assignees" endpoint needed.
+  const assigneeOptions = useMemo(() => {
+    const emails = history[0]?.data?.assigneeStats?.map((a) => a.assigneeEmail) || [];
+    return [...new Set(emails)].sort();
+  }, [history]);
+
+  useEffect(() => {
+    if (!selectedAssignee && assigneeOptions.length > 0) {
+      setSelectedAssignee(assigneeOptions[0]);
+    }
+  }, [assigneeOptions, selectedAssignee]);
 
   const handleGenerate = async () => {
     setError('');
@@ -129,6 +145,30 @@ export default function WeeklyReportsPage() {
       setError(err.message);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // Downloads one assignee's Performance Report PDF directly - generates it
+  // fresh from current data and streams it back as a file, with no email
+  // sent to anyone. Useful for previewing a report or grabbing one to send
+  // manually, without triggering the mass auto-email that the Saturday job
+  // (or the "Generate Report Now" + email flow) causes for every assignee.
+  const handleDownloadPdf = async () => {
+    if (!selectedAssignee) {
+      return;
+    }
+    setError('');
+    setDownloading(true);
+    try {
+      await apiDownload(
+        `/reports/weekly/performance-pdf?assigneeEmail=${encodeURIComponent(selectedAssignee)}`,
+        `weekly-performance-report-${selectedAssignee}.pdf`,
+      );
+      showToast('PDF downloaded', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -145,6 +185,41 @@ export default function WeeklyReportsPage() {
         <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handleGenerate} disabled={generating}>
           {generating ? 'Generating...' : 'Generate Report Now'}
         </button>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-3)',
+          marginBottom: 'var(--space-4)',
+        }}
+      >
+        <select
+          className={styles.select}
+          value={selectedAssignee}
+          onChange={(e) => setSelectedAssignee(e.target.value)}
+          disabled={assigneeOptions.length === 0}
+          aria-label="Assignee for performance PDF download"
+        >
+          {assigneeOptions.length === 0 && <option value="">No assignees yet</option>}
+          {assigneeOptions.map((email) => (
+            <option key={email} value={email}>
+              {email}
+            </option>
+          ))}
+        </select>
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          onClick={handleDownloadPdf}
+          disabled={downloading || !selectedAssignee}
+        >
+          {downloading ? 'Downloading...' : 'Download Performance PDF'}
+        </button>
+        <span className={styles.helpText}>
+          Downloads that assignee&apos;s report as a PDF file - no email is sent.
+        </span>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}

@@ -1,4 +1,18 @@
-import { Controller, Get, Post, Param, ParseIntPipe, UseGuards, Req, ForbiddenException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+  Req,
+  Res,
+  Query,
+  ForbiddenException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { WeeklyReportsService } from './weekly-reports.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../common/admin.guard';
@@ -34,6 +48,31 @@ export class WeeklyReportsController {
     const report = await this.weeklyReportsService.generate(new Date(), req.user.sub);
     const result = await this.weeklyReportsService.emailPerformanceReports(report);
     return { report, ...result };
+  }
+
+  // Admin-only manual download of one assignee's performance PDF, with no
+  // email side effect - lets an admin preview/review a report (or grab it
+  // for a manual send) without triggering the mass-email that
+  // generate-performance causes for every assignee.
+  @Get('performance-pdf')
+  @UseGuards(AdminGuard)
+  async downloadPerformancePdf(
+    @Query('assigneeEmail') assigneeEmail: string,
+    @Res() res: Response,
+  ) {
+    if (!assigneeEmail) {
+      throw new BadRequestException('assigneeEmail query parameter is required');
+    }
+    const report = await this.weeklyReportsService.generate(new Date());
+    const result = await this.weeklyReportsService.buildPerformancePdfBuffer(report, assigneeEmail);
+    if (!result) {
+      throw new NotFoundException(`No report data found for assignee ${assigneeEmail}`);
+    }
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${result.filename}"`,
+    });
+    res.send(result.buffer);
   }
 
   @Get('history')

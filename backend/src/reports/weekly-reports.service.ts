@@ -360,6 +360,35 @@ export class WeeklyReportsService {
     return { sent, skipped };
   }
 
+  // Builds a single assignee's performance PDF without emailing anyone -
+  // used by the admin-only manual "download" endpoint so a report can be
+  // previewed/reviewed before deciding to send it out for real. Returns
+  // null if that assignee has no stats in this report (e.g. bad/unknown
+  // email), so the controller can turn that into a clean 404.
+  async buildPerformancePdfBuffer(
+    report: WeeklyReport,
+    assigneeEmail: string,
+  ): Promise<{ buffer: Buffer; filename: string } | null> {
+    const { data } = report;
+    const meta = {
+      weekStartDate: data.weekStartDate,
+      weekEndDate: data.weekEndDate,
+      previousWeekStartDate: data.previousWeekStartDate,
+      previousWeekEndDate: data.previousWeekEndDate,
+    };
+
+    const stat = (data.assigneeStats as AssigneePerformanceStat[]).find(
+      (s) => s.assigneeEmail?.toLowerCase() === assigneeEmail?.toLowerCase(),
+    );
+    if (!stat) {
+      return null;
+    }
+
+    const buffer = await this.pdfPerformanceReportService.buildAssigneeReport(meta, stat);
+    const filename = `weekly-performance-report-${meta.weekEndDate}-${assigneeEmail}.pdf`;
+    return { buffer, filename };
+  }
+
   private buildPerformanceEmailHtml(meta: any, stat: AssigneePerformanceStat): string {
     const dependencyNote =
       stat.dependencyItems.length > 0
