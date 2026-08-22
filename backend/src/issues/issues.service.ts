@@ -3,14 +3,27 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Issue, IssueMode, IssueStatus } from './issue.entity';
+import { Priority } from '../common/priority.enum';
 import { Sprint } from '../sprints/sprint.entity';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { CreateDependencyDto } from './dto/create-dependency.dto';
 import { UsersService } from '../users/users.service';
-import { UserRole } from '../users/user.entity';
+import { UserRole, User } from '../users/user.entity';
 import { ProjectsService } from '../projects/projects.service';
 import { EventsGateway } from '../events/events.gateway';
+import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+
+// Section 1/3: these are the only roles allowed to file a ticket through
+// this endpoint. Developer is deliberately excluded - see
+// IssuesController.create() for the enforcement point and
+// recordBlockedCreationAttempt() below for what happens when it's violated.
+const ROLES_ALLOWED_TO_CREATE_TICKETS: UserRole[] = [
+  UserRole.ADMIN,
+  UserRole.PROGRAM_MANAGER,
+  UserRole.QA,
+  UserRole.EXECUTIVE,
+];
 
 @Injectable()
 export class IssuesService {
@@ -23,7 +36,14 @@ export class IssuesService {
     private projectsService: ProjectsService,
     private eventsGateway: EventsGateway,
     private eventEmitter: EventEmitter2,
+    private auditLogService: AuditLogService,
   ) {}
+
+  // Exposed so the controller can check a role against the same list this
+  // service enforces, without duplicating it.
+  static isAllowedToCreateTickets(role: UserRole): boolean {
+    return ROLES_ALLOWED_TO_CREATE_TICKETS.includes(role);
+  }
 
   findAll(): Promise<Issue[]> {
     return this.issuesRepository.find({ order: { createdAt: 'DESC' } });
@@ -65,7 +85,20 @@ export class IssuesService {
     return { ...issue, dependencies };
   }
 
-  async create(dto: CreateIssueDto, userId: number | null, userEmail: string): Promise<Issue> {
+  // creatorRole drives Section 34: an Executive or Program Manager filing
+  // a ticket is always treated as a "Leadership Request" - forced to High
+  // priority regardless of what (if anything) was passed in, tagged with
+  // a source, and flagged for a separate notification to QA. Everyone
+  // else's priority is whatever they picked (or null, same as before).
+  async create(
+    dto: CreateIssueDto,
+    userId: number | null,
+    userEmail: string,
+    creatorRole?: UserRole | null,
+  ): Promise<Issue> {
+    const isLeadershipRequest =
+      creatorRole === UserRole.EXECUTIVE || creatorRole === UserRole.PROGRAM_MANAGER;
+
     const issue = this.issuesRepository.create({
       title: dto.title,
       description: dto.description,
@@ -75,6 +108,8 @@ export class IssuesService {
       showstopper: dto.showstopper ?? false,
       storyPoints: dto.storyPoints,
       category: dto.category,
+      priority: isLeadershipRequest ? Priority.HIGH : dto.priority ?? null,
+      source: isLeadershipRequest ? 'Leadership Request' : null,
     });
 
     await this.applyAssigneeAndProject(issue, dto);
@@ -84,7 +119,43 @@ export class IssuesService {
     if (saved.assigneeUserId) {
       this.eventEmitter.emit('issue.assigned', { issue: saved });
     }
+    if (isLeadershipRequest) {
+      this.eventEmitter.emit('issue.leadershipRequestCreated', { issue: saved });
+    }
+
+    await this.auditLogService.record({
+      userId,
+      userEmail,
+      userRole: creatorRole ?? null,
+      action: AuditActions.TICKET_CREATED,
+      entityType: 'Issue',
+      entityId: saved.id,
+      details: { title: saved.title, priority: saved.priority, source: saved.source },
+    });
+
     return saved;
+  }
+
+  // Section 3/34: called by the controller when a role outside
+  // ROLES_ALLOWED_TO_CREATE_TICKETS (i.e. Developer) attempts to file a
+  // ticket. Lives here (rather than in the controller) so every surface
+  // that will eventually create tickets - REST today, the Teams `#desc`
+  // command in Phase 2 - can reuse the same audit trail and Administrator
+  // notification just by calling this before rejecting the attempt.
+  async recordBlockedCreationAttempt(user: Pick<User, 'id' | 'email' | 'role'>, dto: CreateIssueDto): Promise<void> {
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: AuditActions.TICKET_CREATION_BLOCKED,
+      entityType: 'Issue',
+      details: { attemptedTitle: dto.title },
+    });
+    this.eventEmitter.emit('issue.creationBlocked', {
+      attemptedByEmail: user.email,
+      attemptedByRole: user.role,
+      attemptedTitle: dto.title,
+    });
   }
 
   // Spins off a new issue from a parent, linked via parentIssueId, and

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/user.entity';
 import { Issue } from '../issues/issue.entity';
 
 @Injectable()
@@ -68,6 +69,66 @@ export class IssueNotificationsService {
       `Issue #${issue.id} sent back for more work`,
       `<p>Issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> was sent back for more work.</p>` +
         (reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''),
+    );
+  }
+
+  // Section 34: an Executive/Program Manager-filed ticket is a Leadership
+  // Request - notify every QA-role user. sendToAssignee() already cc's
+  // every configured executive, which doubles as the "+ stakeholders"
+  // half of this requirement without needing a separate stakeholder list.
+  @OnEvent('issue.leadershipRequestCreated')
+  async onLeadershipRequestCreated({ issue }: { issue: Issue }): Promise<void> {
+    const qaUsers = await this.usersService.findByRole(UserRole.QA);
+    if (qaUsers.length === 0) {
+      this.logger.debug(
+        `Leadership Request issue #${issue.id} was created, but no QA user exists to notify - ` +
+          'assign the QA role to someone from User Management to enable this notification.',
+      );
+      return;
+    }
+    await Promise.all(
+      qaUsers.map((qaUser) =>
+        this.mailService.sendToAssignee(
+          qaUser.email,
+          `Leadership Request: new High-priority ticket #${issue.id}`,
+          `<p>A new ticket was filed as a <strong>Leadership Request</strong> and has been auto-set to ` +
+            `<strong>High priority</strong>: <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong>` +
+            (issue.createdByEmail ? ` (filed by ${escapeHtml(issue.createdByEmail)})` : '') +
+            `.</p>` +
+            (issue.description ? `<p>${escapeHtml(issue.description)}</p>` : ''),
+        ),
+      ),
+    );
+  }
+
+  // Section 3: a blocked ticket-creation attempt (Developer role) is
+  // logged to the AuditLog by IssuesService already - this notifies every
+  // Administrator so it doesn't go unnoticed.
+  @OnEvent('issue.creationBlocked')
+  async onCreationBlocked({
+    attemptedByEmail,
+    attemptedByRole,
+    attemptedTitle,
+  }: {
+    attemptedByEmail: string;
+    attemptedByRole: string;
+    attemptedTitle: string;
+  }): Promise<void> {
+    const admins = await this.usersService.findByRole(UserRole.ADMIN);
+    if (admins.length === 0) {
+      this.logger.warn('A blocked ticket-creation attempt occurred, but no Administrator exists to notify.');
+      return;
+    }
+    await Promise.all(
+      admins.map((admin) =>
+        this.mailService.sendToAssignee(
+          admin.email,
+          `Blocked ticket-creation attempt by ${attemptedByEmail}`,
+          `<p><strong>${escapeHtml(attemptedByEmail)}</strong> (role: ${escapeHtml(attemptedByRole)}) attempted to create ` +
+            `a ticket titled <strong>"${escapeHtml(attemptedTitle)}"</strong>, but that role is not permitted to create ` +
+            `tickets directly. Logged to the audit trail.</p>`,
+        ),
+      ),
     );
   }
 }

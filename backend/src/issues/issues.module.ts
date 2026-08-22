@@ -9,9 +9,17 @@ import { GuardsModule } from '../common/guards.module';
 import { UsersModule } from '../users/users.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { EventsModule } from '../events/events.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Issue, Sprint]), GuardsModule, UsersModule, ProjectsModule, EventsModule],
+  imports: [
+    TypeOrmModule.forFeature([Issue, Sprint]),
+    GuardsModule,
+    UsersModule,
+    ProjectsModule,
+    EventsModule,
+    AuditModule,
+  ],
   controllers: [IssuesController],
   providers: [IssuesService, IssueAnalyzerService],
   exports: [IssuesService, IssueAnalyzerService],

@@ -87,6 +87,14 @@ export class UsersService {
     return this.usersRepository.find({ where: { role: UserRole.PROGRAM_MANAGER } });
   }
 
+  // Generic role lookup - used by ReleaseBot Phase 1's notifications
+  // (QA on a Leadership Request ticket, Administrators on a blocked
+  // creation attempt) and expected to grow more callers as later phases
+  // add more role-targeted notifications.
+  findByRole(role: UserRole): Promise<User[]> {
+    return this.usersRepository.find({ where: { role } });
+  }
+
   private async resolveProjects(projectIds?: number[]): Promise<Project[]> {
     if (!projectIds || projectIds.length === 0) return [];
     return this.projectsRepository.find({ where: { id: In(projectIds) } });

@@ -10,6 +10,7 @@ import {
 import { User, UserRole } from '../users/user.entity';
 import { Project } from '../projects/project.entity';
 import { Issue, IssueMode, IssueStatus } from '../issues/issue.entity';
+import { Priority } from '../common/priority.enum';
 import { DailyUpdate } from '../daily-updates/daily-update.entity';
 import { AuthService } from '../auth/auth.service';
 import { IssuesService } from '../issues/issues.service';
@@ -134,6 +135,7 @@ export class RegressionTestingService {
     let testProjectId: number | null = null;
     let testIssueId: number | null = null;
     let testDailyUpdateId: number | null = null;
+    let testLeadershipIssueId: number | null = null;
 
     try {
       results.push(
@@ -201,6 +203,49 @@ export class RegressionTestingService {
           }
           return `Created issue #${issue.id} with status "${issue.status}" and correct assignee.`;
         }),
+      );
+
+      results.push(
+        await this.check('feature', 'Ticket-creation RBAC allows Admin/PM/QA/Executive, blocks Developer', async () => {
+          const allowed = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.QA, UserRole.EXECUTIVE];
+          const notAllowed = allowed.find((role) => !IssuesService.isAllowedToCreateTickets(role));
+          if (notAllowed) {
+            throw new Error(`Expected role "${notAllowed}" to be allowed to create tickets, but it was blocked.`);
+          }
+          if (IssuesService.isAllowedToCreateTickets(UserRole.DEVELOPER)) {
+            throw new Error('Expected Developer to be blocked from creating tickets, but it was allowed.');
+          }
+          return 'Admin, Program Manager, QA, and Executive are allowed; Developer is correctly blocked.';
+        }),
+      );
+
+      results.push(
+        await this.check(
+          'feature',
+          'Executive-created ticket auto-sets High priority and "Leadership Request" source',
+          async () => {
+            if (!testProjectId) throw new Error('Skipped - an earlier setup step failed.');
+            const issue = await this.issuesService.create(
+              {
+                title: `${TEST_TAG} Leadership request issue`,
+                description: 'Created automatically by the regression test suite.',
+                projectId: testProjectId,
+                mode: IssueMode.MANUAL,
+              } as any,
+              null,
+              `regression.executive.${stamp}@internal.test`,
+              UserRole.EXECUTIVE,
+            );
+            testLeadershipIssueId = issue.id;
+            if (issue.priority !== Priority.HIGH) {
+              throw new Error(`Expected priority "${Priority.HIGH}" for an Executive-created ticket, got "${issue.priority}".`);
+            }
+            if (issue.source !== 'Leadership Request') {
+              throw new Error(`Expected source "Leadership Request", got "${issue.source}".`);
+            }
+            return `Created issue #${issue.id} with priority "${issue.priority}" and source "${issue.source}".`;
+          },
+        ),
       );
 
       results.push(
@@ -326,7 +371,7 @@ export class RegressionTestingService {
         }),
       );
     } finally {
-      await this.cleanupTestData({ testUserId, testProjectId, testIssueId, testDailyUpdateId });
+      await this.cleanupTestData({ testUserId, testProjectId, testIssueId, testDailyUpdateId, testLeadershipIssueId });
     }
 
     return results;
@@ -339,11 +384,13 @@ export class RegressionTestingService {
     testProjectId: number | null;
     testIssueId: number | null;
     testDailyUpdateId: number | null;
+    testLeadershipIssueId: number | null;
   }): Promise<void> {
-    const { testUserId, testProjectId, testIssueId, testDailyUpdateId } = ids;
+    const { testUserId, testProjectId, testIssueId, testDailyUpdateId, testLeadershipIssueId } = ids;
     try {
       if (testDailyUpdateId) await this.dailyUpdatesRepository.delete(testDailyUpdateId);
       if (testIssueId) await this.issuesRepository.delete(testIssueId);
+      if (testLeadershipIssueId) await this.issuesRepository.delete(testLeadershipIssueId);
       if (testProjectId) await this.projectsRepository.delete(testProjectId);
       if (testUserId) await this.usersRepository.delete(testUserId);
     } catch (err) {

@@ -135,6 +135,15 @@ export class Issue {
   @Column({ type: 'enum', enum: Priority, nullable: true })
   priority: Priority;
 
+  // ReleaseBot Section 34: tags how the ticket originated. Only value in
+  // use today is "Leadership Request" (auto-set for Executive/Program
+  // Manager creators - see IssuesService.create()). Left as a plain
+  // string rather than a Postgres enum, same reasoning as AuditLog.action -
+  // this is expected to grow (Teams, other integrations) without each new
+  // value needing a schema migration.
+  @Column({ nullable: true })
+  source: string;
+
   // If set, this issue is a "dependency ticket" spun off from a parent
   // issue - a normal issue in every other respect, just linked back to
   // where it came from. Null for ordinary top-level issues.

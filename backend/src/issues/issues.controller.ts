@@ -67,12 +67,22 @@ export class IssuesController {
     return issue;
   }
 
-  // Executives are read-only - everything below this point changes data,
-  // so none of it is available to that role.
+  // Executives are read-only for everything below this point EXCEPT ticket
+  // creation right here - Section 34 deliberately lets an Executive (or
+  // Program Manager) file a "Leadership Request" ticket, which is why this
+  // one endpoint checks against IssuesService.isAllowedToCreateTickets()
+  // instead of the EXECUTIVE-is-blocked pattern used everywhere else in
+  // this file. Developer is the only role actually blocked here.
   @Post()
-  create(@Body() dto: CreateIssueDto, @Req() req: any) {
-    const { sub: userId, email } = req.user;
-    return this.issuesService.create(dto, userId, email);
+  async create(@Body() dto: CreateIssueDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!IssuesService.isAllowedToCreateTickets(currentUser.role)) {
+      await this.issuesService.recordBlockedCreationAttempt(currentUser, dto);
+      throw new ForbiddenException(
+        'Only Administrators, Program Managers, QA, and Executives can create tickets. Ask one of them to file this on your behalf.',
+      );
+    }
+    return this.issuesService.create(dto, currentUser.id, currentUser.email, currentUser.role);
   }
 
   @Patch(':id')
