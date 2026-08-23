@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import styles from '../styles/auth.module.css';
@@ -11,6 +11,14 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [registrationOpen, setRegistrationOpen] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/auth/registration-status`)
+      .then((res) => res.json())
+      .then((data) => setRegistrationOpen(Boolean(data.open)))
+      .catch(() => setRegistrationOpen(false));
+  }, []);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -54,6 +62,15 @@ export default function RegisterPage() {
         {error && <div className={styles.error}>{error}</div>}
         {success && <div className={styles.success}>{success}</div>}
 
+        {registrationOpen === null && <p>Checking registration status...</p>}
+
+        {registrationOpen === false && !success && (
+          <div className={styles.error}>
+            Public registration is disabled. Ask an admin to create your account.
+          </div>
+        )}
+
+        {registrationOpen && (
         <form onSubmit={handleSubmit}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="fullName">Full name</label>
@@ -101,6 +118,7 @@ export default function RegisterPage() {
             {loading ? 'Creating account...' : 'Create account'}
           </button>
         </form>
+        )}
 
         <div className={styles.footer}>
           Already have an account? <Link href="/">Sign in</Link>
