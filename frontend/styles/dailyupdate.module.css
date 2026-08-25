@@ -7,8 +7,8 @@
   font-size: 0.8rem;
   font-weight: 700;
 }
-.statusOnTrack { background: var(--status-open-tint); color: var(--color-teal-dark); }
-.statusAtRisk { background: var(--status-inprogress-tint); color: var(--color-amber-dark); }
+.statusOnTrack { background: var(--color-teal-tint); color: var(--color-teal-dark); }
+.statusAtRisk { background: var(--color-moss-tint); color: var(--color-moss-dark); }
 .statusBlocked { background: var(--color-red-tint); color: var(--color-red-dark); }
 
 .scoreBarTrack {

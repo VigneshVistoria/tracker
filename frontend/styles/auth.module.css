@@ -32,8 +32,8 @@
   width: 30px;
   height: 30px;
   border-radius: var(--radius-sm);
-  background: var(--color-ink);
-  color: var(--color-amber);
+  background: var(--color-amber);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -84,14 +84,14 @@
   border: none;
   border-radius: var(--radius-md);
   background: var(--color-amber);
-  color: var(--color-ink);
+  color: #fff;
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
-.button:hover { background: var(--color-amber-dark); color: #fff; }
+.button:hover { background: var(--color-amber-dark); }
 .button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .error {
@@ -105,7 +105,7 @@
 }
 
 .success {
-  background: var(--status-open-tint);
+  background: var(--color-teal-tint);
   color: var(--color-teal-dark);
   padding: 0.65rem 0.8rem;
   border-radius: var(--radius-md);

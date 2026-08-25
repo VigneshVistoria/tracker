@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { FolderKanban, Users } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import issueStyles from '../styles/issues.module.css';
 import styles from '../styles/dashboard.module.css';
@@ -171,12 +172,12 @@ export default function Dashboard() {
 
       <div className={styles.quickLinks}>
         <Link href="/admin/projects" className={styles.quickLink}>
-          <span className={styles.quickLinkIcon}>{'\u25A2'}</span>
+          <span className={styles.quickLinkIcon}><FolderKanban size={18} aria-hidden="true" /></span>
           {user.role === 'admin' ? 'Manage Projects' : 'My Projects'}
         </Link>
         {user.role === 'admin' && (
           <Link href="/admin/users" className={styles.quickLink}>
-            <span className={styles.quickLinkIcon}>{'\u25CE'}</span>
+            <span className={styles.quickLinkIcon}><Users size={18} aria-hidden="true" /></span>
             User Management
           </Link>
         )}

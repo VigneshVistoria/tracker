@@ -1,31 +1,50 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import {
+  Bell,
+  ChevronsLeft,
+  ChevronsRight,
+  LayoutDashboard,
+  Ticket,
+  FolderKanban,
+  ClipboardEdit,
+  Users,
+  GitBranch,
+  FileBarChart,
+  MessagesSquare,
+  Radio,
+  CheckSquare,
+  Search,
+  LogOut,
+  Menu,
+  X,
+} from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket } from '../lib/socket';
 import { roleLabel } from '../lib/status';
 
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: '\u25A6' },
-  { href: '/issues', label: 'Issues', icon: '\u2691' },
-  { href: '/admin/projects', label: 'Projects', icon: '\u25A2' },
-  { href: '/daily-update', label: 'Daily Update', icon: '\u270E' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/issues', label: 'Issues', icon: Ticket },
+  { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/daily-update', label: 'Daily Update', icon: ClipboardEdit },
 ];
 
 // Executives get read-only access to just the dashboard and weekly
 // reports - no ticket list, no project management, nothing editable.
 const EXECUTIVE_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: '\u25A6' },
-  { href: '/admin/reports', label: 'Weekly Reports', icon: '\u25A6' },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
 ];
 
 const ADMIN_NAV_ITEMS = [
-  { href: '/admin/users', label: 'Users', icon: '\u25CE' },
-  { href: '/admin/sprints', label: 'Sprints', icon: '\u25C9' },
-  { href: '/admin/reports', label: 'Weekly Reports', icon: '\u25A6' },
-  { href: '/admin/team-updates', label: 'Team Updates', icon: '\u25A4' },
-  { href: '/admin/teams-integration', label: 'Teams Integration', icon: '\u2388' },
-  { href: '/admin/regression-testing', label: 'Regression Testing', icon: '\u2713' },
+  { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/sprints', label: 'Sprints', icon: GitBranch },
+  { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
+  { href: '/admin/team-updates', label: 'Team Updates', icon: MessagesSquare },
+  { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
+  { href: '/admin/regression-testing', label: 'Regression Testing', icon: CheckSquare },
 ];
 
 function initialsFor(user) {
@@ -40,6 +59,7 @@ export default function AppShell({ children }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
@@ -77,23 +97,34 @@ export default function AppShell({ children }) {
   if (!user) return null;
 
   const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
+  const navItems = user.role === 'executive' ? EXECUTIVE_NAV_ITEMS : NAV_ITEMS;
 
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div className={styles.topbarLeft}>
           <button
             className={styles.menuButton}
             onClick={() => setDrawerOpen((v) => !v)}
             aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={drawerOpen}
           >
-            {drawerOpen ? '\u2715' : '\u2630'}
+            {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
           </button>
           <Link href="/dashboard" className={styles.brand}>
             <span className={styles.brandMark}>IT</span>
-            IssueTrack
+            <span className={styles.brandName}>IssueTrack</span>
           </Link>
+        </div>
+
+        <div className={styles.searchWrap}>
+          <Search size={16} className={styles.searchIcon} aria-hidden="true" />
+          <input
+            type="search"
+            className={styles.searchInput}
+            placeholder="Search issues, projects, people…"
+            aria-label="Search"
+          />
         </div>
 
         <div className={styles.topbarRight}>
@@ -102,8 +133,11 @@ export default function AppShell({ children }) {
             title={connected ? 'Live updates connected' : 'Live updates disconnected'}
           >
             <span className={styles.connectionDot} aria-hidden="true" />
-            {connected ? 'Live' : 'Offline'}
+            <span className={styles.connectionLabel}>{connected ? 'Live' : 'Offline'}</span>
           </span>
+          <button type="button" className={styles.iconButton} aria-label="Notifications">
+            <Bell size={18} aria-hidden="true" />
+          </button>
           <div className={styles.userBadge}>
             <span className={styles.avatar}>{initialsFor(user)}</span>
             <span className={styles.userBadgeText}>
@@ -111,8 +145,8 @@ export default function AppShell({ children }) {
               <span className={styles.userRole}>{roleLabel(user.role)}</span>
             </span>
           </div>
-          <button className={styles.logoutButton} onClick={handleLogout}>
-            Log out
+          <button type="button" className={styles.iconButton} onClick={handleLogout} aria-label="Log out">
+            <LogOut size={17} aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -122,33 +156,50 @@ export default function AppShell({ children }) {
           className={`${styles.overlay} ${drawerOpen ? styles.open : ''}`}
           onClick={() => setDrawerOpen(false)}
         />
-        <nav className={`${styles.sidebar} ${drawerOpen ? styles.open : ''}`} aria-label="Main navigation">
-          {(user.role === 'executive' ? EXECUTIVE_NAV_ITEMS : NAV_ITEMS).map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
-            >
-              <span className={styles.navIcon}>{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
+        <nav
+          className={`${styles.sidebar} ${drawerOpen ? styles.open : ''} ${collapsed ? styles.collapsed : ''}`}
+          aria-label="Main navigation"
+        >
+          <div className={styles.navScroll}>
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+                title={collapsed ? item.label : undefined}
+              >
+                <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            ))}
 
-          {user.role === 'admin' && (
-            <>
-              <div className={styles.navSection}>Admin</div>
-              {ADMIN_NAV_ITEMS.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
-                >
-                  <span className={styles.navIcon}>{item.icon}</span>
-                  {item.label}
-                </Link>
-              ))}
-            </>
-          )}
+            {user.role === 'admin' && (
+              <>
+                <div className={styles.navSection}>{!collapsed && 'Admin'}</div>
+                {ADMIN_NAV_ITEMS.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
+                    {!collapsed && <span>{item.label}</span>}
+                  </Link>
+                ))}
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className={styles.collapseButton}
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
+            {!collapsed && <span>Collapse</span>}
+          </button>
         </nav>
 
         <main className={styles.content}>

@@ -1,0 +1,100 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  font-family: var(--ds-font-body);
+  font-weight: var(--ds-weight-medium);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: background-color var(--ds-transition-fast), border-color var(--ds-transition-fast),
+    box-shadow var(--ds-transition-fast), color var(--ds-transition-fast), transform var(--ds-transition-fast);
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled,
+.button[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+/* Sizes */
+.sm {
+  height: 32px;
+  padding: 0 var(--ds-space-3);
+  font-size: var(--ds-text-sm);
+}
+.md {
+  height: 38px;
+  padding: 0 var(--ds-space-4);
+  font-size: var(--ds-text-base);
+}
+.lg {
+  height: 44px;
+  padding: 0 var(--ds-space-5);
+  font-size: var(--ds-text-md);
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+/* Variants */
+.primary {
+  background: var(--ds-color-primary-600);
+  color: var(--ds-text-on-primary);
+  box-shadow: var(--ds-shadow-xs);
+}
+.primary:hover:not(:disabled) {
+  background: var(--ds-color-primary-700);
+}
+
+.secondary {
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-strong);
+  box-shadow: var(--ds-shadow-xs);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--ds-bg-surface-sunken);
+  border-color: var(--ds-color-gray-400);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--ds-text-secondary);
+}
+.ghost:hover:not(:disabled) {
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-primary);
+}
+
+.danger {
+  background: var(--ds-color-error);
+  color: #ffffff;
+  box-shadow: var(--ds-shadow-xs);
+}
+.danger:hover:not(:disabled) {
+  background: var(--ds-color-error-dark);
+}
+
+.spinner {
+  animation: ds-spin 0.7s linear infinite;
+}
+
+@keyframes ds-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

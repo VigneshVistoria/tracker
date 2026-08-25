@@ -1,60 +1,70 @@
 /* ============================================================
    Design tokens
-   Direction: a technical "workshop/blueprint" feel appropriate
-   for a tool people use to track and resolve concrete problems.
-   Ink/paper neutrals, amber for action, teal/plum/slate for
-   status - deliberately not generic indigo-SaaS or AI-cliche
-   cream+terracotta.
+   Direction: blue SaaS/ERP hybrid (Stripe/Linear/Vercel polish over
+   Fiori/Odoo/NetSuite density). These are legacy semantic variable
+   names kept for backward compatibility with every existing
+   component - their VALUES now point at the palette defined in
+   tokens.css (imported alongside this file in _app.js) instead of
+   the old ink/paper/amber "workshop" direction. New components
+   should reference the --ds-* tokens in tokens.css directly instead
+   of adding to this list.
    ============================================================ */
 
 :root {
   /* Core palette */
-  --color-ink: #14181f;
-  --color-ink-soft: #3a4150;
-  --color-paper: #f6f6f4;
+  --color-ink: var(--ds-color-gray-900);
+  --color-ink-soft: var(--ds-color-gray-600);
+  --color-paper: var(--ds-color-gray-50);
   --color-surface: #ffffff;
-  --color-border: #e3e5e8;
-  --color-border-strong: #c9cdd3;
+  --color-border: var(--ds-color-gray-200);
+  --color-border-strong: var(--ds-color-gray-300);
 
-  --color-amber: #e8871e;
-  --color-amber-dark: #c96f12;
-  --color-amber-tint: #fdf1e2;
+  /* Brand accent / primary CTA - was amber, now primary blue */
+  --color-amber: var(--ds-color-primary-600);
+  --color-amber-dark: var(--ds-color-primary-700);
+  --color-amber-tint: var(--ds-color-primary-50);
 
-  --color-teal: #0f8b8d;
-  --color-teal-dark: #0b6b6d;
-  --color-teal-tint: #e6f4f4;
+  /* Generic "success" accent - was teal, now green */
+  --color-teal: var(--ds-color-success);
+  --color-teal-dark: var(--ds-color-success-dark);
+  --color-teal-tint: var(--ds-color-success-tint);
 
-  --color-plum: #6b4c93;
-  --color-plum-dark: #55397a;
-  --color-plum-tint: #f0eaf7;
+  /* "In Review" status accent - was plum, now a deeper blue shade so it
+     reads as a distinct step from "In Progress" while staying on-brand */
+  --color-plum: var(--ds-color-primary-800);
+  --color-plum-dark: var(--ds-color-primary-900);
+  --color-plum-tint: var(--ds-color-primary-100);
 
-  --color-red: #d64545;
-  --color-red-dark: #b23333;
-  --color-red-tint: #fbe9e9;
+  --color-red: var(--ds-color-error);
+  --color-red-dark: var(--ds-color-error-dark);
+  --color-red-tint: var(--ds-color-error-tint);
 
-  --color-slate: #6b7280;
-  --color-slate-tint: #eef0f2;
+  --color-slate: var(--ds-color-gray-500);
+  --color-slate-tint: var(--ds-color-gray-100);
 
-  --color-moss: #5b7a4f;
-  --color-moss-dark: #47603d;
-  --color-moss-tint: #eaf0e6;
+  /* "QA Testing" status accent - was moss/green, now amber (pending
+     verification), freeing green for the "Ready for Production" terminal
+     status below */
+  --color-moss: var(--ds-color-warning);
+  --color-moss-dark: var(--ds-color-warning-dark);
+  --color-moss-tint: var(--ds-color-warning-tint);
 
   /* Status semantics - used consistently everywhere a status appears */
-  --status-open: var(--color-teal);
-  --status-open-tint: var(--color-teal-tint);
+  --status-open: var(--ds-color-gray-500);
+  --status-open-tint: var(--ds-color-gray-100);
   --status-inprogress: var(--color-amber);
   --status-inprogress-tint: var(--color-amber-tint);
   --status-review: var(--color-plum);
   --status-review-tint: var(--color-plum-tint);
   --status-qa: var(--color-moss);
   --status-qa-tint: var(--color-moss-tint);
-  --status-closed: var(--color-slate);
-  --status-closed-tint: var(--color-slate-tint);
+  --status-closed: var(--color-teal);
+  --status-closed-tint: var(--color-teal-tint);
 
   /* Typography */
-  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+  --font-display: var(--ds-font-body);
+  --font-body: var(--ds-font-body);
+  --font-mono: var(--ds-font-mono);
 
   /* Spacing scale */
   --space-1: 4px;
@@ -66,17 +76,17 @@
   --space-8: 48px;
 
   /* Radius / shadow */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --shadow-sm: 0 1px 2px rgba(20, 24, 31, 0.06);
-  --shadow-md: 0 4px 16px rgba(20, 24, 31, 0.10);
-  --shadow-lg: 0 12px 32px rgba(20, 24, 31, 0.16);
+  --radius-sm: var(--ds-radius-sm);
+  --radius-md: var(--ds-radius-md);
+  --radius-lg: var(--ds-radius-lg);
+  --shadow-sm: var(--ds-shadow-sm);
+  --shadow-md: var(--ds-shadow-md);
+  --shadow-lg: var(--ds-shadow-lg);
 
   /* Layout */
-  --sidebar-width: 248px;
-  --topbar-height: 60px;
-  --max-content-width: 1100px;
+  --sidebar-width: var(--ds-sidebar-width);
+  --topbar-height: var(--ds-topbar-height);
+  --max-content-width: var(--ds-max-content-width);
 }
 
 * {

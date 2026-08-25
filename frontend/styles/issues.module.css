@@ -38,9 +38,9 @@
 
 .buttonAccent {
   background: var(--color-amber);
-  color: var(--color-ink);
+  color: #fff;
 }
-.buttonAccent:hover { background: var(--color-amber-dark); color: #fff; }
+.buttonAccent:hover { background: var(--color-amber-dark); }
 
 .buttonSecondary {
   background: var(--color-surface);
@@ -119,12 +119,12 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
-.badgeOpen { background: var(--status-open-tint); color: var(--color-teal-dark); }
+.badgeOpen { background: var(--status-open-tint); color: var(--color-ink-soft); }
 .badgeInProgress { background: var(--status-inprogress-tint); color: var(--color-amber-dark); }
 .badgeClientReview { background: var(--status-review-tint); color: var(--color-plum-dark); }
 .badgeQa { background: var(--status-qa-tint); color: var(--color-moss-dark); }
 .badgeQaFailed { background: var(--color-red-tint); color: var(--color-red-dark); }
-.badgeClosed { background: var(--status-closed-tint); color: var(--color-ink-soft); }
+.badgeClosed { background: var(--status-closed-tint); color: var(--color-teal-dark); }
 
 .field {
   margin-bottom: var(--space-4);
@@ -177,7 +177,7 @@
 }
 
 .successBanner {
-  background: var(--status-open-tint);
+  background: var(--color-teal-tint);
   color: var(--color-teal-dark);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
