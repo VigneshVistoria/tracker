@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import styles from '../styles/auth.module.css';
+import styles from '../styles/login.module.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -49,7 +49,7 @@ export default function LoginPage() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
-        <div className={styles.brand}><span className={styles.brandMark}>IT</span>IssueTrack</div>
+        <div className={styles.brand}>Vistoria</div>
         <h1 className={styles.title}>Sign in</h1>
 
         {error && <div className={styles.error}>{error}</div>}

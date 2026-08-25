@@ -1,0 +1,124 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0c2530;
+  padding: 1rem;
+}
+
+.card {
+  background: #122f3b;
+  padding: 2.25rem;
+  border-radius: 10px;
+  border: 1px solid rgba(234, 221, 199, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  max-width: 400px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.75rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: 0.02em;
+  color: #eaddc7;
+}
+
+.title {
+  margin: 0 0 1.5rem;
+  font-size: 1.4rem;
+  text-align: center;
+  color: #eaddc7;
+}
+
+.field {
+  margin-bottom: 1.1rem;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a9bcc2;
+}
+
+.input {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(234, 221, 199, 0.18);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+  background: #0c2530;
+  color: #eaddc7;
+}
+
+.input::placeholder {
+  color: #6e838a;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #62bdce;
+  box-shadow: 0 0 0 3px rgba(98, 189, 206, 0.25);
+}
+
+.button {
+  width: 100%;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  border: none;
+  border-radius: 8px;
+  background: #62bdce;
+  color: #0c2530;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.button:hover { background: #7ecbda; }
+.button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.error {
+  background: rgba(220, 38, 38, 0.15);
+  color: #f8b4b4;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 1.1rem;
+  border-left: 3px solid #dc2626;
+}
+
+.success {
+  background: rgba(98, 189, 206, 0.15);
+  color: #a9e3ec;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 1.1rem;
+  border-left: 3px solid #62bdce;
+}
+
+.footer {
+  text-align: center;
+  margin-top: 1.1rem;
+  font-size: 0.85rem;
+  color: #a9bcc2;
+}
+
+.footer a {
+  color: #f7c497;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
