@@ -5,16 +5,17 @@
   justify-content: center;
   background: linear-gradient(135deg, #c3d8f1 0%, #e1e9f7 100%);
   padding: 1rem;
+  font-family: var(--font-body);
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.35);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.25);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   padding: 2.25rem;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 16px 40px rgba(76, 86, 248, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 20px 50px rgba(31, 41, 119, 0.18);
   width: 100%;
   max-width: 400px;
 }
@@ -27,13 +28,15 @@
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.3rem;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.02em;
   color: #1a2340;
 }
 
 .title {
   margin: 0 0 1.5rem;
+  font-family: var(--font-display);
   font-size: 1.4rem;
+  letter-spacing: -0.01em;
   text-align: center;
   color: #1a2340;
 }
@@ -69,6 +72,17 @@
   outline: none;
   border-color: #4c56f8;
   box-shadow: 0 0 0 3px rgba(76, 86, 248, 0.25);
+}
+
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus,
+.input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.85) inset;
+  box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.85) inset;
+  -webkit-text-fill-color: #1a2340;
+  caret-color: #1a2340;
+  transition: background-color 9999s ease-in-out 0s;
 }
 
 .button {
