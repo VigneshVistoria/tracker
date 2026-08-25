@@ -5,7 +5,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { MODE_OPTIONS, CATEGORY_OPTIONS } from '../../lib/status';
+import { MODE_OPTIONS, CATEGORY_OPTIONS, canCreateTickets } from '../../lib/status';
 
 const STATUS_LABEL = {
   invalid: 'Needs a lot more detail',
@@ -28,12 +28,15 @@ export default function NewIssue() {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [error, setError] = useState('');
+  const [user, setUser] = useState(null);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) setUser(JSON.parse(storedUser));
     apiFetch('/users/assignable').then(setUsers).catch(() => {});
     apiFetch('/projects').then(setProjects).catch(() => {});
   }, []);
@@ -92,6 +95,31 @@ export default function NewIssue() {
     setAnalysis(null);
     document.getElementById('description')?.focus();
   };
+
+  // Defense-in-depth for direct navigation (the "New Issue" entry points
+  // are already hidden/disabled for this role on the Dashboard and Issues
+  // list) - don't let a Developer fill out the whole form just to get a
+  // 403 on submit.
+  if (user && !canCreateTickets(user.role)) {
+    return (
+      <AppShell>
+        <div className={styles.pageHeader}>
+          <div>
+            <h1 className={styles.pageTitle}>New Issue</h1>
+          </div>
+        </div>
+        <div className={styles.card}>
+          <div className={styles.error} style={{ marginBottom: 0 }}>
+            You don't have permission to create tickets. Only Admins, Program Managers, QA, and
+            Executives can. Ask one of them to file this on your behalf.
+          </div>
+        </div>
+        <div className={styles.actions}>
+          <Link href="/issues" className={styles.buttonSecondary}>&larr; Back to issues</Link>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

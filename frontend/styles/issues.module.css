@@ -81,6 +81,8 @@
 .issueRow.railOpen { border-left-color: var(--status-open); }
 .issueRow.railInProgress { border-left-color: var(--status-inprogress); }
 .issueRow.railReview { border-left-color: var(--status-review); }
+.issueRow.railQa { border-left-color: var(--status-qa); }
+.issueRow.railQaFailed { border-left-color: var(--color-red); }
 .issueRow.railClosed { border-left-color: var(--status-closed); }
 
 .issueMain { min-width: 0; }
@@ -120,6 +122,8 @@
 .badgeOpen { background: var(--status-open-tint); color: var(--color-teal-dark); }
 .badgeInProgress { background: var(--status-inprogress-tint); color: var(--color-amber-dark); }
 .badgeClientReview { background: var(--status-review-tint); color: var(--color-plum-dark); }
+.badgeQa { background: var(--status-qa-tint); color: var(--color-moss-dark); }
+.badgeQaFailed { background: var(--color-red-tint); color: var(--color-red-dark); }
 .badgeClosed { background: var(--status-closed-tint); color: var(--color-ink-soft); }
 
 .field {

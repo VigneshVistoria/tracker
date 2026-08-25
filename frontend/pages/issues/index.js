@@ -6,7 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
-import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS } from '../../lib/status';
+import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets } from '../../lib/status';
 
 function formatDate(value) {
   if (!value) return '—';
@@ -19,6 +19,7 @@ export default function IssuesList() {
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [user, setUser] = useState(null);
   const { showToast } = useToast();
 
   const [modeFilter, setModeFilter] = useState('All');
@@ -35,10 +36,12 @@ export default function IssuesList() {
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
-    if (!token) {
+    const storedUser = localStorage.getItem('user');
+    if (!token || !storedUser) {
       router.replace('/');
       return;
     }
+    setUser(JSON.parse(storedUser));
     load();
   }, [router, load]);
 
@@ -96,9 +99,19 @@ export default function IssuesList() {
           <h1 className={styles.pageTitle}>Issues</h1>
           <p className={styles.pageSubtitle}>Updates appear here live as they happen.</p>
         </div>
-        <Link href="/issues/new" className={`${styles.button} ${styles.buttonAccent}`}>
-          + New Issue
-        </Link>
+        {canCreateTickets(user?.role) ? (
+          <Link href="/issues/new" className={`${styles.button} ${styles.buttonAccent}`}>
+            + New Issue
+          </Link>
+        ) : (
+          <span
+            className={`${styles.button} ${styles.buttonAccent}`}
+            style={{ opacity: 0.55, cursor: 'not-allowed' }}
+            title="Only Admins, Program Managers, QA, and Executives can create tickets. Ask one of them to file this for you."
+          >
+            + New Issue
+          </span>
+        )}
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
@@ -146,7 +159,18 @@ export default function IssuesList() {
       {!loading && visibleIssues.length === 0 && (
         <div className={styles.card}>
           <div className={styles.empty}>
-            {issues.length === 0 ? 'No issues yet. Create your first one.' : 'No issues match these filters.'}
+            {issues.length === 0 ? (
+              <>
+                <p style={{ margin: '0 0 var(--space-3)' }}>No issues yet.</p>
+                {canCreateTickets(user?.role) && (
+                  <Link href="/issues/new" className={`${styles.button} ${styles.buttonAccent}`}>
+                    + Create your first issue
+                  </Link>
+                )}
+              </>
+            ) : (
+              'No issues match these filters.'
+            )}
           </div>
         </div>
       )}

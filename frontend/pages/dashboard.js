@@ -6,7 +6,7 @@ import styles from '../styles/dashboard.module.css';
 import { apiFetch } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useToast } from '../lib/toast';
-import { badgeClassFor, railClassFor } from '../lib/status';
+import { badgeClassFor, railClassFor, canCreateTickets } from '../lib/status';
 
 export default function Dashboard() {
   const [user, setUser] = useState(null);
@@ -59,7 +59,9 @@ export default function Dashboard() {
     Backlog: issues.filter((i) => i.status === 'Backlog').length,
     'In Progress': issues.filter((i) => i.status === 'In Progress').length,
     'In Review': issues.filter((i) => i.status === 'In Review').length,
-    Completed: issues.filter((i) => i.status === 'Completed').length,
+    'QA Testing': issues.filter((i) => i.status === 'QA Testing').length,
+    'QA Failed': issues.filter((i) => i.status === 'QA Failed').length,
+    'Ready for Production': issues.filter((i) => i.status === 'Ready for Production').length,
   };
 
   const recentIssues = issues.slice(0, 5);
@@ -77,9 +79,19 @@ export default function Dashboard() {
               : 'Here\u2019s what\u2019s on your plate right now.'}
           </p>
         </div>
-        <Link href="/issues/new" className={`${issueStyles.button} ${issueStyles.buttonAccent}`}>
-          + New Issue
-        </Link>
+        {canCreateTickets(user.role) ? (
+          <Link href="/issues/new" className={`${issueStyles.button} ${issueStyles.buttonAccent}`}>
+            + New Issue
+          </Link>
+        ) : (
+          <span
+            className={`${issueStyles.button} ${issueStyles.buttonAccent}`}
+            style={{ opacity: 0.55, cursor: 'not-allowed' }}
+            title="Only Admins, Program Managers, QA, and Executives can create tickets. Ask one of them to file this for you."
+          >
+            + New Issue
+          </span>
+        )}
       </div>
 
       <div className={styles.statsGrid}>
@@ -95,9 +107,17 @@ export default function Dashboard() {
           <div className={styles.statValue}>{loading ? '\u2013' : counts['In Review']}</div>
           <div className={styles.statLabel}>In Review</div>
         </div>
+        <div className={`${styles.statCard} ${styles.accentQa}`}>
+          <div className={styles.statValue}>{loading ? '\u2013' : counts['QA Testing']}</div>
+          <div className={styles.statLabel}>QA Testing</div>
+        </div>
+        <div className={`${styles.statCard} ${styles.accentQaFailed}`}>
+          <div className={styles.statValue}>{loading ? '\u2013' : counts['QA Failed']}</div>
+          <div className={styles.statLabel}>QA Failed</div>
+        </div>
         <div className={`${styles.statCard} ${styles.accentClosed}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts.Completed}</div>
-          <div className={styles.statLabel}>Completed</div>
+          <div className={styles.statValue}>{loading ? '\u2013' : counts['Ready for Production']}</div>
+          <div className={styles.statLabel}>Ready for Production</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentNeutral}`}>
           <div className={styles.statValue}>{loading ? '\u2013' : projectCount}</div>
@@ -116,7 +136,14 @@ export default function Dashboard() {
         {loading && <div className={issueStyles.empty}>Loading...</div>}
         {!loading && recentIssues.length === 0 && (
           <div className={issueStyles.card}>
-            <div className={issueStyles.empty}>Nothing here yet. Create your first issue to get started.</div>
+            <div className={issueStyles.empty}>
+              <p style={{ margin: '0 0 var(--space-3)' }}>Nothing here yet.</p>
+              {canCreateTickets(user.role) && (
+                <Link href="/issues/new" className={`${issueStyles.button} ${issueStyles.buttonAccent}`}>
+                  + Create your first issue
+                </Link>
+              )}
+            </div>
           </div>
         )}
         {recentIssues.map((issue) => (

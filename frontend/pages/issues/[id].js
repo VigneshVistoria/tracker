@@ -153,11 +153,12 @@ export default function IssueDetail() {
   const handleApprove = async () => {
     setError('');
     setWorkflowBusy(true);
+    const isQaStep = issue.status === 'QA Testing';
     try {
-      const updated = await apiFetch(`/issues/${id}/approve`, { method: 'POST' });
+      const updated = await apiFetch(`/issues/${id}/${isQaStep ? 'qa-approve' : 'approve'}`, { method: 'POST' });
       setIssue(updated);
       setForm({ ...form, status: updated.status });
-      showToast('Issue approved and marked Completed', 'success');
+      showToast(isQaStep ? 'Marked Ready for Production' : 'Approved for QA testing', 'success');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -168,8 +169,9 @@ export default function IssueDetail() {
   const handleReject = async () => {
     setError('');
     setWorkflowBusy(true);
+    const isQaStep = issue.status === 'QA Testing';
     try {
-      const updated = await apiFetch(`/issues/${id}/reject`, {
+      const updated = await apiFetch(`/issues/${id}/${isQaStep ? 'qa-reject' : 'reject'}`, {
         method: 'POST',
         body: JSON.stringify({ reason: rejectReason || undefined }),
       });
@@ -225,8 +227,10 @@ export default function IssueDetail() {
   const isExecutive = currentUser?.role === 'executive';
   const isAssignee = currentUser && issue.assigneeUserId === currentUser.id;
   const isProgramManager = currentUser?.role === 'program_manager';
+  const isQa = currentUser?.role === 'qa';
   const canSubmitForReview = issue.status === 'In Progress' && (isAdmin || isAssignee);
   const canReview = issue.status === 'In Review' && (isAdmin || isProgramManager);
+  const canReviewQa = issue.status === 'QA Testing' && (isAdmin || isQa);
 
   const statusOptionsForForm = isAdmin
     ? STATUS_OPTIONS
@@ -354,14 +358,21 @@ export default function IssueDetail() {
         )}
       </div>
 
-      {issue.lastRejectionReason && issue.status === 'In Progress' && (
+      {issue.lastRejectionReason && (issue.status === 'In Progress' || issue.status === 'QA Failed') && (
         <div className={styles.card} style={{ borderLeft: '3px solid var(--color-red)', background: 'var(--color-red-tint)' }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>Sent back for more work</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>
+            {issue.status === 'QA Failed' ? 'Failed QA testing' : 'Sent back for more work'}
+          </p>
           <p style={{ margin: 'var(--space-2) 0 0' }}>{issue.lastRejectionReason}</p>
+          {issue.status === 'QA Failed' && (
+            <p className={styles.helpText} style={{ margin: 'var(--space-2) 0 0' }}>
+              Move the status to "In Progress" below once you're ready to start fixing it.
+            </p>
+          )}
         </div>
       )}
 
-      {(canSubmitForReview || canReview) && (
+      {(canSubmitForReview || canReview || canReviewQa) && (
         <div className={styles.card}>
           <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Workflow</h3>
           {canSubmitForReview && (
@@ -382,7 +393,7 @@ export default function IssueDetail() {
           {canReview && (
             <div>
               <p className={styles.helpText} style={{ marginTop: 0 }}>
-                Submitted {formatDateTime(issue.submittedForReviewAt)}. Approve to mark Completed, or send it back with a note.
+                Submitted {formatDateTime(issue.submittedForReviewAt)}. Approve to send it to QA for testing, or send it back to the developer with a note.
               </p>
               <div className={styles.actions}>
                 <button
@@ -391,7 +402,7 @@ export default function IssueDetail() {
                   onClick={handleApprove}
                   disabled={workflowBusy}
                 >
-                  {workflowBusy ? 'Working...' : 'Approve'}
+                  {workflowBusy ? 'Working...' : 'Approve for QA'}
                 </button>
                 <button
                   className={styles.buttonSecondary}
@@ -402,23 +413,49 @@ export default function IssueDetail() {
                   Send Back
                 </button>
               </div>
-              {showRejectBox && (
-                <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
-                  <label className={styles.label} htmlFor="rejectReason">What needs fixing? (optional)</label>
-                  <textarea
-                    className={styles.textarea}
-                    id="rejectReason"
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="e.g. Please add a test case before resubmitting"
-                  />
-                  <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
-                    <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handleReject} disabled={workflowBusy}>
-                      {workflowBusy ? 'Sending...' : 'Confirm Send Back'}
-                    </button>
-                  </div>
-                </div>
-              )}
+            </div>
+          )}
+          {canReviewQa && (
+            <div>
+              <p className={styles.helpText} style={{ marginTop: 0 }}>
+                Approved by the Program Manager on {formatDateTime(issue.reviewedAt)}. Mark it Ready for Production once testing
+                passes, or send it back to the developer with a note.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  onClick={handleApprove}
+                  disabled={workflowBusy}
+                >
+                  {workflowBusy ? 'Working...' : 'Mark Ready for Production'}
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => setShowRejectBox((v) => !v)}
+                  disabled={workflowBusy}
+                >
+                  Send Back
+                </button>
+              </div>
+            </div>
+          )}
+          {(canReview || canReviewQa) && showRejectBox && (
+            <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
+              <label className={styles.label} htmlFor="rejectReason">What needs fixing? (optional)</label>
+              <textarea
+                className={styles.textarea}
+                id="rejectReason"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="e.g. Please add a test case before resubmitting"
+              />
+              <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handleReject} disabled={workflowBusy}>
+                  {workflowBusy ? 'Sending...' : 'Confirm Send Back'}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -461,9 +498,10 @@ export default function IssueDetail() {
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
-            {!isAdmin && (issue.status === 'In Review' || issue.status === 'Completed') && (
+            {!isAdmin && ['In Review', 'QA Testing', 'Ready for Production'].includes(issue.status) && (
               <p className={styles.helpText}>
-                This status can only change via the workflow actions above{issue.status === 'Completed' ? ' (or an admin).' : '.'}
+                This status can only change via the workflow actions above
+                {issue.status === 'Ready for Production' ? ' (or an admin).' : '.'}
               </p>
             )}
           </div>
@@ -555,8 +593,8 @@ export default function IssueDetail() {
 
           {issue.closedOn && (
             <p className={styles.helpText}>
-              Completed on {formatDateTime(issue.closedOn)}
-              {issue.reviewedByEmail ? ` \u2013 approved by ${issue.reviewedByEmail}` : ''}
+              Marked Ready for Production on {formatDateTime(issue.closedOn)}
+              {issue.qaReviewedByEmail ? ` \u2013 QA sign-off by ${issue.qaReviewedByEmail}` : ''}
             </p>
           )}
 

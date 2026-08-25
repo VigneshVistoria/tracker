@@ -19,6 +19,13 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  // Exposed via a public endpoint so the frontend can hide/disable the
+  // registration form instead of letting someone fill it out and only
+  // find out it's blocked after submitting.
+  async isRegistrationOpen(): Promise<boolean> {
+    return (await this.usersService.count()) === 0;
+  }
+
   async register(dto: RegisterDto) { const userCount = await this.usersService.count(); if (userCount > 0) { throw new ForbiddenException('Public registration is disabled. Ask an admin to create your account.'); }
     const existing = await this.usersService.findByEmail(dto.email);
     if (existing) {

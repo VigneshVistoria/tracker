@@ -14,7 +14,9 @@ const STATUS_HEALTH_WEIGHT: Record<IssueStatus, number> = {
   [IssueStatus.BACKLOG]: 20,
   [IssueStatus.IN_PROGRESS]: 60,
   [IssueStatus.IN_REVIEW]: 90,
-  [IssueStatus.COMPLETED]: 100,
+  [IssueStatus.QA_TESTING]: 95,
+  [IssueStatus.QA_FAILED]: 40,
+  [IssueStatus.READY_FOR_PRODUCTION]: 100,
 };
 
 @Injectable()
@@ -56,7 +58,7 @@ export class WeeklyReportsService {
 
     const [completedPreviousWeek, newThisWeek, carryForward, allActive] = await Promise.all([
       this.issuesRepository.find({
-        where: { status: IssueStatus.COMPLETED, closedOn: Between(prevWeekStart, prevWeekEnd) },
+        where: { status: IssueStatus.READY_FOR_PRODUCTION, closedOn: Between(prevWeekStart, prevWeekEnd) },
         order: { closedOn: 'ASC' },
       }),
       this.issuesRepository.find({
@@ -65,15 +67,15 @@ export class WeeklyReportsService {
       }),
       // Existed before this week and still not completed - rolled forward.
       this.issuesRepository.find({
-        where: { status: Not(IssueStatus.COMPLETED), createdAt: LessThan(weekStart) },
+        where: { status: Not(IssueStatus.READY_FOR_PRODUCTION), createdAt: LessThan(weekStart) },
         order: { createdAt: 'ASC' },
       }),
       // Every non-completed issue right now, for the assignee/performance
       // breakdown below.
-      this.issuesRepository.find({ where: { status: Not(IssueStatus.COMPLETED) } }),
+      this.issuesRepository.find({ where: { status: Not(IssueStatus.READY_FOR_PRODUCTION) } }),
     ]);
 
-    const allCompletedEver = await this.issuesRepository.find({ where: { status: IssueStatus.COMPLETED } });
+    const allCompletedEver = await this.issuesRepository.find({ where: { status: IssueStatus.READY_FOR_PRODUCTION } });
 
     // Most recent prior report (any week before this one) - used purely to
     // compute a week-over-week trend per assignee below. Best-effort: if
@@ -227,7 +229,9 @@ export class WeeklyReportsService {
         [IssueStatus.BACKLOG]: allActive.filter((i) => i.status === IssueStatus.BACKLOG).length,
         [IssueStatus.IN_PROGRESS]: allActive.filter((i) => i.status === IssueStatus.IN_PROGRESS).length,
         [IssueStatus.IN_REVIEW]: allActive.filter((i) => i.status === IssueStatus.IN_REVIEW).length,
-        [IssueStatus.COMPLETED]: allCompletedEver.length,
+        [IssueStatus.QA_TESTING]: allActive.filter((i) => i.status === IssueStatus.QA_TESTING).length,
+        [IssueStatus.QA_FAILED]: allActive.filter((i) => i.status === IssueStatus.QA_FAILED).length,
+        [IssueStatus.READY_FOR_PRODUCTION]: allCompletedEver.length,
       },
     };
 

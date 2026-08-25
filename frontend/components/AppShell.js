@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import styles from '../styles/appshell.module.css';
 import { getSocket } from '../lib/socket';
+import { roleLabel } from '../lib/status';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '\u25A6' },
@@ -97,13 +98,18 @@ export default function AppShell({ children }) {
 
         <div className={styles.topbarRight}>
           <span
-            className={`${styles.connectionDot} ${connected ? styles.live : ''}`}
+            className={`${styles.connectionStatus} ${connected ? styles.live : ''}`}
             title={connected ? 'Live updates connected' : 'Live updates disconnected'}
-            aria-label={connected ? 'Live updates connected' : 'Live updates disconnected'}
-          />
+          >
+            <span className={styles.connectionDot} aria-hidden="true" />
+            {connected ? 'Live' : 'Offline'}
+          </span>
           <div className={styles.userBadge}>
             <span className={styles.avatar}>{initialsFor(user)}</span>
-            <span>{user.fullName || user.email}</span>
+            <span className={styles.userBadgeText}>
+              <span className={styles.userName}>{user.fullName || user.email}</span>
+              <span className={styles.userRole}>{roleLabel(user.role)}</span>
+            </span>
           </div>
           <button className={styles.logoutButton} onClick={handleLogout}>
             Log out

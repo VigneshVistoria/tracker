@@ -38,15 +38,18 @@ export class IssuesController {
   }
 
   // Admin and Executive see every issue (Executive is read-only everywhere
-  // else in this controller). Developer and QA see issues that belong to
-  // any of the projects they're assigned to - broader than "just their own
-  // assigned issues", since QA specifically needs to see and reassign
-  // tickets that aren't necessarily assigned to them yet.
+  // else in this controller). Program Manager sees everything in the
+  // projects they're assigned to, since they need visibility into
+  // unassigned/in-progress work to review and approve it. Developer and QA
+  // are restricted to only the issues assigned to them.
   @Get()
   async findAll(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.EXECUTIVE) {
       return this.issuesService.findAll();
+    }
+    if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
+      return this.issuesService.findByAssignee(currentUser.id);
     }
     const projectIds = (currentUser.projects || []).map((p) => p.id);
     return this.issuesService.findByProjects(projectIds);
@@ -57,7 +60,11 @@ export class IssuesController {
     const currentUser = await this.usersService.findById(req.user.sub);
     const issue = await this.issuesService.findOneWithDependencies(id);
 
-    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.EXECUTIVE) {
+    if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
+      if (issue.assigneeUserId !== currentUser.id) {
+        throw new ForbiddenException('You do not have access to this issue');
+      }
+    } else if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.EXECUTIVE) {
       const assignedProjectIds = (currentUser.projects || []).map((p) => p.id);
       if (!issue.projectId || !assignedProjectIds.includes(issue.projectId)) {
         throw new ForbiddenException('You do not have access to this issue');
@@ -141,6 +148,26 @@ export class IssuesController {
       throw new ForbiddenException('Only the Program Manager can send issues back.');
     }
     return this.issuesService.reject(id, currentUser.id, currentUser.email, dto.reason);
+  }
+
+  // Only QA (or an admin, as an override) can pass/fail an issue that's
+  // been approved for testing.
+  @Post(':id/qa-approve')
+  async qaApprove(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.QA) {
+      throw new ForbiddenException('Only QA can mark an issue Ready for Production.');
+    }
+    return this.issuesService.qaApprove(id, currentUser.id, currentUser.email);
+  }
+
+  @Post(':id/qa-reject')
+  async qaReject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectIssueDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.QA) {
+      throw new ForbiddenException('Only QA can send issues back to the developer.');
+    }
+    return this.issuesService.qaReject(id, currentUser.id, currentUser.email, dto.reason);
   }
 }
 

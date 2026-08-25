@@ -93,7 +93,7 @@ function ReportCard({ report, defaultOpen }) {
               {d.overall.totalCompleted} of {d.overall.totalIssues} issues completed ({d.overall.completionPercent}%)
             </p>
             <p className={styles.issueMeta}>
-              Backlog: {d.overall.statusBreakdown.Backlog} &middot; In Progress: {d.overall.statusBreakdown['In Progress']} &middot; In Review: {d.overall.statusBreakdown['In Review']} &middot; Completed: {d.overall.statusBreakdown.Completed}
+              Backlog: {d.overall.statusBreakdown.Backlog} &middot; In Progress: {d.overall.statusBreakdown['In Progress']} &middot; In Review: {d.overall.statusBreakdown['In Review']} &middot; QA Testing: {d.overall.statusBreakdown['QA Testing']} &middot; QA Failed: {d.overall.statusBreakdown['QA Failed']} &middot; Ready for Production: {d.overall.statusBreakdown['Ready for Production']}
             </p>
           </Section>
         </div>

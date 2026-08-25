@@ -67,6 +67,24 @@
   gap: var(--space-2);
   font-size: 0.85rem;
   color: var(--color-ink-soft);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--color-border);
+}
+
+.userBadgeText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.userName {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.userRole {
+  font-size: 0.72rem;
+  color: var(--color-slate);
 }
 
 .avatar {
@@ -84,6 +102,22 @@
   flex-shrink: 0;
 }
 
+/* A short text label alongside the dot, not just a bare dot next to the
+   avatar - a lone colored dot there reads as an unread-notification badge. */
+.connectionStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-slate);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.connectionStatus.live {
+  color: var(--color-teal-dark);
+}
+
 .connectionDot {
   width: 8px;
   height: 8px;
@@ -91,7 +125,7 @@
   background: var(--color-slate);
   flex-shrink: 0;
 }
-.connectionDot.live {
+.connectionStatus.live .connectionDot {
   background: var(--color-teal);
   box-shadow: 0 0 0 3px var(--color-teal-tint);
 }
@@ -125,6 +159,19 @@
   top: var(--topbar-height);
   height: calc(100vh - var(--topbar-height));
   overflow-y: auto;
+  /* Force a persistent, visible scroll affordance instead of relying on
+     OS-level overlay scrollbars that only flash in on scroll/hover - with
+     the Admin section, nav items can exceed the viewport with no other
+     hint that there's more below the fold. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 8px;
 }
 
 .navLink {
@@ -214,8 +261,17 @@
     padding: var(--space-5) var(--space-4);
   }
 
-  .userBadge span {
+  .userBadgeText {
     display: none; /* keep just the avatar on small screens */
+  }
+
+  .userBadge {
+    border-left: none;
+    padding-left: 0;
+  }
+
+  .connectionStatus {
+    display: none; /* the dot's text label doesn't fit - hide the whole indicator rather than leave a bare dot */
   }
 }
 

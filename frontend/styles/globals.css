@@ -35,6 +35,10 @@
   --color-slate: #6b7280;
   --color-slate-tint: #eef0f2;
 
+  --color-moss: #5b7a4f;
+  --color-moss-dark: #47603d;
+  --color-moss-tint: #eaf0e6;
+
   /* Status semantics - used consistently everywhere a status appears */
   --status-open: var(--color-teal);
   --status-open-tint: var(--color-teal-tint);
@@ -42,6 +46,8 @@
   --status-inprogress-tint: var(--color-amber-tint);
   --status-review: var(--color-plum);
   --status-review-tint: var(--color-plum-tint);
+  --status-qa: var(--color-moss);
+  --status-qa-tint: var(--color-moss-tint);
   --status-closed: var(--color-slate);
   --status-closed-tint: var(--color-slate-tint);
 

@@ -56,7 +56,7 @@ export class IssuesService {
     });
   }
 
-  // Used for Developer/QA visibility - everything in any project they're
+  // Used for Program Manager visibility - everything in any project they're
   // assigned to, not just their own assigned issues.
   findByProjects(projectIds: number[]): Promise<Issue[]> {
     if (projectIds.length === 0) return Promise.resolve([]);
@@ -194,13 +194,17 @@ export class IssuesService {
   }
 
   // Only these forward moves are allowed for a regular (non-admin) user via
-  // the generic update endpoint. Moving into "In Review" or "Completed"
-  // must go through submitForReview()/approve() instead, since those steps
-  // carry side effects (notifications, approval tracking) that a plain
-  // field edit shouldn't silently trigger.
+  // the generic update endpoint. Moving into "In Review", "QA Testing", or
+  // "Ready for Production" must go through submitForReview()/approve()/
+  // qaApprove() instead, since those steps carry side effects
+  // (notifications, approval tracking) that a plain field edit shouldn't
+  // silently trigger. QA_FAILED -> IN_PROGRESS is a plain self-service move
+  // though, same as BACKLOG <-> IN_PROGRESS - it's just the assignee
+  // picking the ticket back up, with no side effects of its own.
   private static ALLOWED_SELF_SERVICE_TRANSITIONS: Partial<Record<IssueStatus, IssueStatus[]>> = {
     [IssueStatus.BACKLOG]: [IssueStatus.IN_PROGRESS],
     [IssueStatus.IN_PROGRESS]: [IssueStatus.BACKLOG],
+    [IssueStatus.QA_FAILED]: [IssueStatus.IN_PROGRESS],
   };
 
   async update(id: number, dto: UpdateIssueDto, actingUser?: { id: number; role: UserRole }): Promise<Issue> {
@@ -221,14 +225,15 @@ export class IssuesService {
         if (!allowed.includes(dto.status)) {
           throw new BadRequestException(
             `Can't move an issue from "${issue.status}" to "${dto.status}" this way. ` +
-              'Use "Submit for Review" or the Program Manager approval actions instead.',
+              'Use "Submit for Review", the Program Manager approval actions, or the QA actions instead.',
           );
         }
       }
       issue.status = dto.status;
-      // closedOn tracks the moment a status change lands on Completed, and
-      // clears itself if the issue is later reopened/sent back.
-      if (dto.status === IssueStatus.COMPLETED) {
+      // closedOn tracks the moment a status change lands on Ready for
+      // Production, and clears itself if the issue is later reopened/sent
+      // back.
+      if (dto.status === IssueStatus.READY_FOR_PRODUCTION) {
         if (!issue.closedOn) issue.closedOn = new Date();
       } else {
         issue.closedOn = null;
@@ -268,8 +273,9 @@ export class IssuesService {
     return saved;
   }
 
-  // Program Manager approves - moves to Completed and records who/when.
-  // Only valid from "In Review".
+  // Program Manager approves - moves to QA Testing (not straight to done
+  // anymore; QA still has to sign off) and records who/when. Only valid
+  // from "In Review".
   async approve(id: number, reviewerId: number, reviewerEmail: string): Promise<Issue> {
     const issue = await this.findOne(id);
     if (issue.status !== IssueStatus.IN_REVIEW) {
@@ -277,8 +283,7 @@ export class IssuesService {
         `Only an issue that's "In Review" can be approved (this one is "${issue.status}").`,
       );
     }
-    issue.status = IssueStatus.COMPLETED;
-    issue.closedOn = new Date();
+    issue.status = IssueStatus.QA_TESTING;
     issue.reviewedByUserId = reviewerId;
     issue.reviewedByEmail = reviewerEmail;
     issue.reviewedAt = new Date();
@@ -308,6 +313,52 @@ export class IssuesService {
     const saved = await this.issuesRepository.save(issue);
     this.eventsGateway.emitIssueUpdated(saved);
     this.eventEmitter.emit('issue.rejected', { issue: saved, reason });
+    return saved;
+  }
+
+  // QA passes it - the workflow's terminal state. Only valid from
+  // "QA Testing".
+  async qaApprove(id: number, qaUserId: number, qaUserEmail: string): Promise<Issue> {
+    const issue = await this.findOne(id);
+    if (issue.status !== IssueStatus.QA_TESTING) {
+      throw new BadRequestException(
+        `Only an issue that's "QA Testing" can be marked Ready for Production (this one is "${issue.status}").`,
+      );
+    }
+    issue.status = IssueStatus.READY_FOR_PRODUCTION;
+    issue.closedOn = new Date();
+    issue.qaReviewedByUserId = qaUserId;
+    issue.qaReviewedByEmail = qaUserEmail;
+    issue.qaReviewedAt = new Date();
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+    this.eventEmitter.emit('issue.qaApproved', { issue: saved });
+    return saved;
+  }
+
+  // QA finds a problem - sends it to QA Failed (not directly back to In
+  // Progress, so a QA-flagged rework is trackable separately from a normal
+  // first-pass build) with an optional note. The assignee moves it into In
+  // Progress themselves, whenever they're ready to start fixing it - see
+  // ALLOWED_SELF_SERVICE_TRANSITIONS above. Only valid from "QA Testing".
+  async qaReject(id: number, qaUserId: number, qaUserEmail: string, reason?: string): Promise<Issue> {
+    const issue = await this.findOne(id);
+    if (issue.status !== IssueStatus.QA_TESTING) {
+      throw new BadRequestException(
+        `Only an issue that's "QA Testing" can be sent back (this one is "${issue.status}").`,
+      );
+    }
+    issue.status = IssueStatus.QA_FAILED;
+    issue.submittedForReviewAt = null;
+    issue.qaReviewedByUserId = qaUserId;
+    issue.qaReviewedByEmail = qaUserEmail;
+    issue.qaReviewedAt = new Date();
+    issue.lastRejectionReason = reason || null;
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+    this.eventEmitter.emit('issue.qaRejected', { issue: saved, reason });
     return saved;
   }
 

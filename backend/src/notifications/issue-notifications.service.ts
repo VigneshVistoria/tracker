@@ -53,11 +53,40 @@ export class IssueNotificationsService {
 
   @OnEvent('issue.approved')
   async onApproved({ issue }: { issue: Issue }): Promise<void> {
+    if (issue.assigneeEmail) {
+      await this.mailService.sendToAssignee(
+        issue.assigneeEmail,
+        `Issue #${issue.id} approved for QA testing`,
+        `<p>Your issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> was reviewed and approved by the Program Manager, and is now with QA for testing.</p>`,
+      );
+    }
+
+    const qaUsers = await this.usersService.findByRole(UserRole.QA);
+    if (qaUsers.length === 0) {
+      this.logger.debug(
+        `Issue #${issue.id} was approved for QA testing, but no QA user exists to notify - ` +
+          'assign the QA role to someone from User Management to enable this notification.',
+      );
+      return;
+    }
+    await Promise.all(
+      qaUsers.map((qaUser) =>
+        this.mailService.sendToAssignee(
+          qaUser.email,
+          `Issue #${issue.id} is ready for QA testing`,
+          `<p>Issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> was approved by the Program Manager and is ready for you to test.</p>`,
+        ),
+      ),
+    );
+  }
+
+  @OnEvent('issue.qaApproved')
+  async onQaApproved({ issue }: { issue: Issue }): Promise<void> {
     if (!issue.assigneeEmail) return;
     await this.mailService.sendToAssignee(
       issue.assigneeEmail,
-      `Issue #${issue.id} approved - marked Completed`,
-      `<p>Your issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> has been reviewed and approved. Status: Completed.</p>`,
+      `Issue #${issue.id} passed QA - Ready for Production`,
+      `<p>Your issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> passed QA testing and is now marked Ready for Production.</p>`,
     );
   }
 
@@ -68,6 +97,18 @@ export class IssueNotificationsService {
       issue.assigneeEmail,
       `Issue #${issue.id} sent back for more work`,
       `<p>Issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> was sent back for more work.</p>` +
+        (reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''),
+    );
+  }
+
+  @OnEvent('issue.qaRejected')
+  async onQaRejected({ issue, reason }: { issue: Issue; reason?: string }): Promise<void> {
+    if (!issue.assigneeEmail) return;
+    await this.mailService.sendToAssignee(
+      issue.assigneeEmail,
+      `Issue #${issue.id} failed QA testing`,
+      `<p>Issue <strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> failed QA testing and needs more work. ` +
+        `Move it back to "In Progress" once you're ready to start fixing it.</p>` +
         (reason ? `<p><strong>Reason:</strong> ${escapeHtml(reason)}</p>` : ''),
     );
   }

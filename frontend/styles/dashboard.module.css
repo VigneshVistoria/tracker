@@ -16,6 +16,8 @@
 .statCard.accentOpen { border-left-color: var(--status-open); }
 .statCard.accentInProgress { border-left-color: var(--status-inprogress); }
 .statCard.accentReview { border-left-color: var(--status-review); }
+.statCard.accentQa { border-left-color: var(--status-qa); }
+.statCard.accentQaFailed { border-left-color: var(--color-red); }
 .statCard.accentClosed { border-left-color: var(--status-closed); }
 .statCard.accentNeutral { border-left-color: var(--color-ink); }
 
@@ -71,12 +73,14 @@
   transform: translateY(-1px);
 }
 
+/* Neutral, not amber - amber is reserved for primary CTAs (e.g. "+ New
+   Issue") elsewhere on this page, and these are secondary navigation links. */
 .quickLinkIcon {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-md);
-  background: var(--color-amber-tint);
-  color: var(--color-amber-dark);
+  background: var(--color-slate-tint);
+  color: var(--color-ink-soft);
   display: flex;
   align-items: center;
   justify-content: center;

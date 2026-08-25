@@ -11,12 +11,19 @@ export enum IssueStatus {
   BACKLOG = 'Backlog',
   IN_PROGRESS = 'In Progress',
   IN_REVIEW = 'In Review',
-  COMPLETED = 'Completed',
-  // The QA workflow's new statuses (QA Ready For Testing, QA Passed, QA
-  // Failed, Ready For Training, Ready For Production) are Phase 5's job,
-  // not Phase 0's - deliberately left out for now to keep this migration
-  // scoped to what was actually agreed (role model + priority + the three
-  // new entities).
+  // Program Manager approved the In Review submission - now with QA to be
+  // tested before it can go live.
+  QA_TESTING = 'QA Testing',
+  // QA found a problem - distinct from "In Progress" so a QA-flagged
+  // rework is trackable separately from a normal first-pass build. The
+  // assignee moves it back to "In Progress" themselves (a plain
+  // self-service transition, same as Backlog <-> In Progress) once they're
+  // ready to start fixing it.
+  QA_FAILED = 'QA Failed',
+  // QA passed it - the workflow's terminal state. Replaces the old
+  // "Completed" status, which was set directly by the Program Manager's
+  // approval with no QA gate in between.
+  READY_FOR_PRODUCTION = 'Ready for Production',
 }
 
 export enum IssueMode {
@@ -60,8 +67,9 @@ export class Issue {
   @Column({ type: 'timestamp', nullable: true })
   submittedForReviewAt: Date;
 
-  // Who approved/rejected this issue's review, and when. Both null until
-  // a review decision has actually been made.
+  // Who approved/rejected this issue's In Review submission (the Program
+  // Manager step), and when. Both null until that review decision has
+  // actually been made.
   @Column({ nullable: true })
   reviewedByUserId: number;
 
@@ -71,9 +79,21 @@ export class Issue {
   @Column({ type: 'timestamp', nullable: true })
   reviewedAt: Date;
 
-  // Set only when the Program Manager sends an issue back for more work -
-  // gives the assignee context on what needs fixing. Cleared on the next
-  // successful submission.
+  // Who approved/rejected this issue's QA Testing pass (the QA step),
+  // separate from the Program Manager's reviewedBy* fields above. Both
+  // null until QA has actually made a call on it.
+  @Column({ nullable: true })
+  qaReviewedByUserId: number;
+
+  @Column({ nullable: true })
+  qaReviewedByEmail: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  qaReviewedAt: Date;
+
+  // Set whenever the Program Manager or QA sends an issue back for more
+  // work - gives the assignee context on what needs fixing. Cleared on the
+  // next successful submission.
   @Column({ type: 'text', nullable: true })
   lastRejectionReason: string;
 
@@ -150,9 +170,10 @@ export class Issue {
   @Column({ nullable: true })
   parentIssueId: number;
 
-  // Set automatically the moment status becomes "Completed" (via Program
-  // Manager approval), cleared if the issue is reopened/sent back later.
-  // Column name kept as closedOn for continuity with existing data.
+  // Set automatically the moment status becomes "Ready for Production" (via
+  // QA approval), cleared if the issue is reopened/sent back later. Column
+  // name kept as closedOn for continuity with existing data (from when this
+  // was set on the old "Completed" status instead).
   @Column({ type: 'timestamp', nullable: true })
   closedOn: Date;
 

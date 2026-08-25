@@ -12,7 +12,7 @@ export class UpdateIssueDto {
 
   @IsOptional()
   @IsEnum(IssueStatus, {
-    message: 'Status must be one of: Backlog, In Progress, In Review, Completed',
+    message: 'Status must be one of: Backlog, In Progress, In Review, QA Testing, QA Failed, Ready for Production',
   })
   status?: IssueStatus;
 

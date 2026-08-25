@@ -308,18 +308,61 @@ export class RegressionTestingService {
       );
 
       results.push(
-        await this.check('feature', 'Approval completes the workflow and sets Closed On', async () => {
+        await this.check('feature', 'Program Manager approval moves the issue to QA Testing', async () => {
           if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
           // Re-submit after the rejection above, then approve.
           await this.issuesService.submitForReview(testIssueId, testUserId, testEmail);
           const updated = await this.issuesService.approve(testIssueId, testUserId, testEmail);
-          if (updated.status !== IssueStatus.COMPLETED) {
-            throw new Error(`Expected status "Completed", got "${updated.status}".`);
+          if (updated.status !== IssueStatus.QA_TESTING) {
+            throw new Error(`Expected status "QA Testing", got "${updated.status}".`);
+          }
+          return 'Approval correctly moved the issue to "QA Testing".';
+        }),
+      );
+
+      results.push(
+        await this.check('feature', 'QA rejection sends it to QA Failed, distinct from In Progress', async () => {
+          if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
+          const updated = await this.issuesService.qaReject(testIssueId, testUserId, testEmail, 'Regression found in checkout flow');
+          if (updated.status !== IssueStatus.QA_FAILED) {
+            throw new Error(`Expected status "QA Failed", got "${updated.status}".`);
+          }
+          if (updated.lastRejectionReason !== 'Regression found in checkout flow') {
+            throw new Error('QA rejection reason was not saved.');
+          }
+          return 'QA rejection correctly returned the issue to "QA Failed" with a reason recorded.';
+        }),
+      );
+
+      results.push(
+        await this.check('feature', 'Assignee can move an issue from QA Failed back to In Progress', async () => {
+          if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
+          const updated = await this.issuesService.update(
+            testIssueId,
+            { status: IssueStatus.IN_PROGRESS } as any,
+            { id: testUserId, role: 'user' as any },
+          );
+          if (updated.status !== IssueStatus.IN_PROGRESS) {
+            throw new Error(`Expected status "In Progress", got "${updated.status}".`);
+          }
+          return 'QA Failed -> In Progress self-service transition succeeded for the assignee.';
+        }),
+      );
+
+      results.push(
+        await this.check('feature', 'QA approval completes the workflow and sets Closed On', async () => {
+          if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
+          // Re-submit and re-approve after the QA rejection/refix above, then QA-approve.
+          await this.issuesService.submitForReview(testIssueId, testUserId, testEmail);
+          await this.issuesService.approve(testIssueId, testUserId, testEmail);
+          const updated = await this.issuesService.qaApprove(testIssueId, testUserId, testEmail);
+          if (updated.status !== IssueStatus.READY_FOR_PRODUCTION) {
+            throw new Error(`Expected status "Ready for Production", got "${updated.status}".`);
           }
           if (!updated.closedOn) {
-            throw new Error('Issue was approved but closedOn was not populated.');
+            throw new Error('Issue passed QA but closedOn was not populated.');
           }
-          return `Approved and completed; closedOn set to ${updated.closedOn.toISOString()}.`;
+          return `QA approved; marked Ready for Production with closedOn set to ${updated.closedOn.toISOString()}.`;
         }),
       );
 
