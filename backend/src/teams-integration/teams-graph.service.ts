@@ -4,6 +4,12 @@ import { GraphAuthService } from './graph-auth.service';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
+// Thrown when Graph says a subscription id doesn't exist anymore (it
+// already lapsed past its expiration before we renewed it) - distinct from
+// other renewal failures because the caller can recover by recreating the
+// subscription instead of just retrying the same PATCH again.
+export class GraphSubscriptionNotFoundError extends Error {}
+
 @Injectable()
 export class TeamsGraphService {
   private readonly logger = new Logger(TeamsGraphService.name);
@@ -69,6 +75,11 @@ export class TeamsGraphService {
     if (!res.ok) {
       const text = await res.text();
       this.logger.error(`Failed to renew subscription ${graphSubscriptionId}: ${res.status} ${text}`);
+      if (res.status === 404) {
+        throw new GraphSubscriptionNotFoundError(
+          `Subscription ${graphSubscriptionId} no longer exists on Microsoft Graph - it must be recreated, not renewed.`,
+        );
+      }
       throw new InternalServerErrorException('Could not renew the Teams subscription.');
     }
 

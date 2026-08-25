@@ -121,19 +121,27 @@ export default function TeamsIntegrationPage() {
         <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Connected channels</h3>
         {loading && <div className={styles.empty}>Loading...</div>}
         {!loading && subscriptions.length === 0 && <div className={styles.empty}>No channels connected yet.</div>}
-        {subscriptions.map((s) => (
-          <div key={s.id} className={styles.issueRow} style={{ cursor: 'default' }}>
-            <div className={styles.issueMain}>
-              <p className={styles.issueTitle}>{s.channelName || s.channelId}</p>
-              <p className={styles.issueMeta}>
-                Expires {new Date(s.expirationDateTime).toLocaleString()} · {s.active ? 'Active' : 'Inactive'}
-              </p>
+        {subscriptions.map((s) => {
+          const isExpired = new Date(s.expirationDateTime).getTime() <= Date.now();
+          const statusLabel = !s.active ? 'Inactive' : isExpired ? 'Expired – reconnecting' : 'Active';
+          const statusStyle = !s.active || isExpired
+            ? { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }
+            : { background: 'var(--status-qa-tint)', color: 'var(--color-moss-dark)' };
+          return (
+            <div key={s.id} className={styles.issueRow} style={{ cursor: 'default' }}>
+              <div className={styles.issueMain}>
+                <p className={styles.issueTitle}>{s.channelName || s.channelId}</p>
+                <p className={styles.issueMeta}>
+                  Expires {new Date(s.expirationDateTime).toLocaleString()} ·{' '}
+                  <span className={styles.badge} style={statusStyle}>{statusLabel}</span>
+                </p>
+              </div>
+              <button className={styles.buttonSecondary} onClick={() => handleDisconnect(s.id)} type="button">
+                Disconnect
+              </button>
             </div>
-            <button className={styles.buttonSecondary} onClick={() => handleDisconnect(s.id)} type="button">
-              Disconnect
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </AppShell>
   );
