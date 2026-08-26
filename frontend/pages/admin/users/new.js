@@ -123,6 +123,7 @@ export default function NewUser() {
               <option value="developer">Developer</option>
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
+              <option value="client">Client</option>
             </select>
           </div>
 

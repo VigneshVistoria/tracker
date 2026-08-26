@@ -19,6 +19,11 @@ export enum UserRole {
   // one person can hold it and it behaves like every other role for
   // authorization purposes (ticket creation, approvals, etc.).
   PROGRAM_MANAGER = 'program_manager',
+  // External user submitting UAT feedback / post-go-live support
+  // requests. Can file tickets and see only the ones they created -
+  // never the internal ticket list, assignees, or any other client's
+  // tickets.
+  CLIENT = 'client',
 }
 
 @Entity('users')

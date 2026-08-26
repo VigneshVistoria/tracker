@@ -17,6 +17,7 @@ import { AuditLog } from './audit/audit-log.entity';
 import { ProjectModule } from './modules/project-module.entity';
 import { TestCase } from './test-cases/test-case.entity';
 import { TestExecution } from './test-cases/test-execution.entity';
+import { SlaConfig } from './sla/sla-config.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -32,6 +33,7 @@ import { EvidenceModule } from './evidence/evidence.module';
 import { AuditModule } from './audit/audit.module';
 import { ModulesModule } from './modules/modules.module';
 import { TestCasesModule } from './test-cases/test-cases.module';
+import { SlaModule } from './sla/sla.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -63,6 +65,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           ProjectModule,
           TestCase,
           TestExecution,
+          SlaConfig,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -87,6 +90,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     AuditModule,
     ModulesModule,
     TestCasesModule,
+    SlaModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })

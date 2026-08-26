@@ -17,6 +17,8 @@ import {
   CheckSquare,
   ClipboardCheck,
   Workflow,
+  Timer,
+  ShieldAlert,
   Search,
   LogOut,
   Menu,
@@ -51,15 +53,45 @@ const EXECUTIVE_NAV_ITEMS = [
 // point for roles that can't use it).
 const TEST_CASES_NAV_ITEM = { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck };
 
+// Same visibility as Test Cases (QA + Program Manager + Admin) - the
+// queue of showstopper tickets the heuristic flagged as questionable,
+// waiting for one of them to confirm or downgrade.
+const SHOWSTOPPER_REVIEW_NAV_ITEM = { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert };
+
+// Clients only ever see their own tickets - a minimal nav with nothing
+// internal (no Issues list, Projects, Dependency, Test Cases, etc.).
+const CLIENT_NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/issues', label: 'My Tickets', icon: Ticket },
+];
+
 const ADMIN_NAV_ITEMS = [
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/sprints', label: 'Sprints', icon: GitBranch },
   { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck },
+  { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert },
+  { href: '/admin/sla-config', label: 'SLA Configuration', icon: Timer },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
   { href: '/admin/team-updates', label: 'Team Updates', icon: MessagesSquare },
   { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
   { href: '/admin/regression-testing', label: 'Regression Testing', icon: CheckSquare },
 ];
+
+// A single conditionally-shown nav entry outside the main NAV_ITEMS/
+// ADMIN_NAV_ITEMS arrays (e.g. Test Cases, Showstopper Review) - visible
+// to a specific set of roles that doesn't match either of those groups.
+function SingleNavLink({ item, isActive, collapsed }) {
+  return (
+    <Link
+      href={item.href}
+      className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+      title={collapsed ? item.label : undefined}
+    >
+      <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
+      {!collapsed && <span>{item.label}</span>}
+    </Link>
+  );
+}
 
 function initialsFor(user) {
   if (!user) return '?';
@@ -111,7 +143,8 @@ export default function AppShell({ children }) {
   if (!user) return null;
 
   const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
-  const navItems = user.role === 'executive' ? EXECUTIVE_NAV_ITEMS : NAV_ITEMS;
+  const navItems =
+    user.role === 'client' ? CLIENT_NAV_ITEMS : user.role === 'executive' ? EXECUTIVE_NAV_ITEMS : NAV_ITEMS;
 
   return (
     <div className={styles.shell}>
@@ -188,14 +221,10 @@ export default function AppShell({ children }) {
             ))}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (
-              <Link
-                href={TEST_CASES_NAV_ITEM.href}
-                className={`${styles.navLink} ${isActive(TEST_CASES_NAV_ITEM.href) ? styles.active : ''}`}
-                title={collapsed ? TEST_CASES_NAV_ITEM.label : undefined}
-              >
-                <TEST_CASES_NAV_ITEM.icon size={18} className={styles.navIcon} aria-hidden="true" />
-                {!collapsed && <span>{TEST_CASES_NAV_ITEM.label}</span>}
-              </Link>
+              <>
+                <SingleNavLink item={TEST_CASES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+                <SingleNavLink item={SHOWSTOPPER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              </>
             )}
 
             {user.role === 'admin' && (

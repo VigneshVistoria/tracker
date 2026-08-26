@@ -31,6 +31,16 @@ export enum IssueMode {
   MANUAL = 'Manual',
 }
 
+// A human reviewer's disposition on a showstopper claim the heuristic
+// flagged as questionable. PENDING is the only state set automatically;
+// the other two are only ever set by a Program Manager/QA/Admin acting
+// on ShowstopperReviewController's confirm/downgrade action.
+export enum ShowstopperReviewStatus {
+  PENDING = 'Pending',
+  CONFIRMED = 'Confirmed',
+  DOWNGRADED = 'Downgraded',
+}
+
 // Set by QA (or anyone editing the issue) to classify what kind of work
 // this is - independent of the status workflow and the separate
 // "Showstopper" flag below (kept both, since a ticket can be tagged
@@ -153,6 +163,31 @@ export class Issue {
   // Marks a critical, blocking issue for quick triage/filtering.
   @Column({ type: 'boolean', default: false })
   showstopper: boolean;
+
+  // Set when ShowstopperValidatorService's heuristic flags a
+  // showstopper claim as questionable (weak description, mismatched
+  // category/priority, or a reporter pattern) - null for every issue
+  // that was never flagged, cleared back to null once a Program Manager
+  // or QA reviewer confirms or downgrades it (see
+  // IssuesService.decideShowstopperReview()).
+  @Column({ type: 'enum', enum: ShowstopperReviewStatus, nullable: true })
+  showstopperReviewStatus: ShowstopperReviewStatus;
+
+  // JSON-stringified array of the specific reasons the heuristic flagged
+  // this one - same "free-form text, shape varies by caller" reasoning
+  // AuditLog.details uses, since the reason set can grow independently of
+  // the schema.
+  @Column({ type: 'text', nullable: true })
+  showstopperFlagReasons: string;
+
+  @Column({ nullable: true })
+  showstopperReviewedByUserId: number;
+
+  @Column({ nullable: true })
+  showstopperReviewedByEmail: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  showstopperReviewedAt: Date;
 
   // QA classification of the type of work - optional, set at creation or
   // any time after.

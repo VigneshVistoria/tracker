@@ -17,9 +17,11 @@ import { UpdateIssueDto } from './dto/update-issue.dto';
 import { AnalyzeIssueDto } from './dto/analyze-issue.dto';
 import { RejectIssueDto } from './dto/reject-issue.dto';
 import { CreateDependencyDto } from './dto/create-dependency.dto';
+import { ShowstopperReviewDecisionDto } from './dto/showstopper-review-decision.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
+import { SlaService } from '../sla/sla.service';
 
 @Controller('issues')
 @UseGuards(JwtAuthGuard) // every route below requires a logged-in user
@@ -28,7 +30,21 @@ export class IssuesController {
     private issuesService: IssuesService,
     private usersService: UsersService,
     private issueAnalyzerService: IssueAnalyzerService,
+    private slaService: SlaService,
   ) {}
+
+  // Attaches each issue's resolved SLA info (target/dueAt/state) without
+  // storing it - fetches the config table once per request and reuses it
+  // across every row, rather than once per issue.
+  private async attachSlaToOne(issue: any): Promise<any> {
+    const config = await this.slaService.getConfig();
+    return { ...issue, sla: this.slaService.computeForIssue(issue, config) };
+  }
+
+  private async attachSlaToMany(issues: any[]): Promise<any[]> {
+    const config = await this.slaService.getConfig();
+    return issues.map((issue) => ({ ...issue, sla: this.slaService.computeForIssue(issue, config) }));
+  }
 
   // Analyzes a draft title/description before the issue is created. Never
   // blocks creation - it just returns guidance the frontend can show.
@@ -41,18 +57,24 @@ export class IssuesController {
   // else in this controller). Program Manager sees everything in the
   // projects they're assigned to, since they need visibility into
   // unassigned/in-progress work to review and approve it. Developer and QA
-  // are restricted to only the issues assigned to them.
+  // are restricted to only the issues assigned to them. Client sees only
+  // the tickets they personally filed - never the internal list, and
+  // never another client's tickets.
   @Get()
   async findAll(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
+    let issues: any[];
     if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.EXECUTIVE) {
-      return this.issuesService.findAll();
+      issues = await this.issuesService.findAll();
+    } else if (currentUser.role === UserRole.CLIENT) {
+      issues = await this.issuesService.findByCreator(currentUser.id);
+    } else if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
+      issues = await this.issuesService.findByAssignee(currentUser.id);
+    } else {
+      const projectIds = (currentUser.projects || []).map((p) => p.id);
+      issues = await this.issuesService.findByProjects(projectIds);
     }
-    if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
-      return this.issuesService.findByAssignee(currentUser.id);
-    }
-    const projectIds = (currentUser.projects || []).map((p) => p.id);
-    return this.issuesService.findByProjects(projectIds);
+    return this.attachSlaToMany(issues);
   }
 
   // Dependency tickets (Issue.parentIssueId set) that were routed to the
@@ -66,12 +88,33 @@ export class IssuesController {
     return this.issuesService.findReceivedDependencies(currentUser.id);
   }
 
+  // The showstopper review queue (Feature 4) - every claim the heuristic
+  // flagged as questionable, still waiting on a Program Manager/QA/Admin
+  // decision. Declared before ':id' for the same routing reason as
+  // dependencies/received above.
+  @Get('showstoppers/flagged')
+  async findFlaggedShowstoppers(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (
+      currentUser.role !== UserRole.ADMIN &&
+      currentUser.role !== UserRole.PROGRAM_MANAGER &&
+      currentUser.role !== UserRole.QA
+    ) {
+      throw new ForbiddenException('Only Program Managers, QA, and Admins can review flagged showstoppers.');
+    }
+    return this.issuesService.findFlaggedShowstoppers();
+  }
+
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     const issue = await this.issuesService.findOneWithDependencies(id);
 
-    if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
+    if (currentUser.role === UserRole.CLIENT) {
+      if (issue.createdByUserId !== currentUser.id) {
+        throw new ForbiddenException('You do not have access to this issue');
+      }
+    } else if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
       const hasAccess = issue.assigneeUserId === currentUser.id || issue.createdByUserId === currentUser.id;
       if (!hasAccess) {
         throw new ForbiddenException('You do not have access to this issue');
@@ -83,7 +126,7 @@ export class IssuesController {
       }
     }
 
-    return issue;
+    return this.attachSlaToOne(issue);
   }
 
   // Executives are read-only for everything below this point EXCEPT ticket
@@ -110,6 +153,9 @@ export class IssuesController {
     if (currentUser.role === UserRole.EXECUTIVE) {
       throw new ForbiddenException('Executives have read-only access.');
     }
+    if (currentUser.role === UserRole.CLIENT) {
+      throw new ForbiddenException('Clients cannot edit tickets after filing them - contact the team to make changes.');
+    }
     return this.issuesService.update(id, dto, { id: currentUser.id, role: currentUser.role });
   }
 
@@ -121,6 +167,9 @@ export class IssuesController {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (currentUser.role === UserRole.EXECUTIVE) {
       throw new ForbiddenException('Executives have read-only access.');
+    }
+    if (currentUser.role === UserRole.CLIENT) {
+      throw new ForbiddenException('Clients cannot create dependency tickets.');
     }
     return this.issuesService.createDependency(id, dto, currentUser.id, currentUser.email);
   }
@@ -180,6 +229,28 @@ export class IssuesController {
       throw new ForbiddenException('Only QA can send issues back to the developer.');
     }
     return this.issuesService.qaReject(id, currentUser.id, currentUser.email, dto.reason);
+  }
+
+  // A Program Manager/QA/Admin confirming or downgrading a showstopper
+  // the heuristic flagged as questionable (Feature 4).
+  @Post(':id/showstopper-review')
+  async decideShowstopperReview(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ShowstopperReviewDecisionDto,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (
+      currentUser.role !== UserRole.ADMIN &&
+      currentUser.role !== UserRole.PROGRAM_MANAGER &&
+      currentUser.role !== UserRole.QA
+    ) {
+      throw new ForbiddenException('Only Program Managers, QA, and Admins can decide a showstopper review.');
+    }
+    return this.issuesService.decideShowstopperReview(id, dto.decision, {
+      id: currentUser.id,
+      email: currentUser.email,
+    });
   }
 }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
+import SlaBadge from '../../components/SlaBadge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
@@ -13,6 +14,60 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+}
+
+// Shown to Program Manager/QA/Admin when this ticket's showstopper claim
+// was flagged as questionable (Feature 4) - lets them confirm it's
+// genuinely blocking, or downgrade it (which also flips showstopper back
+// to false).
+function ShowstopperReviewBanner({ issue, onDecided }) {
+  const { showToast } = useToast();
+  const [deciding, setDeciding] = useState(false);
+  const [error, setError] = useState('');
+
+  let reasons = [];
+  try {
+    reasons = JSON.parse(issue.showstopperFlagReasons || '[]');
+  } catch (_) {
+    reasons = [];
+  }
+
+  const decide = async (decision) => {
+    setError('');
+    setDeciding(true);
+    try {
+      await apiFetch(`/issues/${issue.id}/showstopper-review`, {
+        method: 'POST',
+        body: JSON.stringify({ decision }),
+      });
+      showToast(decision === 'confirm' ? 'Showstopper confirmed' : 'Showstopper downgraded', 'success');
+      onDecided();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeciding(false);
+    }
+  };
+
+  return (
+    <div className={styles.card} style={{ borderLeft: '3px solid var(--color-amber)' }}>
+      <p style={{ margin: 0, fontWeight: 600 }}>This showstopper looks questionable</p>
+      {error && <div className={styles.error}>{error}</div>}
+      {reasons.length > 0 && (
+        <ul className={styles.suggestionList} style={{ marginTop: 'var(--space-2)' }}>
+          {reasons.map((r, i) => <li key={i}>{r}</li>)}
+        </ul>
+      )}
+      <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
+        <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={() => decide('confirm')} disabled={deciding}>
+          Confirm Showstopper
+        </button>
+        <button className={styles.buttonSecondary} type="button" onClick={() => decide('downgrade')} disabled={deciding}>
+          Downgrade
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function IssueDetail() {
@@ -58,17 +113,24 @@ export default function IssueDetail() {
     setLoading(true);
     setError('');
     setIssue(null);
-    Promise.all([
-      apiFetch(`/issues/${id}`),
-      apiFetch('/users/assignable'),
-      apiFetch('/projects'),
-      apiFetch('/users/me'),
-    ])
-      .then(([data, allUsers, allProjects, me]) => {
+    // Need to know the role before deciding what else to fetch - a Client
+    // gets a read-only view of their own ticket and shouldn't trigger the
+    // internal staff/project list calls at all (unused for them, and the
+    // assignable-users list exposes internal staff emails they shouldn't see).
+    apiFetch('/users/me')
+      .then((me) => {
+        setCurrentUser(me);
+        const isClient = me.role === 'client';
+        return Promise.all([
+          apiFetch(`/issues/${id}`),
+          isClient ? Promise.resolve([]) : apiFetch('/users/assignable'),
+          isClient ? Promise.resolve([]) : apiFetch('/projects'),
+        ]);
+      })
+      .then(([data, allUsers, allProjects]) => {
         setIssue(data);
         setUsers(allUsers);
         setProjects(allProjects);
-        setCurrentUser(me);
         setForm({
           title: data.title,
           description: data.description || '',
@@ -251,6 +313,46 @@ export default function IssueDetail() {
     );
   }
 
+  if (currentUser?.role === 'client') {
+    return (
+      <AppShell>
+        <div className={styles.pageHeader}>
+          <div>
+            <h1 className={styles.pageTitle}>
+              <span className={styles.issueId}>#{issue.id}</span>
+              {issue.title}
+            </h1>
+            <p className={styles.pageSubtitle}>Submitted {formatDateTime(issue.createdAt)}</p>
+          </div>
+          <span className={`${styles.badge} ${badgeClassFor(issue.status, styles)}`}>{issue.status}</span>
+        </div>
+
+        {issue.sla && (
+          <div className={styles.card} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <SlaBadge state={issue.sla.state} />
+            <p className={styles.issueMeta} style={{ margin: 0 }}>
+              Target resolution: {formatDateTime(issue.sla.dueAt)}
+            </p>
+          </div>
+        )}
+
+        <div className={styles.card}>
+          <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Description</p>
+          <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{issue.description || 'No description provided.'}</p>
+        </div>
+
+        {issue.lastRejectionReason && (
+          <div className={styles.card} style={{ borderLeft: '3px solid var(--color-red)', background: 'var(--color-red-tint)' }}>
+            <p style={{ margin: 0, fontWeight: 600 }}>Note from the team</p>
+            <p style={{ margin: 'var(--space-2) 0 0' }}>{issue.lastRejectionReason}</p>
+          </div>
+        )}
+
+        <Link href="/issues" className={styles.backLink}>&larr; Back to my tickets</Link>
+      </AppShell>
+    );
+  }
+
   const isAdmin = currentUser?.role === 'admin';
   const isExecutive = currentUser?.role === 'executive';
   const isAssignee = currentUser && issue.assigneeUserId === currentUser.id;
@@ -288,10 +390,15 @@ export default function IssueDetail() {
           <span className={`${styles.badge} ${badgeClassFor(issue.status, styles)}`}>
             {issue.status}
           </span>
+          {issue.sla && <SlaBadge state={issue.sla.state} />}
         </div>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {issue.showstopperReviewStatus === 'Pending' && (isAdmin || isProgramManager || isQa) && (
+        <ShowstopperReviewBanner issue={issue} onDecided={load} />
+      )}
 
       {parentIssue && (
         <div className={styles.card} style={{ background: 'var(--color-paper)' }}>

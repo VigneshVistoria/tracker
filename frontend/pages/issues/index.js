@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
+import SlaBadge from '../../components/SlaBadge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
@@ -186,6 +187,7 @@ export default function IssuesList() {
                 <th>Created On</th>
                 <th>Status</th>
                 <th>Showstopper</th>
+                <th>SLA</th>
                 <th>Closed On</th>
               </tr>
             </thead>
@@ -204,6 +206,7 @@ export default function IssuesList() {
                   <td className={issue.showstopper ? styles.showstopperYes : styles.showstopperNo}>
                     {issue.showstopper ? 'Yes' : 'No'}
                   </td>
+                  <td>{issue.sla && <SlaBadge state={issue.sla.state} />}</td>
                   <td>{formatDate(issue.closedOn)}</td>
                 </tr>
               ))}

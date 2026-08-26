@@ -9,7 +9,7 @@ export const CATEGORY_OPTIONS = ['New Feature', 'Enhancement', 'Bug', 'Critical'
 // kept here so the frontend can hide/disable the "New Issue" entry point
 // for Developers instead of letting them fill out the whole form and get
 // a 403 on submit.
-export const CAN_CREATE_TICKET_ROLES = ['admin', 'program_manager', 'qa', 'executive'];
+export const CAN_CREATE_TICKET_ROLES = ['admin', 'program_manager', 'qa', 'executive', 'client'];
 export function canCreateTickets(role) {
   return CAN_CREATE_TICKET_ROLES.includes(role);
 }
@@ -20,6 +20,7 @@ export const ROLE_LABELS = {
   developer: 'Developer',
   qa: 'QA',
   executive: 'Executive',
+  client: 'Client',
 };
 export function roleLabel(role) {
   return ROLE_LABELS[role] || role;

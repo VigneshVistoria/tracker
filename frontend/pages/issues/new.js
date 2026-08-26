@@ -36,9 +36,16 @@ export default function NewIssue() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
+    const role = storedUser ? JSON.parse(storedUser).role : null;
     if (storedUser) setUser(JSON.parse(storedUser));
-    apiFetch('/users/assignable').then(setUsers).catch(() => {});
-    apiFetch('/projects').then(setProjects).catch(() => {});
+    // Clients get a stripped-down form (title/description only) - skip
+    // fetching internal staff/project lists for them entirely, both
+    // because they're unused and because the assignable-users list
+    // exposes internal staff emails a client shouldn't see.
+    if (role !== 'client') {
+      apiFetch('/users/assignable').then(setUsers).catch(() => {});
+      apiFetch('/projects').then(setProjects).catch(() => {});
+    }
   }, []);
 
   const handleChange = (e) => {
@@ -121,12 +128,18 @@ export default function NewIssue() {
     );
   }
 
+  const isClient = user?.role === 'client';
+
   return (
     <AppShell>
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>New Issue</h1>
-          <p className={styles.pageSubtitle}>We'll review your description before you submit.</p>
+          <h1 className={styles.pageTitle}>{isClient ? 'New Support Request' : 'New Issue'}</h1>
+          <p className={styles.pageSubtitle}>
+            {isClient
+              ? "Tell us what you're seeing - we'll review it before you submit."
+              : "We'll review your description before you submit."}
+          </p>
         </div>
       </div>
 
@@ -159,77 +172,81 @@ export default function NewIssue() {
             />
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="projectId">Project</label>
-            <select
-              className={styles.select}
-              id="projectId"
-              name="projectId"
-              value={form.projectId}
-              onChange={handleChange}
-            >
-              <option value="">No project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
+          {!isClient && (
+            <>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="projectId">Project</label>
+                <select
+                  className={styles.select}
+                  id="projectId"
+                  name="projectId"
+                  value={form.projectId}
+                  onChange={handleChange}
+                >
+                  <option value="">No project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="assigneeUserId">Assignee</label>
-            <select
-              className={styles.select}
-              id="assigneeUserId"
-              name="assigneeUserId"
-              value={form.assigneeUserId}
-              onChange={handleChange}
-            >
-              <option value="">Unassigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName || u.email}</option>
-              ))}
-            </select>
-          </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="assigneeUserId">Assignee</label>
+                <select
+                  className={styles.select}
+                  id="assigneeUserId"
+                  name="assigneeUserId"
+                  value={form.assigneeUserId}
+                  onChange={handleChange}
+                >
+                  <option value="">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.fullName || u.email}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="mode">Mode</label>
-            <select
-              className={styles.select}
-              id="mode"
-              name="mode"
-              value={form.mode}
-              onChange={handleChange}
-            >
-              {MODE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-            <p className={styles.helpText}>Manual = filed by a person. Auto = raised by a system/integration.</p>
-          </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="mode">Mode</label>
+                <select
+                  className={styles.select}
+                  id="mode"
+                  name="mode"
+                  value={form.mode}
+                  onChange={handleChange}
+                >
+                  {MODE_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <p className={styles.helpText}>Manual = filed by a person. Auto = raised by a system/integration.</p>
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="category">Category</label>
-            <select
-              className={styles.select}
-              id="category"
-              name="category"
-              value={form.category}
-              onChange={handleChange}
-            >
-              <option value="">No category</option>
-              {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="category">Category</label>
+                <select
+                  className={styles.select}
+                  id="category"
+                  name="category"
+                  value={form.category}
+                  onChange={handleChange}
+                >
+                  <option value="">No category</option>
+                  {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                name="showstopper"
-                checked={form.showstopper}
-                onChange={handleChange}
-              />
-              Mark as showstopper (critical, blocking issue)
-            </label>
-          </div>
+              <div className={styles.field}>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    name="showstopper"
+                    checked={form.showstopper}
+                    onChange={handleChange}
+                  />
+                  Mark as showstopper (critical, blocking issue)
+                </label>
+              </div>
+            </>
+          )}
 
           {!analysis && (
             <div className={styles.actions}>

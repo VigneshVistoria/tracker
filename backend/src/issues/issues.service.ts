@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not, IsNull } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Issue, IssueMode, IssueStatus } from './issue.entity';
+import { Issue, IssueMode, IssueStatus, ShowstopperReviewStatus } from './issue.entity';
 import { Priority } from '../common/priority.enum';
 import { Sprint } from '../sprints/sprint.entity';
 import { ProjectModule } from '../modules/project-module.entity';
@@ -14,6 +14,8 @@ import { UserRole, User } from '../users/user.entity';
 import { ProjectsService } from '../projects/projects.service';
 import { EventsGateway } from '../events/events.gateway';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { SlaService } from '../sla/sla.service';
+import { ShowstopperValidatorService } from './showstopper-validator.service';
 
 // Section 1/3: these are the only roles allowed to file a ticket through
 // this endpoint. Developer is deliberately excluded - see
@@ -24,6 +26,10 @@ const ROLES_ALLOWED_TO_CREATE_TICKETS: UserRole[] = [
   UserRole.PROGRAM_MANAGER,
   UserRole.QA,
   UserRole.EXECUTIVE,
+  // Clients file UAT feedback / post-go-live support requests through
+  // this same endpoint - source gets auto-tagged 'Client Feedback' below,
+  // same as Executive/PM gets 'Leadership Request'.
+  UserRole.CLIENT,
 ];
 
 @Injectable()
@@ -40,6 +46,8 @@ export class IssuesService {
     private eventsGateway: EventsGateway,
     private eventEmitter: EventEmitter2,
     private auditLogService: AuditLogService,
+    private slaService: SlaService,
+    private showstopperValidatorService: ShowstopperValidatorService,
   ) {}
 
   // Exposed so the controller can check a role against the same list this
@@ -65,6 +73,15 @@ export class IssuesService {
   findReceivedDependencies(userId: number): Promise<Issue[]> {
     return this.issuesRepository.find({
       where: { assigneeUserId: userId, parentIssueId: Not(IsNull()) },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  // Client visibility - only the tickets they filed themselves, never the
+  // full internal list, another client's tickets, or anything by project.
+  findByCreator(userId: number): Promise<Issue[]> {
+    return this.issuesRepository.find({
+      where: { createdByUserId: userId },
       order: { createdAt: 'DESC' },
     });
   }
@@ -111,6 +128,7 @@ export class IssuesService {
   ): Promise<Issue> {
     const isLeadershipRequest =
       creatorRole === UserRole.EXECUTIVE || creatorRole === UserRole.PROGRAM_MANAGER;
+    const isClientFeedback = creatorRole === UserRole.CLIENT;
 
     const issue = this.issuesRepository.create({
       title: dto.title,
@@ -122,18 +140,21 @@ export class IssuesService {
       storyPoints: dto.storyPoints,
       category: dto.category,
       priority: isLeadershipRequest ? Priority.HIGH : dto.priority ?? null,
-      source: isLeadershipRequest ? 'Leadership Request' : null,
+      source: isLeadershipRequest ? 'Leadership Request' : isClientFeedback ? 'Client Feedback' : null,
     });
 
     await this.applyAssigneeAndProject(issue, dto);
 
-    const saved = await this.issuesRepository.save(issue);
+    let saved = await this.issuesRepository.save(issue);
     this.eventsGateway.emitIssueCreated(saved);
     if (saved.assigneeUserId) {
       this.eventEmitter.emit('issue.assigned', { issue: saved });
     }
     if (isLeadershipRequest) {
       this.eventEmitter.emit('issue.leadershipRequestCreated', { issue: saved });
+    }
+    if (saved.showstopper) {
+      saved = await this.handleShowstopperFlagged(saved);
     }
 
     await this.auditLogService.record({
@@ -144,6 +165,57 @@ export class IssuesService {
       entityType: 'Issue',
       entityId: saved.id,
       details: { title: saved.title, priority: saved.priority, source: saved.source },
+    });
+
+    return saved;
+  }
+
+  // Fires on the false -> true showstopper transition only (at creation,
+  // or via update() below) - never on an unrelated edit to an
+  // already-showstopper ticket, same "only notify on the change that
+  // matters" reasoning update() already applies to assignee changes.
+  // Does two independent things: emails the team with the SLA deadline
+  // (Feature 3), and runs the classification heuristic, flagging the
+  // ticket for a Program Manager/QA/Admin to confirm or downgrade if it
+  // looks questionable (Feature 4) - the email fires either way, since
+  // it's about making sure a claimed showstopper gets seen fast, not a
+  // verdict on whether the claim is legitimate.
+  private async handleShowstopperFlagged(issue: Issue): Promise<Issue> {
+    const sla = await this.slaService.computeForIssueStandalone(issue);
+    this.eventEmitter.emit('issue.showstopperFlagged', {
+      issue,
+      slaTargetHours: sla.targetHours,
+      dueAt: sla.dueAt,
+    });
+
+    if (!issue.createdByUserId) {
+      return issue;
+    }
+
+    const recentTickets = await this.issuesRepository.find({
+      where: { createdByUserId: issue.createdByUserId },
+      order: { createdAt: 'DESC' },
+      take: 6, // 5 "recent" + the one just created/updated, filtered out below
+    });
+    const recentTicketsExcludingThisOne = recentTickets.filter((t) => t.id !== issue.id);
+
+    const result = this.showstopperValidatorService.evaluate(issue, recentTicketsExcludingThisOne);
+    if (result.verdict !== 'questionable') {
+      return issue;
+    }
+
+    issue.showstopperReviewStatus = ShowstopperReviewStatus.PENDING;
+    issue.showstopperFlagReasons = JSON.stringify(result.reasons);
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+
+    await this.auditLogService.record({
+      userId: issue.createdByUserId,
+      userEmail: issue.createdByEmail,
+      action: AuditActions.SHOWSTOPPER_FLAGGED_FOR_REVIEW,
+      entityType: 'Issue',
+      entityId: saved.id,
+      details: { confidence: result.confidence, reasons: result.reasons },
     });
 
     return saved;
@@ -223,6 +295,7 @@ export class IssuesService {
   async update(id: number, dto: UpdateIssueDto, actingUser?: { id: number; role: UserRole }): Promise<Issue> {
     const issue = await this.findOne(id);
     const previousAssigneeUserId = issue.assigneeUserId;
+    const previousShowstopper = issue.showstopper;
 
     if (dto.title !== undefined) issue.title = dto.title;
     if (dto.description !== undefined) issue.description = dto.description;
@@ -255,13 +328,20 @@ export class IssuesService {
 
     await this.applyAssigneeAndProject(issue, dto);
 
-    const saved = await this.issuesRepository.save(issue);
+    let saved = await this.issuesRepository.save(issue);
     this.eventsGateway.emitIssueUpdated(saved);
 
     // Only notify when the assignee actually changed to someone new -
     // not on every unrelated edit (status change, description tweak, etc).
     if (saved.assigneeUserId && saved.assigneeUserId !== previousAssigneeUserId) {
       this.eventEmitter.emit('issue.assigned', { issue: saved });
+    }
+
+    // Same "only on the change that matters" reasoning - only the
+    // false -> true transition triggers the SLA email/heuristic, not
+    // every save of an already-showstopper ticket.
+    if (saved.showstopper && !previousShowstopper) {
+      saved = await this.handleShowstopperFlagged(saved);
     }
 
     return saved;
@@ -372,6 +452,54 @@ export class IssuesService {
     const saved = await this.issuesRepository.save(issue);
     this.eventsGateway.emitIssueUpdated(saved);
     this.eventEmitter.emit('issue.qaRejected', { issue: saved, reason });
+    return saved;
+  }
+
+  // The review queue - every showstopper claim still waiting on a human
+  // decision. Newest first, same as every other listing here.
+  findFlaggedShowstoppers(): Promise<Issue[]> {
+    return this.issuesRepository.find({
+      where: { showstopperReviewStatus: ShowstopperReviewStatus.PENDING },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  // A Program Manager/QA/Admin's confirm-or-downgrade decision on a
+  // flagged showstopper. Confirm just clears the Pending flag - the
+  // showstopper stays as-is. Downgrade also flips showstopper back to
+  // false, since the whole point of downgrading is "this shouldn't have
+  // jumped the queue."
+  async decideShowstopperReview(
+    id: number,
+    decision: 'confirm' | 'downgrade',
+    reviewer: { id: number; email: string },
+  ): Promise<Issue> {
+    const issue = await this.findOne(id);
+    if (issue.showstopperReviewStatus !== ShowstopperReviewStatus.PENDING) {
+      throw new BadRequestException(`Issue #${id} has no pending showstopper review to decide.`);
+    }
+
+    issue.showstopperReviewStatus =
+      decision === 'confirm' ? ShowstopperReviewStatus.CONFIRMED : ShowstopperReviewStatus.DOWNGRADED;
+    if (decision === 'downgrade') {
+      issue.showstopper = false;
+    }
+    issue.showstopperReviewedByUserId = reviewer.id;
+    issue.showstopperReviewedByEmail = reviewer.email;
+    issue.showstopperReviewedAt = new Date();
+
+    const saved = await this.issuesRepository.save(issue);
+    this.eventsGateway.emitIssueUpdated(saved);
+
+    await this.auditLogService.record({
+      userId: reviewer.id,
+      userEmail: reviewer.email,
+      action: AuditActions.SHOWSTOPPER_REVIEW_DECIDED,
+      entityType: 'Issue',
+      entityId: saved.id,
+      details: { decision },
+    });
+
     return saved;
   }
 

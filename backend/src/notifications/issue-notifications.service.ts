@@ -27,6 +27,48 @@ export class IssueNotificationsService {
     );
   }
 
+  // Fires once per false -> true showstopper transition (see
+  // IssuesService.handleShowstopperFlagged) - notifies every Program
+  // Manager plus the assignee (if one's set) with the SLA deadline
+  // resolved from the Showstopper target configured on the SLA
+  // Configuration page. Fires regardless of what the classification
+  // heuristic concluded - the point is making sure a claimed showstopper
+  // gets seen fast, independent of whether it turns out to be legitimate.
+  @OnEvent('issue.showstopperFlagged')
+  async onShowstopperFlagged({
+    issue,
+    slaTargetHours,
+    dueAt,
+  }: {
+    issue: Issue;
+    slaTargetHours: number;
+    dueAt: string;
+  }): Promise<void> {
+    const programManagers = await this.usersService.findProgramManagers();
+    const recipientEmails = new Set(programManagers.map((pm) => pm.email));
+    if (issue.assigneeEmail) recipientEmails.add(issue.assigneeEmail);
+
+    if (recipientEmails.size === 0) {
+      this.logger.debug(
+        `Issue #${issue.id} was flagged as a Showstopper, but there's no Program Manager or assignee to notify.`,
+      );
+      return;
+    }
+
+    const dueAtFormatted = new Date(dueAt).toLocaleString();
+    const subject = `SHOWSTOPPER: #${issue.id} must be resolved within ${slaTargetHours}h`;
+    const html =
+      `<p><strong>#${issue.id} - ${escapeHtml(issue.title)}</strong> was just marked a Showstopper` +
+      (issue.projectName ? ` in project <strong>${escapeHtml(issue.projectName)}</strong>` : '') +
+      `.</p>` +
+      `<p>This must be resolved within <strong>${slaTargetHours} hours</strong> - by <strong>${dueAtFormatted}</strong>.</p>` +
+      (issue.description ? `<p>${escapeHtml(issue.description)}</p>` : '');
+
+    await Promise.all(
+      Array.from(recipientEmails).map((email) => this.mailService.sendToAssignee(email, subject, html)),
+    );
+  }
+
   @OnEvent('issue.submittedForReview')
   async onSubmittedForReview({ issue, submittedByEmail }: { issue: Issue; submittedByEmail: string }): Promise<void> {
     // Program Manager is a normal role now (ReleaseBot, 2026-08-22), so

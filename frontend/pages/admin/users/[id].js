@@ -128,6 +128,7 @@ export default function EditUser() {
               <option value="developer">Developer</option>
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
+              <option value="client">Client</option>
             </select>
             <p className={styles.helpText}>
               Developers and QA see issues in their assigned projects. Executives get read-only

@@ -11,6 +11,9 @@ import { AuditLog } from './audit-log.entity';
 export const AuditActions = {
   TICKET_CREATION_BLOCKED: 'ticket_creation_blocked',
   TICKET_CREATED: 'ticket_created',
+  SLA_CONFIG_UPDATED: 'sla_config_updated',
+  SHOWSTOPPER_FLAGGED_FOR_REVIEW: 'showstopper_flagged_for_review',
+  SHOWSTOPPER_REVIEW_DECIDED: 'showstopper_review_decided',
 } as const;
 
 export interface RecordAuditEntryInput {
