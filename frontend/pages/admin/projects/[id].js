@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
+import { useToast } from '../../../lib/toast';
 
 const RISK_STYLE = {
   High: { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
@@ -113,15 +114,76 @@ function ModuleRow({ module, projectId }) {
   );
 }
 
+function CreateModuleForm({ projectId, onCreated }) {
+  const { showToast } = useToast();
+  const [form, setForm] = useState({ name: '', description: '' });
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setCreating(true);
+    try {
+      await apiFetch('/modules', {
+        method: 'POST',
+        body: JSON.stringify({ projectId: Number(projectId), name: form.name, description: form.description || undefined }),
+      });
+      setForm({ name: '', description: '' });
+      showToast('Module created', 'success');
+      onCreated();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  return (
+    <div className={styles.card}>
+      <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Create a module</h3>
+      {error && <div className={styles.error}>{error}</div>}
+      <form onSubmit={handleSubmit}>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="moduleName">Name</label>
+          <input
+            className={styles.input}
+            id="moduleName"
+            required
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </div>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="moduleDescription">Description</label>
+          <textarea
+            className={styles.textarea}
+            id="moduleDescription"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </div>
+        <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={creating}>
+          {creating ? 'Creating...' : 'Create Module'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function ProjectOverview() {
   const router = useRouter();
   const { id } = router.query;
   const [overview, setOverview] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadOverview = () => {
     if (!id) return;
+    // Reset before every fetch (including a refresh after creating a
+    // module) rather than leaving stale data on screen if it fails - same
+    // reasoning as the fix applied to the issue detail page's load().
     setLoading(true);
     setError('');
     setOverview(null);
@@ -129,6 +191,16 @@ export default function ProjectOverview() {
       .then(setOverview)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) setIsAdmin(JSON.parse(storedUser).role === 'admin');
+  }, []);
+
+  useEffect(() => {
+    loadOverview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   return (
@@ -153,6 +225,8 @@ export default function ProjectOverview() {
             )}
             <StatRow {...overview} />
           </div>
+
+          {isAdmin && <CreateModuleForm projectId={id} onCreated={loadOverview} />}
 
           <h3 style={{ fontSize: '1rem' }}>Modules ({overview.modules.length})</h3>
           {overview.modules.length === 0 && (

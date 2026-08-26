@@ -24,12 +24,14 @@ export default function IssueDetail() {
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [modules, setModules] = useState([]);
   const [form, setForm] = useState({
     title: '',
     description: '',
     status: 'Backlog',
     assigneeUserId: '',
     projectId: '',
+    moduleId: '',
     mode: 'Manual',
     showstopper: false,
     storyPoints: '',
@@ -73,6 +75,7 @@ export default function IssueDetail() {
           status: data.status,
           assigneeUserId: data.assigneeUserId || '',
           projectId: data.projectId || '',
+          moduleId: data.moduleId || '',
           mode: data.mode || 'Manual',
           showstopper: Boolean(data.showstopper),
           storyPoints: data.storyPoints ?? '',
@@ -97,6 +100,19 @@ export default function IssueDetail() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Modules are scoped to a project, so the dropdown's options depend on
+  // whichever project is currently selected in the form (not just the
+  // issue's original one) - refetches whenever that changes.
+  useEffect(() => {
+    if (!form.projectId) {
+      setModules([]);
+      return;
+    }
+    apiFetch(`/modules?projectId=${form.projectId}`)
+      .then(setModules)
+      .catch(() => setModules([]));
+  }, [form.projectId]);
 
   // If someone else updates this same issue elsewhere, reflect it live.
   useEffect(() => {
@@ -131,6 +147,7 @@ export default function IssueDetail() {
           status: form.status,
           assigneeUserId: form.assigneeUserId ? Number(form.assigneeUserId) : null,
           projectId: form.projectId ? Number(form.projectId) : null,
+          moduleId: form.moduleId ? Number(form.moduleId) : null,
           mode: form.mode,
           showstopper: form.showstopper,
           storyPoints: form.storyPoints !== '' ? Number(form.storyPoints) : null,
@@ -529,6 +546,23 @@ export default function IssueDetail() {
               <option value="">No project</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="moduleId">Module</label>
+            <select
+              className={styles.select}
+              id="moduleId"
+              name="moduleId"
+              value={form.moduleId}
+              onChange={handleChange}
+              disabled={!form.projectId}
+            >
+              <option value="">{form.projectId ? 'Unassigned' : 'Pick a project first'}</option>
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
           </div>
