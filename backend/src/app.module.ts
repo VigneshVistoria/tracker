@@ -18,6 +18,8 @@ import { ProjectModule } from './modules/project-module.entity';
 import { TestCase } from './test-cases/test-case.entity';
 import { TestExecution } from './test-cases/test-execution.entity';
 import { SlaConfig } from './sla/sla-config.entity';
+import { PerformanceScoringConfig } from './performance-scoring/performance-scoring-config.entity';
+import { OverduePenaltyTier } from './performance-scoring/overdue-penalty-tier.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -34,6 +36,8 @@ import { AuditModule } from './audit/audit.module';
 import { ModulesModule } from './modules/modules.module';
 import { TestCasesModule } from './test-cases/test-cases.module';
 import { SlaModule } from './sla/sla.module';
+import { PerformanceScoringModule } from './performance-scoring/performance-scoring.module';
+import { PerformanceDashboardModule } from './performance-dashboard/performance-dashboard.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -66,6 +70,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
           TestCase,
           TestExecution,
           SlaConfig,
+          PerformanceScoringConfig,
+          OverduePenaltyTier,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -91,6 +97,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
     ModulesModule,
     TestCasesModule,
     SlaModule,
+    PerformanceScoringModule,
+    PerformanceDashboardModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })

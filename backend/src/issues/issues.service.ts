@@ -254,6 +254,13 @@ export class IssuesService {
   ): Promise<Issue> {
     const parent = await this.findOne(parentId);
 
+    // Performance Dashboard's late-dependency penalty: frozen at this
+    // exact moment, using the parent's status/assignee as they are right
+    // now - never recalculated later even if the parent's status or
+    // assignee changes afterward (see the entity comments on both
+    // columns for why).
+    const wasCreatedMidDevelopment = parent.status !== IssueStatus.BACKLOG;
+
     const issue = this.issuesRepository.create({
       title: dto.title,
       description: dto.description,
@@ -263,6 +270,8 @@ export class IssuesService {
       showstopper: false,
       storyPoints: dto.storyPoints,
       parentIssueId: parent.id,
+      wasCreatedMidDevelopment,
+      lateDependencyAttributedToUserId: wasCreatedMidDevelopment ? parent.assigneeUserId : null,
     });
 
     await this.applyAssigneeAndProject(issue, {
@@ -402,6 +411,7 @@ export class IssuesService {
     issue.reviewedByEmail = reviewerEmail;
     issue.reviewedAt = new Date();
     issue.lastRejectionReason = reason || null;
+    issue.reopenedCount += 1;
 
     const saved = await this.issuesRepository.save(issue);
     this.eventsGateway.emitIssueUpdated(saved);
@@ -448,6 +458,7 @@ export class IssuesService {
     issue.qaReviewedByEmail = qaUserEmail;
     issue.qaReviewedAt = new Date();
     issue.lastRejectionReason = reason || null;
+    issue.reopenedCount += 1;
 
     const saved = await this.issuesRepository.save(issue);
     this.eventsGateway.emitIssueUpdated(saved);

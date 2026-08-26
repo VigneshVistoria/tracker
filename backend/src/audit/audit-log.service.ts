@@ -14,6 +14,10 @@ export const AuditActions = {
   SLA_CONFIG_UPDATED: 'sla_config_updated',
   SHOWSTOPPER_FLAGGED_FOR_REVIEW: 'showstopper_flagged_for_review',
   SHOWSTOPPER_REVIEW_DECIDED: 'showstopper_review_decided',
+  SCORING_CONFIG_UPDATED: 'scoring_config_updated',
+  OVERDUE_TIER_CREATED: 'overdue_tier_created',
+  OVERDUE_TIER_UPDATED: 'overdue_tier_updated',
+  OVERDUE_TIER_DELETED: 'overdue_tier_deleted',
 } as const;
 
 export interface RecordAuditEntryInput {

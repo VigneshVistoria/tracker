@@ -189,6 +189,33 @@ export class Issue {
   @Column({ type: 'timestamp', nullable: true })
   showstopperReviewedAt: Date;
 
+  // How many times this issue has been sent back for rework (Program
+  // Manager reject() or QA qaReject()) - a cumulative, all-time count,
+  // incremented on every occurrence rather than overwritten like
+  // lastRejectionReason is. Drives the Performance Dashboard's Reopened
+  // KPI/penalty.
+  @Column({ type: 'int', default: 0 })
+  reopenedCount: number;
+
+  // Performance Dashboard's "late dependency" penalty (Section: poor
+  // upfront planning). Only meaningful on a dependency issue
+  // (parentIssueId set) - true if the parent's status had already left
+  // Backlog at the exact moment this dependency was created. Set once in
+  // IssuesService.createDependency() and never recalculated afterward,
+  // even if the parent's status changes later - it's a record of what
+  // was true at creation time, not a live-derived flag.
+  @Column({ type: 'boolean', nullable: true })
+  wasCreatedMidDevelopment: boolean;
+
+  // Snapshot of the parent issue's assigneeUserId at that same moment -
+  // who the late-dependency penalty is attributed to. Only set when
+  // wasCreatedMidDevelopment is true; frozen at creation time for the
+  // same reason that flag is, since the parent's assignee can change
+  // later and the penalty should stay attributed to whoever actually
+  // owned the planning gap.
+  @Column({ nullable: true })
+  lateDependencyAttributedToUserId: number;
+
   // QA classification of the type of work - optional, set at creation or
   // any time after.
   @Column({ type: 'enum', enum: IssueCategory, nullable: true })

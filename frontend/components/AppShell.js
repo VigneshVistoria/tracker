@@ -19,6 +19,8 @@ import {
   Workflow,
   Timer,
   ShieldAlert,
+  TrendingUp,
+  SlidersHorizontal,
   Search,
   LogOut,
   Menu,
@@ -33,6 +35,7 @@ const NAV_ITEMS = [
   { href: '/issues', label: 'Issues', icon: Ticket },
   { href: '/dependencies', label: 'Dependency', icon: Workflow },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp },
   { href: '/daily-update', label: 'Daily Update', icon: ClipboardEdit },
 ];
 
@@ -40,9 +43,12 @@ const NAV_ITEMS = [
 // reports - no ticket list, no project management, nothing editable.
 // Dependency is still included - any role can be routed a dependency to
 // own, Executive included, even though Executive can't create one.
+// Performance is included too - Executive is one of the wide-view roles
+// on that dashboard.
 const EXECUTIVE_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dependencies', label: 'Dependency', icon: Workflow },
+  { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
 ];
 
@@ -71,6 +77,7 @@ const ADMIN_NAV_ITEMS = [
   { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck },
   { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert },
   { href: '/admin/sla-config', label: 'SLA Configuration', icon: Timer },
+  { href: '/admin/performance-scoring-config', label: 'Performance Scoring', icon: SlidersHorizontal },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
   { href: '/admin/team-updates', label: 'Team Updates', icon: MessagesSquare },
   { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
