@@ -55,6 +55,17 @@ export class IssuesController {
     return this.issuesService.findByProjects(projectIds);
   }
 
+  // Dependency tickets (Issue.parentIssueId set) that were routed to the
+  // current user as the owner - an "inbox" of work someone else spun off
+  // and assigned to them. Declared before ':id' below so Nest matches
+  // this literal path first instead of trying to parse "dependencies" as
+  // an issue id.
+  @Get('dependencies/received')
+  async findReceivedDependencies(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.issuesService.findReceivedDependencies(currentUser.id);
+  }
+
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);

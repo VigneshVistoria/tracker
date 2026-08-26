@@ -30,6 +30,10 @@ export class UpdateIssueDto {
 
   @IsOptional()
   @IsInt()
+  moduleId?: number;
+
+  @IsOptional()
+  @IsInt()
   storyPoints?: number;
 
   @IsOptional()

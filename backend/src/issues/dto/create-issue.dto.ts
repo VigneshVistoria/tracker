@@ -25,6 +25,10 @@ export class CreateIssueDto {
 
   @IsOptional()
   @IsInt()
+  moduleId?: number;
+
+  @IsOptional()
+  @IsInt()
   storyPoints?: number;
 
   @IsOptional()

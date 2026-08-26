@@ -15,6 +15,8 @@ import {
   MessagesSquare,
   Radio,
   CheckSquare,
+  ClipboardCheck,
+  Workflow,
   Search,
   LogOut,
   Menu,
@@ -27,20 +29,32 @@ import { roleLabel } from '../lib/status';
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/issues', label: 'Issues', icon: Ticket },
+  { href: '/dependencies', label: 'Dependency', icon: Workflow },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
   { href: '/daily-update', label: 'Daily Update', icon: ClipboardEdit },
 ];
 
 // Executives get read-only access to just the dashboard and weekly
 // reports - no ticket list, no project management, nothing editable.
+// Dependency is still included - any role can be routed a dependency to
+// own, Executive included, even though Executive can't create one.
 const EXECUTIVE_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dependencies', label: 'Dependency', icon: Workflow },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
 ];
+
+// QA and Program Manager get the Test Case catalog in addition to the
+// common nav above - QA authors/runs test cases, Program Manager gets
+// read-only visibility into them (enforced on the backend, same pattern
+// as everywhere else in this file - the frontend just hides the entry
+// point for roles that can't use it).
+const TEST_CASES_NAV_ITEM = { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck };
 
 const ADMIN_NAV_ITEMS = [
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/sprints', label: 'Sprints', icon: GitBranch },
+  { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
   { href: '/admin/team-updates', label: 'Team Updates', icon: MessagesSquare },
   { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
@@ -172,6 +186,17 @@ export default function AppShell({ children }) {
                 {!collapsed && <span>{item.label}</span>}
               </Link>
             ))}
+
+            {(user.role === 'qa' || user.role === 'program_manager') && (
+              <Link
+                href={TEST_CASES_NAV_ITEM.href}
+                className={`${styles.navLink} ${isActive(TEST_CASES_NAV_ITEM.href) ? styles.active : ''}`}
+                title={collapsed ? TEST_CASES_NAV_ITEM.label : undefined}
+              >
+                <TEST_CASES_NAV_ITEM.icon size={18} className={styles.navIcon} aria-hidden="true" />
+                {!collapsed && <span>{TEST_CASES_NAV_ITEM.label}</span>}
+              </Link>
+            )}
 
             {user.role === 'admin' && (
               <>

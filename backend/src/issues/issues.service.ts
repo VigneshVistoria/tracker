@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, Not, IsNull } from 'typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Issue, IssueMode, IssueStatus } from './issue.entity';
 import { Priority } from '../common/priority.enum';
 import { Sprint } from '../sprints/sprint.entity';
+import { ProjectModule } from '../modules/project-module.entity';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { CreateDependencyDto } from './dto/create-dependency.dto';
@@ -32,6 +33,8 @@ export class IssuesService {
     private issuesRepository: Repository<Issue>,
     @InjectRepository(Sprint)
     private sprintsRepository: Repository<Sprint>,
+    @InjectRepository(ProjectModule)
+    private modulesRepository: Repository<ProjectModule>,
     private usersService: UsersService,
     private projectsService: ProjectsService,
     private eventsGateway: EventsGateway,
@@ -52,6 +55,16 @@ export class IssuesService {
   findByAssignee(userId: number): Promise<Issue[]> {
     return this.issuesRepository.find({
       where: { assigneeUserId: userId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  // Dependency tickets (parentIssueId set) currently owned by this user -
+  // the "received dependencies" inbox. Ordered newest-first, same as
+  // every other issue listing in this service.
+  findReceivedDependencies(userId: number): Promise<Issue[]> {
+    return this.issuesRepository.find({
+      where: { assigneeUserId: userId, parentIssueId: Not(IsNull()) },
       order: { createdAt: 'DESC' },
     });
   }
@@ -403,6 +416,20 @@ export class IssuesService {
         }
         issue.sprintId = sprint.id;
         issue.sprintName = sprint.name;
+      }
+    }
+
+    if (dto.moduleId !== undefined) {
+      if (dto.moduleId === null) {
+        issue.moduleId = null;
+        issue.moduleName = null;
+      } else {
+        const module = await this.modulesRepository.findOne({ where: { id: dto.moduleId } });
+        if (!module) {
+          throw new NotFoundException(`Module #${dto.moduleId} not found`);
+        }
+        issue.moduleId = module.id;
+        issue.moduleName = module.name;
       }
     }
   }

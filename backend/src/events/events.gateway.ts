@@ -61,4 +61,16 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   emitSprintDeleted(sprintId: number) {
     this.server?.emit('sprint:deleted', { id: sprintId });
   }
+
+  emitModuleCreated(module: any) {
+    this.server?.emit('module:created', module);
+  }
+
+  emitModuleUpdated(module: any) {
+    this.server?.emit('module:updated', module);
+  }
+
+  emitModuleDeleted(moduleId: number) {
+    this.server?.emit('module:deleted', { id: moduleId });
+  }
 }

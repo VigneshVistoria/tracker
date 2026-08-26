@@ -129,6 +129,17 @@ export class Issue {
   @Column({ nullable: true })
   sprintName: string;
 
+  // Which module (within the issue's project) this issue is grouped
+  // under, for the project drill-down (project -> module -> issue).
+  // Nullable = not yet assigned to a module - the drill-down groups these
+  // under an "Unassigned" bucket rather than requiring every issue to
+  // have one.
+  @Column({ nullable: true })
+  moduleId: number;
+
+  @Column({ nullable: true })
+  moduleName: string;
+
   // A simple numeric estimate used for sprint capacity planning. No fixed
   // scale enforced (story points, hours, whatever the team prefers).
   @Column({ type: 'int', nullable: true })

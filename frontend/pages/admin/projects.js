@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
@@ -115,12 +116,12 @@ export default function ProjectsAdmin() {
           </div>
         )}
         {projects.map((p) => (
-          <div key={p.id} className={styles.issueRow} style={{ cursor: 'default' }}>
+          <Link key={p.id} href={`/admin/projects/${p.id}`} className={styles.issueRow}>
             <div className={styles.issueMain}>
               <p className={styles.issueTitle}>{p.name}</p>
               {p.description && <p className={styles.issueMeta}>{p.description}</p>}
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </AppShell>
