@@ -26,6 +26,14 @@ export default function EditUser() {
   useEffect(() => {
     if (!id) return;
 
+    // This component is reused across /admin/users/2 -> /admin/users/9
+    // style navigations rather than remounted, so reset here - otherwise
+    // a failed fetch below would leave the previously viewed user's data
+    // in the form underneath the error banner instead of a clean state.
+    setLoading(true);
+    setError('');
+    setEmail('');
+
     Promise.all([apiFetch(`/users/${id}`), apiFetch('/projects')])
       .then(([user, allProjects]) => {
         setEmail(user.email);

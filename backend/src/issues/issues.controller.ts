@@ -61,7 +61,8 @@ export class IssuesController {
     const issue = await this.issuesService.findOneWithDependencies(id);
 
     if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
-      if (issue.assigneeUserId !== currentUser.id) {
+      const hasAccess = issue.assigneeUserId === currentUser.id || issue.createdByUserId === currentUser.id;
+      if (!hasAccess) {
         throw new ForbiddenException('You do not have access to this issue');
       }
     } else if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.EXECUTIVE) {

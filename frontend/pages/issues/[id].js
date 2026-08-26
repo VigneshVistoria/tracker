@@ -48,6 +48,14 @@ export default function IssueDetail() {
 
   const load = () => {
     if (!id) return;
+    // Next.js reuses this component across /issues/36 -> /issues/55 style
+    // navigations (same route, different id) instead of remounting it, so
+    // without resetting here a failed fetch below would leave the
+    // previous issue's data on screen underneath the error banner instead
+    // of a clean error state.
+    setLoading(true);
+    setError('');
+    setIssue(null);
     Promise.all([
       apiFetch(`/issues/${id}`),
       apiFetch('/users/assignable'),
@@ -78,7 +86,10 @@ export default function IssueDetail() {
           setParentIssue(null);
         }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => {
+        setIssue(null);
+        setError(err.message);
+      })
       .finally(() => setLoading(false));
   };
 
