@@ -34,6 +34,10 @@ export default function NewIssue() {
   const [analysis, setAnalysis] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const [keyword, setKeyword] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState('');
+
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const role = storedUser ? JSON.parse(storedUser).role : null;
@@ -69,6 +73,37 @@ export default function NewIssue() {
       setError(err.message);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleGenerate = async (e) => {
+    e.preventDefault();
+    setGenerateError('');
+    setGenerating(true);
+    try {
+      const result = await apiFetch('/issues/ai/generate-user-story', {
+        method: 'POST',
+        body: JSON.stringify({ keyword }),
+      });
+      const criteria = result.acceptanceCriteria.map((c) => `- [ ] ${c}`).join('\n');
+      const included = result.scopeIncluded.map((s) => `- ${s}`).join('\n');
+      const excluded = result.scopeExcluded.map((s) => `- ${s}`).join('\n');
+      setForm({
+        ...form,
+        title: result.suggestedTitle,
+        description:
+          `### User Story\n${result.userStory}\n\n` +
+          `### Acceptance Criteria\n${criteria}\n\n` +
+          `### Scope\nIncluded:\n${included}\n\nExcluded:\n${excluded}`,
+      });
+      setAnalysis(null);
+    } catch (err) {
+      // Never blocks ticket creation - the title/description fields
+      // stay plain, editable inputs regardless, so manual entry always
+      // still works.
+      setGenerateError(err.message || 'Could not generate - fill in the fields manually instead.');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -129,6 +164,7 @@ export default function NewIssue() {
   }
 
   const isClient = user?.role === 'client';
+  const isProgramManager = user?.role === 'program_manager';
 
   return (
     <AppShell>
@@ -145,6 +181,34 @@ export default function NewIssue() {
 
       <div className={styles.card}>
         {error && <div className={styles.error}>{error}</div>}
+
+        {isProgramManager && (
+          <div className={styles.field} style={{ background: 'var(--color-slate-tint, #eef0f2)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
+            <label className={styles.label} htmlFor="keyword">AI Assist &mdash; generate from a keyword</label>
+            <p className={styles.helpText} style={{ marginTop: 0 }}>
+              Type a short phrase (e.g. "create login page") and generate a draft User Story, Acceptance Criteria, and
+              Scope. Review and edit before submitting - nothing here is final.
+            </p>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <input
+                className={styles.input}
+                id="keyword"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="e.g. create login page"
+              />
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                onClick={handleGenerate}
+                disabled={generating || keyword.trim().length < 3}
+              >
+                {generating ? 'Generating...' : 'Auto-Generate'}
+              </button>
+            </div>
+            {generateError && <p className={styles.error} style={{ marginTop: 'var(--space-2)' }}>{generateError}</p>}
+          </div>
+        )}
 
         <form onSubmit={handleAnalyze}>
           <div className={styles.field}>

@@ -7,6 +7,7 @@
     "start:dev": "nest start --watch"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.121.0",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.2.0",
     "@nestjs/core": "^10.0.0",
@@ -30,7 +31,8 @@
     "reflect-metadata": "^0.2.1",
     "rxjs": "^7.8.1",
     "socket.io": "^4.7.5",
-    "typeorm": "^0.3.20"
+    "typeorm": "^0.3.20",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

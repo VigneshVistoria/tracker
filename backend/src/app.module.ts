@@ -38,6 +38,7 @@ import { TestCasesModule } from './test-cases/test-cases.module';
 import { SlaModule } from './sla/sla.module';
 import { PerformanceScoringModule } from './performance-scoring/performance-scoring.module';
 import { PerformanceDashboardModule } from './performance-dashboard/performance-dashboard.module';
+import { AiAssistModule } from './ai-assist/ai-assist.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     SlaModule,
     PerformanceScoringModule,
     PerformanceDashboardModule,
+    AiAssistModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
