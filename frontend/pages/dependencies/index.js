@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, User, UserCheck, ArrowRight } from 'lucide-react';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
@@ -84,12 +84,25 @@ function DependencyCard({ dependency, perspective, onStatusChange, busy }) {
         {due && <span className={styles.badge} style={due.style}>{due.label}</span>}
       </div>
 
-      <p style={{ margin: 'var(--space-2) 0 0', fontWeight: 600 }}>
-        {perspective === 'received' && <>From {dependency.createdByEmail} &middot; {dependency.requestedTeam}</>}
-        {perspective === 'sent' && <>To {dependency.ownerEmail} &middot; {dependency.requestedTeam}</>}
-        {perspective === 'all' && (
-          <>{dependency.createdByEmail} &rarr; {dependency.ownerEmail} &middot; {dependency.requestedTeam}</>
+      <p style={{ margin: 'var(--space-2) 0 0', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+        {perspective === 'received' && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+            <User size={14} aria-hidden="true" /> Filed by {dependency.createdByEmail}
+          </span>
         )}
+        {perspective === 'sent' && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+            <UserCheck size={14} aria-hidden="true" /> Waiting on {dependency.ownerEmail}
+          </span>
+        )}
+        {perspective === 'all' && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+            <User size={14} aria-hidden="true" /> {dependency.createdByEmail}
+            <ArrowRight size={14} aria-hidden="true" />
+            <UserCheck size={14} aria-hidden="true" /> {dependency.ownerEmail}
+          </span>
+        )}
+        <span>&middot; {dependency.requestedTeam}</span>
       </p>
 
       <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
@@ -303,7 +316,7 @@ export default function DependenciesInboxPage() {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="depOwner">Dependency owner</label>
+            <label className={styles.label} htmlFor="depOwner">Waiting on</label>
             <select
               className={styles.select}
               id="depOwner"

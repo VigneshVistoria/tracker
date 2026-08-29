@@ -427,7 +427,7 @@ export default function IssueDetail() {
           <Link key={dep.id} href={`/issues/${dep.id}`} className={styles.issueRow}>
             <div className={styles.issueMain}>
               <p className={styles.issueTitle}>#{dep.id} {dep.title}</p>
-              <p className={styles.issueMeta}>{dep.assigneeEmail || 'Unassigned'}</p>
+              <p className={styles.issueMeta}>Assigned to: {dep.assigneeEmail || 'Unassigned'}</p>
             </div>
             <span className={`${styles.badge} ${badgeClassFor(dep.status, styles)}`}>{dep.status}</span>
           </Link>
