@@ -11,6 +11,7 @@ const BLOCKED_STATUSES = ['Blocked', 'Escalated'];
 const RESOLVED_STATUSES = ['Resolved', 'Closed'];
 const PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
 const IMPACT_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
+const ALL_VIEW_ROLES = ['admin', 'program_manager', 'executive'];
 
 const EMPTY_CREATE_FORM = {
   title: '',
@@ -84,9 +85,11 @@ function DependencyCard({ dependency, perspective, onStatusChange, busy }) {
       </div>
 
       <p style={{ margin: 'var(--space-2) 0 0', fontWeight: 600 }}>
-        {perspective === 'received'
-          ? <>From {dependency.createdByEmail} &middot; {dependency.requestedTeam}</>
-          : <>To {dependency.ownerEmail} &middot; {dependency.requestedTeam}</>}
+        {perspective === 'received' && <>From {dependency.createdByEmail} &middot; {dependency.requestedTeam}</>}
+        {perspective === 'sent' && <>To {dependency.ownerEmail} &middot; {dependency.requestedTeam}</>}
+        {perspective === 'all' && (
+          <>{dependency.createdByEmail} &rarr; {dependency.ownerEmail} &middot; {dependency.requestedTeam}</>
+        )}
       </p>
 
       <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
@@ -122,6 +125,7 @@ export default function DependenciesInboxPage() {
   const [tab, setTab] = useState('received');
   const [received, setReceived] = useState([]);
   const [sent, setSent] = useState([]);
+  const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);
@@ -144,7 +148,14 @@ export default function DependenciesInboxPage() {
   };
 
   useEffect(() => {
-    apiFetch('/users/me').then(setCurrentUser).catch(() => {});
+    apiFetch('/users/me')
+      .then((me) => {
+        setCurrentUser(me);
+        if (ALL_VIEW_ROLES.includes(me.role)) {
+          apiFetch('/dependencies').then(setAll).catch((err) => setError(err.message));
+        }
+      })
+      .catch(() => {});
     apiFetch('/users/assignable').then(setAssignableUsers).catch(() => {});
     load();
   }, []);
@@ -152,6 +163,7 @@ export default function DependenciesInboxPage() {
   const applyUpdate = (updated) => {
     setReceived((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
     setSent((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    setAll((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
   };
 
   const handleStatusChange = async (id, status) => {
@@ -207,7 +219,8 @@ export default function DependenciesInboxPage() {
     }
   };
 
-  const list = tab === 'received' ? received : sent;
+  const canViewAll = currentUser && ALL_VIEW_ROLES.includes(currentUser.role);
+  const list = tab === 'received' ? received : tab === 'sent' ? sent : all;
   const blockedCount = received.filter((d) => BLOCKED_STATUSES.includes(d.status)).length;
   const overdueCount = received.filter((d) => {
     if (!d.requiredByDate || RESOLVED_STATUSES.includes(d.status)) return false;
@@ -408,6 +421,7 @@ export default function DependenciesInboxPage() {
         {[
           { key: 'received', label: `Received (${received.length})` },
           { key: 'sent', label: `Sent (${sent.length})` },
+          ...(canViewAll ? [{ key: 'all', label: `All (${all.length})` }] : []),
         ].map((t) => (
           <button
             key={t.key}
@@ -434,7 +448,9 @@ export default function DependenciesInboxPage() {
       {!loading && list.length === 0 && (
         <div className={styles.card}>
           <div className={styles.empty}>
-            {tab === 'received' ? 'No dependencies have been routed to you yet.' : "You haven't filed any dependency requests yet."}
+            {tab === 'received' && 'No dependencies have been routed to you yet.'}
+            {tab === 'sent' && "You haven't filed any dependency requests yet."}
+            {tab === 'all' && 'No dependencies have been filed yet.'}
           </div>
         </div>
       )}
