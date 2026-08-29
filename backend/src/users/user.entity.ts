@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToMany,
   JoinTable,
+  Unique,
 } from 'typeorm';
 import { Project } from '../projects/project.entity';
 
@@ -26,18 +27,23 @@ export enum UserRole {
   CLIENT = 'client',
 }
 
+// Multi-tenant conversion Phase B: email is unique within a tenant, not
+// globally - two different tenants may have users with the same email.
+// See the migration that ships alongside this for the constraint swap
+// (drops the old global UNIQUE(email), adds this composite one).
 @Entity('users')
+@Unique(['tenantId', 'email'])
 export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // Multi-tenant conversion Phase A - unused until Phase B/C wire up
-  // tenant-scoped auth and query filtering. Nullable only until the
-  // migration's backfill runs, which also adds the NOT NULL + FK.
+  // Multi-tenant conversion Phase A - set explicitly during auth (Phase
+  // B) via UsersService.create()/adminCreate(); everything else still
+  // reads it via the column default until Phase C wires up query scoping.
   @Column({ nullable: true })
   tenantId: number;
 
-  @Column({ unique: true })
+  @Column()
   email: string;
 
   // NEVER store plain-text passwords. This column holds a bcrypt hash only.

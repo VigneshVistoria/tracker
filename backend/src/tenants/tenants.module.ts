@@ -1,13 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Tenant } from './tenant.entity';
+import { TenantsService } from './tenants.service';
 
-// Foundations-only (multi-tenant conversion Phase A): registers the
-// entity so Phase B (auth/JWT tenant claim) and Phase C (query scoping)
-// can inject its repository without more module plumbing. No controller
-// yet - tenant provisioning is Phase E.
+// Phase A registered just the entity; Phase B adds TenantsService
+// (host-based tenant resolution, used by AuthModule) so login/register
+// can be scoped per tenant. Still no controller - tenant provisioning
+// is Phase E.
 @Module({
   imports: [TypeOrmModule.forFeature([Tenant])],
-  exports: [TypeOrmModule],
+  providers: [TenantsService],
+  exports: [TypeOrmModule, TenantsService],
 })
 export class TenantsModule {}

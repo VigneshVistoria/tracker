@@ -20,8 +20,18 @@ export class UsersService {
     private eventsGateway: EventsGateway,
   ) {}
 
+  // Global-by-design - the one remaining caller (TeamsMessageConverterService,
+  // matching a Teams @mention to a local account) isn't tenant-scoped yet.
+  // That's Phase C's job (general query scoping); until then this can
+  // technically match the wrong tenant's user if two tenants share an
+  // email, which is why the auth flow below uses findByEmailAndTenant
+  // instead of this.
   findByEmail(email: string): Promise<User | null> {
     return this.usersRepository.findOne({ where: { email } });
+  }
+
+  findByEmailAndTenant(email: string, tenantId: number): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { email, tenantId } });
   }
 
   findById(id: number): Promise<User | null> {
@@ -32,19 +42,25 @@ export class UsersService {
     return this.usersRepository.count();
   }
 
+  countByTenant(tenantId: number): Promise<number> {
+    return this.usersRepository.count({ where: { tenantId } });
+  }
+
   findAll(): Promise<User[]> {
     return this.usersRepository.find({ relations: ['projects'], order: { createdAt: 'DESC' } });
   }
 
   // Used by the plain registration flow (no role/projects choice there).
-  async create(email: string, passwordHash: string, fullName?: string, role: UserRole = UserRole.DEVELOPER): Promise<User> {
-    const user = this.usersRepository.create({ email, passwordHash, fullName, role });
+  async create(email: string, passwordHash: string, tenantId: number, fullName?: string, role: UserRole = UserRole.DEVELOPER): Promise<User> {
+    const user = this.usersRepository.create({ email, passwordHash, fullName, role, tenantId });
     return this.usersRepository.save(user);
   }
 
-  // Used by an admin via the User Management page - can set role and projects.
-  async adminCreate(dto: CreateUserDto): Promise<User> {
-    const existing = await this.findByEmail(dto.email);
+  // Used by an admin via the User Management page - can set role and
+  // projects. tenantId is always the calling admin's own tenant, never
+  // client-supplied - an admin can only ever create users in their tenant.
+  async adminCreate(dto: CreateUserDto, tenantId: number): Promise<User> {
+    const existing = await this.findByEmailAndTenant(dto.email, tenantId);
     if (existing) {
       throw new ConflictException('A user with this email already exists');
     }
@@ -58,6 +74,7 @@ export class UsersService {
       fullName: dto.fullName,
       role: dto.role || UserRole.DEVELOPER,
       projects,
+      tenantId,
     });
 
     return this.usersRepository.save(user).then((saved) => {

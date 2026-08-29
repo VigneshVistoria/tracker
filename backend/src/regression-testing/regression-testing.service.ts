@@ -148,7 +148,10 @@ export class RegressionTestingService {
 
       results.push(
         await this.check('feature', 'Login with correct password', async () => {
-          const { accessToken } = await this.authService.login({ email: testEmail, password: testPassword });
+          // Tenant 1 - the raw insert above relies on the same DB default,
+          // and this environment is guaranteed to have at least that one
+          // tenant (Phase A's migration seeds it).
+          const { accessToken } = await this.authService.login({ email: testEmail, password: testPassword }, 1);
           if (!accessToken) throw new Error('Login succeeded but no access token was returned.');
           return 'Login returned a valid access token.';
         }),
@@ -157,7 +160,7 @@ export class RegressionTestingService {
       results.push(
         await this.check('feature', 'Login is rejected with wrong password', async () => {
           try {
-            await this.authService.login({ email: testEmail, password: 'not-the-right-password' });
+            await this.authService.login({ email: testEmail, password: 'not-the-right-password' }, 1);
           } catch (err) {
             if (err instanceof UnauthorizedException) {
               return 'Login correctly rejected an incorrect password.';

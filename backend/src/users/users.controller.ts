@@ -54,8 +54,8 @@ export class UsersController {
 
   @Post()
   @UseGuards(AdminGuard)
-  async create(@Body() dto: CreateUserDto) {
-    const user = await this.usersService.adminCreate(dto);
+  async create(@Body() dto: CreateUserDto, @Req() req: any) {
+    const user = await this.usersService.adminCreate(dto, req.user.tenantId);
     return this.toSafeUser(user);
   }
 
