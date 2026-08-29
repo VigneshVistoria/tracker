@@ -44,11 +44,11 @@ export class RegressionTestingService {
     private eventsGateway: EventsGateway,
   ) {}
 
-  async run(triggeredByUserId?: number, triggeredByEmail?: string): Promise<RegressionTestRun> {
+  async run(triggeredByUserId: number | undefined, triggeredByEmail: string | undefined, tenantId: number): Promise<RegressionTestRun> {
     const results: RegressionCheckResult[] = [];
 
-    results.push(...(await this.runHealthChecks()));
-    results.push(...(await this.runFeatureTests()));
+    results.push(...(await this.runHealthChecks(tenantId)));
+    results.push(...(await this.runFeatureTests(tenantId)));
 
     const passedCount = results.filter((r) => r.passed).length;
     const failedCount = results.length - passedCount;
@@ -63,6 +63,7 @@ export class RegressionTestingService {
       failedCount,
       totalDurationMs,
       finishedAt: new Date(),
+      tenantId,
     });
 
     const saved = await this.runsRepository.save(run);
@@ -70,17 +71,17 @@ export class RegressionTestingService {
     return saved;
   }
 
-  findHistory(limit = 20): Promise<RegressionTestRun[]> {
-    return this.runsRepository.find({ order: { startedAt: 'DESC' }, take: limit });
+  findHistory(tenantId: number, limit = 20): Promise<RegressionTestRun[]> {
+    return this.runsRepository.find({ where: { tenantId }, order: { startedAt: 'DESC' }, take: limit });
   }
 
-  findOne(id: number): Promise<RegressionTestRun | null> {
-    return this.runsRepository.findOne({ where: { id } });
+  findOne(id: number, tenantId: number): Promise<RegressionTestRun | null> {
+    return this.runsRepository.findOne({ where: { id, tenantId } });
   }
 
   // ---- Health checks: is the environment itself okay? ----------------
 
-  private async runHealthChecks(): Promise<RegressionCheckResult[]> {
+  private async runHealthChecks(tenantId: number): Promise<RegressionCheckResult[]> {
     return [
       await this.check('health', 'Database connectivity', async () => {
         await this.dataSource.query('SELECT 1');
@@ -89,10 +90,10 @@ export class RegressionTestingService {
 
       await this.check('health', 'Required tables reachable', async () => {
         const [users, projects, issues, dailyUpdates] = await Promise.all([
-          this.usersRepository.count(),
-          this.projectsRepository.count(),
-          this.issuesRepository.count(),
-          this.dailyUpdatesRepository.count(),
+          this.usersRepository.count({ where: { tenantId } }),
+          this.projectsRepository.count({ where: { tenantId } }),
+          this.issuesRepository.count({ where: { tenantId } }),
+          this.dailyUpdatesRepository.count({ where: { tenantId } }),
         ]);
         return `users=${users}, projects=${projects}, issues=${issues}, dailyUpdates=${dailyUpdates}`;
       }),
@@ -107,7 +108,7 @@ export class RegressionTestingService {
       }),
 
       await this.check('health', 'At least one admin account exists', async () => {
-        const adminCount = await this.usersRepository.count({ where: { role: 'admin' as any } });
+        const adminCount = await this.usersRepository.count({ where: { role: 'admin' as any, tenantId } });
         if (adminCount === 0) {
           throw new Error('No user with the admin role was found - someone needs to be promoted via User Management.');
         }
@@ -125,7 +126,7 @@ export class RegressionTestingService {
 
   // ---- Feature tests: exercise the real code paths end-to-end --------
 
-  private async runFeatureTests(): Promise<RegressionCheckResult[]> {
+  private async runFeatureTests(tenantId: number): Promise<RegressionCheckResult[]> {
     const results: RegressionCheckResult[] = [];
     const stamp = Date.now();
     const testEmail = `regression.test.${stamp}@internal.test`;
@@ -140,7 +141,7 @@ export class RegressionTestingService {
     try {
       results.push(
         await this.check('feature', 'User registration', async () => {
-          const passwordHash = await bcrypt.hash(testPassword, 10); const user = await this.usersRepository.save(this.usersRepository.create({ email: testEmail, passwordHash, fullName: `${TEST_TAG} User`, role: UserRole.DEVELOPER }));
+          const passwordHash = await bcrypt.hash(testPassword, 10); const user = await this.usersRepository.save(this.usersRepository.create({ email: testEmail, passwordHash, fullName: `${TEST_TAG} User`, role: UserRole.DEVELOPER, tenantId }));
           testUserId = user.id;
           return `Registered test user #${user.id}.`;
         }),
@@ -148,10 +149,7 @@ export class RegressionTestingService {
 
       results.push(
         await this.check('feature', 'Login with correct password', async () => {
-          // Tenant 1 - the raw insert above relies on the same DB default,
-          // and this environment is guaranteed to have at least that one
-          // tenant (Phase A's migration seeds it).
-          const { accessToken } = await this.authService.login({ email: testEmail, password: testPassword }, 1);
+          const { accessToken } = await this.authService.login({ email: testEmail, password: testPassword }, tenantId);
           if (!accessToken) throw new Error('Login succeeded but no access token was returned.');
           return 'Login returned a valid access token.';
         }),
@@ -160,7 +158,7 @@ export class RegressionTestingService {
       results.push(
         await this.check('feature', 'Login is rejected with wrong password', async () => {
           try {
-            await this.authService.login({ email: testEmail, password: 'not-the-right-password' }, 1);
+            await this.authService.login({ email: testEmail, password: 'not-the-right-password' }, tenantId);
           } catch (err) {
             if (err instanceof UnauthorizedException) {
               return 'Login correctly rejected an incorrect password.';
@@ -176,7 +174,7 @@ export class RegressionTestingService {
           const project = await this.projectsService.create({
             name: `${TEST_TAG} Project ${stamp}`,
             description: 'Created automatically by the regression test suite. Safe to ignore - removed automatically at the end of the run.',
-          });
+          }, tenantId);
           testProjectId = project.id;
           return `Created test project #${project.id}.`;
         }),
@@ -196,6 +194,7 @@ export class RegressionTestingService {
             } as any,
             testUserId,
             testEmail,
+            tenantId,
           );
           testIssueId = issue.id;
           if (issue.status !== IssueStatus.BACKLOG) {
@@ -237,6 +236,7 @@ export class RegressionTestingService {
               } as any,
               null,
               `regression.executive.${stamp}@internal.test`,
+              tenantId,
               UserRole.EXECUTIVE,
             );
             testLeadershipIssueId = issue.id;
@@ -257,6 +257,7 @@ export class RegressionTestingService {
           const updated = await this.issuesService.update(
             testIssueId,
             { status: IssueStatus.IN_PROGRESS } as any,
+            tenantId,
             { id: testUserId, role: 'user' as any },
           );
           if (updated.status !== IssueStatus.IN_PROGRESS) {
@@ -273,6 +274,7 @@ export class RegressionTestingService {
             await this.issuesService.update(
               testIssueId,
               { status: IssueStatus.IN_REVIEW } as any,
+              tenantId,
               { id: testUserId, role: 'user' as any },
             );
           } catch (err: any) {
@@ -285,7 +287,7 @@ export class RegressionTestingService {
       results.push(
         await this.check('feature', 'Submit for review moves status to In Review', async () => {
           if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
-          const updated = await this.issuesService.submitForReview(testIssueId, testUserId, testEmail);
+          const updated = await this.issuesService.submitForReview(testIssueId, testUserId, testEmail, tenantId);
           if (updated.status !== IssueStatus.IN_REVIEW) {
             throw new Error(`Expected status "In Review", got "${updated.status}".`);
           }
@@ -299,7 +301,7 @@ export class RegressionTestingService {
       results.push(
         await this.check('feature', 'Program Manager rejection sends it back to In Progress', async () => {
           if (!testIssueId) throw new Error('Skipped - an earlier step failed.');
-          const updated = await this.issuesService.reject(testIssueId, testUserId, testEmail, 'Needs more detail');
+          const updated = await this.issuesService.reject(testIssueId, testUserId, testEmail, tenantId, 'Needs more detail');
           if (updated.status !== IssueStatus.IN_PROGRESS) {
             throw new Error(`Expected status "In Progress" after rejection, got "${updated.status}".`);
           }
@@ -314,8 +316,8 @@ export class RegressionTestingService {
         await this.check('feature', 'Program Manager approval moves the issue to QA Testing', async () => {
           if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
           // Re-submit after the rejection above, then approve.
-          await this.issuesService.submitForReview(testIssueId, testUserId, testEmail);
-          const updated = await this.issuesService.approve(testIssueId, testUserId, testEmail);
+          await this.issuesService.submitForReview(testIssueId, testUserId, testEmail, tenantId);
+          const updated = await this.issuesService.approve(testIssueId, testUserId, testEmail, tenantId);
           if (updated.status !== IssueStatus.QA_TESTING) {
             throw new Error(`Expected status "QA Testing", got "${updated.status}".`);
           }
@@ -326,7 +328,7 @@ export class RegressionTestingService {
       results.push(
         await this.check('feature', 'QA rejection sends it to QA Failed, distinct from In Progress', async () => {
           if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
-          const updated = await this.issuesService.qaReject(testIssueId, testUserId, testEmail, 'Regression found in checkout flow');
+          const updated = await this.issuesService.qaReject(testIssueId, testUserId, testEmail, tenantId, 'Regression found in checkout flow');
           if (updated.status !== IssueStatus.QA_FAILED) {
             throw new Error(`Expected status "QA Failed", got "${updated.status}".`);
           }
@@ -343,6 +345,7 @@ export class RegressionTestingService {
           const updated = await this.issuesService.update(
             testIssueId,
             { status: IssueStatus.IN_PROGRESS } as any,
+            tenantId,
             { id: testUserId, role: 'user' as any },
           );
           if (updated.status !== IssueStatus.IN_PROGRESS) {
@@ -356,9 +359,9 @@ export class RegressionTestingService {
         await this.check('feature', 'QA approval completes the workflow and sets Closed On', async () => {
           if (!testIssueId || !testUserId) throw new Error('Skipped - an earlier step failed.');
           // Re-submit and re-approve after the QA rejection/refix above, then QA-approve.
-          await this.issuesService.submitForReview(testIssueId, testUserId, testEmail);
-          await this.issuesService.approve(testIssueId, testUserId, testEmail);
-          const updated = await this.issuesService.qaApprove(testIssueId, testUserId, testEmail);
+          await this.issuesService.submitForReview(testIssueId, testUserId, testEmail, tenantId);
+          await this.issuesService.approve(testIssueId, testUserId, testEmail, tenantId);
+          const updated = await this.issuesService.qaApprove(testIssueId, testUserId, testEmail, tenantId);
           if (updated.status !== IssueStatus.READY_FOR_PRODUCTION) {
             throw new Error(`Expected status "Ready for Production", got "${updated.status}".`);
           }
@@ -405,6 +408,7 @@ export class RegressionTestingService {
             } as any,
             testUserId,
             testEmail,
+            tenantId,
           );
           testDailyUpdateId = update.id;
           if (update.completedTasks.length !== 2) {

@@ -52,6 +52,7 @@ export class PerformanceDashboardController {
     const result = await this.performanceDashboardService.getDashboard({
       period: resolvedPeriod,
       referenceDate,
+      tenantId: req.user.tenantId,
       projectId: projectId ? Number(projectId) : undefined,
       // Developer/QA: hard server-side restriction, ignores whatever
       // assigneeEmail the client might have sent.

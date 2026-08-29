@@ -27,30 +27,30 @@ export class DependenciesService {
     requiredByDate: 'ASC' as const,
   };
 
-  async findOne(id: number): Promise<Dependency> {
-    const dependency = await this.dependenciesRepository.findOne({ where: { id } });
+  async findOne(id: number, tenantId: number): Promise<Dependency> {
+    const dependency = await this.dependenciesRepository.findOne({ where: { id, tenantId } });
     if (!dependency) {
       throw new NotFoundException(`Dependency #${id} not found`);
     }
     return dependency;
   }
 
-  findReceived(ownerUserId: number): Promise<Dependency[]> {
+  findReceived(ownerUserId: number, tenantId: number): Promise<Dependency[]> {
     return this.dependenciesRepository.find({
-      where: { ownerUserId },
+      where: { ownerUserId, tenantId },
       order: DependenciesService.DEFAULT_ORDER,
     });
   }
 
-  findSent(createdByUserId: number): Promise<Dependency[]> {
+  findSent(createdByUserId: number, tenantId: number): Promise<Dependency[]> {
     return this.dependenciesRepository.find({
-      where: { createdByUserId },
+      where: { createdByUserId, tenantId },
       order: DependenciesService.DEFAULT_ORDER,
     });
   }
 
-  findAll(): Promise<Dependency[]> {
-    return this.dependenciesRepository.find({ order: DependenciesService.DEFAULT_ORDER });
+  findAll(tenantId: number): Promise<Dependency[]> {
+    return this.dependenciesRepository.find({ where: { tenantId }, order: DependenciesService.DEFAULT_ORDER });
   }
 
   canView(dependency: Dependency, user: { id: number; role: UserRole }): boolean {
@@ -64,11 +64,12 @@ export class DependenciesService {
     dto: CreateDependencyDto,
     createdByUserId: number,
     createdByEmail: string,
+    tenantId: number,
   ): Promise<Dependency> {
     // Standalone dependencies are rejected here so both the REST API and
     // any future Teams #dependency command go through the same check -
     // this throws NotFoundException if impactedIssueId doesn't exist.
-    await this.issuesService.findOne(dto.impactedIssueId);
+    await this.issuesService.findOne(dto.impactedIssueId, tenantId);
 
     const dependency = this.dependenciesRepository.create({
       ...dto,
@@ -76,6 +77,7 @@ export class DependenciesService {
       status: DependencyStatus.OPEN,
       createdByUserId,
       createdByEmail,
+      tenantId,
     });
     const saved = await this.dependenciesRepository.save(dependency);
 
@@ -83,6 +85,7 @@ export class DependenciesService {
       userId: createdByUserId,
       userEmail: createdByEmail,
       action: AuditActions.DEPENDENCY_CREATED,
+      tenantId,
       entityType: 'dependency',
       entityId: saved.id,
       details: { impactedIssueId: saved.impactedIssueId, ownerEmail: saved.ownerEmail, priority: saved.priority },
@@ -95,8 +98,9 @@ export class DependenciesService {
     id: number,
     dto: UpdateDependencyDto,
     currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
   ): Promise<Dependency> {
-    const dependency = await this.findOne(id);
+    const dependency = await this.findOne(id, tenantId);
     if (!this.canEdit(dependency, currentUser)) {
       throw new ForbiddenException('You do not have access to edit this dependency.');
     }
@@ -109,6 +113,7 @@ export class DependenciesService {
       userEmail: currentUser.email,
       userRole: currentUser.role,
       action: AuditActions.DEPENDENCY_UPDATED,
+      tenantId,
       entityType: 'dependency',
       entityId: saved.id,
       details: dto as Record<string, unknown>,
@@ -121,8 +126,9 @@ export class DependenciesService {
     id: number,
     status: DependencyStatus,
     currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
   ): Promise<Dependency> {
-    const dependency = await this.findOne(id);
+    const dependency = await this.findOne(id, tenantId);
     if (!this.canEdit(dependency, currentUser)) {
       throw new ForbiddenException('You do not have access to update this dependency.');
     }
@@ -144,6 +150,7 @@ export class DependenciesService {
       userEmail: currentUser.email,
       userRole: currentUser.role,
       action: AuditActions.DEPENDENCY_STATUS_CHANGED,
+      tenantId,
       entityType: 'dependency',
       entityId: saved.id,
       details: { from: fromStatus, to: status },

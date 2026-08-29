@@ -44,7 +44,7 @@ export class IssueNotificationsService {
     slaTargetHours: number;
     dueAt: string;
   }): Promise<void> {
-    const programManagers = await this.usersService.findProgramManagers();
+    const programManagers = await this.usersService.findProgramManagers(issue.tenantId);
     const recipientEmails = new Set(programManagers.map((pm) => pm.email));
     if (issue.assigneeEmail) recipientEmails.add(issue.assigneeEmail);
 
@@ -74,7 +74,7 @@ export class IssueNotificationsService {
     // Program Manager is a normal role now (ReleaseBot, 2026-08-22), so
     // more than one person can hold it - notify all of them rather than
     // a single designated person.
-    const programManagers = await this.usersService.findProgramManagers();
+    const programManagers = await this.usersService.findProgramManagers(issue.tenantId);
     if (programManagers.length === 0) {
       this.logger.debug(
         `Issue #${issue.id} was submitted for review, but no Program Manager is currently assigned - ` +
@@ -103,7 +103,7 @@ export class IssueNotificationsService {
       );
     }
 
-    const qaUsers = await this.usersService.findByRole(UserRole.QA);
+    const qaUsers = await this.usersService.findByRole(UserRole.QA, issue.tenantId);
     if (qaUsers.length === 0) {
       this.logger.debug(
         `Issue #${issue.id} was approved for QA testing, but no QA user exists to notify - ` +
@@ -161,7 +161,7 @@ export class IssueNotificationsService {
   // half of this requirement without needing a separate stakeholder list.
   @OnEvent('issue.leadershipRequestCreated')
   async onLeadershipRequestCreated({ issue }: { issue: Issue }): Promise<void> {
-    const qaUsers = await this.usersService.findByRole(UserRole.QA);
+    const qaUsers = await this.usersService.findByRole(UserRole.QA, issue.tenantId);
     if (qaUsers.length === 0) {
       this.logger.debug(
         `Leadership Request issue #${issue.id} was created, but no QA user exists to notify - ` +
@@ -192,12 +192,14 @@ export class IssueNotificationsService {
     attemptedByEmail,
     attemptedByRole,
     attemptedTitle,
+    tenantId,
   }: {
     attemptedByEmail: string;
     attemptedByRole: string;
     attemptedTitle: string;
+    tenantId: number;
   }): Promise<void> {
-    const admins = await this.usersService.findByRole(UserRole.ADMIN);
+    const admins = await this.usersService.findByRole(UserRole.ADMIN, tenantId);
     if (admins.length === 0) {
       this.logger.warn('A blocked ticket-creation attempt occurred, but no Administrator exists to notify.');
       return;

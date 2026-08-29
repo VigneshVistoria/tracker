@@ -47,8 +47,8 @@ export class SlaService {
     private auditLogService: AuditLogService,
   ) {}
 
-  async getConfig(): Promise<SlaConfig[]> {
-    const rows = await this.slaConfigRepository.find();
+  async getConfig(tenantId: number): Promise<SlaConfig[]> {
+    const rows = await this.slaConfigRepository.find({ where: { tenantId } });
     const byKey = new Map(rows.map((r) => [r.key, r]));
     return SLA_KEY_ORDER.map((key) => byKey.get(key)).filter((r): r is SlaConfig => Boolean(r));
   }
@@ -57,8 +57,9 @@ export class SlaService {
     key: SlaTargetKey,
     targetHours: number,
     user: { id: number; email: string },
+    tenantId: number,
   ): Promise<SlaConfig> {
-    const existing = await this.slaConfigRepository.findOne({ where: { key } });
+    const existing = await this.slaConfigRepository.findOne({ where: { key, tenantId } });
     if (!existing) {
       throw new NotFoundException(`No SLA config row for "${key}" - the migration should have seeded it`);
     }
@@ -73,6 +74,7 @@ export class SlaService {
       userId: user.id,
       userEmail: user.email,
       action: AuditActions.SLA_CONFIG_UPDATED,
+      tenantId,
       entityType: 'SlaConfig',
       entityId: saved.id,
       details: { key, previousTargetHours, newTargetHours: targetHours },
@@ -125,7 +127,7 @@ export class SlaService {
   // fires rarely) - list endpoints should call getConfig() once and reuse
   // it across every row via computeForIssue() directly instead.
   async computeForIssueStandalone(issue: Issue): Promise<SlaInfo> {
-    const config = await this.getConfig();
+    const config = await this.getConfig(issue.tenantId);
     return this.computeForIssue(issue, config);
   }
 }

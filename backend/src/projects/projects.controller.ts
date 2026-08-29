@@ -31,7 +31,7 @@ export class ProjectsController {
   async findAll(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (currentUser.role === UserRole.ADMIN) {
-      return this.projectsService.findAll();
+      return this.projectsService.findAll(req.user.tenantId);
     }
     return currentUser.projects;
   }
@@ -39,7 +39,7 @@ export class ProjectsController {
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    const project = await this.projectsService.findOne(id);
+    const project = await this.projectsService.findOne(id, req.user.tenantId);
 
     if (currentUser.role !== UserRole.ADMIN) {
       const isAssigned = currentUser.projects.some((p) => p.id === id);
@@ -53,13 +53,13 @@ export class ProjectsController {
 
   @Post()
   @UseGuards(AdminGuard)
-  create(@Body() dto: CreateProjectDto) {
-    return this.projectsService.create(dto);
+  create(@Body() dto: CreateProjectDto, @Req() req: any) {
+    return this.projectsService.create(dto, req.user.tenantId);
   }
 
   @Patch(':id')
   @UseGuards(AdminGuard)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto) {
-    return this.projectsService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto, @Req() req: any) {
+    return this.projectsService.update(id, dto, req.user.tenantId);
   }
 }

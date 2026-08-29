@@ -13,27 +13,27 @@ export class PerformanceScoringController {
   constructor(private performanceScoringService: PerformanceScoringService) {}
 
   @Get()
-  getConfig() {
-    return this.performanceScoringService.getEffectiveConfig();
+  getConfig(@Req() req: any) {
+    return this.performanceScoringService.getEffectiveConfig(req.user.tenantId);
   }
 
   @Patch()
   updateConfig(@Body() dto: UpdatePerformanceScoringConfigDto, @Req() req: any) {
-    return this.performanceScoringService.updateConfig(dto, { id: req.user.sub, email: req.user.email });
+    return this.performanceScoringService.updateConfig(dto, { id: req.user.sub, email: req.user.email }, req.user.tenantId);
   }
 
   @Post('tiers')
   createTier(@Body() dto: CreateOverduePenaltyTierDto, @Req() req: any) {
-    return this.performanceScoringService.createTier(dto, { id: req.user.sub, email: req.user.email });
+    return this.performanceScoringService.createTier(dto, { id: req.user.sub, email: req.user.email }, req.user.tenantId);
   }
 
   @Patch('tiers/:id')
   updateTier(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateOverduePenaltyTierDto, @Req() req: any) {
-    return this.performanceScoringService.updateTier(id, dto, { id: req.user.sub, email: req.user.email });
+    return this.performanceScoringService.updateTier(id, dto, { id: req.user.sub, email: req.user.email }, req.user.tenantId);
   }
 
   @Delete('tiers/:id')
   removeTier(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
-    return this.performanceScoringService.removeTier(id, { id: req.user.sub, email: req.user.email });
+    return this.performanceScoringService.removeTier(id, { id: req.user.sub, email: req.user.email }, req.user.tenantId);
   }
 }

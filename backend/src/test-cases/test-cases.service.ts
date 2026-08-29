@@ -28,29 +28,29 @@ export class TestCasesService {
     private projectsService: ProjectsService,
   ) {}
 
-  findAll(projectId?: number): Promise<TestCase[]> {
+  findAll(tenantId: number, projectId?: number): Promise<TestCase[]> {
     return this.testCasesRepository.find({
-      where: projectId ? { projectId } : {},
+      where: projectId ? { projectId, tenantId } : { tenantId },
       order: { createdAt: 'DESC' },
     });
   }
 
-  async findOne(id: number): Promise<TestCase> {
-    const testCase = await this.testCasesRepository.findOne({ where: { id } });
+  async findOne(id: number, tenantId: number): Promise<TestCase> {
+    const testCase = await this.testCasesRepository.findOne({ where: { id, tenantId } });
     if (!testCase) {
       throw new NotFoundException(`Test case #${id} not found`);
     }
     return testCase;
   }
 
-  private async resolveProject(projectId: number | undefined): Promise<{ id: number; name: string } | null> {
+  private async resolveProject(projectId: number | undefined, tenantId: number): Promise<{ id: number; name: string } | null> {
     if (projectId === undefined) return null;
-    const project = await this.projectsService.findOne(projectId);
+    const project = await this.projectsService.findOne(projectId, tenantId);
     return { id: project.id, name: project.name };
   }
 
-  async create(dto: CreateTestCaseDto, userId: number, userEmail: string): Promise<TestCase> {
-    const project = await this.resolveProject(dto.projectId);
+  async create(dto: CreateTestCaseDto, userId: number, userEmail: string, tenantId: number): Promise<TestCase> {
+    const project = await this.resolveProject(dto.projectId, tenantId);
     const testCase = this.testCasesRepository.create({
       title: dto.title,
       description: dto.description,
@@ -63,12 +63,13 @@ export class TestCasesService {
       projectName: project?.name,
       createdByUserId: userId,
       createdByEmail: userEmail,
+      tenantId,
     });
     return this.testCasesRepository.save(testCase);
   }
 
-  async update(id: number, dto: UpdateTestCaseDto): Promise<TestCase> {
-    const testCase = await this.findOne(id);
+  async update(id: number, dto: UpdateTestCaseDto, tenantId: number): Promise<TestCase> {
+    const testCase = await this.findOne(id, tenantId);
     if (dto.title !== undefined) testCase.title = dto.title;
     if (dto.description !== undefined) testCase.description = dto.description;
     if (dto.preconditions !== undefined) testCase.preconditions = dto.preconditions;
@@ -78,15 +79,15 @@ export class TestCasesService {
     if (dto.category !== undefined) testCase.category = dto.category;
     if (dto.status !== undefined) testCase.status = dto.status;
     if (dto.projectId !== undefined) {
-      const project = await this.resolveProject(dto.projectId);
+      const project = await this.resolveProject(dto.projectId, tenantId);
       testCase.projectId = project?.id ?? null;
       testCase.projectName = project?.name ?? null;
     }
     return this.testCasesRepository.save(testCase);
   }
 
-  findExecutions(testCaseId: number): Promise<TestExecution[]> {
-    return this.executionsRepository.find({ where: { testCaseId }, order: { executedAt: 'DESC' } });
+  findExecutions(testCaseId: number, tenantId: number): Promise<TestExecution[]> {
+    return this.executionsRepository.find({ where: { testCaseId, tenantId }, order: { executedAt: 'DESC' } });
   }
 
   async recordExecution(
@@ -94,8 +95,9 @@ export class TestCasesService {
     dto: CreateTestExecutionDto,
     userId: number,
     userEmail: string,
+    tenantId: number,
   ): Promise<TestExecution> {
-    const testCase = await this.findOne(testCaseId);
+    const testCase = await this.findOne(testCaseId, tenantId);
 
     const execution = this.executionsRepository.create({
       testCaseId: testCase.id,
@@ -107,6 +109,7 @@ export class TestCasesService {
       defectIssueId: dto.defectIssueId,
       executedByUserId: userId,
       executedByEmail: userEmail,
+      tenantId,
     });
     const saved = await this.executionsRepository.save(execution);
 
@@ -128,6 +131,7 @@ export class TestCasesService {
     csvText: string,
     userId: number,
     userEmail: string,
+    tenantId: number,
   ): Promise<{ created: TestCase[]; errors: BulkImportError[] }> {
     let records: Record<string, string>[];
     try {
@@ -151,7 +155,7 @@ export class TestCasesService {
 
     // Cache project name -> id lookups across rows instead of hitting the
     // DB once per row.
-    const allProjects = await this.projectsService.findAll();
+    const allProjects = await this.projectsService.findAll(tenantId);
     const projectByName = new Map(allProjects.map((p) => [p.name.toLowerCase(), p]));
 
     const created: TestCase[] = [];
@@ -213,6 +217,7 @@ export class TestCasesService {
         projectName: project?.name,
         createdByUserId: userId,
         createdByEmail: userEmail,
+        tenantId,
       });
       created.push(await this.testCasesRepository.save(testCase));
     }

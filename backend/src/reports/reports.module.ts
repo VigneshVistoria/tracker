@@ -10,9 +10,10 @@ import { PdfPerformanceReportService } from './pdf-performance-report.service';
 import { GuardsModule } from '../common/guards.module';
 import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
+import { TenantsModule } from '../tenants/tenants.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WeeklyReport, Issue]), GuardsModule, MailModule, UsersModule],
+  imports: [TypeOrmModule.forFeature([WeeklyReport, Issue]), GuardsModule, MailModule, UsersModule, TenantsModule],
   controllers: [WeeklyReportsController],
   providers: [
     WeeklyReportsService,

@@ -20,15 +20,15 @@ export class SprintsService {
     private eventsGateway: EventsGateway,
   ) {}
 
-  findAllForProject(projectId: number): Promise<Sprint[]> {
+  findAllForProject(projectId: number, tenantId: number): Promise<Sprint[]> {
     return this.sprintsRepository.find({
-      where: { projectId },
+      where: { projectId, tenantId },
       order: { createdAt: 'DESC' },
     });
   }
 
-  async findOne(id: number): Promise<Sprint> {
-    const sprint = await this.sprintsRepository.findOne({ where: { id } });
+  async findOne(id: number, tenantId: number): Promise<Sprint> {
+    const sprint = await this.sprintsRepository.findOne({ where: { id, tenantId } });
     if (!sprint) {
       throw new NotFoundException(`Sprint #${id} not found`);
     }
@@ -38,18 +38,18 @@ export class SprintsService {
   // Includes the issues currently planned into this sprint, plus a total
   // of their story points - what the sprint planning UI actually needs to
   // render in one call.
-  async findOneWithIssues(id: number): Promise<Sprint & { issues: Issue[]; totalStoryPoints: number }> {
-    const sprint = await this.findOne(id);
+  async findOneWithIssues(id: number, tenantId: number): Promise<Sprint & { issues: Issue[]; totalStoryPoints: number }> {
+    const sprint = await this.findOne(id, tenantId);
     const issues = await this.issuesRepository.find({
-      where: { sprintId: id },
+      where: { sprintId: id, tenantId },
       order: { createdAt: 'ASC' },
     });
     const totalStoryPoints = issues.reduce((sum, i) => sum + (i.storyPoints || 0), 0);
     return { ...sprint, issues, totalStoryPoints };
   }
 
-  async create(dto: CreateSprintDto, userId: number): Promise<Sprint> {
-    const project = await this.projectsService.findOne(dto.projectId);
+  async create(dto: CreateSprintDto, userId: number, tenantId: number): Promise<Sprint> {
+    const project = await this.projectsService.findOne(dto.projectId, tenantId);
     const sprint = this.sprintsRepository.create({
       projectId: project.id,
       projectName: project.name,
@@ -58,14 +58,15 @@ export class SprintsService {
       startDate: dto.startDate,
       endDate: dto.endDate,
       createdByUserId: userId,
+      tenantId,
     });
     const saved = await this.sprintsRepository.save(sprint);
     this.eventsGateway.emitSprintCreated(saved);
     return saved;
   }
 
-  async update(id: number, dto: UpdateSprintDto): Promise<Sprint> {
-    const sprint = await this.findOne(id);
+  async update(id: number, dto: UpdateSprintDto, tenantId: number): Promise<Sprint> {
+    const sprint = await this.findOne(id, tenantId);
     const previousName = sprint.name;
 
     if (dto.name !== undefined) sprint.name = dto.name;
@@ -79,8 +80,8 @@ export class SprintsService {
     // Keep the denormalized sprint name on every issue in this sprint in
     // sync, so the issues list/detail pages never show a stale name.
     if (dto.name !== undefined && dto.name !== previousName) {
-      await this.issuesRepository.update({ sprintId: id }, { sprintName: saved.name });
-      const affected = await this.issuesRepository.find({ where: { sprintId: id } });
+      await this.issuesRepository.update({ sprintId: id, tenantId }, { sprintName: saved.name });
+      const affected = await this.issuesRepository.find({ where: { sprintId: id, tenantId } });
       affected.forEach((issue) => this.eventsGateway.emitIssueUpdated(issue));
     }
 
@@ -88,30 +89,30 @@ export class SprintsService {
     return saved;
   }
 
-  async remove(id: number): Promise<void> {
-    await this.findOne(id);
+  async remove(id: number, tenantId: number): Promise<void> {
+    await this.findOne(id, tenantId);
     // Unassign rather than orphan - any issue in this sprint goes back to
     // the backlog instead of pointing at a sprint that no longer exists.
-    const affected = await this.issuesRepository.find({ where: { sprintId: id } });
-    await this.issuesRepository.update({ sprintId: id }, { sprintId: null, sprintName: null });
+    const affected = await this.issuesRepository.find({ where: { sprintId: id, tenantId } });
+    await this.issuesRepository.update({ sprintId: id, tenantId }, { sprintId: null, sprintName: null });
     affected.forEach((issue) =>
       this.eventsGateway.emitIssueUpdated({ ...issue, sprintId: null, sprintName: null }),
     );
     await this.sprintsRepository.delete(id);
-    this.eventsGateway.emitSprintDeleted(id);
+    this.eventsGateway.emitSprintDeleted(id, tenantId);
   }
 
   // Bulk-assigns issues into a sprint - used by both the checkbox
   // multi-select "Add to Sprint" action and drag-and-drop. Issues from a
   // different project than the sprint are skipped rather than erroring
   // out the whole batch, and reported back so the UI can flag them.
-  async addIssues(sprintId: number, dto: AddIssuesToSprintDto): Promise<{ added: Issue[]; skipped: number[] }> {
-    const sprint = await this.findOne(sprintId);
+  async addIssues(sprintId: number, dto: AddIssuesToSprintDto, tenantId: number): Promise<{ added: Issue[]; skipped: number[] }> {
+    const sprint = await this.findOne(sprintId, tenantId);
     const added: Issue[] = [];
     const skipped: number[] = [];
 
     for (const issueId of dto.issueIds) {
-      const issue = await this.issuesRepository.findOne({ where: { id: issueId } });
+      const issue = await this.issuesRepository.findOne({ where: { id: issueId, tenantId } });
       if (!issue) {
         skipped.push(issueId);
         continue;
@@ -136,9 +137,9 @@ export class SprintsService {
     return { added, skipped };
   }
 
-  async removeIssue(sprintId: number, issueId: number): Promise<Issue> {
-    await this.findOne(sprintId);
-    const issue = await this.issuesRepository.findOne({ where: { id: issueId, sprintId } });
+  async removeIssue(sprintId: number, issueId: number, tenantId: number): Promise<Issue> {
+    await this.findOne(sprintId, tenantId);
+    const issue = await this.issuesRepository.findOne({ where: { id: issueId, sprintId, tenantId } });
     if (!issue) {
       throw new NotFoundException(`Issue #${issueId} is not in sprint #${sprintId}`);
     }

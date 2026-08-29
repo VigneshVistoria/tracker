@@ -15,12 +15,12 @@ export class SlaController {
   constructor(private slaService: SlaService) {}
 
   @Get()
-  getConfig() {
-    return this.slaService.getConfig();
+  getConfig(@Req() req: any) {
+    return this.slaService.getConfig(req.user.tenantId);
   }
 
   @Patch(':key')
   update(@Param('key') key: SlaTargetKey, @Body() dto: UpdateSlaConfigDto, @Req() req: any) {
-    return this.slaService.updateTarget(key, dto.targetHours, { id: req.user.sub, email: req.user.email });
+    return this.slaService.updateTarget(key, dto.targetHours, { id: req.user.sub, email: req.user.email }, req.user.tenantId);
   }
 }

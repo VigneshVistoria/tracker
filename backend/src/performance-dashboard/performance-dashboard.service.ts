@@ -119,20 +119,21 @@ export class PerformanceDashboardService {
   async getDashboard(params: {
     period: PeriodType;
     referenceDate: Date;
+    tenantId: number;
     projectId?: number;
     onlyAssigneeEmail?: string; // set for Developer/QA - restricts everything to just this person
   }): Promise<PerformanceDashboardResult> {
-    const { period, referenceDate, projectId, onlyAssigneeEmail } = params;
+    const { period, referenceDate, tenantId, projectId, onlyAssigneeEmail } = params;
     const { start, end } = getPeriodWindow(period, referenceDate);
 
-    const where: any = { assigneeUserId: Not(IsNull()) };
+    const where: any = { assigneeUserId: Not(IsNull()), tenantId };
     if (projectId) where.projectId = projectId;
     const allAssignedIssues = await this.issuesRepository.find({ where });
 
     const [slaConfig, scoringConfig, users] = await Promise.all([
-      this.slaService.getConfig(),
-      this.performanceScoringService.getEffectiveConfig(),
-      this.usersService.findAll(),
+      this.slaService.getConfig(tenantId),
+      this.performanceScoringService.getEffectiveConfig(tenantId),
+      this.usersService.findAll(tenantId),
     ]);
     const nameByEmail = new Map(users.map((u) => [u.email, u.fullName || u.email]));
 

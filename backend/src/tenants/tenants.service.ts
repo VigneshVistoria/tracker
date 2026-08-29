@@ -16,6 +16,12 @@ export class TenantsService {
     return this.tenantsRepository.findOne({ where: { id } });
   }
 
+  // For scheduled jobs (cron) that have no per-request tenant context and
+  // need to run their work once per tenant instead.
+  findAll(): Promise<Tenant[]> {
+    return this.tenantsRepository.find({ order: { id: 'ASC' } });
+  }
+
   // Resolves which tenant a request belongs to from its Host header's
   // subdomain (e.g. acme.tracker.vistoriasystems.com -> "acme"). Falls
   // back to the first tenant ever created whenever there's no subdomain

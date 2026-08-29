@@ -36,13 +36,13 @@ export class IssuesController {
   // Attaches each issue's resolved SLA info (target/dueAt/state) without
   // storing it - fetches the config table once per request and reuses it
   // across every row, rather than once per issue.
-  private async attachSlaToOne(issue: any): Promise<any> {
-    const config = await this.slaService.getConfig();
+  private async attachSlaToOne(issue: any, tenantId: number): Promise<any> {
+    const config = await this.slaService.getConfig(tenantId);
     return { ...issue, sla: this.slaService.computeForIssue(issue, config) };
   }
 
-  private async attachSlaToMany(issues: any[]): Promise<any[]> {
-    const config = await this.slaService.getConfig();
+  private async attachSlaToMany(issues: any[], tenantId: number): Promise<any[]> {
+    const config = await this.slaService.getConfig(tenantId);
     return issues.map((issue) => ({ ...issue, sla: this.slaService.computeForIssue(issue, config) }));
   }
 
@@ -65,16 +65,16 @@ export class IssuesController {
     const currentUser = await this.usersService.findById(req.user.sub);
     let issues: any[];
     if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.EXECUTIVE) {
-      issues = await this.issuesService.findAll();
+      issues = await this.issuesService.findAll(req.user.tenantId);
     } else if (currentUser.role === UserRole.CLIENT) {
-      issues = await this.issuesService.findByCreator(currentUser.id);
+      issues = await this.issuesService.findByCreator(currentUser.id, req.user.tenantId);
     } else if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
-      issues = await this.issuesService.findByAssignee(currentUser.id);
+      issues = await this.issuesService.findByAssignee(currentUser.id, req.user.tenantId);
     } else {
       const projectIds = (currentUser.projects || []).map((p) => p.id);
-      issues = await this.issuesService.findByProjects(projectIds);
+      issues = await this.issuesService.findByProjects(projectIds, req.user.tenantId);
     }
-    return this.attachSlaToMany(issues);
+    return this.attachSlaToMany(issues, req.user.tenantId);
   }
 
   // Dependency tickets (Issue.parentIssueId set) that were routed to the
@@ -85,7 +85,7 @@ export class IssuesController {
   @Get('dependencies/received')
   async findReceivedDependencies(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    return this.issuesService.findReceivedDependencies(currentUser.id);
+    return this.issuesService.findReceivedDependencies(currentUser.id, req.user.tenantId);
   }
 
   // The showstopper review queue (Feature 4) - every claim the heuristic
@@ -102,13 +102,13 @@ export class IssuesController {
     ) {
       throw new ForbiddenException('Only Program Managers, QA, and Admins can review flagged showstoppers.');
     }
-    return this.issuesService.findFlaggedShowstoppers();
+    return this.issuesService.findFlaggedShowstoppers(req.user.tenantId);
   }
 
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    const issue = await this.issuesService.findOneWithDependencies(id);
+    const issue = await this.issuesService.findOneWithDependencies(id, req.user.tenantId);
 
     if (currentUser.role === UserRole.CLIENT) {
       if (issue.createdByUserId !== currentUser.id) {
@@ -126,7 +126,7 @@ export class IssuesController {
       }
     }
 
-    return this.attachSlaToOne(issue);
+    return this.attachSlaToOne(issue, req.user.tenantId);
   }
 
   // Executives are read-only for everything below this point EXCEPT ticket
@@ -144,7 +144,7 @@ export class IssuesController {
         'Only Administrators, Program Managers, QA, and Executives can create tickets. Ask one of them to file this on your behalf.',
       );
     }
-    return this.issuesService.create(dto, currentUser.id, currentUser.email, currentUser.role);
+    return this.issuesService.create(dto, currentUser.id, currentUser.email, req.user.tenantId, currentUser.role);
   }
 
   @Patch(':id')
@@ -156,7 +156,7 @@ export class IssuesController {
     if (currentUser.role === UserRole.CLIENT) {
       throw new ForbiddenException('Clients cannot edit tickets after filing them - contact the team to make changes.');
     }
-    return this.issuesService.update(id, dto, { id: currentUser.id, role: currentUser.role });
+    return this.issuesService.update(id, dto, req.user.tenantId, { id: currentUser.id, role: currentUser.role });
   }
 
   // Any developer/QA/admin can spin off a dependency ticket from a parent -
@@ -171,18 +171,18 @@ export class IssuesController {
     if (currentUser.role === UserRole.CLIENT) {
       throw new ForbiddenException('Clients cannot create dependency tickets.');
     }
-    return this.issuesService.createDependency(id, dto, currentUser.id, currentUser.email);
+    return this.issuesService.createDependency(id, dto, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   // Only the assignee (or an admin) can submit their own work for review.
   @Post(':id/submit-for-review')
   async submitForReview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    const issue = await this.issuesService.findOne(id);
+    const issue = await this.issuesService.findOne(id, req.user.tenantId);
     if (currentUser.role !== UserRole.ADMIN && issue.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the assignee can submit this issue for review.');
     }
-    return this.issuesService.submitForReview(id, currentUser.id, currentUser.email);
+    return this.issuesService.submitForReview(id, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   // Only the designated Program Manager (or an admin, as an override) can
@@ -196,7 +196,7 @@ export class IssuesController {
     if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.PROGRAM_MANAGER) {
       throw new ForbiddenException('Only the Program Manager can approve issues.');
     }
-    return this.issuesService.approve(id, currentUser.id, currentUser.email);
+    return this.issuesService.approve(id, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   @Post(':id/reject')
@@ -208,7 +208,7 @@ export class IssuesController {
     if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.PROGRAM_MANAGER) {
       throw new ForbiddenException('Only the Program Manager can send issues back.');
     }
-    return this.issuesService.reject(id, currentUser.id, currentUser.email, dto.reason);
+    return this.issuesService.reject(id, currentUser.id, currentUser.email, req.user.tenantId, dto.reason);
   }
 
   // Only QA (or an admin, as an override) can pass/fail an issue that's
@@ -219,7 +219,7 @@ export class IssuesController {
     if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.QA) {
       throw new ForbiddenException('Only QA can mark an issue Ready for Production.');
     }
-    return this.issuesService.qaApprove(id, currentUser.id, currentUser.email);
+    return this.issuesService.qaApprove(id, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   @Post(':id/qa-reject')
@@ -228,7 +228,7 @@ export class IssuesController {
     if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.QA) {
       throw new ForbiddenException('Only QA can send issues back to the developer.');
     }
-    return this.issuesService.qaReject(id, currentUser.id, currentUser.email, dto.reason);
+    return this.issuesService.qaReject(id, currentUser.id, currentUser.email, req.user.tenantId, dto.reason);
   }
 
   // A Program Manager/QA/Admin confirming or downgrading a showstopper
@@ -250,7 +250,7 @@ export class IssuesController {
     return this.issuesService.decideShowstopperReview(id, dto.decision, {
       id: currentUser.id,
       email: currentUser.email,
-    });
+    }, req.user.tenantId);
   }
 }
 

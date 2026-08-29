@@ -27,42 +27,42 @@ export class SprintsController {
   constructor(private sprintsService: SprintsService) {}
 
   @Get()
-  findAllForProject(@Query('projectId', ParseIntPipe) projectId: number) {
-    return this.sprintsService.findAllForProject(projectId);
+  findAllForProject(@Query('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.sprintsService.findAllForProject(projectId, req.user.tenantId);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.sprintsService.findOneWithIssues(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.sprintsService.findOneWithIssues(id, req.user.tenantId);
   }
 
   @Post()
   @UseGuards(AdminGuard)
   create(@Body() dto: CreateSprintDto, @Req() req: any) {
-    return this.sprintsService.create(dto, req.user.sub);
+    return this.sprintsService.create(dto, req.user.sub, req.user.tenantId);
   }
 
   @Patch(':id')
   @UseGuards(AdminGuard)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSprintDto) {
-    return this.sprintsService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSprintDto, @Req() req: any) {
+    return this.sprintsService.update(id, dto, req.user.tenantId);
   }
 
   @Delete(':id')
   @UseGuards(AdminGuard)
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.sprintsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.sprintsService.remove(id, req.user.tenantId);
   }
 
   @Post(':id/issues')
   @UseGuards(AdminGuard)
-  addIssues(@Param('id', ParseIntPipe) id: number, @Body() dto: AddIssuesToSprintDto) {
-    return this.sprintsService.addIssues(id, dto);
+  addIssues(@Param('id', ParseIntPipe) id: number, @Body() dto: AddIssuesToSprintDto, @Req() req: any) {
+    return this.sprintsService.addIssues(id, dto, req.user.tenantId);
   }
 
   @Delete(':id/issues/:issueId')
   @UseGuards(AdminGuard)
-  removeIssue(@Param('id', ParseIntPipe) id: number, @Param('issueId', ParseIntPipe) issueId: number) {
-    return this.sprintsService.removeIssue(id, issueId);
+  removeIssue(@Param('id', ParseIntPipe) id: number, @Param('issueId', ParseIntPipe) issueId: number, @Req() req: any) {
+    return this.sprintsService.removeIssue(id, issueId, req.user.tenantId);
   }
 }

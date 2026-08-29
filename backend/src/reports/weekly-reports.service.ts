@@ -49,7 +49,7 @@ export class WeeklyReportsService {
     return d.toISOString().slice(0, 10);
   }
 
-  async generate(referenceDate: Date, generatedByUserId?: number): Promise<WeeklyReport> {
+  async generate(referenceDate: Date, tenantId: number, generatedByUserId?: number): Promise<WeeklyReport> {
     const { start: weekStart, end: weekEnd } = this.getBusinessWeekRange(referenceDate);
     const prevWeekStart = new Date(weekStart);
     prevWeekStart.setDate(prevWeekStart.getDate() - 7);
@@ -58,30 +58,30 @@ export class WeeklyReportsService {
 
     const [completedPreviousWeek, newThisWeek, carryForward, allActive] = await Promise.all([
       this.issuesRepository.find({
-        where: { status: IssueStatus.READY_FOR_PRODUCTION, closedOn: Between(prevWeekStart, prevWeekEnd) },
+        where: { status: IssueStatus.READY_FOR_PRODUCTION, closedOn: Between(prevWeekStart, prevWeekEnd), tenantId },
         order: { closedOn: 'ASC' },
       }),
       this.issuesRepository.find({
-        where: { createdAt: Between(weekStart, weekEnd) },
+        where: { createdAt: Between(weekStart, weekEnd), tenantId },
         order: { createdAt: 'ASC' },
       }),
       // Existed before this week and still not completed - rolled forward.
       this.issuesRepository.find({
-        where: { status: Not(IssueStatus.READY_FOR_PRODUCTION), createdAt: LessThan(weekStart) },
+        where: { status: Not(IssueStatus.READY_FOR_PRODUCTION), createdAt: LessThan(weekStart), tenantId },
         order: { createdAt: 'ASC' },
       }),
       // Every non-completed issue right now, for the assignee/performance
       // breakdown below.
-      this.issuesRepository.find({ where: { status: Not(IssueStatus.READY_FOR_PRODUCTION) } }),
+      this.issuesRepository.find({ where: { status: Not(IssueStatus.READY_FOR_PRODUCTION), tenantId } }),
     ]);
 
-    const allCompletedEver = await this.issuesRepository.find({ where: { status: IssueStatus.READY_FOR_PRODUCTION } });
+    const allCompletedEver = await this.issuesRepository.find({ where: { status: IssueStatus.READY_FOR_PRODUCTION, tenantId } });
 
     // Most recent prior report (any week before this one) - used purely to
     // compute a week-over-week trend per assignee below. Best-effort: if
     // there isn't one yet (first report ever), everyone is just "new".
     const prevReport = await this.reportsRepository.findOne({
-      where: { weekStartDate: LessThan(this.toDateOnly(weekStart)) },
+      where: { weekStartDate: LessThan(this.toDateOnly(weekStart)), tenantId },
       order: { weekStartDate: 'DESC' },
     });
     const prevStatsByEmail = new Map<string, any>(
@@ -252,6 +252,7 @@ export class WeeklyReportsService {
       weekEndDate: this.toDateOnly(weekEnd),
       data,
       generatedByUserId: generatedByUserId ?? null,
+      tenantId,
     });
 
     return this.reportsRepository.save(report);
@@ -276,12 +277,12 @@ export class WeeklyReportsService {
     };
   }
 
-  findHistory(limit = 20): Promise<WeeklyReport[]> {
-    return this.reportsRepository.find({ order: { weekStartDate: 'DESC' }, take: limit });
+  findHistory(tenantId: number, limit = 20): Promise<WeeklyReport[]> {
+    return this.reportsRepository.find({ where: { tenantId }, order: { weekStartDate: 'DESC' }, take: limit });
   }
 
-  async findOne(id: number): Promise<WeeklyReport | null> {
-    return this.reportsRepository.findOne({ where: { id } });
+  async findOne(id: number, tenantId: number): Promise<WeeklyReport | null> {
+    return this.reportsRepository.findOne({ where: { id, tenantId } });
   }
 
   // Emails a plain-text-ish HTML summary of the report to every configured

@@ -38,7 +38,7 @@ export class TeamsMessageConverterService {
   // `message` is a Microsoft Graph chatMessage resource:
   // https://learn.microsoft.com/graph/api/resources/chatmessage
   async convertAndCreateIssue(message: any, subscription: TeamsSubscription): Promise<Issue | null> {
-    const assigneeUserId = await this.resolveTaggedLocalUser(message);
+    const assigneeUserId = await this.resolveTaggedLocalUser(message, subscription.tenantId);
 
     if (!assigneeUserId) {
       this.logger.debug('No recognized teammate was tagged in this message - skipping ticket creation.');
@@ -68,13 +68,14 @@ export class TeamsMessageConverterService {
       // real logged-in user, since there's no session for a Teams message.
       null,
       SYSTEM_EMAIL,
+      subscription.tenantId,
     );
   }
 
   // Walks the message's @mentions, resolves each mentioned person's
   // Azure AD identity to a work email via Graph, and returns the first
   // one that matches an existing user in this app.
-  private async resolveTaggedLocalUser(message: any): Promise<number | null> {
+  private async resolveTaggedLocalUser(message: any, tenantId: number): Promise<number | null> {
     const mentions = message?.mentions || [];
 
     for (const mention of mentions) {
@@ -84,7 +85,7 @@ export class TeamsMessageConverterService {
       const person = await this.teamsGraph.getUserById(aadId);
       if (!person?.email) continue;
 
-      const localUser = await this.usersService.findByEmail(person.email);
+      const localUser = await this.usersService.findByEmailAndTenant(person.email, tenantId);
       if (localUser) return localUser.id;
     }
 

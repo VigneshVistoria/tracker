@@ -15,17 +15,17 @@ export class RegressionTestingController {
   // takes well under a second, so there's no need for polling/job status.
   @Post('run')
   run(@Req() req: any) {
-    const { sub: userId, email } = req.user;
-    return this.regressionTestingService.run(userId, email);
+    const { sub: userId, email, tenantId } = req.user;
+    return this.regressionTestingService.run(userId, email, tenantId);
   }
 
   @Get('runs')
-  findHistory() {
-    return this.regressionTestingService.findHistory();
+  findHistory(@Req() req: any) {
+    return this.regressionTestingService.findHistory(req.user.tenantId);
   }
 
   @Get('runs/:id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.regressionTestingService.findOne(id);
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.regressionTestingService.findOne(id, req.user.tenantId);
   }
 }

@@ -33,22 +33,22 @@ export class UsersController {
   // Any logged-in user can see this minimal list - needed to populate the
   // "Assignee" dropdown when creating/editing an issue.
   @Get('assignable')
-  async findAssignable() {
-    const users = await this.usersService.findAll();
+  async findAssignable(@Req() req: any) {
+    const users = await this.usersService.findAll(req.user.tenantId);
     return users.map((u) => ({ id: u.id, email: u.email, fullName: u.fullName }));
   }
 
   @Get()
   @UseGuards(AdminGuard)
-  async findAll() {
-    const users = await this.usersService.findAll();
+  async findAll(@Req() req: any) {
+    const users = await this.usersService.findAll(req.user.tenantId);
     return users.map(this.toSafeUser);
   }
 
   @Get(':id')
   @UseGuards(AdminGuard)
-  async findOne(@Param('id', ParseIntPipe) id: number) {
-    const user = await this.usersService.findById(id);
+  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const user = await this.usersService.findByIdAndTenant(id, req.user.tenantId);
     return this.toSafeUser(user);
   }
 
@@ -61,8 +61,8 @@ export class UsersController {
 
   @Patch(':id')
   @UseGuards(AdminGuard)
-  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
-    const user = await this.usersService.update(id, dto);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto, @Req() req: any) {
+    const user = await this.usersService.update(id, dto, req.user.tenantId);
     return this.toSafeUser(user);
   }
 

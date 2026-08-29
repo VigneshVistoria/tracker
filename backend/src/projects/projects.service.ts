@@ -14,28 +14,28 @@ export class ProjectsService {
     private eventsGateway: EventsGateway,
   ) {}
 
-  findAll(): Promise<Project[]> {
-    return this.projectsRepository.find({ order: { name: 'ASC' } });
+  findAll(tenantId: number): Promise<Project[]> {
+    return this.projectsRepository.find({ where: { tenantId }, order: { name: 'ASC' } });
   }
 
-  async findOne(id: number): Promise<Project> {
-    const project = await this.projectsRepository.findOne({ where: { id } });
+  async findOne(id: number, tenantId: number): Promise<Project> {
+    const project = await this.projectsRepository.findOne({ where: { id, tenantId } });
     if (!project) {
       throw new NotFoundException(`Project #${id} not found`);
     }
     return project;
   }
 
-  create(dto: CreateProjectDto): Promise<Project> {
-    const project = this.projectsRepository.create(dto);
+  create(dto: CreateProjectDto, tenantId: number): Promise<Project> {
+    const project = this.projectsRepository.create({ ...dto, tenantId });
     return this.projectsRepository.save(project).then((saved) => {
       this.eventsGateway.emitProjectCreated(saved);
       return saved;
     });
   }
 
-  async update(id: number, dto: UpdateProjectDto): Promise<Project> {
-    const project = await this.findOne(id);
+  async update(id: number, dto: UpdateProjectDto, tenantId: number): Promise<Project> {
+    const project = await this.findOne(id, tenantId);
     Object.assign(project, dto);
     return this.projectsRepository.save(project);
   }

@@ -11,27 +11,27 @@ export class DailyUpdatesController {
 
   @Post()
   create(@Body() dto: CreateDailyUpdateDto, @Req() req: any) {
-    const { sub: userId, email } = req.user;
-    return this.dailyUpdatesService.create(dto, userId, email);
+    const { sub: userId, email, tenantId } = req.user;
+    return this.dailyUpdatesService.create(dto, userId, email, tenantId);
   }
 
   // Your own submission history.
   @Get('me')
   findMine(@Req() req: any) {
-    return this.dailyUpdatesService.findHistoryForUser(req.user.sub);
+    return this.dailyUpdatesService.findHistoryForUser(req.user.sub, req.user.tenantId);
   }
 
   // Manager view: every submission, optionally filtered to one day.
   @Get()
   @UseGuards(AdminGuard)
-  findAll(@Query('date') date?: string) {
-    return this.dailyUpdatesService.findAll(date);
+  findAll(@Req() req: any, @Query('date') date?: string) {
+    return this.dailyUpdatesService.findAll(req.user.tenantId, date);
   }
 
   // Manager view: aggregated counts + average productivity for one day.
   @Get('team-summary')
   @UseGuards(AdminGuard)
-  teamSummary(@Query('date') date?: string) {
-    return this.dailyUpdatesService.teamSummary(date);
+  teamSummary(@Req() req: any, @Query('date') date?: string) {
+    return this.dailyUpdatesService.teamSummary(req.user.tenantId, date);
   }
 }

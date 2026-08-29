@@ -27,7 +27,7 @@ import {
   X,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
-import { getSocket } from '../lib/socket';
+import { getSocket, disconnectSocket } from '../lib/socket';
 import { roleLabel } from '../lib/status';
 
 const NAV_ITEMS = [
@@ -138,6 +138,7 @@ export default function AppShell({ children }) {
   }, [router]);
 
   const handleLogout = () => {
+    disconnectSocket();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     router.push('/');

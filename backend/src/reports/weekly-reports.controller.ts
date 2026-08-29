@@ -34,7 +34,7 @@ export class WeeklyReportsController {
   @Post('generate')
   @UseGuards(AdminGuard)
   async generate(@Req() req: any) {
-    const report = await this.weeklyReportsService.generate(new Date(), req.user.sub);
+    const report = await this.weeklyReportsService.generate(new Date(), req.user.tenantId, req.user.sub);
     await this.weeklyReportsService.emailReport(report);
     return report;
   }
@@ -45,7 +45,7 @@ export class WeeklyReportsController {
   @Post('generate-performance')
   @UseGuards(AdminGuard)
   async generatePerformanceReports(@Req() req: any) {
-    const report = await this.weeklyReportsService.generate(new Date(), req.user.sub);
+    const report = await this.weeklyReportsService.generate(new Date(), req.user.tenantId, req.user.sub);
     const result = await this.weeklyReportsService.emailPerformanceReports(report);
     return { report, ...result };
   }
@@ -59,11 +59,12 @@ export class WeeklyReportsController {
   async downloadPerformancePdf(
     @Query('assigneeEmail') assigneeEmail: string,
     @Res() res: Response,
+    @Req() req: any,
   ) {
     if (!assigneeEmail) {
       throw new BadRequestException('assigneeEmail query parameter is required');
     }
-    const report = await this.weeklyReportsService.generate(new Date());
+    const report = await this.weeklyReportsService.generate(new Date(), req.user.tenantId);
     const result = await this.weeklyReportsService.buildPerformancePdfBuffer(report, assigneeEmail);
     if (!result) {
       throw new NotFoundException(`No report data found for assignee ${assigneeEmail}`);
@@ -78,13 +79,13 @@ export class WeeklyReportsController {
   @Get('history')
   async findHistory(@Req() req: any) {
     await this.assertCanView(req);
-    return this.weeklyReportsService.findHistory();
+    return this.weeklyReportsService.findHistory(req.user.tenantId);
   }
 
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.assertCanView(req);
-    return this.weeklyReportsService.findOne(id);
+    return this.weeklyReportsService.findOne(id, req.user.tenantId);
   }
 
   private async assertCanView(req: any): Promise<void> {

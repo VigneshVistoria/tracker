@@ -31,6 +31,7 @@ export interface RecordAuditEntryInput {
   entityType?: string;
   entityId?: number;
   details?: Record<string, unknown>;
+  tenantId: number;
 }
 
 @Injectable()
@@ -55,6 +56,7 @@ export class AuditLogService {
         entityType: input.entityType ?? null,
         entityId: input.entityId ?? null,
         details: input.details ? JSON.stringify(input.details) : null,
+        tenantId: input.tenantId,
       });
       await this.auditLogRepository.save(entry);
     } catch (err: any) {

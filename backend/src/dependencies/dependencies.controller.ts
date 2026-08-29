@@ -39,7 +39,7 @@ export class DependenciesController {
     ) {
       throw new ForbiddenException('Only Admins, Program Managers, and Executives can view all dependencies.');
     }
-    return this.dependenciesService.findAll();
+    return this.dependenciesService.findAll(req.user.tenantId);
   }
 
   // "Received" inbox - dependencies the current user is the owner of
@@ -47,7 +47,7 @@ export class DependenciesController {
   @Get('received')
   async findReceived(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    return this.dependenciesService.findReceived(currentUser.id);
+    return this.dependenciesService.findReceived(currentUser.id, req.user.tenantId);
   }
 
   // "Sent" outbox - dependencies the current user filed against someone
@@ -55,13 +55,13 @@ export class DependenciesController {
   @Get('sent')
   async findSent(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    return this.dependenciesService.findSent(currentUser.id);
+    return this.dependenciesService.findSent(currentUser.id, req.user.tenantId);
   }
 
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    const dependency = await this.dependenciesService.findOne(id);
+    const dependency = await this.dependenciesService.findOne(id, req.user.tenantId);
     if (!this.dependenciesService.canView(dependency, currentUser)) {
       throw new ForbiddenException('You do not have access to this dependency.');
     }
@@ -80,7 +80,7 @@ export class DependenciesController {
     if (currentUser.role === UserRole.CLIENT) {
       throw new ForbiddenException('Clients cannot create dependency requests.');
     }
-    return this.dependenciesService.create(dto, currentUser.id, currentUser.email);
+    return this.dependenciesService.create(dto, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   @Patch(':id')
@@ -90,7 +90,7 @@ export class DependenciesController {
       id: currentUser.id,
       email: currentUser.email,
       role: currentUser.role,
-    });
+    }, req.user.tenantId);
   }
 
   @Patch(':id/status')
@@ -104,6 +104,6 @@ export class DependenciesController {
       id: currentUser.id,
       email: currentUser.email,
       role: currentUser.role,
-    });
+    }, req.user.tenantId);
   }
 }

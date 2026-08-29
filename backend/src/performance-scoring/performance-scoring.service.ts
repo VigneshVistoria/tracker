@@ -26,16 +26,16 @@ export class PerformanceScoringService {
   // The migration seeds exactly one row - this is a defensive fallback
   // only, so a missing row (e.g. a bad manual delete) doesn't 500 every
   // score calculation.
-  private async getOrCreateConfigRow(): Promise<PerformanceScoringConfig> {
-    const existing = await this.configRepository.find({ take: 1 });
+  private async getOrCreateConfigRow(tenantId: number): Promise<PerformanceScoringConfig> {
+    const existing = await this.configRepository.find({ where: { tenantId }, take: 1 });
     if (existing.length > 0) return existing[0];
-    return this.configRepository.save(this.configRepository.create({}));
+    return this.configRepository.save(this.configRepository.create({ tenantId }));
   }
 
-  async getEffectiveConfig(): Promise<EffectiveScoringConfig> {
+  async getEffectiveConfig(tenantId: number): Promise<EffectiveScoringConfig> {
     const [config, tiers] = await Promise.all([
-      this.getOrCreateConfigRow(),
-      this.tiersRepository.find({ order: { sortOrder: 'ASC', minDaysLate: 'ASC' } }),
+      this.getOrCreateConfigRow(tenantId),
+      this.tiersRepository.find({ where: { tenantId }, order: { sortOrder: 'ASC', minDaysLate: 'ASC' } }),
     ]);
     return { config, tiers };
   }
@@ -43,8 +43,9 @@ export class PerformanceScoringService {
   async updateConfig(
     dto: UpdatePerformanceScoringConfigDto,
     user: { id: number; email: string },
+    tenantId: number,
   ): Promise<PerformanceScoringConfig> {
-    const existing = await this.getOrCreateConfigRow();
+    const existing = await this.getOrCreateConfigRow(tenantId);
     const previous = { ...existing };
 
     if (dto.overduePenaltyMode !== undefined) existing.overduePenaltyMode = dto.overduePenaltyMode;
@@ -62,6 +63,7 @@ export class PerformanceScoringService {
       userId: user.id,
       userEmail: user.email,
       action: AuditActions.SCORING_CONFIG_UPDATED,
+      tenantId,
       entityType: 'PerformanceScoringConfig',
       entityId: saved.id,
       details: { previous, updated: dto },
@@ -70,12 +72,13 @@ export class PerformanceScoringService {
     return saved;
   }
 
-  async createTier(dto: CreateOverduePenaltyTierDto, user: { id: number; email: string }): Promise<OverduePenaltyTier> {
+  async createTier(dto: CreateOverduePenaltyTierDto, user: { id: number; email: string }, tenantId: number): Promise<OverduePenaltyTier> {
     const tier = this.tiersRepository.create({
       minDaysLate: dto.minDaysLate,
       maxDaysLate: dto.maxDaysLate ?? null,
       penaltyPercent: dto.penaltyPercent,
       sortOrder: dto.sortOrder ?? dto.minDaysLate,
+      tenantId,
     });
     const saved = await this.tiersRepository.save(tier);
 
@@ -83,6 +86,7 @@ export class PerformanceScoringService {
       userId: user.id,
       userEmail: user.email,
       action: AuditActions.OVERDUE_TIER_CREATED,
+      tenantId,
       entityType: 'OverduePenaltyTier',
       entityId: saved.id,
       details: { ...dto },
@@ -95,8 +99,9 @@ export class PerformanceScoringService {
     id: number,
     dto: UpdateOverduePenaltyTierDto,
     user: { id: number; email: string },
+    tenantId: number,
   ): Promise<OverduePenaltyTier> {
-    const tier = await this.tiersRepository.findOne({ where: { id } });
+    const tier = await this.tiersRepository.findOne({ where: { id, tenantId } });
     if (!tier) {
       throw new NotFoundException(`Overdue penalty tier #${id} not found`);
     }
@@ -113,6 +118,7 @@ export class PerformanceScoringService {
       userId: user.id,
       userEmail: user.email,
       action: AuditActions.OVERDUE_TIER_UPDATED,
+      tenantId,
       entityType: 'OverduePenaltyTier',
       entityId: saved.id,
       details: { previous, updated: dto },
@@ -121,8 +127,8 @@ export class PerformanceScoringService {
     return saved;
   }
 
-  async removeTier(id: number, user: { id: number; email: string }): Promise<void> {
-    const tier = await this.tiersRepository.findOne({ where: { id } });
+  async removeTier(id: number, user: { id: number; email: string }, tenantId: number): Promise<void> {
+    const tier = await this.tiersRepository.findOne({ where: { id, tenantId } });
     if (!tier) {
       throw new NotFoundException(`Overdue penalty tier #${id} not found`);
     }
@@ -132,6 +138,7 @@ export class PerformanceScoringService {
       userId: user.id,
       userEmail: user.email,
       action: AuditActions.OVERDUE_TIER_DELETED,
+      tenantId,
       entityType: 'OverduePenaltyTier',
       entityId: id,
       details: { deleted: tier },

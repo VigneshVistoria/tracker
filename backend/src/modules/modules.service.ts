@@ -60,34 +60,35 @@ export class ModulesService {
     private eventsGateway: EventsGateway,
   ) {}
 
-  findAllForProject(projectId: number): Promise<ProjectModule[]> {
-    return this.modulesRepository.find({ where: { projectId }, order: { createdAt: 'ASC' } });
+  findAllForProject(projectId: number, tenantId: number): Promise<ProjectModule[]> {
+    return this.modulesRepository.find({ where: { projectId, tenantId }, order: { createdAt: 'ASC' } });
   }
 
-  async findOne(id: number): Promise<ProjectModule> {
-    const module = await this.modulesRepository.findOne({ where: { id } });
+  async findOne(id: number, tenantId: number): Promise<ProjectModule> {
+    const module = await this.modulesRepository.findOne({ where: { id, tenantId } });
     if (!module) {
       throw new NotFoundException(`Module #${id} not found`);
     }
     return module;
   }
 
-  async create(dto: CreateModuleDto, userId: number): Promise<ProjectModule> {
-    const project = await this.projectsService.findOne(dto.projectId);
+  async create(dto: CreateModuleDto, userId: number, tenantId: number): Promise<ProjectModule> {
+    const project = await this.projectsService.findOne(dto.projectId, tenantId);
     const module = this.modulesRepository.create({
       projectId: project.id,
       projectName: project.name,
       name: dto.name,
       description: dto.description,
       createdByUserId: userId,
+      tenantId,
     });
     const saved = await this.modulesRepository.save(module);
     this.eventsGateway.emitModuleCreated(saved);
     return saved;
   }
 
-  async update(id: number, dto: UpdateModuleDto): Promise<ProjectModule> {
-    const module = await this.findOne(id);
+  async update(id: number, dto: UpdateModuleDto, tenantId: number): Promise<ProjectModule> {
+    const module = await this.findOne(id, tenantId);
     if (dto.name !== undefined) module.name = dto.name;
     if (dto.description !== undefined) module.description = dto.description;
 
@@ -96,19 +97,19 @@ export class ModulesService {
     // Keep the denormalized module name on every issue in this module in
     // sync, same as Sprint does for its own name changes.
     if (dto.name !== undefined) {
-      await this.issuesRepository.update({ moduleId: id }, { moduleName: saved.name });
+      await this.issuesRepository.update({ moduleId: id, tenantId }, { moduleName: saved.name });
     }
 
     this.eventsGateway.emitModuleUpdated(saved);
     return saved;
   }
 
-  async remove(id: number): Promise<void> {
-    await this.findOne(id);
+  async remove(id: number, tenantId: number): Promise<void> {
+    await this.findOne(id, tenantId);
     // Unassign rather than orphan - same as Sprint.remove().
-    await this.issuesRepository.update({ moduleId: id }, { moduleId: null, moduleName: null });
+    await this.issuesRepository.update({ moduleId: id, tenantId }, { moduleId: null, moduleName: null });
     await this.modulesRepository.delete(id);
-    this.eventsGateway.emitModuleDeleted(id);
+    this.eventsGateway.emitModuleDeleted(id, tenantId);
   }
 
   // --- Drill-down: project -> module -> issue ---
@@ -190,11 +191,11 @@ export class ModulesService {
   // module's own rollup. Deliberately doesn't include individual issues -
   // those are fetched separately (getModuleOverview) only when a module
   // is expanded, so this stays a light payload.
-  async getProjectOverview(projectId: number) {
-    const project = await this.projectsService.findOne(projectId);
+  async getProjectOverview(projectId: number, tenantId: number) {
+    const project = await this.projectsService.findOne(projectId, tenantId);
     const [modules, issues] = await Promise.all([
-      this.findAllForProject(projectId),
-      this.issuesRepository.find({ where: { projectId } }),
+      this.findAllForProject(projectId, tenantId),
+      this.issuesRepository.find({ where: { projectId, tenantId } }),
     ]);
 
     const issuesByModuleId = new Map<number, Issue[]>();
@@ -237,9 +238,9 @@ export class ModulesService {
   }
 
   // Level 3: one module's issues, each with their own rollup.
-  async getModuleOverview(moduleId: number) {
-    const module = await this.findOne(moduleId);
-    const issues = await this.issuesRepository.find({ where: { moduleId }, order: { createdAt: 'ASC' } });
+  async getModuleOverview(moduleId: number, tenantId: number) {
+    const module = await this.findOne(moduleId, tenantId);
+    const issues = await this.issuesRepository.find({ where: { moduleId, tenantId }, order: { createdAt: 'ASC' } });
 
     return {
       module: { id: module.id, name: module.name, description: module.description, projectId: module.projectId },
@@ -251,10 +252,10 @@ export class ModulesService {
   // Same synthetic "Unassigned" bucket as getProjectOverview, exposed as
   // its own lookup so the frontend can drill into it exactly like a real
   // module (moduleId: null in the URL).
-  async getUnassignedOverview(projectId: number) {
-    await this.projectsService.findOne(projectId);
+  async getUnassignedOverview(projectId: number, tenantId: number) {
+    await this.projectsService.findOne(projectId, tenantId);
     const issues = await this.issuesRepository.find({
-      where: { projectId },
+      where: { projectId, tenantId },
       order: { createdAt: 'ASC' },
     });
     const unassigned = issues.filter((i) => i.moduleId == null);

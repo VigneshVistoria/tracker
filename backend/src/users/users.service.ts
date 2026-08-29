@@ -34,8 +34,15 @@ export class UsersService {
     return this.usersRepository.findOne({ where: { email, tenantId } });
   }
 
+  // Safe to use unscoped only for a self-lookup (id came from the caller's
+  // own validated JWT `sub`, so it can only ever resolve to their own
+  // record) - every other caller must use findByIdAndTenant instead.
   findById(id: number): Promise<User | null> {
     return this.usersRepository.findOne({ where: { id }, relations: ['projects'] });
+  }
+
+  findByIdAndTenant(id: number, tenantId: number): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { id, tenantId }, relations: ['projects'] });
   }
 
   count(): Promise<number> {
@@ -46,8 +53,8 @@ export class UsersService {
     return this.usersRepository.count({ where: { tenantId } });
   }
 
-  findAll(): Promise<User[]> {
-    return this.usersRepository.find({ relations: ['projects'], order: { createdAt: 'DESC' } });
+  findAll(tenantId: number): Promise<User[]> {
+    return this.usersRepository.find({ where: { tenantId }, relations: ['projects'], order: { createdAt: 'DESC' } });
   }
 
   // Used by the plain registration flow (no role/projects choice there).
@@ -66,7 +73,7 @@ export class UsersService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    const projects = await this.resolveProjects(dto.projectIds);
+    const projects = await this.resolveProjects(dto.projectIds, tenantId);
 
     const user = this.usersRepository.create({
       email: dto.email,
@@ -83,8 +90,8 @@ export class UsersService {
     });
   }
 
-  async update(id: number, dto: UpdateUserDto): Promise<User> {
-    const user = await this.findById(id);
+  async update(id: number, dto: UpdateUserDto, tenantId: number): Promise<User> {
+    const user = await this.findByIdAndTenant(id, tenantId);
     if (!user) {
       throw new NotFoundException(`User #${id} not found`);
     }
@@ -92,7 +99,7 @@ export class UsersService {
     if (dto.fullName !== undefined) user.fullName = dto.fullName;
     if (dto.role !== undefined) user.role = dto.role;
     if (dto.password) user.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    if (dto.projectIds !== undefined) user.projects = await this.resolveProjects(dto.projectIds);
+    if (dto.projectIds !== undefined) user.projects = await this.resolveProjects(dto.projectIds, tenantId);
 
     return this.usersRepository.save(user);
   }
@@ -100,20 +107,20 @@ export class UsersService {
   // Program Manager is a normal role now (ReleaseBot, 2026-08-22) - more
   // than one person can hold it, so this returns all of them rather than
   // a single singleton like the old isProgramManager flag did.
-  findProgramManagers(): Promise<User[]> {
-    return this.usersRepository.find({ where: { role: UserRole.PROGRAM_MANAGER } });
+  findProgramManagers(tenantId: number): Promise<User[]> {
+    return this.usersRepository.find({ where: { role: UserRole.PROGRAM_MANAGER, tenantId } });
   }
 
   // Generic role lookup - used by ReleaseBot Phase 1's notifications
   // (QA on a Leadership Request ticket, Administrators on a blocked
   // creation attempt) and expected to grow more callers as later phases
   // add more role-targeted notifications.
-  findByRole(role: UserRole): Promise<User[]> {
-    return this.usersRepository.find({ where: { role } });
+  findByRole(role: UserRole, tenantId: number): Promise<User[]> {
+    return this.usersRepository.find({ where: { role, tenantId } });
   }
 
-  private async resolveProjects(projectIds?: number[]): Promise<Project[]> {
+  private async resolveProjects(projectIds: number[] | undefined, tenantId: number): Promise<Project[]> {
     if (!projectIds || projectIds.length === 0) return [];
-    return this.projectsRepository.find({ where: { id: In(projectIds) } });
+    return this.projectsRepository.find({ where: { id: In(projectIds), tenantId } });
   }
 }

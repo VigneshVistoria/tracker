@@ -55,37 +55,37 @@ export class TestCasesController {
   @Get()
   async findAll(@Query('projectId') projectId: string | undefined, @Req() req: any) {
     await this.requireViewer(req);
-    return this.testCasesService.findAll(projectId ? Number(projectId) : undefined);
+    return this.testCasesService.findAll(req.user.tenantId, projectId ? Number(projectId) : undefined);
   }
 
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.requireViewer(req);
-    return this.testCasesService.findOne(id);
+    return this.testCasesService.findOne(id, req.user.tenantId);
   }
 
   @Get(':id/executions')
   async findExecutions(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.requireViewer(req);
-    return this.testCasesService.findExecutions(id);
+    return this.testCasesService.findExecutions(id, req.user.tenantId);
   }
 
   @Post()
   async create(@Body() dto: CreateTestCaseDto, @Req() req: any) {
     const currentUser = await this.requireEditor(req);
-    return this.testCasesService.create(dto, currentUser.id, currentUser.email);
+    return this.testCasesService.create(dto, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   @Post('bulk-import')
   async bulkImport(@Body() dto: BulkImportTestCasesDto, @Req() req: any) {
     const currentUser = await this.requireEditor(req);
-    return this.testCasesService.bulkImport(dto.csvText, currentUser.id, currentUser.email);
+    return this.testCasesService.bulkImport(dto.csvText, currentUser.id, currentUser.email, req.user.tenantId);
   }
 
   @Patch(':id')
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTestCaseDto, @Req() req: any) {
     await this.requireEditor(req);
-    return this.testCasesService.update(id, dto);
+    return this.testCasesService.update(id, dto, req.user.tenantId);
   }
 
   @Post(':id/executions')
@@ -95,6 +95,6 @@ export class TestCasesController {
     @Req() req: any,
   ) {
     const currentUser = await this.requireEditor(req);
-    return this.testCasesService.recordExecution(id, dto, currentUser.id, currentUser.email);
+    return this.testCasesService.recordExecution(id, dto, currentUser.id, currentUser.email, req.user.tenantId);
   }
 }

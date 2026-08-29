@@ -51,43 +51,43 @@ export class ModulesController {
   @Get('modules')
   async findAllForProject(@Query('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
     await this.assertProjectAccess(projectId, req);
-    return this.modulesService.findAllForProject(projectId);
+    return this.modulesService.findAllForProject(projectId, req.user.tenantId);
   }
 
   @Get('projects/:id/overview')
   async getProjectOverview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.assertProjectAccess(id, req);
-    return this.modulesService.getProjectOverview(id);
+    return this.modulesService.getProjectOverview(id, req.user.tenantId);
   }
 
   @Get('projects/:id/modules/unassigned')
   async getUnassignedOverview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.assertProjectAccess(id, req);
-    return this.modulesService.getUnassignedOverview(id);
+    return this.modulesService.getUnassignedOverview(id, req.user.tenantId);
   }
 
   @Get('modules/:id/overview')
   async getModuleOverview(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
-    const module = await this.modulesService.findOne(id);
+    const module = await this.modulesService.findOne(id, req.user.tenantId);
     await this.assertProjectAccess(module.projectId, req);
-    return this.modulesService.getModuleOverview(id);
+    return this.modulesService.getModuleOverview(id, req.user.tenantId);
   }
 
   @Post('modules')
   @UseGuards(AdminGuard)
   create(@Body() dto: CreateModuleDto, @Req() req: any) {
-    return this.modulesService.create(dto, req.user.sub);
+    return this.modulesService.create(dto, req.user.sub, req.user.tenantId);
   }
 
   @Patch('modules/:id')
   @UseGuards(AdminGuard)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateModuleDto) {
-    return this.modulesService.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateModuleDto, @Req() req: any) {
+    return this.modulesService.update(id, dto, req.user.tenantId);
   }
 
   @Delete('modules/:id')
   @UseGuards(AdminGuard)
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.modulesService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    return this.modulesService.remove(id, req.user.tenantId);
   }
 }

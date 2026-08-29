@@ -39,8 +39,8 @@ export class TeamsIntegrationController {
 
   @Get()
   @UseGuards(JwtAuthGuard, AdminGuard)
-  list() {
-    return this.subscriptionsRepo.find({ order: { createdAt: 'DESC' } });
+  list(@Req() req: any) {
+    return this.subscriptionsRepo.find({ where: { tenantId: req.user.tenantId }, order: { createdAt: 'DESC' } });
   }
 
   @Post('connect')
@@ -63,6 +63,7 @@ export class TeamsIntegrationController {
       expirationDateTime: new Date(graphResult.expirationDateTime),
       active: true,
       createdByUserId: req.user.sub,
+      tenantId: req.user.tenantId,
     });
 
     return this.subscriptionsRepo.save(record);
@@ -70,8 +71,8 @@ export class TeamsIntegrationController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, AdminGuard)
-  async disconnect(@Param('id', ParseIntPipe) id: number) {
-    const record = await this.subscriptionsRepo.findOne({ where: { id } });
+  async disconnect(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const record = await this.subscriptionsRepo.findOne({ where: { id, tenantId: req.user.tenantId } });
     if (!record) return { ok: true };
 
     await this.teamsGraph.deleteSubscription(record.graphSubscriptionId);

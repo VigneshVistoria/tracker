@@ -19,13 +19,13 @@ export class DailyUpdatesService {
     private eventsGateway: EventsGateway,
   ) {}
 
-  async create(dto: CreateDailyUpdateDto, userId: number, userEmail: string): Promise<DailyUpdate> {
+  async create(dto: CreateDailyUpdateDto, userId: number, userEmail: string, tenantId: number): Promise<DailyUpdate> {
     const date = dto.date || todayIso();
 
     // Find this person's most recent update strictly before today's date,
     // so we know what was left pending last time.
     const previous = await this.repo.findOne({
-      where: { userId, date: LessThan(date) },
+      where: { userId, tenantId, date: LessThan(date) },
       order: { date: 'DESC' },
     });
     const previousPendingTasks = previous?.pendingTasks || [];
@@ -45,6 +45,7 @@ export class DailyUpdatesService {
       pendingText: dto.pendingText,
       blockersText: dto.blockersText,
       ...analysis,
+      tenantId,
     });
 
     const saved = await this.repo.save(update);
@@ -52,20 +53,20 @@ export class DailyUpdatesService {
     return saved;
   }
 
-  findHistoryForUser(userId: number): Promise<DailyUpdate[]> {
-    return this.repo.find({ where: { userId }, order: { date: 'DESC' } });
+  findHistoryForUser(userId: number, tenantId: number): Promise<DailyUpdate[]> {
+    return this.repo.find({ where: { userId, tenantId }, order: { date: 'DESC' } });
   }
 
-  findAll(date?: string): Promise<DailyUpdate[]> {
+  findAll(tenantId: number, date?: string): Promise<DailyUpdate[]> {
     return this.repo.find({
-      where: date ? { date } : {},
+      where: date ? { date, tenantId } : { tenantId },
       order: { date: 'DESC', userEmail: 'ASC' },
     });
   }
 
-  async teamSummary(date?: string) {
+  async teamSummary(tenantId: number, date?: string) {
     const targetDate = date || todayIso();
-    const updates = await this.repo.find({ where: { date: targetDate } });
+    const updates = await this.repo.find({ where: { date: targetDate, tenantId } });
 
     const counts = { on_track: 0, at_risk: 0, blocked: 0 };
     for (const u of updates) counts[u.status] = (counts[u.status] || 0) + 1;
