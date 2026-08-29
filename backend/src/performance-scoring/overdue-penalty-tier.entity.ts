@@ -10,6 +10,12 @@ export class OverduePenaltyTier {
   @PrimaryGeneratedColumn()
   id: number;
 
+  // Multi-tenant conversion Phase A - unused until Phase C wires up query
+  // filtering. Nullable only until the migration's backfill runs, which
+  // also adds the NOT NULL + FK.
+  @Column({ nullable: true })
+  tenantId: number;
+
   @Column({ type: 'int' })
   minDaysLate: number;
 

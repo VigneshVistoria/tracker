@@ -13,6 +13,12 @@ export class AuditLog {
   @PrimaryGeneratedColumn()
   id: number;
 
+  // Multi-tenant conversion Phase A - unused until Phase C wires up query
+  // filtering. Nullable only until the migration's backfill runs, which
+  // also adds the NOT NULL + FK.
+  @Column({ nullable: true })
+  tenantId: number;
+
   // Null for actions taken by an integration/system process (e.g. the
   // Teams bot itself, a scheduled escalation job) rather than a logged-in
   // person.

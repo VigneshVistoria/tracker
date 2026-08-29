@@ -31,6 +31,12 @@ export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
+  // Multi-tenant conversion Phase A - unused until Phase B/C wire up
+  // tenant-scoped auth and query filtering. Nullable only until the
+  // migration's backfill runs, which also adds the NOT NULL + FK.
+  @Column({ nullable: true })
+  tenantId: number;
+
   @Column({ unique: true })
   email: string;
 
