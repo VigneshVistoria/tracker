@@ -253,6 +253,11 @@ export default function PerformanceDashboard() {
               </div>
             </>
           )}
+          {!isWideView && !selfRow && (
+            <div className={styles.card}>
+              <div className={styles.empty}>No assigned work found for this filter.</div>
+            </div>
+          )}
 
           {/* Wide view: team-wide shape first, full leaderboard demoted below. */}
           {isWideView && distribution && (
