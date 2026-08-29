@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
+import Breadcrumbs from '../../../components/ui/Breadcrumbs';
+import CompletionVsTargetBar from '../../../components/CompletionVsTargetBar';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
@@ -11,6 +13,22 @@ const RISK_STYLE = {
   Medium: { background: 'var(--color-amber-tint)', color: 'var(--color-amber-dark)' },
   Low: { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' },
 };
+
+// Solid (non-tint) equivalents of RISK_STYLE, for left-border accents -
+// kept in sync with the badge colors above so risk reads as one
+// continuous color language from project -> module -> issue.
+const RISK_BORDER_COLOR = {
+  High: 'var(--color-red)',
+  Medium: 'var(--color-amber)',
+  Low: 'var(--color-teal)',
+};
+
+const STATUS_FILTERS = ['All', 'At Risk', 'In Progress', 'Completed'];
+
+// High risk first, so problem modules surface without scrolling past
+// everything that's fine. Array.sort is stable, so same-risk modules
+// keep their original relative order.
+const RISK_SORT_RANK = { High: 0, Medium: 1, Low: 2 };
 
 function RiskBadge({ level }) {
   return (
@@ -22,29 +40,27 @@ function RiskBadge({ level }) {
 
 function StatRow({ completionPercent, riskLevel, keyFocusArea, status, issueCount }) {
   return (
-    <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
-      <span className={styles.badge}>{status}</span>
-      <RiskBadge level={riskLevel} />
-      <span className={styles.issueMeta}>{completionPercent}% complete</span>
-      <span className={styles.issueMeta}>{issueCount} issue{issueCount === 1 ? '' : 's'}</span>
-      <span className={styles.issueMeta}>Key focus: {keyFocusArea}</span>
+    <div>
+      <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className={styles.badge}>{status}</span>
+        <RiskBadge level={riskLevel} />
+        <span className={styles.issueMeta}>{issueCount} issue{issueCount === 1 ? '' : 's'}</span>
+        <span className={styles.issueMeta}>Key focus: {keyFocusArea}</span>
+      </div>
+      <div style={{ marginTop: 'var(--space-2)', maxWidth: '420px' }}>
+        <CompletionVsTargetBar label="Completion" percent={completionPercent} />
+      </div>
     </div>
   );
 }
 
-function ModuleRow({ module, projectId }) {
-  const [expanded, setExpanded] = useState(false);
+function ModuleRow({ module, projectId, initialExpanded }) {
+  const [expanded, setExpanded] = useState(initialExpanded);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const toggle = () => {
-    if (expanded) {
-      setExpanded(false);
-      return;
-    }
-    setExpanded(true);
-    if (detail) return;
+  const fetchDetail = () => {
     setLoading(true);
     const path = module.id == null ? `/projects/${projectId}/modules/unassigned` : `/modules/${module.id}/overview`;
     apiFetch(path)
@@ -53,8 +69,26 @@ function ModuleRow({ module, projectId }) {
       .finally(() => setLoading(false));
   };
 
+  useEffect(() => {
+    if (initialExpanded) fetchDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggle = () => {
+    if (expanded) {
+      setExpanded(false);
+      return;
+    }
+    setExpanded(true);
+    if (detail) return;
+    fetchDetail();
+  };
+
   return (
-    <div className={styles.card} style={{ marginBottom: 'var(--space-3)' }}>
+    <div
+      className={styles.card}
+      style={{ marginBottom: 'var(--space-3)', borderLeft: `3px solid ${RISK_BORDER_COLOR[module.riskLevel] || RISK_BORDER_COLOR.Low}` }}
+    >
       <div
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
         onClick={toggle}
@@ -92,7 +126,10 @@ function ModuleRow({ module, projectId }) {
                 <tbody>
                   {detail.issues.map((issue) => (
                     <tr key={issue.id}>
-                      <td className={styles.issueId}>
+                      <td
+                        className={styles.issueId}
+                        style={{ borderLeft: `3px solid ${RISK_BORDER_COLOR[issue.riskLevel] || RISK_BORDER_COLOR.Low}` }}
+                      >
                         <Link href={`/issues/${issue.id}`}>#{issue.id}</Link>
                       </td>
                       <td className={styles.tableTitleCell}>
@@ -178,6 +215,7 @@ export default function ProjectOverview() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
 
   const loadOverview = () => {
     if (!id) return;
@@ -203,14 +241,38 @@ export default function ProjectOverview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const sortedModules = useMemo(() => {
+    if (!overview) return [];
+    return [...overview.modules].sort(
+      (a, b) => (RISK_SORT_RANK[a.riskLevel] ?? 2) - (RISK_SORT_RANK[b.riskLevel] ?? 2),
+    );
+  }, [overview]);
+
+  const filterCounts = useMemo(() => {
+    const counts = { All: sortedModules.length, 'At Risk': 0, 'In Progress': 0, Completed: 0 };
+    sortedModules.forEach((m) => {
+      if (counts[m.status] !== undefined) counts[m.status] += 1;
+    });
+    return counts;
+  }, [sortedModules]);
+
+  const visibleModules = statusFilter === 'All'
+    ? sortedModules
+    : sortedModules.filter((m) => m.status === statusFilter);
+
   return (
     <AppShell>
+      <Breadcrumbs
+        items={[
+          { label: 'Projects', href: '/admin/projects' },
+          { label: overview ? overview.project.name : 'Project' },
+        ]}
+      />
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>{overview ? overview.project.name : 'Project'}</h1>
           <p className={styles.pageSubtitle}>Status, completion, and risk, drilled down by module and issue.</p>
         </div>
-        <Link href="/admin/projects" className={styles.backLink}>&larr; Back to projects</Link>
       </div>
 
       {loading && <div className={styles.empty}>Loading...</div>}
@@ -218,7 +280,7 @@ export default function ProjectOverview() {
 
       {overview && (
         <>
-          <div className={styles.card}>
+          <div className={styles.card} style={{ borderLeft: `3px solid ${RISK_BORDER_COLOR[overview.riskLevel] || RISK_BORDER_COLOR.Low}` }}>
             <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Overall</h3>
             {overview.project.description && (
               <p className={styles.issueMeta} style={{ marginTop: 0 }}>{overview.project.description}</p>
@@ -229,13 +291,39 @@ export default function ProjectOverview() {
           {isAdmin && <CreateModuleForm projectId={id} onCreated={loadOverview} />}
 
           <h3 style={{ fontSize: '1rem' }}>Modules ({overview.modules.length})</h3>
+
+          {overview.modules.length > 0 && (
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+              {STATUS_FILTERS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={statusFilter === f ? `${styles.button} ${styles.buttonAccent}` : styles.buttonSecondary}
+                  onClick={() => setStatusFilter(f)}
+                >
+                  {f} ({filterCounts[f] ?? 0})
+                </button>
+              ))}
+            </div>
+          )}
+
           {overview.modules.length === 0 && (
             <div className={styles.card}>
               <div className={styles.empty}>No modules yet for this project.</div>
             </div>
           )}
-          {overview.modules.map((module) => (
-            <ModuleRow key={module.id ?? 'unassigned'} module={module} projectId={id} />
+          {overview.modules.length > 0 && visibleModules.length === 0 && (
+            <div className={styles.card}>
+              <div className={styles.empty}>No modules match &quot;{statusFilter}&quot;.</div>
+            </div>
+          )}
+          {visibleModules.map((module) => (
+            <ModuleRow
+              key={module.id ?? 'unassigned'}
+              module={module}
+              projectId={id}
+              initialExpanded={module.riskLevel === 'High'}
+            />
           ))}
         </>
       )}
