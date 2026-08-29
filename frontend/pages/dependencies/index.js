@@ -5,12 +5,16 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import {
+  STATUS_OPTIONS,
+  BLOCKED_STATUSES,
+  RESOLVED_STATUSES,
+  PRIORITY_OPTIONS,
+  IMPACT_OPTIONS,
+  statusBucketStyle,
+  dueMeta,
+} from '../../lib/dependencyStatus';
 
-const STATUS_OPTIONS = ['Open', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed', 'Blocked', 'Escalated'];
-const BLOCKED_STATUSES = ['Blocked', 'Escalated'];
-const RESOLVED_STATUSES = ['Resolved', 'Closed'];
-const PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
-const IMPACT_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
 const ALL_VIEW_ROLES = ['admin', 'program_manager', 'executive'];
 
 const EMPTY_CREATE_FORM = {
@@ -27,41 +31,6 @@ const EMPTY_CREATE_FORM = {
   blocking: false,
   estimatedDelayDays: '',
 };
-
-function formatDate(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-// Collapses the entity's 8 workflow statuses down to the 3 buckets an
-// inbox actually needs to scan at a glance - the precise status is still
-// shown as the badge text, this just drives the color.
-function statusBucketStyle(status) {
-  if (BLOCKED_STATUSES.includes(status)) {
-    return { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)', border: 'var(--color-red)' };
-  }
-  if (RESOLVED_STATUSES.includes(status)) {
-    return { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)', border: 'var(--color-teal)' };
-  }
-  return { background: 'var(--color-moss-tint)', color: 'var(--color-moss-dark)', border: 'var(--color-moss)' };
-}
-
-// Overdue -> red, due within 2 days -> amber, otherwise neutral - so the
-// due-date chip carries its own urgency signal without needing the row's
-// status to also be "Blocked".
-function dueMeta(requiredByDate) {
-  if (!requiredByDate) return null;
-  const due = new Date(requiredByDate);
-  const today = new Date(new Date().toDateString());
-  const diffDays = Math.round((due - today) / 86400000);
-  if (diffDays < 0) {
-    return { label: `Overdue · ${formatDate(requiredByDate)}`, style: { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' } };
-  }
-  if (diffDays <= 2) {
-    return { label: `Due ${formatDate(requiredByDate)}`, style: { background: 'var(--color-moss-tint)', color: 'var(--color-moss-dark)' } };
-  }
-  return { label: `Due ${formatDate(requiredByDate)}`, style: { background: 'var(--color-slate-tint)', color: 'var(--color-ink-soft)' } };
-}
 
 function DependencyCard({ dependency, perspective, onStatusChange, busy }) {
   const bucket = statusBucketStyle(dependency.status);
@@ -106,7 +75,8 @@ function DependencyCard({ dependency, perspective, onStatusChange, busy }) {
       </p>
 
       <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-        Blocking <Link href={`/issues/${dependency.impactedIssueId}`}>#{dependency.impactedIssueId}</Link> &middot; {dependency.title}
+        Blocking <Link href={`/issues/${dependency.impactedIssueId}`}>#{dependency.impactedIssueId}</Link> &middot;{' '}
+        <Link href={`/dependencies/${dependency.id}`}>{dependency.title}</Link>
       </p>
 
       {dependency.blockingReason && (
