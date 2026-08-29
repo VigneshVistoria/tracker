@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Tracker",
+    "slug": "tracker-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#1d4ed8"
+    },
+    "android": {
+      "package": "com.vistoriasystems.trackermobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#1d4ed8"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.vistoriasystems.trackermobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Tracker needs camera access to photograph what you're filing a ticket about.",
+        "NSPhotoLibraryUsageDescription": "Tracker needs photo library access so you can attach an existing photo to a ticket."
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Tracker needs camera access to photograph what you're filing a ticket about."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Tracker needs photo library access so you can attach an existing photo to a ticket."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "apiUrl": "https://tracker.vistoriasystems.com/api",
+      "eas": {
+        "projectId": "b6f47144-f34b-4a66-ad82-79b6520d2e95"
+      }
+    },
+    "owner": "vigneshvistorias-team"
+  }
+}
