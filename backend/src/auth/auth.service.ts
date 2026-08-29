@@ -48,7 +48,7 @@ export class AuthService {
 
     const user = await this.usersService.create(dto.email, passwordHash, tenantId, dto.fullName, role);
 
-    return this.buildAuthResponse(user.id, user.email, user.fullName, user.role, tenantId);
+    return this.buildAuthResponse(user, tenantId);
   }
 
   async login(dto: LoginDto, tenantId: number) {
@@ -64,15 +64,24 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    return this.buildAuthResponse(user.id, user.email, user.fullName, user.role, tenantId);
+    return this.buildAuthResponse(user, tenantId);
   }
 
-  private buildAuthResponse(id: number, email: string, fullName: string, role: UserRole, tenantId: number) {
-    const payload = { sub: id, email, tenantId };
+  private buildAuthResponse(
+    user: { id: number; email: string; fullName: string; role: UserRole; isPlatformSuperadmin: boolean },
+    tenantId: number,
+  ) {
+    const payload = { sub: user.id, email: user.email, tenantId };
     const accessToken = this.jwtService.sign(payload);
     return {
       accessToken,
-      user: { id, email, fullName, role },
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        isPlatformSuperadmin: user.isPlatformSuperadmin,
+      },
     };
   }
 }

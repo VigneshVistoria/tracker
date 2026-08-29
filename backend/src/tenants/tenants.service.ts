@@ -1,8 +1,21 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
+import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { Tenant } from './tenant.entity';
+import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/user.entity';
+
+const SALT_ROUNDS = 10;
+
+export interface CreatedTenant {
+  tenant: Tenant;
+  adminUser: { id: number; email: string };
+  temporaryPassword: string;
+}
 
 @Injectable()
 export class TenantsService {
@@ -10,6 +23,7 @@ export class TenantsService {
     @InjectRepository(Tenant)
     private tenantsRepository: Repository<Tenant>,
     private config: ConfigService,
+    private usersService: UsersService,
   ) {}
 
   findById(id: number): Promise<Tenant | null> {
@@ -41,6 +55,39 @@ export class TenantsService {
     }
 
     return this.fallbackTenant();
+  }
+
+  // Staff-only tenant provisioning (Phase E) - creates the tenant and its
+  // first admin user together. No self-serve signup exists for a new
+  // tenant, per the decision to keep this manual for now. A random
+  // temporary password is generated and returned once (never stored in
+  // plaintext, never logged) - the calling superadmin is responsible for
+  // communicating it to the new admin out of band.
+  async create(dto: CreateTenantDto): Promise<CreatedTenant> {
+    const existing = await this.tenantsRepository.findOne({ where: { subdomain: dto.subdomain } });
+    if (existing) {
+      throw new ConflictException(`Subdomain "${dto.subdomain}" is already in use.`);
+    }
+
+    const tenant = await this.tenantsRepository.save(
+      this.tenantsRepository.create({ name: dto.name, subdomain: dto.subdomain }),
+    );
+
+    const temporaryPassword = randomBytes(12).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, SALT_ROUNDS);
+    const adminUser = await this.usersService.create(
+      dto.adminEmail,
+      passwordHash,
+      tenant.id,
+      dto.adminFullName,
+      UserRole.ADMIN,
+    );
+
+    return {
+      tenant,
+      adminUser: { id: adminUser.id, email: adminUser.email },
+      temporaryPassword,
+    };
   }
 
   private async fallbackTenant(): Promise<Tenant> {

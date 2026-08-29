@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from './admin.guard';
+import { PlatformSuperadminGuard } from './platform-superadmin.guard';
 
 // Kept as a shared reference so it can be both imported here AND
 // re-exported below - modules that import GuardsModule need this
@@ -23,7 +24,7 @@ const userRepositoryModule = TypeOrmModule.forFeature([User]);
       }),
     }),
   ],
-  providers: [JwtAuthGuard, AdminGuard],
-  exports: [JwtAuthGuard, AdminGuard, JwtModule, userRepositoryModule],
+  providers: [JwtAuthGuard, AdminGuard, PlatformSuperadminGuard],
+  exports: [JwtAuthGuard, AdminGuard, PlatformSuperadminGuard, JwtModule, userRepositoryModule],
 })
 export class GuardsModule {}

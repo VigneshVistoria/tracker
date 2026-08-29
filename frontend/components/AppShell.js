@@ -25,6 +25,7 @@ import {
   LogOut,
   Menu,
   X,
+  Globe,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -63,6 +64,11 @@ const TEST_CASES_NAV_ITEM = { href: '/qa/test-cases', label: 'Test Cases', icon:
 // queue of showstopper tickets the heuristic flagged as questionable,
 // waiting for one of them to confirm or downgrade.
 const SHOWSTOPPER_REVIEW_NAV_ITEM = { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert };
+
+// Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
+// is orthogonal to `role` (a tenant's own admin doesn't get this just by
+// being role === 'admin').
+const PLATFORM_TENANTS_NAV_ITEM = { href: '/platform/tenants', label: 'Platform Tenants', icon: Globe };
 
 // Clients only ever see their own tickets - a minimal nav with nothing
 // internal (no Issues list, Projects, Dependency, Test Cases, etc.).
@@ -249,6 +255,13 @@ export default function AppShell({ children }) {
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
                 ))}
+              </>
+            )}
+
+            {user.isPlatformSuperadmin && (
+              <>
+                <div className={styles.navSection}>{!collapsed && 'Platform'}</div>
+                <SingleNavLink item={PLATFORM_TENANTS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
               </>
             )}
           </div>

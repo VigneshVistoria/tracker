@@ -56,6 +56,12 @@ export class User {
   @Column({ type: 'enum', enum: UserRole, default: UserRole.DEVELOPER })
   role: UserRole;
 
+  // Multi-tenant conversion Phase E - platform-wide staff power (can
+  // create new tenants), orthogonal to `role` above (a tenant's own
+  // admin). Never set via any user-facing form; granted manually.
+  @Column({ default: false })
+  isPlatformSuperadmin: boolean;
+
   // The projects this user is allowed to see/work in.
   @ManyToMany(() => Project)
   @JoinTable({ name: 'user_projects' })
