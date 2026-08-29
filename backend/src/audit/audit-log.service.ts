@@ -18,6 +18,9 @@ export const AuditActions = {
   OVERDUE_TIER_CREATED: 'overdue_tier_created',
   OVERDUE_TIER_UPDATED: 'overdue_tier_updated',
   OVERDUE_TIER_DELETED: 'overdue_tier_deleted',
+  DEPENDENCY_CREATED: 'dependency_created',
+  DEPENDENCY_UPDATED: 'dependency_updated',
+  DEPENDENCY_STATUS_CHANGED: 'dependency_status_changed',
 } as const;
 
 export interface RecordAuditEntryInput {
