@@ -598,6 +598,11 @@ export class IssuesService {
         if (!module) {
           throw new NotFoundException(`Module #${dto.moduleId} not found`);
         }
+        if (module.projectId !== issue.projectId) {
+          throw new BadRequestException(
+            `Module #${dto.moduleId} belongs to a different project than this issue.`,
+          );
+        }
         issue.moduleId = module.id;
         issue.moduleName = module.name;
       }

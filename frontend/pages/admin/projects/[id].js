@@ -7,6 +7,7 @@ import CompletionVsTargetBar from '../../../components/CompletionVsTargetBar';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
+import { getSocket } from '../../../lib/socket';
 
 const RISK_STYLE = {
   High: { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
@@ -54,11 +55,71 @@ function StatRow({ completionPercent, riskLevel, keyFocusArea, status, issueCoun
   );
 }
 
-function ModuleRow({ module, projectId, initialExpanded }) {
+function EditModuleForm({ module, onSaved, onCancel }) {
+  const { showToast } = useToast();
+  const [form, setForm] = useState({ name: module.name, description: module.description || '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      await apiFetch(`/modules/${module.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: form.name, description: form.description || undefined }),
+      });
+      showToast('Module updated', 'success');
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} style={{ marginTop: 'var(--space-2)' }} onClick={(e) => e.stopPropagation()}>
+      {error && <div className={styles.error}>{error}</div>}
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor={`moduleName-${module.id}`}>Name</label>
+        <input
+          className={styles.input}
+          id={`moduleName-${module.id}`}
+          required
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+      </div>
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor={`moduleDescription-${module.id}`}>Description</label>
+        <textarea
+          className={styles.textarea}
+          id={`moduleDescription-${module.id}`}
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
+          {saving ? 'Saving...' : 'Save'}
+        </button>
+        <button className={styles.buttonSecondary} type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ModuleRow({ module, projectId, initialExpanded, isAdmin, onChanged }) {
+  const { showToast } = useToast();
   const [expanded, setExpanded] = useState(initialExpanded);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState(false);
 
   const fetchDetail = () => {
     setLoading(true);
@@ -84,6 +145,19 @@ function ModuleRow({ module, projectId, initialExpanded }) {
     fetchDetail();
   };
 
+  const handleDelete = async (e) => {
+    e.stopPropagation();
+    try {
+      await apiFetch(`/modules/${module.id}`, { method: 'DELETE' });
+      showToast('Module deleted', 'success');
+      onChanged();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const canManage = isAdmin && module.id != null;
+
   return (
     <div
       className={styles.card}
@@ -97,8 +171,37 @@ function ModuleRow({ module, projectId, initialExpanded }) {
           <p style={{ margin: 0, fontWeight: 600 }}>{module.name}</p>
           {module.description && <p className={styles.issueMeta} style={{ margin: 0 }}>{module.description}</p>}
         </div>
-        <span className={styles.issueMeta}>{expanded ? '–' : '+'}</span>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+          {canManage && !editing && (
+            <>
+              <button
+                type="button"
+                className={styles.buttonSecondary}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </button>
+              <button type="button" className={styles.buttonSecondary} onClick={handleDelete}>
+                Delete
+              </button>
+            </>
+          )}
+          <span className={styles.issueMeta}>{expanded ? '–' : '+'}</span>
+        </div>
       </div>
+      {editing && (
+        <EditModuleForm
+          module={module}
+          onCancel={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      )}
       <div style={{ marginTop: 'var(--space-2)' }}>
         <StatRow {...module} />
       </div>
@@ -241,6 +344,30 @@ export default function ProjectOverview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Refetch the whole overview on any module change for this project -
+  // the payload is a derived aggregate (completion/risk are computed, not
+  // stored), so a full refetch is simpler and more correct than trying to
+  // merge a raw module row into it client-side. Mirrors admin/projects.js's
+  // socket-listener pattern for the sibling project list page.
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket || !id) return;
+    const projectId = Number(id);
+    const onModuleCreatedOrUpdated = (module) => {
+      if (module.projectId === projectId) loadOverview();
+    };
+    const onModuleDeleted = () => loadOverview();
+    socket.on('module:created', onModuleCreatedOrUpdated);
+    socket.on('module:updated', onModuleCreatedOrUpdated);
+    socket.on('module:deleted', onModuleDeleted);
+    return () => {
+      socket.off('module:created', onModuleCreatedOrUpdated);
+      socket.off('module:updated', onModuleCreatedOrUpdated);
+      socket.off('module:deleted', onModuleDeleted);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   const sortedModules = useMemo(() => {
     if (!overview) return [];
     return [...overview.modules].sort(
@@ -323,6 +450,8 @@ export default function ProjectOverview() {
               module={module}
               projectId={id}
               initialExpanded={module.riskLevel === 'High'}
+              isAdmin={isAdmin}
+              onChanged={loadOverview}
             />
           ))}
         </>

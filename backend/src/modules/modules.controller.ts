@@ -41,7 +41,16 @@ export class ModulesController {
 
   private async assertProjectAccess(projectId: number, req: any): Promise<void> {
     const currentUser = await this.usersService.findById(req.user.sub);
-    if (currentUser.role === UserRole.ADMIN) return;
+    // Admins, Executives, and Program Managers get leadership-wide
+    // visibility regardless of project assignment - same convention as
+    // ProjectsController and the Dependency Log.
+    if (
+      currentUser.role === UserRole.ADMIN ||
+      currentUser.role === UserRole.EXECUTIVE ||
+      currentUser.role === UserRole.PROGRAM_MANAGER
+    ) {
+      return;
+    }
     const assignedProjectIds = (currentUser.projects || []).map((p) => p.id);
     if (!assignedProjectIds.includes(projectId)) {
       throw new ForbiddenException('You do not have access to this project');

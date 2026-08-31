@@ -12,6 +12,8 @@
 -- 26=Internal Analytics Portal
 -- Demo module ids: 3=Checkout Flow 4=Inventory Sync 5=Receipt Printing
 -- (all in project 24); 6=Authentication 7=Transactions (both in project 25)
+-- - these rows are created by seed-demo-modules.sql, which must run
+-- BEFORE this script.
 
 BEGIN;
 

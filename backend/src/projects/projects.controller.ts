@@ -26,11 +26,17 @@ export class ProjectsController {
     private usersService: UsersService,
   ) {}
 
-  // Admins see every project. Regular users only see the ones assigned to them.
+  // Admins, Executives, and Program Managers see every project - same
+  // leadership-wide visibility the Dependency Log grants those three
+  // roles. Everyone else only sees the ones assigned to them.
+  private static hasLeadershipWideAccess(role: UserRole): boolean {
+    return role === UserRole.ADMIN || role === UserRole.EXECUTIVE || role === UserRole.PROGRAM_MANAGER;
+  }
+
   @Get()
   async findAll(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    if (currentUser.role === UserRole.ADMIN) {
+    if (ProjectsController.hasLeadershipWideAccess(currentUser.role)) {
       return this.projectsService.findAll(req.user.tenantId);
     }
     return currentUser.projects;
@@ -41,7 +47,7 @@ export class ProjectsController {
     const currentUser = await this.usersService.findById(req.user.sub);
     const project = await this.projectsService.findOne(id, req.user.tenantId);
 
-    if (currentUser.role !== UserRole.ADMIN) {
+    if (!ProjectsController.hasLeadershipWideAccess(currentUser.role)) {
       const isAssigned = currentUser.projects.some((p) => p.id === id);
       if (!isAssigned) {
         throw new ForbiddenException('You do not have access to this project');

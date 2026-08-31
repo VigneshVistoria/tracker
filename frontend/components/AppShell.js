@@ -45,10 +45,13 @@ const NAV_ITEMS = [
 // Dependency is still included - any role can be routed a dependency to
 // own, Executive included, even though Executive can't create one.
 // Performance is included too - Executive is one of the wide-view roles
-// on that dashboard.
+// on that dashboard. Projects is included too - Executive gets the same
+// leadership-wide, read-only completion%/risk drill-down Program Manager
+// sees (backend grants this regardless of project assignment).
 const EXECUTIVE_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dependencies', label: 'Dependency', icon: Workflow },
+  { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
   { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
 ];
