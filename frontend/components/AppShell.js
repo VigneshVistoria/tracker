@@ -53,6 +53,7 @@ const EXECUTIVE_NAV_ITEMS = [
   { href: '/dependencies', label: 'Dependency', icon: Workflow },
   { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
   { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp },
+  { href: '/time-sheets', label: 'Time Sheets', icon: Timer },
   { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
 ];
 
@@ -67,6 +68,13 @@ const TEST_CASES_NAV_ITEM = { href: '/qa/test-cases', label: 'Test Cases', icon:
 // queue of showstopper tickets the heuristic flagged as questionable,
 // waiting for one of them to confirm or downgrade.
 const SHOWSTOPPER_REVIEW_NAV_ITEM = { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert };
+
+// Developer + Program Manager + Admin only - QA has no involvement in
+// Time Sheets today (doesn't log time, doesn't view the report), so it's
+// kept out of the shared NAV_ITEMS array rather than shown as a dead end.
+// Executive gets its own entry in EXECUTIVE_NAV_ITEMS below (report-only,
+// no log-time form - the page itself handles that distinction).
+const TIME_SHEETS_NAV_ITEM = { href: '/time-sheets', label: 'Time Sheets', icon: Timer };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -242,6 +250,10 @@ export default function AppShell({ children }) {
                 <SingleNavLink item={TEST_CASES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
                 <SingleNavLink item={SHOWSTOPPER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
               </>
+            )}
+
+            {(user.role === 'developer' || user.role === 'program_manager' || user.role === 'admin') && (
+              <SingleNavLink item={TIME_SHEETS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'admin' && (

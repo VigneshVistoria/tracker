@@ -7,12 +7,104 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
-import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets } from '../../lib/status';
+import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets, getIssueMoveAction } from '../../lib/status';
 
 function formatDate(value) {
   if (!value) return '—';
   const d = new Date(value);
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+const MOVE_ACTION_TO_REQUEST = {
+  patch: (id, targetStatus) => ({ path: `/issues/${id}`, options: { method: 'PATCH', body: JSON.stringify({ status: targetStatus }) } }),
+  'submit-for-review': (id) => ({ path: `/issues/${id}/submit-for-review`, options: { method: 'POST' } }),
+  approve: (id) => ({ path: `/issues/${id}/approve`, options: { method: 'POST' } }),
+  reject: (id) => ({ path: `/issues/${id}/reject`, options: { method: 'POST' } }),
+  'qa-approve': (id) => ({ path: `/issues/${id}/qa-approve`, options: { method: 'POST' } }),
+  'qa-reject': (id) => ({ path: `/issues/${id}/qa-reject`, options: { method: 'POST' } }),
+};
+
+function KanbanBoard({ issues, user, onMoved }) {
+  const { showToast } = useToast();
+  const router = useRouter();
+  const [dragOverColumn, setDragOverColumn] = useState(null);
+
+  const handleDrop = async (targetStatus, e) => {
+    setDragOverColumn(null);
+    const issueId = Number(e.dataTransfer.getData('text/issue-id'));
+    const issue = issues.find((i) => i.id === issueId);
+    if (!issue) return;
+
+    const { allowed, action } = getIssueMoveAction(issue, targetStatus, user);
+    if (!allowed) {
+      showToast(`You can't move #${issue.id} to "${targetStatus}" that way.`, 'error');
+      return;
+    }
+    try {
+      const { path, options } = MOVE_ACTION_TO_REQUEST[action](issue.id, targetStatus);
+      const updated = await apiFetch(path, options);
+      onMoved(updated);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  return (
+    <div className={styles.boardWrap} style={{ display: 'flex', gap: 'var(--space-3)', overflowX: 'auto', alignItems: 'flex-start' }}>
+      {STATUS_OPTIONS.map((column) => {
+        const columnIssues = issues.filter((i) => i.status === column);
+        return (
+          <div
+            key={column}
+            style={{
+              minWidth: '260px',
+              flex: '1 0 260px',
+              background: dragOverColumn === column ? 'var(--color-paper)' : 'transparent',
+              borderRadius: '8px',
+              padding: 'var(--space-2)',
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOverColumn(column);
+            }}
+            onDragLeave={() => setDragOverColumn((c) => (c === column ? null : c))}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDrop(column, e);
+            }}
+          >
+            <p style={{ margin: '0 0 var(--space-2)', fontWeight: 600 }}>
+              {column} <span className={styles.issueMeta}>({columnIssues.length})</span>
+            </p>
+            {columnIssues.map((issue) => (
+              <div
+                key={issue.id}
+                className={styles.card}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/issue-id', String(issue.id));
+                }}
+                onClick={() => router.push(`/issues/${issue.id}`)}
+                style={{ marginBottom: 'var(--space-2)', cursor: 'grab' }}
+              >
+                <p className={styles.issueId} style={{ margin: 0 }}>#{issue.id}</p>
+                <p style={{ margin: 'var(--space-1) 0', fontWeight: 500 }}>{issue.title}</p>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {issue.showstopper && (
+                    <span className={styles.badge} style={{ background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
+                      Showstopper
+                    </span>
+                  )}
+                  {issue.sla && <SlaBadge state={issue.sla.state} />}
+                </div>
+              </div>
+            ))}
+            {columnIssues.length === 0 && <p className={styles.issueMeta}>No tickets.</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function IssuesList() {
@@ -27,12 +119,21 @@ export default function IssuesList() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [showstopperFilter, setShowstopperFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState('table');
 
   const load = useCallback(() => {
     apiFetch('/issues')
       .then(setIssues)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  const upsertIssue = useCallback((issue) => {
+    setIssues((prev) => {
+      const exists = prev.some((i) => i.id === issue.id);
+      if (exists) return prev.map((i) => (i.id === issue.id ? issue : i));
+      return [issue, ...prev];
+    });
   }, []);
 
   useEffect(() => {
@@ -50,21 +151,13 @@ export default function IssuesList() {
     const socket = getSocket();
     if (!socket) return;
 
-    const upsert = (issue) => {
-      setIssues((prev) => {
-        const exists = prev.some((i) => i.id === issue.id);
-        if (exists) return prev.map((i) => (i.id === issue.id ? issue : i));
-        return [issue, ...prev];
-      });
-    };
-
     const onCreated = (issue) => {
       showToast(`New issue: "${issue.title}"`, 'info');
-      upsert(issue);
+      upsertIssue(issue);
     };
     const onUpdated = (issue) => {
       showToast(`Issue #${issue.id} updated \u2192 ${issue.status}`, 'success');
-      upsert(issue);
+      upsertIssue(issue);
     };
 
     socket.on('issue:created', onCreated);
@@ -73,7 +166,7 @@ export default function IssuesList() {
       socket.off('issue:created', onCreated);
       socket.off('issue:updated', onUpdated);
     };
-  }, [showToast]);
+  }, [showToast, upsertIssue]);
 
   const visibleIssues = useMemo(() => {
     return issues.filter((issue) => {
@@ -117,6 +210,23 @@ export default function IssuesList() {
 
       {error && <div className={styles.error}>{error}</div>}
 
+      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+        <button
+          type="button"
+          className={viewMode === 'table' ? styles.button : styles.buttonSecondary}
+          onClick={() => setViewMode('table')}
+        >
+          Table
+        </button>
+        <button
+          type="button"
+          className={viewMode === 'board' ? styles.button : styles.buttonSecondary}
+          onClick={() => setViewMode('board')}
+        >
+          Board
+        </button>
+      </div>
+
       <div className={styles.filterBar}>
         <div className={styles.filterGroup}>
           <label className={styles.filterLabel} htmlFor="search">Search</label>
@@ -157,7 +267,7 @@ export default function IssuesList() {
 
       {loading && <div className={styles.empty}>Loading...</div>}
 
-      {!loading && visibleIssues.length === 0 && (
+      {!loading && viewMode === 'table' && visibleIssues.length === 0 && (
         <div className={styles.card}>
           <div className={styles.empty}>
             {issues.length === 0 ? (
@@ -176,7 +286,11 @@ export default function IssuesList() {
         </div>
       )}
 
-      {!loading && visibleIssues.length > 0 && (
+      {!loading && viewMode === 'board' && (
+        <KanbanBoard issues={visibleIssues} user={user} onMoved={upsertIssue} />
+      )}
+
+      {!loading && viewMode === 'table' && visibleIssues.length > 0 && (
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>

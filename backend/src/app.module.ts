@@ -21,6 +21,7 @@ import { SlaConfig } from './sla/sla-config.entity';
 import { PerformanceScoringConfig } from './performance-scoring/performance-scoring-config.entity';
 import { OverduePenaltyTier } from './performance-scoring/overdue-penalty-tier.entity';
 import { Tenant } from './tenants/tenant.entity';
+import { TimeEntry } from './time-sheets/time-entry.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -41,6 +42,7 @@ import { PerformanceScoringModule } from './performance-scoring/performance-scor
 import { PerformanceDashboardModule } from './performance-dashboard/performance-dashboard.module';
 import { AiAssistModule } from './ai-assist/ai-assist.module';
 import { TenantsModule } from './tenants/tenants.module';
+import { TimeSheetsModule } from './time-sheets/time-sheets.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -76,6 +78,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           PerformanceScoringConfig,
           OverduePenaltyTier,
           Tenant,
+          TimeEntry,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -105,6 +108,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     PerformanceDashboardModule,
     AiAssistModule,
     TenantsModule,
+    TimeSheetsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
