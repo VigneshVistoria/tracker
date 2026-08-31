@@ -5,11 +5,12 @@ import { Issue } from '../issues/issue.entity';
 import { SprintsService } from './sprints.service';
 import { SprintsController } from './sprints.controller';
 import { GuardsModule } from '../common/guards.module';
+import { UsersModule } from '../users/users.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sprint, Issue]), GuardsModule, ProjectsModule, EventsModule],
+  imports: [TypeOrmModule.forFeature([Sprint, Issue]), GuardsModule, UsersModule, ProjectsModule, EventsModule],
   controllers: [SprintsController],
   providers: [SprintsService],
   exports: [SprintsService],

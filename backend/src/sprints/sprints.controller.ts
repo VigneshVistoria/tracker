@@ -10,6 +10,7 @@ import {
   ParseIntPipe,
   UseGuards,
   Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SprintsService } from './sprints.service';
 import { CreateSprintDto } from './dto/create-sprint.dto';
@@ -17,22 +18,40 @@ import { UpdateSprintDto } from './dto/update-sprint.dto';
 import { AddIssuesToSprintDto } from './dto/add-issues-to-sprint.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../common/admin.guard';
+import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/user.entity';
 
-// Viewing sprints is open to any logged-in user (same as Projects) -
-// creating, editing, and moving issues in/out of a sprint is admin-only,
-// consistent with how Projects are managed today.
+// Viewing sprints is open to anyone with access to the parent project -
+// same check ProjectsController.findOne/ModulesController use - creating,
+// editing, and moving issues in/out of a sprint is admin-only, consistent
+// with how Projects are managed today.
 @Controller('sprints')
 @UseGuards(JwtAuthGuard)
 export class SprintsController {
-  constructor(private sprintsService: SprintsService) {}
+  constructor(
+    private sprintsService: SprintsService,
+    private usersService: UsersService,
+  ) {}
+
+  private async assertProjectAccess(projectId: number, req: any): Promise<void> {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (currentUser.role === UserRole.ADMIN) return;
+    const assignedProjectIds = (currentUser.projects || []).map((p) => p.id);
+    if (!assignedProjectIds.includes(projectId)) {
+      throw new ForbiddenException('You do not have access to this project');
+    }
+  }
 
   @Get()
-  findAllForProject(@Query('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+  async findAllForProject(@Query('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    await this.assertProjectAccess(projectId, req);
     return this.sprintsService.findAllForProject(projectId, req.user.tenantId);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const sprint = await this.sprintsService.findOne(id, req.user.tenantId);
+    await this.assertProjectAccess(sprint.projectId, req);
     return this.sprintsService.findOneWithIssues(id, req.user.tenantId);
   }
 
