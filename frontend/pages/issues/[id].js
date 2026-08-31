@@ -341,6 +341,17 @@ export default function IssueDetail() {
           <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{issue.description || 'No description provided.'}</p>
         </div>
 
+        {issue.photoBase64 && (
+          <div className={styles.card}>
+            <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Attached Photo</p>
+            <img
+              src={`data:image/jpeg;base64,${issue.photoBase64}`}
+              alt="Attached to ticket"
+              style={{ maxWidth: '100%', borderRadius: 8 }}
+            />
+          </div>
+        )}
+
         {issue.lastRejectionReason && (
           <div className={styles.card} style={{ borderLeft: '3px solid var(--color-red)', background: 'var(--color-red-tint)' }}>
             <p style={{ margin: 0, fontWeight: 600 }}>Note from the team</p>

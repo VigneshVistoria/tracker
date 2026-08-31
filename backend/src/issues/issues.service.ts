@@ -105,9 +105,20 @@ export class IssuesService {
   }
 
   // Same as findOne, but also returns the dependency tickets spun off
-  // from this issue, if any - used by the issue detail page.
+  // from this issue, if any - used by the issue detail page. photoBase64
+  // is select:false everywhere else (kept out of list queries and out of
+  // findOne(), which every workflow transition below re-saves and
+  // broadcasts over sockets) - this is the one path that re-adds it,
+  // since it's only ever used by the single-ticket detail view.
   async findOneWithDependencies(id: number, tenantId: number): Promise<Issue & { dependencies: Issue[] }> {
-    const issue = await this.findOne(id, tenantId);
+    const issue = await this.issuesRepository
+      .createQueryBuilder('issue')
+      .addSelect('issue.photoBase64')
+      .where('issue.id = :id AND issue.tenantId = :tenantId', { id, tenantId })
+      .getOne();
+    if (!issue) {
+      throw new NotFoundException(`Issue #${id} not found`);
+    }
     const dependencies = await this.issuesRepository.find({
       where: { parentIssueId: id, tenantId },
       order: { createdAt: 'ASC' },
@@ -134,6 +145,7 @@ export class IssuesService {
     const issue = this.issuesRepository.create({
       title: dto.title,
       description: dto.description,
+      photoBase64: dto.photoBase64,
       createdByUserId: userId,
       createdByEmail: userEmail,
       mode: dto.mode || IssueMode.MANUAL,
@@ -148,7 +160,11 @@ export class IssuesService {
     await this.applyAssigneeAndProject(issue, dto, tenantId);
 
     let saved = await this.issuesRepository.save(issue);
-    this.eventsGateway.emitIssueCreated(saved);
+    // Don't broadcast the (potentially large) photo blob to every connected
+    // socket in the tenant - it's only needed on the single-ticket detail
+    // view, which fetches it via findOne() instead.
+    const { photoBase64: _omittedFromBroadcast, ...socketPayload } = saved;
+    this.eventsGateway.emitIssueCreated(socketPayload);
     if (saved.assigneeUserId) {
       this.eventEmitter.emit('issue.assigned', { issue: saved });
     }

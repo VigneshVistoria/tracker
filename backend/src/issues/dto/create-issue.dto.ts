@@ -11,6 +11,12 @@ export class CreateIssueDto {
   @IsString()
   description?: string;
 
+  // Raw base64 (no data-URI prefix) of a photo captured/chosen at ticket
+  // creation - optional, mobile app only for now.
+  @IsOptional()
+  @IsString()
+  photoBase64?: string;
+
   @IsOptional()
   @IsInt()
   assigneeUserId?: number;

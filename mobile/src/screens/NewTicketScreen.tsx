@@ -24,6 +24,7 @@ interface AssignableUser {
 export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [me, setMe] = useState<StoredUser | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [ocrRunning, setOcrRunning] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -57,28 +58,38 @@ export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => vo
   };
 
   const pickFromCamera = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Camera permission needed', 'Enable camera access in Settings to take a photo.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-      runOcr(result.assets[0].uri);
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Camera permission needed', 'Enable camera access in Settings to take a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true });
+      if (!result.canceled && result.assets[0]) {
+        setPhotoUri(result.assets[0].uri);
+        setPhotoBase64(result.assets[0].base64 ?? null);
+        runOcr(result.assets[0].uri);
+      }
+    } catch (err) {
+      Alert.alert('Could not open camera', 'Try again, or choose an existing photo instead.');
     }
   };
 
   const pickFromLibrary = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photo library permission needed', 'Enable photo access in Settings to choose a photo.');
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-    if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
-      runOcr(result.assets[0].uri);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Photo library permission needed', 'Enable photo access in Settings to choose a photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: true });
+      if (!result.canceled && result.assets[0]) {
+        setPhotoUri(result.assets[0].uri);
+        setPhotoBase64(result.assets[0].base64 ?? null);
+        runOcr(result.assets[0].uri);
+      }
+    } catch (err) {
+      Alert.alert('Could not open photo library', 'Try again, or take a new photo instead.');
     }
   };
 
@@ -92,6 +103,7 @@ export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => vo
           title,
           description: description || undefined,
           assigneeUserId: assigneeId ?? undefined,
+          photoBase64: photoBase64 ?? undefined,
         }),
       });
       setSubmittedId(issue.id);
@@ -104,6 +116,7 @@ export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => vo
 
   const resetForm = () => {
     setPhotoUri(null);
+    setPhotoBase64(null);
     setTitle('');
     setDescription('');
     setAssigneeId(null);
@@ -152,7 +165,12 @@ export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => vo
       )}
 
       {photoUri && (
-        <TouchableOpacity onPress={() => setPhotoUri(null)}>
+        <TouchableOpacity
+          onPress={() => {
+            setPhotoUri(null);
+            setPhotoBase64(null);
+          }}
+        >
           <Text style={styles.retake}>Retake / choose a different photo</Text>
         </TouchableOpacity>
       )}

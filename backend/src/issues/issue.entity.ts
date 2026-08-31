@@ -71,6 +71,15 @@ export class Issue {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  // Optional photo captured/attached at ticket creation (mobile app "Take
+  // Photo"/"Choose Existing" buttons), stored as raw base64 (no data-URI
+  // prefix). select:false keeps it out of every list query (findAll,
+  // findByAssignee, etc.) so a photo on one ticket doesn't bloat every
+  // issue-list response - it's explicitly re-selected in findOne() below,
+  // since only the single-ticket detail view needs to render it.
+  @Column({ type: 'text', nullable: true, select: false })
+  photoBase64: string;
+
   @Column({
     type: 'enum',
     enum: IssueStatus,
