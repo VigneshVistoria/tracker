@@ -69,6 +69,43 @@ export class IssueNotificationsService {
     );
   }
 
+  // Fires from SlaDueSoonSchedulerService's recurring poll, at most once per
+  // issue (dedupe tracked via Issue.slaDueSoonNotifiedAt) - notifies every
+  // Program Manager plus the assignee, same recipient list as the
+  // showstopper-flagged email above.
+  @OnEvent('issue.slaDueSoon')
+  async onSlaDueSoon({
+    issue,
+    dueAt,
+  }: {
+    issue: Issue;
+    dueAt: string;
+    targetHours: number;
+  }): Promise<void> {
+    const programManagers = await this.usersService.findProgramManagers(issue.tenantId);
+    const recipientEmails = new Set(programManagers.map((pm) => pm.email));
+    if (issue.assigneeEmail) recipientEmails.add(issue.assigneeEmail);
+
+    if (recipientEmails.size === 0) {
+      this.logger.debug(
+        `Issue #${issue.id} is due within the hour, but there's no Program Manager or assignee to notify.`,
+      );
+      return;
+    }
+
+    const dueAtFormatted = new Date(dueAt).toLocaleString();
+    const subject = `Due soon: #${issue.id} is due within the hour`;
+    const html =
+      `<p><strong>#${issue.id} - ${escapeHtml(issue.title)}</strong>` +
+      (issue.projectName ? ` in project <strong>${escapeHtml(issue.projectName)}</strong>` : '') +
+      ` is due within the hour - by <strong>${dueAtFormatted}</strong>.</p>` +
+      (issue.description ? `<p>${escapeHtml(issue.description)}</p>` : '');
+
+    await Promise.all(
+      Array.from(recipientEmails).map((email) => this.mailService.sendToAssignee(email, subject, html)),
+    );
+  }
+
   @OnEvent('issue.submittedForReview')
   async onSubmittedForReview({ issue, submittedByEmail }: { issue: Issue; submittedByEmail: string }): Promise<void> {
     // Program Manager is a normal role now (ReleaseBot, 2026-08-22), so

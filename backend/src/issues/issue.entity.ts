@@ -265,6 +265,14 @@ export class Issue {
   @Column({ type: 'timestamp', nullable: true })
   closedOn: Date;
 
+  // Dedupe guard for SlaDueSoonSchedulerService: set the first time the
+  // "due within an hour" email fires for this issue, so a recurring cron
+  // tick doesn't resend it every time it polls. Cleared back to null if a
+  // showstopper is un-flagged then re-flagged (see IssuesService.update()),
+  // so the ticket becomes eligible for a fresh due-soon check.
+  @Column({ type: 'timestamp', nullable: true })
+  slaDueSoonNotifiedAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 

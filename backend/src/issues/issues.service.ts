@@ -334,6 +334,10 @@ export class IssuesService {
     if (dto.description !== undefined) issue.description = dto.description;
     if (dto.mode !== undefined) issue.mode = dto.mode;
     if (dto.showstopper !== undefined) issue.showstopper = dto.showstopper;
+    // A showstopper that's un-flagged then re-flagged is eligible for a
+    // fresh "due soon" check - same false -> true transition that triggers
+    // handleShowstopperFlagged() below.
+    if (dto.showstopper && !previousShowstopper) issue.slaDueSoonNotifiedAt = null;
     if (dto.storyPoints !== undefined) issue.storyPoints = dto.storyPoints;
     if (dto.category !== undefined) issue.category = dto.category;
 
