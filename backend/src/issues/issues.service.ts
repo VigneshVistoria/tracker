@@ -603,6 +603,9 @@ export class IssuesService {
             `Module #${dto.moduleId} belongs to a different project than this issue.`,
           );
         }
+        if (!module.isActive) {
+          throw new BadRequestException(`Module "${module.name}" is deactivated and can't accept new issues.`);
+        }
         issue.moduleId = module.id;
         issue.moduleName = module.name;
       }

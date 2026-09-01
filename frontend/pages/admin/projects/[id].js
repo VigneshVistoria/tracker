@@ -113,7 +113,7 @@ function EditModuleForm({ module, onSaved, onCancel }) {
   );
 }
 
-function ModuleRow({ module, projectId, initialExpanded, isAdmin, onChanged }) {
+function ModuleRow({ module, projectId, initialExpanded, canManageModules, onChanged }) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(initialExpanded);
   const [detail, setDetail] = useState(null);
@@ -156,7 +156,19 @@ function ModuleRow({ module, projectId, initialExpanded, isAdmin, onChanged }) {
     }
   };
 
-  const canManage = isAdmin && module.id != null;
+  const handleToggleActive = async (e) => {
+    e.stopPropagation();
+    if (module.isActive && !confirm(`Deactivate "${module.name}"? It will no longer be assignable to new issues or Project Planning entries.`)) return;
+    try {
+      await apiFetch(`/modules/${module.id}/${module.isActive ? 'deactivate' : 'activate'}`, { method: 'PATCH' });
+      showToast(module.isActive ? 'Module deactivated' : 'Module activated', 'success');
+      onChanged();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  const canManage = canManageModules && module.id != null;
 
   return (
     <div
@@ -168,7 +180,14 @@ function ModuleRow({ module, projectId, initialExpanded, isAdmin, onChanged }) {
         onClick={toggle}
       >
         <div>
-          <p style={{ margin: 0, fontWeight: 600 }}>{module.name}</p>
+          <p style={{ margin: 0, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            {module.name}
+            {module.id != null && !module.isActive && (
+              <span className={styles.badge} style={{ background: 'var(--color-slate-tint)', color: 'var(--color-ink-soft)' }}>
+                Inactive
+              </span>
+            )}
+          </p>
           {module.description && <p className={styles.issueMeta} style={{ margin: 0 }}>{module.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
@@ -183,6 +202,9 @@ function ModuleRow({ module, projectId, initialExpanded, isAdmin, onChanged }) {
                 }}
               >
                 Edit
+              </button>
+              <button type="button" className={styles.buttonSecondary} onClick={handleToggleActive}>
+                {module.isActive ? 'Deactivate' : 'Activate'}
               </button>
               <button type="button" className={styles.buttonSecondary} onClick={handleDelete}>
                 Delete
@@ -315,7 +337,7 @@ export default function ProjectOverview() {
   const router = useRouter();
   const { id } = router.query;
   const [overview, setOverview] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [canManageModules, setCanManageModules] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -336,7 +358,10 @@ export default function ProjectOverview() {
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
-    if (storedUser) setIsAdmin(JSON.parse(storedUser).role === 'admin');
+    if (storedUser) {
+      const role = JSON.parse(storedUser).role;
+      setCanManageModules(role === 'admin' || role === 'program_manager');
+    }
   }, []);
 
   useEffect(() => {
@@ -415,7 +440,7 @@ export default function ProjectOverview() {
             <StatRow {...overview} />
           </div>
 
-          {isAdmin && <CreateModuleForm projectId={id} onCreated={loadOverview} />}
+          {canManageModules && <CreateModuleForm projectId={id} onCreated={loadOverview} />}
 
           <h3 style={{ fontSize: '1rem' }}>Modules ({overview.modules.length})</h3>
 
@@ -450,7 +475,7 @@ export default function ProjectOverview() {
               module={module}
               projectId={id}
               initialExpanded={module.riskLevel === 'High'}
-              isAdmin={isAdmin}
+              canManageModules={canManageModules}
               onChanged={loadOverview}
             />
           ))}

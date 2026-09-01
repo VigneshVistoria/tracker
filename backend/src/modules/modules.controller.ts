@@ -16,14 +16,15 @@ import { ModulesService } from './modules.service';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AdminGuard } from '../common/admin.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 
 // Viewing modules (and the drill-down overview) is open to anyone with
 // access to the parent project - same check ProjectsController.findOne
-// uses. Creating/editing/deleting modules is admin-only, consistent with
-// how Projects and Sprints are managed today.
+// uses. Creating/editing/deleting modules is Admin+Program Manager -
+// widened from admin-only so PM actually gets write access (the whole
+// point of the Project Module Creation task), same convention as
+// Categories/Teams/Labels.
 //
 // The /projects/:id/... overview routes live here rather than on
 // ProjectsController deliberately: this controller needs ModulesService,
@@ -57,10 +58,42 @@ export class ModulesController {
     }
   }
 
+  // Tenant-wide view, same role boundary as Project Planning's
+  // assertCanView - QA/Developer/Client get 403, not a filtered response.
+  private async assertCanView(userId: number): Promise<void> {
+    const currentUser = await this.usersService.findById(userId);
+    if (
+      currentUser.role !== UserRole.ADMIN &&
+      currentUser.role !== UserRole.EXECUTIVE &&
+      currentUser.role !== UserRole.PROGRAM_MANAGER
+    ) {
+      throw new ForbiddenException('Only Admin, Executive, and Program Manager can view all Modules.');
+    }
+  }
+
+  private async assertCanManage(userId: number): Promise<{ id: number; email: string }> {
+    const currentUser = await this.usersService.findById(userId);
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.PROGRAM_MANAGER) {
+      throw new ForbiddenException('Only Admin or Program Manager can manage modules.');
+    }
+    return { id: currentUser.id, email: currentUser.email };
+  }
+
   @Get('modules')
   async findAllForProject(@Query('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
     await this.assertProjectAccess(projectId, req);
     return this.modulesService.findAllForProject(projectId, req.user.tenantId);
+  }
+
+  // Tenant-wide list with %Complete, across every project - powers the
+  // Project Modules page. Separate from the route above so that route's
+  // existing dropdown consumers (Issue edit form, Project Planning) are
+  // never touched by this change.
+  @Get('modules/all')
+  async findAllWithCompletion(@Query('projectId') projectId: string | undefined, @Req() req: any) {
+    await this.assertCanView(req.user.sub);
+    const parsedProjectId = projectId !== undefined ? Number(projectId) : undefined;
+    return this.modulesService.findAllWithCompletion(req.user.tenantId, parsedProjectId);
   }
 
   @Get('projects/:id/overview')
@@ -83,20 +116,33 @@ export class ModulesController {
   }
 
   @Post('modules')
-  @UseGuards(AdminGuard)
-  create(@Body() dto: CreateModuleDto, @Req() req: any) {
-    return this.modulesService.create(dto, req.user.sub, req.user.tenantId);
+  async create(@Body() dto: CreateModuleDto, @Req() req: any) {
+    const user = await this.assertCanManage(req.user.sub);
+    return this.modulesService.create(dto, user, req.user.tenantId);
   }
 
   @Patch('modules/:id')
-  @UseGuards(AdminGuard)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateModuleDto, @Req() req: any) {
-    return this.modulesService.update(id, dto, req.user.tenantId);
+  async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateModuleDto, @Req() req: any) {
+    const user = await this.assertCanManage(req.user.sub);
+    return this.modulesService.update(id, dto, user, req.user.tenantId);
+  }
+
+  @Patch('modules/:id/deactivate')
+  async deactivate(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const user = await this.assertCanManage(req.user.sub);
+    return this.modulesService.setActive(id, false, user, req.user.tenantId);
+  }
+
+  @Patch('modules/:id/activate')
+  async activate(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const user = await this.assertCanManage(req.user.sub);
+    return this.modulesService.setActive(id, true, user, req.user.tenantId);
   }
 
   @Delete('modules/:id')
-  @UseGuards(AdminGuard)
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
-    return this.modulesService.remove(id, req.user.tenantId);
+  async remove(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const user = await this.assertCanManage(req.user.sub);
+    await this.modulesService.remove(id, user, req.user.tenantId);
+    return { success: true };
   }
 }

@@ -33,6 +33,14 @@ export class ProjectModule {
   @Column({ nullable: true })
   createdByUserId: number;
 
+  // Deactivate rather than hard-delete when a module is already
+  // referenced elsewhere (linked issues, Project Planning entries) -
+  // hidden from "assign to a module" pickers once false, but its
+  // existing links/history stay intact and still visible in the
+  // project/module drill-down.
+  @Column({ default: true })
+  isActive: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

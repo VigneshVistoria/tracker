@@ -1,12 +1,20 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProjectModule } from './project-module.entity';
 import { Issue, IssueStatus, IssueCategory } from '../issues/issue.entity';
+import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { ProjectsService } from '../projects/projects.service';
 import { EventsGateway } from '../events/events.gateway';
+import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+
+export interface ProjectModuleWithCompletion extends ProjectModule {
+  percentComplete: number | null;
+  completedIssueCount: number;
+  totalIssueCount: number;
+}
 
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 
@@ -56,12 +64,27 @@ export class ModulesService {
     private modulesRepository: Repository<ProjectModule>,
     @InjectRepository(Issue)
     private issuesRepository: Repository<Issue>,
+    @InjectRepository(ProjectPlanEntry)
+    private projectPlanEntriesRepository: Repository<ProjectPlanEntry>,
     private projectsService: ProjectsService,
     private eventsGateway: EventsGateway,
+    private auditLogService: AuditLogService,
   ) {}
 
-  findAllForProject(projectId: number, tenantId: number): Promise<ProjectModule[]> {
-    return this.modulesRepository.find({ where: { projectId, tenantId }, order: { createdAt: 'ASC' } });
+  // Dropdowns that let someone assign an issue/plan entry TO a module
+  // (Issue edit form, Project Planning's Module field) call this with no
+  // options - only active modules should be offered going forward. The
+  // project/module drill-down (getProjectOverview/getModuleOverview)
+  // needs full history including deactivated modules, so it explicitly
+  // passes includeInactive: true.
+  findAllForProject(
+    projectId: number,
+    tenantId: number,
+    options: { includeInactive?: boolean } = {},
+  ): Promise<ProjectModule[]> {
+    const where: Record<string, unknown> = { projectId, tenantId };
+    if (!options.includeInactive) where.isActive = true;
+    return this.modulesRepository.find({ where, order: { createdAt: 'ASC' } });
   }
 
   async findOne(id: number, tenantId: number): Promise<ProjectModule> {
@@ -72,23 +95,82 @@ export class ModulesService {
     return module;
   }
 
-  async create(dto: CreateModuleDto, userId: number, tenantId: number): Promise<ProjectModule> {
+  private async assertNameAvailable(projectId: number, name: string, tenantId: number, excludeId?: number): Promise<void> {
+    const existing = await this.modulesRepository.findOne({ where: { projectId, name, tenantId } });
+    if (existing && existing.id !== excludeId) {
+      throw new ConflictException(`A module named "${name}" already exists in this project.`);
+    }
+  }
+
+  // Same completed/total ratio ModulesService.summarize() already uses
+  // for the drill-down, and the identical convention
+  // ProjectPlanningService.computeCompletion() uses - null (not 0) when
+  // no issues are linked yet, distinct from "linked but none done".
+  private async computeCompletion(module: ProjectModule): Promise<ProjectModuleWithCompletion> {
+    const issues = await this.issuesRepository.find({ where: { moduleId: module.id, tenantId: module.tenantId } });
+    const totalIssueCount = issues.length;
+    if (totalIssueCount === 0) {
+      return { ...module, percentComplete: null, completedIssueCount: 0, totalIssueCount: 0 };
+    }
+    const completedIssueCount = issues.filter((i) => i.status === IssueStatus.READY_FOR_PRODUCTION).length;
+    const percentComplete = Math.round((completedIssueCount / totalIssueCount) * 100);
+    return { ...module, percentComplete, completedIssueCount, totalIssueCount };
+  }
+
+  // Tenant-wide (or project-filtered) list with %Complete attached -
+  // powers the Project Modules page. Includes inactive modules (shown
+  // with a status badge there), unlike findAllForProject's default.
+  async findAllWithCompletion(tenantId: number, projectId?: number): Promise<ProjectModuleWithCompletion[]> {
+    const where: Record<string, unknown> = { tenantId };
+    if (projectId != null) where.projectId = projectId;
+    const modules = await this.modulesRepository.find({ where, order: { createdAt: 'DESC' } });
+    return Promise.all(modules.map((m) => this.computeCompletion(m)));
+  }
+
+  async create(
+    dto: CreateModuleDto,
+    user: { id: number; email: string },
+    tenantId: number,
+  ): Promise<ProjectModule> {
     const project = await this.projectsService.findOne(dto.projectId, tenantId);
+    await this.assertNameAvailable(project.id, dto.name, tenantId);
+
     const module = this.modulesRepository.create({
       projectId: project.id,
       projectName: project.name,
       name: dto.name,
       description: dto.description,
-      createdByUserId: userId,
+      createdByUserId: user.id,
       tenantId,
     });
     const saved = await this.modulesRepository.save(module);
     this.eventsGateway.emitModuleCreated(saved);
+
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: AuditActions.MODULE_CREATED,
+      tenantId,
+      entityType: 'ProjectModule',
+      entityId: saved.id,
+      details: { projectId: saved.projectId, name: saved.name },
+    });
+
     return saved;
   }
 
-  async update(id: number, dto: UpdateModuleDto, tenantId: number): Promise<ProjectModule> {
+  async update(
+    id: number,
+    dto: UpdateModuleDto,
+    user: { id: number; email: string },
+    tenantId: number,
+  ): Promise<ProjectModule> {
     const module = await this.findOne(id, tenantId);
+    if (dto.name !== undefined && dto.name !== module.name) {
+      await this.assertNameAvailable(module.projectId, dto.name, tenantId, id);
+    }
+    const previous = { ...module };
+
     if (dto.name !== undefined) module.name = dto.name;
     if (dto.description !== undefined) module.description = dto.description;
 
@@ -101,15 +183,68 @@ export class ModulesService {
     }
 
     this.eventsGateway.emitModuleUpdated(saved);
+
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: AuditActions.MODULE_UPDATED,
+      tenantId,
+      entityType: 'ProjectModule',
+      entityId: saved.id,
+      details: { previous, updated: dto },
+    });
+
     return saved;
   }
 
-  async remove(id: number, tenantId: number): Promise<void> {
-    await this.findOne(id, tenantId);
-    // Unassign rather than orphan - same as Sprint.remove().
-    await this.issuesRepository.update({ moduleId: id, tenantId }, { moduleId: null, moduleName: null });
+  async setActive(
+    id: number,
+    isActive: boolean,
+    user: { id: number; email: string },
+    tenantId: number,
+  ): Promise<ProjectModule> {
+    const module = await this.findOne(id, tenantId);
+    module.isActive = isActive;
+    const saved = await this.modulesRepository.save(module);
+    this.eventsGateway.emitModuleUpdated(saved);
+
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: isActive ? AuditActions.MODULE_ACTIVATED : AuditActions.MODULE_DEACTIVATED,
+      tenantId,
+      entityType: 'ProjectModule',
+      entityId: saved.id,
+    });
+
+    return saved;
+  }
+
+  async remove(id: number, user: { id: number; email: string }, tenantId: number): Promise<void> {
+    const module = await this.findOne(id, tenantId);
+
+    const [linkedIssueCount, linkedPlanEntryCount] = await Promise.all([
+      this.issuesRepository.count({ where: { moduleId: id, tenantId } }),
+      this.projectPlanEntriesRepository.count({ where: { moduleId: id, tenantId } }),
+    ]);
+    if (linkedIssueCount > 0 || linkedPlanEntryCount > 0) {
+      throw new ConflictException(
+        `Can't delete "${module.name}" - it's referenced by ${linkedIssueCount} issue(s) and ${linkedPlanEntryCount} Project Planning entr${linkedPlanEntryCount === 1 ? 'y' : 'ies'}. Deactivate it instead.`,
+      );
+    }
+
     await this.modulesRepository.delete(id);
     this.eventsGateway.emitModuleDeleted(id, tenantId);
+
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: AuditActions.MODULE_DELETED,
+      tenantId,
+      entityType: 'ProjectModule',
+      entityId: id,
+      details: { deleted: module },
+    });
   }
 
   // --- Drill-down: project -> module -> issue ---
@@ -194,7 +329,7 @@ export class ModulesService {
   async getProjectOverview(projectId: number, tenantId: number) {
     const project = await this.projectsService.findOne(projectId, tenantId);
     const [modules, issues] = await Promise.all([
-      this.findAllForProject(projectId, tenantId),
+      this.findAllForProject(projectId, tenantId, { includeInactive: true }),
       this.issuesRepository.find({ where: { projectId, tenantId } }),
     ]);
 
@@ -212,6 +347,7 @@ export class ModulesService {
     const moduleRows = modules.map((module) => ({
       id: module.id,
       name: module.name,
+      isActive: module.isActive,
       description: module.description,
       ...this.summarize(issuesByModuleId.get(module.id) || []),
     }));
@@ -225,6 +361,7 @@ export class ModulesService {
       moduleRows.push({
         id: null,
         name: 'Unassigned',
+        isActive: true,
         description: null,
         ...this.summarize(unassignedIssues),
       });

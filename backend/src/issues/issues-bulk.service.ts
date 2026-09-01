@@ -201,8 +201,11 @@ export class IssuesBulkService {
       this.modulesRepository.find({ where: { tenantId } }),
     ]);
     const projectByName = new Map(allProjects.map((p) => [p.name.toLowerCase(), p]));
+    // Deactivated modules are treated the same as a module that doesn't
+    // exist - a bulk-imported row shouldn't attach to a retired module
+    // any more than the Issue edit form's dropdown should offer one.
     const moduleByProjectAndName = new Map(
-      allModules.map((m) => [`${m.projectId}::${m.name.toLowerCase()}`, m]),
+      allModules.filter((m) => m.isActive).map((m) => [`${m.projectId}::${m.name.toLowerCase()}`, m]),
     );
     const validStatuses = new Map(Object.values(IssueStatus).map((s) => [s.toLowerCase(), s]));
 

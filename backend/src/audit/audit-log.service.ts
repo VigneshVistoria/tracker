@@ -44,6 +44,11 @@ export const AuditActions = {
   PROJECT_PLAN_STATUS_CHANGED: 'project_plan_status_changed',
   PROJECT_PLAN_ACTIVATED: 'project_plan_activated',
   PROJECT_PLAN_DEACTIVATED: 'project_plan_deactivated',
+  MODULE_CREATED: 'module_created',
+  MODULE_UPDATED: 'module_updated',
+  MODULE_DELETED: 'module_deleted',
+  MODULE_ACTIVATED: 'module_activated',
+  MODULE_DEACTIVATED: 'module_deactivated',
 } as const;
 
 export interface RecordAuditEntryInput {

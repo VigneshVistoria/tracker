@@ -31,6 +31,7 @@ import {
   UsersRound,
   Tag,
   CalendarRange,
+  Boxes,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -103,6 +104,10 @@ const LABELS_NAV_ITEM = { href: '/admin/labels', label: 'Labels', icon: Tag };
 // every route including reads (unlike the 3 items above, which are
 // readable by anyone authenticated).
 const PROJECT_PLANNING_NAV_ITEM = { href: '/project-planning', label: 'Project Planning', icon: CalendarRange };
+
+// Same visibility rule as Project Planning - Admin/Executive/PM view,
+// create/deactivate further restricted to Admin/PM within the page.
+const PROJECT_MODULES_NAV_ITEM = { href: '/project-modules', label: 'Project Modules', icon: Boxes };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -296,6 +301,10 @@ export default function AppShell({ children }) {
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={PROJECT_PLANNING_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={PROJECT_MODULES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'admin' && (
