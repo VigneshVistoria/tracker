@@ -444,13 +444,14 @@ export default function TasksPage() {
                 <th>Status</th>
                 <th>% Complete</th>
                 <th>Ageing</th>
+                <th>Feedback</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={13} className={styles.empty}>No Tasks yet.</td>
+                  <td colSpan={14} className={styles.empty}>No Tasks yet.</td>
                 </tr>
               )}
               {tasks.map((task) => (
@@ -481,6 +482,13 @@ export default function TasksPage() {
                   </td>
                   <td><ProgressBar percent={task.percentComplete} /></td>
                   <td>{task.ageingDays}d</td>
+                  <td>
+                    {task.feedbackLink ? (
+                      <a href={task.feedbackLink} target="_blank" rel="noreferrer">Link</a>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>
                     {canEditTask(task) && (
                       <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>
