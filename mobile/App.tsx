@@ -4,6 +4,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import LoginScreen from './src/screens/LoginScreen';
 import NewTicketScreen from './src/screens/NewTicketScreen';
 import { getToken } from './src/lib/auth';
+import { setUnauthorizedHandler } from './src/lib/api';
 
 export default function App() {
   const [checkingSession, setCheckingSession] = useState(true);
@@ -13,6 +14,11 @@ export default function App() {
     getToken()
       .then((token) => setLoggedIn(Boolean(token)))
       .finally(() => setCheckingSession(false));
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => setLoggedIn(false));
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   if (checkingSession) {

@@ -71,6 +71,10 @@ export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => vo
         runOcr(result.assets[0].uri);
       }
     } catch (err) {
+      // Logged (not just swallowed) so a real native-side failure shows up
+      // in device/crash logs instead of only ever surfacing this generic
+      // message.
+      console.error('launchCameraAsync failed:', err);
       Alert.alert('Could not open camera', 'Try again, or choose an existing photo instead.');
     }
   };
@@ -89,6 +93,7 @@ export default function NewTicketScreen({ onLoggedOut }: { onLoggedOut: () => vo
         runOcr(result.assets[0].uri);
       }
     } catch (err) {
+      console.error('launchImageLibraryAsync failed:', err);
       Alert.alert('Could not open photo library', 'Try again, or take a new photo instead.');
     }
   };

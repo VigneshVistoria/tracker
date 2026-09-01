@@ -13,6 +13,15 @@ export class ApiError extends Error {
   }
 }
 
+// App.tsx registers this on mount so a 401 anywhere in the app (not just
+// the login screen) routes back to LoginScreen immediately, instead of
+// clearing the stored session but leaving the UI stuck showing a screen
+// whose every subsequent request now silently 401s.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<any> {
   const token = await getToken();
 
@@ -28,9 +37,10 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 401) {
-    // Token expired/invalid - clear it so the app routes back to login
-    // instead of silently failing on every subsequent call.
+    // Token expired/invalid - clear it and tell the app to route back to
+    // login, instead of silently failing on every subsequent call.
     await clearSession();
+    onUnauthorized?.();
   }
 
   if (!res.ok) {
