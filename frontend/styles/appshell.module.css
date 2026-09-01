@@ -167,8 +167,10 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--ds-color-primary-100);
-  color: var(--ds-color-primary-800);
+  /* Semantic info tint/text - see .navLink.active for why not the raw
+     primary-100/800 palette steps. */
+  background: var(--ds-color-info-tint);
+  color: var(--ds-color-info-dark);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -266,8 +268,11 @@
 }
 
 .navLink.active {
-  background: var(--ds-color-primary-50);
-  color: var(--ds-color-primary-700);
+  /* Semantic info tint/text, not the raw primary-50/700 palette steps -
+     those are fixed light-mode values and would render as a near-white
+     highlight behind dark-mode-illegible text on a dark sidebar. */
+  background: var(--ds-color-info-tint);
+  color: var(--ds-color-info-dark);
   border-left-color: var(--ds-color-primary-600);
   font-weight: var(--ds-weight-semibold);
 }

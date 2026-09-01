@@ -11,13 +11,15 @@
    ============================================================ */
 
 :root {
-  /* Core palette */
-  --color-ink: var(--ds-color-gray-900);
-  --color-ink-soft: var(--ds-color-gray-600);
-  --color-paper: var(--ds-color-gray-50);
-  --color-surface: #ffffff;
-  --color-border: var(--ds-color-gray-200);
-  --color-border-strong: var(--ds-color-gray-300);
+  /* Core palette - aliased to the semantic --ds-* tokens (not the raw
+     palette steps) so a dark-mode override of those semantic tokens in
+     tokens.css cascades through every legacy consumer automatically. */
+  --color-ink: var(--ds-text-primary);
+  --color-ink-soft: var(--ds-text-secondary);
+  --color-paper: var(--ds-bg-canvas);
+  --color-surface: var(--ds-bg-surface);
+  --color-border: var(--ds-border);
+  --color-border-strong: var(--ds-border-strong);
 
   /* Brand accent / primary CTA - was amber, now primary blue */
   --color-amber: var(--ds-color-primary-600);
@@ -87,6 +89,20 @@
   --sidebar-width: var(--ds-sidebar-width);
   --topbar-height: var(--ds-topbar-height);
   --max-content-width: var(--ds-max-content-width);
+}
+
+/* A few legacy tint variables above point directly at a fixed light palette
+   step (e.g. --ds-color-primary-50) rather than a semantic token, because
+   they were meant to always be "very light" regardless of theme. On a dark
+   canvas that reads as a blown-out light rectangle, so give dark mode its
+   own translucent versions here instead of touching the palette scale
+   those variables borrow from (other things rely on that scale staying a
+   fixed light reference). */
+:root[data-theme='dark'] {
+  --color-amber-tint: rgba(59, 130, 246, 0.16);
+  --color-plum-tint: rgba(11, 63, 163, 0.35);
+  --color-slate-tint: rgba(148, 163, 184, 0.16);
+  --status-open-tint: var(--color-slate-tint);
 }
 
 * {

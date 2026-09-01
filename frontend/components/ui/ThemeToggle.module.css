@@ -1,0 +1,31 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: background-color var(--ds-transition-fast), color var(--ds-transition-fast),
+    border-color var(--ds-transition-fast);
+}
+
+.button:hover {
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-primary);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+/* Matches AppShell's .iconButton (borderless, blends into the topbar)
+   instead of the bordered default, for use inside an existing toolbar. */
+.ghost {
+  border-color: transparent;
+  background: transparent;
+}

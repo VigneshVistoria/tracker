@@ -30,6 +30,7 @@ import {
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
 import { roleLabel } from '../lib/status';
+import ThemeToggle from './ui/ThemeToggle';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -210,6 +211,7 @@ export default function AppShell({ children }) {
           <button type="button" className={styles.iconButton} aria-label="Notifications">
             <Bell size={18} aria-hidden="true" />
           </button>
+          <ThemeToggle variant="ghost" />
           <div className={styles.userBadge}>
             <span className={styles.avatar}>{initialsFor(user)}</span>
             <span className={styles.userBadgeText}>

@@ -14,7 +14,9 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  background: var(--color-ink);
+  /* Fixed dark chip in both themes - intentionally not --color-ink, which
+     is the theme-aware text color and would go light-on-light in dark mode. */
+  background: var(--ds-color-gray-900);
   color: #fff;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
