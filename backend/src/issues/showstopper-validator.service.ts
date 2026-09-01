@@ -23,7 +23,7 @@ const SEVERITY_KEYWORDS = [
   'security', 'breach', 'corrupt',
 ];
 
-const NON_BLOCKING_CATEGORIES = [IssueCategory.NEW_FEATURE, IssueCategory.ENHANCEMENT];
+const NON_BLOCKING_CATEGORIES: string[] = [IssueCategory.NEW_FEATURE, IssueCategory.ENHANCEMENT];
 const LOW_URGENCY_PRIORITIES = [Priority.MEDIUM, Priority.LOW];
 
 // How many of a creator's most recent tickets to look at for the

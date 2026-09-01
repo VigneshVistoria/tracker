@@ -5,12 +5,23 @@ import { IssueCategoryOption } from './issue-category.entity';
 import { CreateIssueCategoryDto } from './dto/create-issue-category.dto';
 import { UpdateIssueCategoryDto } from './dto/update-issue-category.dto';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { Issue } from '../issues/issue.entity';
+
+// Category names that Issue.category is matched against by 3 downstream
+// services for real logic (risk scoring, showstopper-claim validation) -
+// see modules.service.ts, weekly-reports.service.ts,
+// showstopper-validator.service.ts. Renaming or deleting these would
+// silently break that logic for any future issue tagged with them, so
+// both are blocked regardless of current usage.
+const PROTECTED_NAMES = ['Critical', 'Showstopper'];
 
 @Injectable()
 export class IssueCategoriesService {
   constructor(
     @InjectRepository(IssueCategoryOption)
     private categoriesRepository: Repository<IssueCategoryOption>,
+    @InjectRepository(Issue)
+    private issuesRepository: Repository<Issue>,
     private auditLogService: AuditLogService,
   ) {}
 
@@ -18,6 +29,14 @@ export class IssueCategoriesService {
     const existing = await this.categoriesRepository.findOne({ where: { name, tenantId } });
     if (existing && existing.id !== excludeId) {
       throw new ConflictException(`An issue category named "${name}" already exists.`);
+    }
+  }
+
+  private assertNotProtected(name: string): void {
+    if (PROTECTED_NAMES.includes(name)) {
+      throw new ConflictException(
+        `"${name}" is a protected category used by risk scoring and showstopper validation, and can't be renamed or deleted.`,
+      );
     }
   }
 
@@ -63,6 +82,7 @@ export class IssueCategoriesService {
   ): Promise<IssueCategoryOption> {
     const category = await this.findOneOrFail(id, tenantId);
     if (dto.name !== undefined && dto.name !== category.name) {
+      this.assertNotProtected(category.name);
       await this.assertNameAvailable(dto.name, tenantId, id);
     }
     const previous = { ...category };
@@ -109,10 +129,15 @@ export class IssueCategoriesService {
 
   async remove(id: number, user: { id: number; email: string }, tenantId: number): Promise<void> {
     const category = await this.findOneOrFail(id, tenantId);
-    // Nothing references issue_categories yet - this table is standalone
-    // for now (see plan). Once Issue.category or anything else gains a
-    // real FK to this table, add a reference check here and throw
-    // ConflictException instead of deleting.
+    this.assertNotProtected(category.name);
+
+    const inUseCount = await this.issuesRepository.count({ where: { category: category.name, tenantId } });
+    if (inUseCount > 0) {
+      throw new ConflictException(
+        `Can't delete "${category.name}" - it's currently used by ${inUseCount} issue(s). Deactivate it instead.`,
+      );
+    }
+
     await this.categoriesRepository.delete(id);
 
     await this.auditLogService.record({

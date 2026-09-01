@@ -7,7 +7,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
-import { badgeClassFor, STATUS_OPTIONS, SELF_SERVICE_TRANSITIONS, MODE_OPTIONS, CATEGORY_OPTIONS } from '../../lib/status';
+import { badgeClassFor, STATUS_OPTIONS, SELF_SERVICE_TRANSITIONS, MODE_OPTIONS } from '../../lib/status';
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -80,6 +80,7 @@ export default function IssueDetail() {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [modules, setModules] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -125,12 +126,14 @@ export default function IssueDetail() {
           apiFetch(`/issues/${id}`),
           isClient ? Promise.resolve([]) : apiFetch('/users/assignable'),
           isClient ? Promise.resolve([]) : apiFetch('/projects'),
+          isClient ? Promise.resolve([]) : apiFetch('/issue-categories'),
         ]);
       })
-      .then(([data, allUsers, allProjects]) => {
+      .then(([data, allUsers, allProjects, allCategories]) => {
         setIssue(data);
         setUsers(allUsers);
         setProjects(allProjects);
+        setCategories(allCategories.filter((c) => c.isActive));
         setForm({
           title: data.title,
           description: data.description || '',
@@ -738,7 +741,11 @@ export default function IssueDetail() {
               onChange={handleChange}
             >
               <option value="">No category</option>
-              {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {/* If this issue's current category was deactivated/renamed since, still show it selected rather than silently blanking it out. */}
+              {form.category && !categories.some((c) => c.name === form.category) && (
+                <option value={form.category}>{form.category}</option>
+              )}
             </select>
           </div>
 

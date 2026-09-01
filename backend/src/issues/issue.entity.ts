@@ -232,9 +232,13 @@ export class Issue {
   lateDependencyAttributedToUserId: number;
 
   // QA classification of the type of work - optional, set at creation or
-  // any time after.
-  @Column({ type: 'enum', enum: IssueCategory, nullable: true })
-  category: IssueCategory;
+  // any time after. Free text (the name of a row in the admin-managed
+  // issue_categories catalog, backend/src/issue-categories), not a DB enum
+  // or real FK - matched by name, not id. IssueCategory below is kept only
+  // as string constants for the small set of names other services key off
+  // of (Critical/Showstopper for risk scoring and showstopper validation).
+  @Column({ type: 'varchar', nullable: true })
+  category: string;
 
   // ReleaseBot: drives SLA targets (Section 21) and auto-set to High for
   // Executive/Program-Manager-created tickets (Section 34, Phase 1).

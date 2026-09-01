@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsEnum, IsInt, IsBoolean } from 'class-validator';
-import { IssueStatus, IssueMode, IssueCategory } from '../issue.entity';
+import { IssueStatus, IssueMode } from '../issue.entity';
 
 export class UpdateIssueDto {
   @IsOptional()
@@ -44,7 +44,9 @@ export class UpdateIssueDto {
   @IsBoolean()
   showstopper?: boolean;
 
+  // Free text - the category's name from the admin-managed issue_categories
+  // catalog (backend/src/issue-categories), not validated against it here.
   @IsOptional()
-  @IsEnum(IssueCategory)
-  category?: IssueCategory;
+  @IsString()
+  category?: string;
 }

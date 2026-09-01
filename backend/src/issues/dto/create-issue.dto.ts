@@ -1,5 +1,5 @@
 import { IsString, MinLength, IsOptional, IsInt, IsEnum, IsBoolean } from 'class-validator';
-import { IssueMode, IssueCategory } from '../issue.entity';
+import { IssueMode } from '../issue.entity';
 import { Priority } from '../../common/priority.enum';
 
 export class CreateIssueDto {
@@ -45,9 +45,11 @@ export class CreateIssueDto {
   @IsBoolean()
   showstopper?: boolean;
 
+  // Free text - the category's name from the admin-managed issue_categories
+  // catalog (backend/src/issue-categories), not validated against it here.
   @IsOptional()
-  @IsEnum(IssueCategory)
-  category?: IssueCategory;
+  @IsString()
+  category?: string;
 
   // Optional - a creator can pick a priority. Ignored (forced to High) for
   // Executive/Program Manager creators, since those are always treated as

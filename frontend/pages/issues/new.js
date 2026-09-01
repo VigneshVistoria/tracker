@@ -5,7 +5,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { MODE_OPTIONS, CATEGORY_OPTIONS, canCreateTickets } from '../../lib/status';
+import { MODE_OPTIONS, canCreateTickets } from '../../lib/status';
 
 const STATUS_LABEL = {
   invalid: 'Needs a lot more detail',
@@ -27,6 +27,7 @@ export default function NewIssue() {
   const [form, setForm] = useState({ title: '', description: '', assigneeUserId: '', projectId: '', mode: 'Manual', showstopper: false, storyPoints: '', category: '' });
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [error, setError] = useState('');
   const [user, setUser] = useState(null);
 
@@ -49,6 +50,7 @@ export default function NewIssue() {
     if (role !== 'client') {
       apiFetch('/users/assignable').then(setUsers).catch(() => {});
       apiFetch('/projects').then(setProjects).catch(() => {});
+      apiFetch('/issue-categories').then((list) => setCategories(list.filter((c) => c.isActive))).catch(() => {});
     }
   }, []);
 
@@ -294,7 +296,7 @@ export default function NewIssue() {
                   onChange={handleChange}
                 >
                   <option value="">No category</option>
-                  {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
 
