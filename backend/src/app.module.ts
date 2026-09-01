@@ -25,6 +25,7 @@ import { TimeEntry } from './time-sheets/time-entry.entity';
 import { IssueCategoryOption } from './issue-categories/issue-category.entity';
 import { Team } from './teams/team.entity';
 import { Label } from './labels/label.entity';
+import { ProjectPlanEntry } from './project-planning/project-plan-entry.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -49,6 +50,7 @@ import { TimeSheetsModule } from './time-sheets/time-sheets.module';
 import { IssueCategoriesModule } from './issue-categories/issue-categories.module';
 import { TeamsModule } from './teams/teams.module';
 import { LabelsModule } from './labels/labels.module';
+import { ProjectPlanningModule } from './project-planning/project-planning.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -88,6 +90,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           IssueCategoryOption,
           Team,
           Label,
+          ProjectPlanEntry,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -121,6 +124,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     IssueCategoriesModule,
     TeamsModule,
     LabelsModule,
+    ProjectPlanningModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })

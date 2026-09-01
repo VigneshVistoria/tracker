@@ -30,6 +30,7 @@ import {
   Layers,
   UsersRound,
   Tag,
+  CalendarRange,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -95,6 +96,13 @@ const BULK_IMPORT_EXPORT_NAV_ITEM = { href: '/admin/issues-bulk', label: 'Bulk I
 const ISSUE_CATEGORIES_NAV_ITEM = { href: '/admin/issue-categories', label: 'Issue Categories', icon: Layers };
 const TEAMS_NAV_ITEM = { href: '/admin/teams', label: 'Teams', icon: UsersRound };
 const LABELS_NAV_ITEM = { href: '/admin/labels', label: 'Labels', icon: Tag };
+
+// Admin + Executive + Program Manager only (view), create/edit is further
+// restricted to Program Manager alone within the page itself - QA/Developer
+// don't get this entry at all, matching the backend's assertCanView on
+// every route including reads (unlike the 3 items above, which are
+// readable by anyone authenticated).
+const PROJECT_PLANNING_NAV_ITEM = { href: '/project-planning', label: 'Project Planning', icon: CalendarRange };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -284,6 +292,10 @@ export default function AppShell({ children }) {
                 <SingleNavLink item={TEAMS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
                 <SingleNavLink item={LABELS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
               </>
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={PROJECT_PLANNING_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'admin' && (

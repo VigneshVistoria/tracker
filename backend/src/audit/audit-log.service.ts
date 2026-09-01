@@ -39,6 +39,11 @@ export const AuditActions = {
   LABEL_ACTIVATED: 'label_activated',
   LABEL_DEACTIVATED: 'label_deactivated',
   LABEL_DELETED: 'label_deleted',
+  PROJECT_PLAN_CREATED: 'project_plan_created',
+  PROJECT_PLAN_UPDATED: 'project_plan_updated',
+  PROJECT_PLAN_STATUS_CHANGED: 'project_plan_status_changed',
+  PROJECT_PLAN_ACTIVATED: 'project_plan_activated',
+  PROJECT_PLAN_DEACTIVATED: 'project_plan_deactivated',
 } as const;
 
 export interface RecordAuditEntryInput {
