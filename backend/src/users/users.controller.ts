@@ -5,6 +5,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   UseGuards,
   ParseIntPipe,
   Req,
@@ -31,11 +32,14 @@ export class UsersController {
   }
 
   // Any logged-in user can see this minimal list - needed to populate the
-  // "Assignee" dropdown when creating/editing an issue.
+  // "Assignee" dropdown when creating/editing an issue. Optional ?role=
+  // filter added for Task's Dependency Owner field (Developer-only) -
+  // existing callers that don't pass it are unaffected.
   @Get('assignable')
-  async findAssignable(@Req() req: any) {
+  async findAssignable(@Query('role') role: string | undefined, @Req() req: any) {
     const users = await this.usersService.findAll(req.user.tenantId);
-    return users.map((u) => ({ id: u.id, email: u.email, fullName: u.fullName }));
+    const filtered = role ? users.filter((u) => u.role === role) : users;
+    return filtered.map((u) => ({ id: u.id, email: u.email, fullName: u.fullName, role: u.role }));
   }
 
   @Get()

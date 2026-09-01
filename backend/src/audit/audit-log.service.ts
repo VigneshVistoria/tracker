@@ -54,6 +54,10 @@ export const AuditActions = {
   PHASE_ACTIVATED: 'phase_activated',
   PHASE_DEACTIVATED: 'phase_deactivated',
   PHASE_DELETED: 'phase_deleted',
+  TASK_CREATED: 'task_created',
+  TASK_UPDATED: 'task_updated',
+  TASK_STATUS_CHANGED: 'task_status_changed',
+  TASK_STATUS_PERCENT_UPDATED: 'task_status_percent_updated',
 } as const;
 
 export interface RecordAuditEntryInput {

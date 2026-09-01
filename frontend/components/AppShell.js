@@ -33,6 +33,8 @@ import {
   CalendarRange,
   Boxes,
   GitBranchPlus,
+  ListChecks,
+  Percent,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -115,6 +117,13 @@ const PROJECT_MODULES_NAV_ITEM = { href: '/project-modules', label: 'Project Mod
 // legacy Admin capability to preserve here, unlike Modules).
 const PROJECT_PHASES_NAV_ITEM = { href: '/project-phases', label: 'Project Phases', icon: GitBranchPlus };
 
+// Admin/Executive/Program Manager/QA/Developer - Client excluded, same as
+// TasksService.findAllForUser never returning anything client-relevant.
+// Non-leadership roles only ever see their own assigned/created Tasks,
+// enforced on the backend - this just controls whether the nav entry
+// point shows up at all.
+const TASKS_NAV_ITEM = { href: '/tasks', label: 'Tasks', icon: ListChecks };
+
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
 // being role === 'admin').
@@ -138,6 +147,7 @@ const ADMIN_NAV_ITEMS = [
   { href: '/admin/team-updates', label: 'Team Updates', icon: MessagesSquare },
   { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
   { href: '/admin/regression-testing', label: 'Regression Testing', icon: CheckSquare },
+  { href: '/admin/task-status-config', label: 'Task Status Config', icon: Percent },
 ];
 
 // A single conditionally-shown nav entry outside the main NAV_ITEMS/
@@ -284,6 +294,14 @@ export default function AppShell({ children }) {
                 {!collapsed && <span>{item.label}</span>}
               </Link>
             ))}
+
+            {(user.role === 'admin' ||
+              user.role === 'executive' ||
+              user.role === 'program_manager' ||
+              user.role === 'qa' ||
+              user.role === 'developer') && (
+              <SingleNavLink item={TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (
               <>

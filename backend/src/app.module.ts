@@ -27,6 +27,8 @@ import { Team } from './teams/team.entity';
 import { Label } from './labels/label.entity';
 import { ProjectPlanEntry } from './project-planning/project-plan-entry.entity';
 import { Phase } from './phases/phase.entity';
+import { ProjectTask } from './tasks/project-task.entity';
+import { TaskStatusPercent } from './task-status-config/task-status-percent.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -53,6 +55,8 @@ import { TeamsModule } from './teams/teams.module';
 import { LabelsModule } from './labels/labels.module';
 import { ProjectPlanningModule } from './project-planning/project-planning.module';
 import { PhasesModule } from './phases/phases.module';
+import { TasksModule } from './tasks/tasks.module';
+import { TaskStatusConfigModule } from './task-status-config/task-status-config.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -94,6 +98,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
           Label,
           ProjectPlanEntry,
           Phase,
+          ProjectTask,
+          TaskStatusPercent,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -129,6 +135,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
     LabelsModule,
     ProjectPlanningModule,
     PhasesModule,
+    TasksModule,
+    TaskStatusConfigModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
