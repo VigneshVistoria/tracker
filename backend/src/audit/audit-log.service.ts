@@ -21,6 +21,9 @@ export const AuditActions = {
   DEPENDENCY_CREATED: 'dependency_created',
   DEPENDENCY_UPDATED: 'dependency_updated',
   DEPENDENCY_STATUS_CHANGED: 'dependency_status_changed',
+  BULK_IMPORT_BLOCKED: 'bulk_import_blocked',
+  BULK_IMPORT_VALIDATION_FAILED: 'bulk_import_validation_failed',
+  BULK_IMPORT_COMPLETED: 'bulk_import_completed',
 } as const;
 
 export interface RecordAuditEntryInput {

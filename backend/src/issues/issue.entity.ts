@@ -273,6 +273,35 @@ export class Issue {
   @Column({ type: 'timestamp', nullable: true })
   slaDueSoonNotifiedAt: Date;
 
+  // Bulk import/export fields (Admin/Program-Manager-only spreadsheet
+  // tool) - only ever written by IssuesBulkService today, not exposed on
+  // the single-ticket create/edit UI. estimatedHours is a manual estimate
+  // distinct from storyPoints (unitless) above. dueDate/targetDate are
+  // manually-entered business deadlines, distinct from SlaService's
+  // computed-on-the-fly `sla.dueAt` (never persisted) - kept as separate
+  // concepts, not merged, so an SLA policy change can't silently move a
+  // deadline a PM entered by hand.
+  @Column({ type: 'numeric', precision: 6, scale: 2, nullable: true })
+  estimatedHours: number;
+
+  @Column({ type: 'date', nullable: true })
+  dueDate: string;
+
+  @Column({ type: 'date', nullable: true })
+  targetDate: string;
+
+  // Free-text description of a blocking dependency, entered directly on
+  // this issue - distinct from the structured `Dependency` entity/table,
+  // which models formal cross-team blocking links between two issues.
+  @Column({ type: 'text', nullable: true })
+  dependencyText: string;
+
+  @Column({ nullable: true })
+  dependencyOwnerUserId: number;
+
+  @Column({ nullable: true })
+  dependencyOwnerEmail: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

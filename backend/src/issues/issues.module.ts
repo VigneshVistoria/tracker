@@ -5,6 +5,9 @@ import { Sprint } from '../sprints/sprint.entity';
 import { ProjectModule } from '../modules/project-module.entity';
 import { IssuesService } from './issues.service';
 import { IssuesController } from './issues.controller';
+import { IssuesBulkController } from './issues-bulk.controller';
+import { IssuesBulkService } from './issues-bulk.service';
+import { IssueSpreadsheetService } from './spreadsheet/issue-spreadsheet.service';
 import { IssueAnalyzerService } from './issue-analyzer.service';
 import { ShowstopperValidatorService } from './showstopper-validator.service';
 import { GuardsModule } from '../common/guards.module';
@@ -24,8 +27,11 @@ import { SlaModule } from '../sla/sla.module';
     AuditModule,
     SlaModule,
   ],
-  controllers: [IssuesController],
-  providers: [IssuesService, IssueAnalyzerService, ShowstopperValidatorService],
+  // IssuesBulkController registered first - it owns the more specific
+  // `bulk-export`/`bulk-import` routes under the shared `issues` prefix,
+  // and must be matched before IssuesController's `:id` catch-all below.
+  controllers: [IssuesBulkController, IssuesController],
+  providers: [IssuesService, IssueAnalyzerService, ShowstopperValidatorService, IssuesBulkService, IssueSpreadsheetService],
   exports: [IssuesService, IssueAnalyzerService],
 })
 export class IssuesModule {}

@@ -26,6 +26,7 @@ import {
   Menu,
   X,
   Globe,
+  FileSpreadsheet,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -76,6 +77,12 @@ const SHOWSTOPPER_REVIEW_NAV_ITEM = { href: '/admin/showstopper-review', label: 
 // Executive gets its own entry in EXECUTIVE_NAV_ITEMS below (report-only,
 // no log-time form - the page itself handles that distinction).
 const TIME_SHEETS_NAV_ITEM = { href: '/time-sheets', label: 'Time Sheets', icon: Timer };
+
+// Admin + Program Manager only, same authorization boundary the backend
+// enforces on the bulk-export/bulk-import endpoints
+// (IssuesBulkService.isAllowedToBulkImportExport) - deliberately not QA/
+// Executive/Client, unlike ticket creation's own (wider) role list.
+const BULK_IMPORT_EXPORT_NAV_ITEM = { href: '/admin/issues-bulk', label: 'Bulk Import/Export', icon: FileSpreadsheet };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -256,6 +263,10 @@ export default function AppShell({ children }) {
 
             {(user.role === 'developer' || user.role === 'program_manager' || user.role === 'admin') && (
               <SingleNavLink item={TIME_SHEETS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'program_manager' || user.role === 'admin') && (
+              <SingleNavLink item={BULK_IMPORT_EXPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'admin' && (
