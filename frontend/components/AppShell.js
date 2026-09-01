@@ -27,6 +27,9 @@ import {
   X,
   Globe,
   FileSpreadsheet,
+  Layers,
+  UsersRound,
+  Tag,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -83,6 +86,15 @@ const TIME_SHEETS_NAV_ITEM = { href: '/time-sheets', label: 'Time Sheets', icon:
 // (IssuesBulkService.isAllowedToBulkImportExport) - deliberately not QA/
 // Executive/Client, unlike ticket creation's own (wider) role list.
 const BULK_IMPORT_EXPORT_NAV_ITEM = { href: '/admin/issues-bulk', label: 'Bulk Import/Export', icon: FileSpreadsheet };
+
+// Admin + Program Manager only, same authorization boundary as the
+// backend guards on these 3 lookup-table modules (issue-categories,
+// teams, labels controllers). Standalone catalogs for now - not yet
+// referenced by Issues/Users (see backend/migrations/2026-09-issue-
+// categories-teams-labels.sql).
+const ISSUE_CATEGORIES_NAV_ITEM = { href: '/admin/issue-categories', label: 'Issue Categories', icon: Layers };
+const TEAMS_NAV_ITEM = { href: '/admin/teams', label: 'Teams', icon: UsersRound };
+const LABELS_NAV_ITEM = { href: '/admin/labels', label: 'Labels', icon: Tag };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -266,7 +278,12 @@ export default function AppShell({ children }) {
             )}
 
             {(user.role === 'program_manager' || user.role === 'admin') && (
-              <SingleNavLink item={BULK_IMPORT_EXPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              <>
+                <SingleNavLink item={BULK_IMPORT_EXPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+                <SingleNavLink item={ISSUE_CATEGORIES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+                <SingleNavLink item={TEAMS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+                <SingleNavLink item={LABELS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              </>
             )}
 
             {user.role === 'admin' && (

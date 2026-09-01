@@ -24,6 +24,21 @@ export const AuditActions = {
   BULK_IMPORT_BLOCKED: 'bulk_import_blocked',
   BULK_IMPORT_VALIDATION_FAILED: 'bulk_import_validation_failed',
   BULK_IMPORT_COMPLETED: 'bulk_import_completed',
+  ISSUE_CATEGORY_CREATED: 'issue_category_created',
+  ISSUE_CATEGORY_UPDATED: 'issue_category_updated',
+  ISSUE_CATEGORY_ACTIVATED: 'issue_category_activated',
+  ISSUE_CATEGORY_DEACTIVATED: 'issue_category_deactivated',
+  ISSUE_CATEGORY_DELETED: 'issue_category_deleted',
+  TEAM_CREATED: 'team_created',
+  TEAM_UPDATED: 'team_updated',
+  TEAM_ACTIVATED: 'team_activated',
+  TEAM_DEACTIVATED: 'team_deactivated',
+  TEAM_DELETED: 'team_deleted',
+  LABEL_CREATED: 'label_created',
+  LABEL_UPDATED: 'label_updated',
+  LABEL_ACTIVATED: 'label_activated',
+  LABEL_DEACTIVATED: 'label_deactivated',
+  LABEL_DELETED: 'label_deleted',
 } as const;
 
 export interface RecordAuditEntryInput {

@@ -22,6 +22,9 @@ import { PerformanceScoringConfig } from './performance-scoring/performance-scor
 import { OverduePenaltyTier } from './performance-scoring/overdue-penalty-tier.entity';
 import { Tenant } from './tenants/tenant.entity';
 import { TimeEntry } from './time-sheets/time-entry.entity';
+import { IssueCategoryOption } from './issue-categories/issue-category.entity';
+import { Team } from './teams/team.entity';
+import { Label } from './labels/label.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -43,6 +46,9 @@ import { PerformanceDashboardModule } from './performance-dashboard/performance-
 import { AiAssistModule } from './ai-assist/ai-assist.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { TimeSheetsModule } from './time-sheets/time-sheets.module';
+import { IssueCategoriesModule } from './issue-categories/issue-categories.module';
+import { TeamsModule } from './teams/teams.module';
+import { LabelsModule } from './labels/labels.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -79,6 +85,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
           OverduePenaltyTier,
           Tenant,
           TimeEntry,
+          IssueCategoryOption,
+          Team,
+          Label,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -109,6 +118,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
     AiAssistModule,
     TenantsModule,
     TimeSheetsModule,
+    IssueCategoriesModule,
+    TeamsModule,
+    LabelsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
