@@ -32,6 +32,7 @@ export default function IssuesBulkPage() {
   const [fileName, setFileName] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
@@ -51,6 +52,18 @@ export default function IssuesBulkPage() {
       setError(err.message);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDownloadTemplate = async (format) => {
+    setError('');
+    setDownloadingTemplate(format);
+    try {
+      await apiDownload(`/issues/bulk-import-template?format=${format}`, `issues-import-template.${format}`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloadingTemplate('');
     }
   };
 
@@ -145,6 +158,29 @@ export default function IssuesBulkPage() {
 
       <div className={styles.card}>
         <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Import</h3>
+        <p className={styles.helpText}>
+          Not sure what columns are expected? Download a template with two example rows (one showing a new-issue
+          row with no Issue ID, one showing an update row with an Issue ID) already filled in correctly.
+        </p>
+        <div className={styles.actions} style={{ marginBottom: 'var(--space-4)' }}>
+          <button
+            className={styles.buttonSecondary}
+            type="button"
+            onClick={() => handleDownloadTemplate('csv')}
+            disabled={downloadingTemplate !== ''}
+          >
+            {downloadingTemplate === 'csv' ? 'Downloading...' : 'Download CSV Template'}
+          </button>
+          <button
+            className={styles.buttonSecondary}
+            type="button"
+            onClick={() => handleDownloadTemplate('xlsx')}
+            disabled={downloadingTemplate !== ''}
+          >
+            {downloadingTemplate === 'xlsx' ? 'Downloading...' : 'Download Excel Template'}
+          </button>
+        </div>
+
         {error && <div className={styles.error}>{error}</div>}
         <form onSubmit={handleImport}>
           <div className={styles.field}>

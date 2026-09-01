@@ -59,6 +59,40 @@ function toExportRow(issue: Issue): Record<IssueExportColumn, string> {
   };
 }
 
+// Two placeholder rows shown on the downloadable import template: one with
+// a blank Issue ID (illustrates a create row) and one with a placeholder
+// numeric Issue ID (illustrates an update row) - not real data, just
+// concrete examples of every column filled in correctly, including a
+// realistic Dependency Owner email and a valid Status value.
+const TEMPLATE_ROWS: Record<IssueExportColumn, string>[] = [
+  {
+    'Issue ID': '',
+    Project: 'LMS',
+    Module: 'Authentication',
+    'Issue Title': 'Fix login button alignment on mobile',
+    Description: 'The Sign In button overlaps the password field on iOS Safari at narrow widths.',
+    'Estimated Hours': '3',
+    'Due Date': '2026-09-20',
+    'Target Date': '2026-09-25',
+    Dependency: 'Waiting on updated design mockups from UX',
+    'Dependency Owner': 'jane.doe@example.com',
+    Status: 'Backlog',
+  },
+  {
+    'Issue ID': '123',
+    Project: 'LMS',
+    Module: 'Authentication',
+    'Issue Title': 'Only rows with a real, existing Issue ID update that issue',
+    Description: 'Leave Issue ID blank (like the row above) to create a new issue instead.',
+    'Estimated Hours': '5',
+    'Due Date': '2026-09-22',
+    'Target Date': '2026-09-28',
+    Dependency: '',
+    'Dependency Owner': '',
+    Status: 'In Progress',
+  },
+];
+
 // Cell values coming back from exceljs can be a Date, a number, a rich-text
 // object, or null - normalized here to the same plain-string shape CSV
 // parsing already produces, so the row validator only ever deals with
@@ -75,7 +109,22 @@ export class IssueSpreadsheetService {
   async buildExport(issues: Issue[], format: BulkSpreadsheetFormat): Promise<{ buffer: Buffer; filename: string }> {
     const rows = issues.map(toExportRow);
     const datestamp = new Date().toISOString().slice(0, 10);
+    return this.writeSpreadsheet(rows, format, `issues-export-${datestamp}`, 'Issues');
+  }
 
+  // Built from the exact same writer as a real export, so the template's
+  // headers/column order can never drift from what parseImport() actually
+  // expects - it's just placeholder rows instead of real Issue data.
+  async buildTemplate(format: BulkSpreadsheetFormat): Promise<{ buffer: Buffer; filename: string }> {
+    return this.writeSpreadsheet(TEMPLATE_ROWS, format, 'issues-import-template', 'Issues');
+  }
+
+  private async writeSpreadsheet(
+    rows: Record<IssueExportColumn, string>[],
+    format: BulkSpreadsheetFormat,
+    filenameStem: string,
+    sheetName: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     if (format === 'csv') {
       const sanitizedRows = rows.map((row) => {
         const sanitized = { ...row };
@@ -85,15 +134,15 @@ export class IssueSpreadsheetService {
         return sanitized;
       });
       const csv = stringify(sanitizedRows, { header: true, columns: ISSUE_EXPORT_COLUMNS as unknown as string[] });
-      return { buffer: Buffer.from(csv, 'utf-8'), filename: `issues-export-${datestamp}.csv` };
+      return { buffer: Buffer.from(csv, 'utf-8'), filename: `${filenameStem}.csv` };
     }
 
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('Issues');
+    const sheet = workbook.addWorksheet(sheetName);
     sheet.columns = ISSUE_EXPORT_COLUMNS.map((header) => ({ header, key: header, width: 22 }));
     sheet.addRows(rows);
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
-    return { buffer, filename: `issues-export-${datestamp}.xlsx` };
+    return { buffer, filename: `${filenameStem}.xlsx` };
   }
 
   async parseImport(fileBase64: string, format: BulkSpreadsheetFormat): Promise<RawIssueRow[]> {

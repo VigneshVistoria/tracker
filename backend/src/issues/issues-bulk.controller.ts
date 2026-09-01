@@ -78,4 +78,18 @@ export class IssuesBulkController {
     const currentUser = await this.requireBulkAccess(req);
     return this.issuesBulkService.import(dto, currentUser);
   }
+
+  @Get('bulk-import-template')
+  async bulkImportTemplate(@Query('format') format: string, @Req() req: any, @Res() res: Response) {
+    await this.requireBulkAccess(req);
+    if (format !== 'csv' && format !== 'xlsx') {
+      throw new BadRequestException('format query parameter must be "csv" or "xlsx".');
+    }
+    const { buffer, filename } = await this.issuesBulkService.template(format);
+    res.set({
+      'Content-Type': CONTENT_TYPES[format],
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.send(buffer);
+  }
 }

@@ -99,6 +99,10 @@ export class IssuesBulkService {
     return this.spreadsheetService.buildExport(issues, format);
   }
 
+  template(format: BulkSpreadsheetFormat): Promise<{ buffer: Buffer; filename: string }> {
+    return this.spreadsheetService.buildTemplate(format);
+  }
+
   async import(
     dto: BulkImportIssuesDto,
     currentUser: Pick<User, 'id' | 'email' | 'role' | 'tenantId'>,
