@@ -10,10 +10,11 @@ export type ProjectPlanStatus = (typeof PROJECT_PLAN_STATUSES)[number];
 // optionally Module/Phase/Team) it belongs to, and a target timeline.
 // %-complete is deliberately NOT a column here - ProjectPlanningService
 // computes it live from the real Issues in scope on every read, see
-// computeCompletion(). "Phase" is backed by the existing Sprint entity
-// (sprintId/sprintName below), not a new concept - Sprint already has a
-// name/date-range/status scoped to one project, and Issues already link
-// to it, so it can meaningfully narrow the completion query too. Team
+// computeCompletion(). "Phase" is backed by the real Phase entity
+// (backend/src/phases) - a Phase belongs to exactly one Module, and
+// Issue.phaseId links to it, so it can meaningfully narrow the completion
+// query too. (Previously stood in for Sprint before Phase existed as its
+// own entity - Sprint is untouched as its own separate feature.) Team
 // references the standalone `teams` catalog, but is informational only -
 // Issue has no teamId, so Team can never narrow the completion query.
 @Entity('project_plan_entries')
@@ -36,12 +37,12 @@ export class ProjectPlanEntry {
   @Column({ nullable: true })
   moduleName: string;
 
-  // "Phase" - see class comment above for why this points at Sprint.
+  // "Phase" - see class comment above.
   @Column({ nullable: true })
-  sprintId: number;
+  phaseId: number;
 
   @Column({ nullable: true })
-  sprintName: string;
+  phaseName: string;
 
   @Column({ nullable: true })
   teamId: number;

@@ -35,6 +35,10 @@ export class CreateIssueDto {
 
   @IsOptional()
   @IsInt()
+  phaseId?: number;
+
+  @IsOptional()
+  @IsInt()
   storyPoints?: number;
 
   @IsOptional()

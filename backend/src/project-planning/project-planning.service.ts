@@ -33,14 +33,14 @@ export class ProjectPlanningService {
 
   // Completion is never stored - always computed live from the real
   // Issues in scope, mirroring ModulesService.summarize()'s exact
-  // completed/total ratio. Scope is Project (always) + Module/Phase(Sprint)
-  // if set on the entry - Team is never part of the scope, Issue has no
-  // teamId to filter by. totalIssueCount === 0 -> percentComplete: null,
-  // distinct from "0% done" (which means work exists but none is done).
+  // completed/total ratio. Scope is Project (always) + Module/Phase if set
+  // on the entry - Team is never part of the scope, Issue has no teamId to
+  // filter by. totalIssueCount === 0 -> percentComplete: null, distinct
+  // from "0% done" (which means work exists but none is done).
   private async computeCompletion(entry: ProjectPlanEntry): Promise<ProjectPlanEntryWithCompletion> {
     const where: Record<string, unknown> = { projectId: entry.projectId, tenantId: entry.tenantId };
     if (entry.moduleId != null) where.moduleId = entry.moduleId;
-    if (entry.sprintId != null) where.sprintId = entry.sprintId;
+    if (entry.phaseId != null) where.phaseId = entry.phaseId;
 
     const issues = await this.issuesRepository.find({ where });
     const totalIssueCount = issues.length;
@@ -89,8 +89,8 @@ export class ProjectPlanningService {
       projectName: project.name,
       moduleId: dto.moduleId ?? null,
       moduleName: dto.moduleName ?? null,
-      sprintId: dto.sprintId ?? null,
-      sprintName: dto.sprintName ?? null,
+      phaseId: dto.phaseId ?? null,
+      phaseName: dto.phaseName ?? null,
       teamId: dto.teamId ?? null,
       teamName: dto.teamName ?? null,
       startDate: dto.startDate,
@@ -109,7 +109,7 @@ export class ProjectPlanningService {
       tenantId,
       entityType: 'ProjectPlanEntry',
       entityId: saved.id,
-      details: { projectId: saved.projectId, moduleId: saved.moduleId, sprintId: saved.sprintId, teamId: saved.teamId },
+      details: { projectId: saved.projectId, moduleId: saved.moduleId, phaseId: saved.phaseId, teamId: saved.teamId },
     });
 
     return saved;
@@ -133,8 +133,8 @@ export class ProjectPlanningService {
     }
     if (dto.moduleId !== undefined) entry.moduleId = dto.moduleId;
     if (dto.moduleName !== undefined) entry.moduleName = dto.moduleName;
-    if (dto.sprintId !== undefined) entry.sprintId = dto.sprintId;
-    if (dto.sprintName !== undefined) entry.sprintName = dto.sprintName;
+    if (dto.phaseId !== undefined) entry.phaseId = dto.phaseId;
+    if (dto.phaseName !== undefined) entry.phaseName = dto.phaseName;
     if (dto.teamId !== undefined) entry.teamId = dto.teamId;
     if (dto.teamName !== undefined) entry.teamName = dto.teamName;
     if (dto.startDate !== undefined) entry.startDate = dto.startDate;

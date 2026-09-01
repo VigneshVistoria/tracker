@@ -80,6 +80,7 @@ export default function IssueDetail() {
   const [users, setUsers] = useState([]);
   const [projects, setProjects] = useState([]);
   const [modules, setModules] = useState([]);
+  const [issuePhases, setIssuePhases] = useState([]);
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState({
     title: '',
@@ -88,6 +89,7 @@ export default function IssueDetail() {
     assigneeUserId: '',
     projectId: '',
     moduleId: '',
+    phaseId: '',
     mode: 'Manual',
     showstopper: false,
     storyPoints: '',
@@ -141,6 +143,7 @@ export default function IssueDetail() {
           assigneeUserId: data.assigneeUserId || '',
           projectId: data.projectId || '',
           moduleId: data.moduleId || '',
+          phaseId: data.phaseId || '',
           mode: data.mode || 'Manual',
           showstopper: Boolean(data.showstopper),
           storyPoints: data.storyPoints ?? '',
@@ -179,6 +182,17 @@ export default function IssueDetail() {
       .catch(() => setModules([]));
   }, [form.projectId]);
 
+  // Phases are scoped to a module - refetches whenever that changes.
+  useEffect(() => {
+    if (!form.moduleId) {
+      setIssuePhases([]);
+      return;
+    }
+    apiFetch(`/phases?moduleId=${form.moduleId}`)
+      .then(setIssuePhases)
+      .catch(() => setIssuePhases([]));
+  }, [form.moduleId]);
+
   // If someone else updates this same issue elsewhere, reflect it live.
   useEffect(() => {
     const socket = getSocket();
@@ -213,6 +227,7 @@ export default function IssueDetail() {
           assigneeUserId: form.assigneeUserId ? Number(form.assigneeUserId) : null,
           projectId: form.projectId ? Number(form.projectId) : null,
           moduleId: form.moduleId ? Number(form.moduleId) : null,
+          phaseId: form.phaseId ? Number(form.phaseId) : null,
           mode: form.mode,
           showstopper: form.showstopper,
           storyPoints: form.storyPoints !== '' ? Number(form.storyPoints) : null,
@@ -678,12 +693,29 @@ export default function IssueDetail() {
               id="moduleId"
               name="moduleId"
               value={form.moduleId}
-              onChange={handleChange}
+              onChange={(e) => setForm({ ...form, moduleId: e.target.value, phaseId: '' })}
               disabled={!form.projectId}
             >
               <option value="">{form.projectId ? 'Unassigned' : 'Pick a project first'}</option>
               {modules.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="phaseId">Phase</label>
+            <select
+              className={styles.select}
+              id="phaseId"
+              name="phaseId"
+              value={form.phaseId}
+              onChange={handleChange}
+              disabled={!form.moduleId}
+            >
+              <option value="">{form.moduleId ? 'Unassigned' : 'Pick a module first'}</option>
+              {issuePhases.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>

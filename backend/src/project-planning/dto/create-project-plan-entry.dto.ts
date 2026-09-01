@@ -20,11 +20,11 @@ export class CreateProjectPlanEntryDto {
   // "Phase" - see ProjectPlanEntry's class comment.
   @IsOptional()
   @IsInt()
-  sprintId?: number;
+  phaseId?: number;
 
   @IsOptional()
   @IsString()
-  sprintName?: string;
+  phaseName?: string;
 
   @IsOptional()
   @IsInt()

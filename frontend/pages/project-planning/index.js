@@ -89,18 +89,24 @@ export default function ProjectPlanningPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  // Module/Phase options are scoped to whichever Project is currently
-  // selected in the form - refetched whenever that changes, same as the
-  // Issue edit page's module dropdown.
+  // Module options are scoped to whichever Project is currently selected.
   useEffect(() => {
     if (!form.project) {
       setModules([]);
-      setPhases([]);
       return;
     }
     apiFetch(`/modules?projectId=${form.project.id}`).then(setModules).catch(() => setModules([]));
-    apiFetch(`/sprints?projectId=${form.project.id}`).then(setPhases).catch(() => setPhases([]));
   }, [form.project]);
+
+  // Phase options are scoped to whichever Module is currently selected -
+  // a Phase always belongs to exactly one Module.
+  useEffect(() => {
+    if (!form.module) {
+      setPhases([]);
+      return;
+    }
+    apiFetch(`/phases?moduleId=${form.module.id}`).then(setPhases).catch(() => setPhases([]));
+  }, [form.module]);
 
   const canManage = user && user.role === 'program_manager';
 
@@ -114,7 +120,7 @@ export default function ProjectPlanningPage() {
       id: entry.id,
       project: { id: entry.projectId, name: entry.projectName },
       module: entry.moduleId ? { id: entry.moduleId, name: entry.moduleName } : null,
-      phase: entry.sprintId ? { id: entry.sprintId, name: entry.sprintName } : null,
+      phase: entry.phaseId ? { id: entry.phaseId, name: entry.phaseName } : null,
       team: entry.teamId ? { id: entry.teamId, name: entry.teamName } : null,
       startDate: entry.startDate,
       targetDate: entry.targetDate,
@@ -140,8 +146,8 @@ export default function ProjectPlanningPage() {
         projectId: form.project.id,
         moduleId: form.module ? form.module.id : null,
         moduleName: form.module ? form.module.name : null,
-        sprintId: form.phase ? form.phase.id : null,
-        sprintName: form.phase ? form.phase.name : null,
+        phaseId: form.phase ? form.phase.id : null,
+        phaseName: form.phase ? form.phase.name : null,
         teamId: form.team ? form.team.id : null,
         teamName: form.team ? form.team.name : null,
         startDate: form.startDate,
@@ -234,7 +240,7 @@ export default function ProjectPlanningPage() {
             label="Module"
             id="ppModule"
             value={form.module}
-            onChange={(v) => setForm({ ...form, module: v })}
+            onChange={(v) => setForm({ ...form, module: v, phase: null })}
             options={modules}
             disabled={!form.project}
             placeholder="Select a Project first"
@@ -245,8 +251,8 @@ export default function ProjectPlanningPage() {
             value={form.phase}
             onChange={(v) => setForm({ ...form, phase: v })}
             options={phases}
-            disabled={!form.project}
-            placeholder="Select a Project first"
+            disabled={!form.module}
+            placeholder="Select a Module first"
           />
           <SearchSelectField
             label="Team"
@@ -348,7 +354,7 @@ export default function ProjectPlanningPage() {
                 <tr key={entry.id} style={{ opacity: entry.isActive ? 1 : 0.55 }}>
                   <td>{entry.projectName}</td>
                   <td>{entry.moduleName || '—'}</td>
-                  <td>{entry.sprintName || '—'}</td>
+                  <td>{entry.phaseName || '—'}</td>
                   <td>{entry.teamName || '—'}</td>
                   <td>{entry.startDate}</td>
                   <td>{entry.targetDate}</td>

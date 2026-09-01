@@ -49,6 +49,11 @@ export const AuditActions = {
   MODULE_DELETED: 'module_deleted',
   MODULE_ACTIVATED: 'module_activated',
   MODULE_DEACTIVATED: 'module_deactivated',
+  PHASE_CREATED: 'phase_created',
+  PHASE_UPDATED: 'phase_updated',
+  PHASE_ACTIVATED: 'phase_activated',
+  PHASE_DEACTIVATED: 'phase_deactivated',
+  PHASE_DELETED: 'phase_deleted',
 } as const;
 
 export interface RecordAuditEntryInput {

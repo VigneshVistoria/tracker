@@ -18,11 +18,11 @@ export class UpdateProjectPlanEntryDto {
 
   @IsOptional()
   @IsInt()
-  sprintId?: number;
+  phaseId?: number;
 
   @IsOptional()
   @IsString()
-  sprintName?: string;
+  phaseName?: string;
 
   @IsOptional()
   @IsInt()

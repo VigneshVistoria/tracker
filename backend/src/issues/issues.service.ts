@@ -6,6 +6,7 @@ import { Issue, IssueMode, IssueStatus, ShowstopperReviewStatus } from './issue.
 import { Priority } from '../common/priority.enum';
 import { Sprint } from '../sprints/sprint.entity';
 import { ProjectModule } from '../modules/project-module.entity';
+import { Phase } from '../phases/phase.entity';
 import { CreateIssueDto } from './dto/create-issue.dto';
 import { UpdateIssueDto } from './dto/update-issue.dto';
 import { CreateDependencyDto } from './dto/create-dependency.dto';
@@ -41,6 +42,8 @@ export class IssuesService {
     private sprintsRepository: Repository<Sprint>,
     @InjectRepository(ProjectModule)
     private modulesRepository: Repository<ProjectModule>,
+    @InjectRepository(Phase)
+    private phasesRepository: Repository<Phase>,
     private usersService: UsersService,
     private projectsService: ProjectsService,
     private eventsGateway: EventsGateway,
@@ -589,6 +592,8 @@ export class IssuesService {
       }
     }
 
+    const previousModuleId = issue.moduleId;
+
     if (dto.moduleId !== undefined) {
       if (dto.moduleId === null) {
         issue.moduleId = null;
@@ -609,6 +614,32 @@ export class IssuesService {
         issue.moduleId = module.id;
         issue.moduleName = module.name;
       }
+    }
+
+    if (dto.phaseId !== undefined) {
+      if (dto.phaseId === null) {
+        issue.phaseId = null;
+        issue.phaseName = null;
+      } else {
+        const phase = await this.phasesRepository.findOne({ where: { id: dto.phaseId, tenantId } });
+        if (!phase) {
+          throw new NotFoundException(`Phase #${dto.phaseId} not found`);
+        }
+        if (phase.moduleId !== issue.moduleId) {
+          throw new BadRequestException(`Phase #${dto.phaseId} belongs to a different module than this issue.`);
+        }
+        if (!phase.isActive) {
+          throw new BadRequestException(`Phase "${phase.name}" is deactivated and can't accept new issues.`);
+        }
+        issue.phaseId = phase.id;
+        issue.phaseName = phase.name;
+      }
+    } else if (issue.moduleId !== previousModuleId) {
+      // The module changed (or was cleared) in this same request without
+      // also supplying a compatible new phaseId - a phase can't outlive
+      // its module on the same issue.
+      issue.phaseId = null;
+      issue.phaseName = null;
     }
   }
 }

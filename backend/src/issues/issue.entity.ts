@@ -165,6 +165,17 @@ export class Issue {
   @Column({ nullable: true })
   moduleName: string;
 
+  // Which phase (within the issue's module) this issue belongs to -
+  // narrower than moduleId, since a Phase always belongs to exactly one
+  // Module. Nullable = not yet assigned. Cleared automatically if
+  // moduleId changes to a different module (see IssuesService.update()) -
+  // a phase can't outlive its module on the same issue.
+  @Column({ nullable: true })
+  phaseId: number;
+
+  @Column({ nullable: true })
+  phaseName: string;
+
   // A simple numeric estimate used for sprint capacity planning. No fixed
   // scale enforced (story points, hours, whatever the team prefers).
   @Column({ type: 'int', nullable: true })

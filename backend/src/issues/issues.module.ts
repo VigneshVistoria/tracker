@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Issue } from './issue.entity';
 import { Sprint } from '../sprints/sprint.entity';
 import { ProjectModule } from '../modules/project-module.entity';
+import { Phase } from '../phases/phase.entity';
 import { IssuesService } from './issues.service';
 import { IssuesController } from './issues.controller';
 import { IssuesBulkController } from './issues-bulk.controller';
@@ -19,7 +20,7 @@ import { SlaModule } from '../sla/sla.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Issue, Sprint, ProjectModule]),
+    TypeOrmModule.forFeature([Issue, Sprint, ProjectModule, Phase]),
     GuardsModule,
     UsersModule,
     ProjectsModule,

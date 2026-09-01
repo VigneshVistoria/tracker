@@ -32,6 +32,7 @@ import {
   Tag,
   CalendarRange,
   Boxes,
+  GitBranchPlus,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -108,6 +109,11 @@ const PROJECT_PLANNING_NAV_ITEM = { href: '/project-planning', label: 'Project P
 // Same visibility rule as Project Planning - Admin/Executive/PM view,
 // create/deactivate further restricted to Admin/PM within the page.
 const PROJECT_MODULES_NAV_ITEM = { href: '/project-modules', label: 'Project Modules', icon: Boxes };
+
+// Same visibility rule as Project Modules/Planning - Admin/Executive/PM
+// view, create/deactivate is Program Manager only within the page (no
+// legacy Admin capability to preserve here, unlike Modules).
+const PROJECT_PHASES_NAV_ITEM = { href: '/project-phases', label: 'Project Phases', icon: GitBranchPlus };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -305,6 +311,10 @@ export default function AppShell({ children }) {
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={PROJECT_MODULES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={PROJECT_PHASES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'admin' && (
