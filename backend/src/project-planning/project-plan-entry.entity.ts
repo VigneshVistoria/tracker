@@ -15,8 +15,10 @@ export type ProjectPlanStatus = (typeof PROJECT_PLAN_STATUSES)[number];
 // Issue.phaseId links to it, so it can meaningfully narrow the completion
 // query too. (Previously stood in for Sprint before Phase existed as its
 // own entity - Sprint is untouched as its own separate feature.) Team
-// references the standalone `teams` catalog, but is informational only -
-// Issue has no teamId, so Team can never narrow the completion query.
+// references the per-Project `project_teams` table (backend/src/project-
+// teams), scoped to whichever Project the entry belongs to - but is
+// informational only, same as Phase/Module: Issue has no teamId, so Team
+// can never narrow the completion query.
 @Entity('project_plan_entries')
 export class ProjectPlanEntry {
   @PrimaryGeneratedColumn()

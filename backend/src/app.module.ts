@@ -55,6 +55,8 @@ import { TeamsModule } from './teams/teams.module';
 import { LabelsModule } from './labels/labels.module';
 import { ProjectPlanningModule } from './project-planning/project-planning.module';
 import { PhasesModule } from './phases/phases.module';
+import { ProjectTeam } from './project-teams/project-team.entity';
+import { ProjectTeamsModule } from './project-teams/project-teams.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TaskStatusConfigModule } from './task-status-config/task-status-config.module';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -98,6 +100,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           Label,
           ProjectPlanEntry,
           Phase,
+          ProjectTeam,
           ProjectTask,
           TaskStatusPercent,
         ],
@@ -135,6 +138,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     LabelsModule,
     ProjectPlanningModule,
     PhasesModule,
+    ProjectTeamsModule,
     TasksModule,
     TaskStatusConfigModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),

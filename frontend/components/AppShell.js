@@ -117,6 +117,12 @@ const PROJECT_MODULES_NAV_ITEM = { href: '/project-modules', label: 'Project Mod
 // legacy Admin capability to preserve here, unlike Modules).
 const PROJECT_PHASES_NAV_ITEM = { href: '/project-phases', label: 'Project Phases', icon: GitBranchPlus };
 
+// Same visibility rule as Project Modules/Phases/Planning - Admin/
+// Executive/PM view, create/edit/status-change is Program Manager only
+// within the page (no legacy Admin capability to preserve here, same as
+// Phases).
+const PROJECT_TEAMS_NAV_ITEM = { href: '/project-teams', label: 'Project Teams', icon: UsersRound };
+
 // Admin/Executive/Program Manager/QA/Developer - Client excluded, same as
 // TasksService.findAllForUser never returning anything client-relevant.
 // Non-leadership roles only ever see their own assigned/created Tasks,
@@ -333,6 +339,10 @@ export default function AppShell({ children }) {
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={PROJECT_PHASES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={PROJECT_TEAMS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'admin' && (

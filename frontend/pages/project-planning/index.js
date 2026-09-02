@@ -84,7 +84,6 @@ export default function ProjectPlanningPage() {
     }
     setUser(parsed);
     apiFetch('/projects').then(setProjects).catch(() => {});
-    apiFetch('/teams').then((list) => setTeams(list.filter((t) => t.isActive))).catch(() => {});
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -96,6 +95,16 @@ export default function ProjectPlanningPage() {
       return;
     }
     apiFetch(`/modules?projectId=${form.project.id}`).then(setModules).catch(() => setModules([]));
+  }, [form.project]);
+
+  // Team options are scoped to whichever Project is currently selected -
+  // a Team belongs to exactly one Project (backend/src/project-teams).
+  useEffect(() => {
+    if (!form.project) {
+      setTeams([]);
+      return;
+    }
+    apiFetch(`/project-teams?projectId=${form.project.id}`).then(setTeams).catch(() => setTeams([]));
   }, [form.project]);
 
   // Phase options are scoped to whichever Module is currently selected -
@@ -233,7 +242,7 @@ export default function ProjectPlanningPage() {
             id="ppProject"
             required
             value={form.project}
-            onChange={(v) => setForm({ ...form, project: v, module: null, phase: null })}
+            onChange={(v) => setForm({ ...form, project: v, module: null, phase: null, team: null })}
             options={projects}
           />
           <SearchSelectField
@@ -260,6 +269,8 @@ export default function ProjectPlanningPage() {
             value={form.team}
             onChange={(v) => setForm({ ...form, team: v })}
             options={teams}
+            disabled={!form.project}
+            placeholder="Select a Project first"
           />
 
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
