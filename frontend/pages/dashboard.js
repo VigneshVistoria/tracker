@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { FolderKanban, Users } from 'lucide-react';
 import AppShell from '../components/AppShell';
+import DeveloperDashboard from '../components/DeveloperDashboard';
 import issueStyles from '../styles/issues.module.css';
 import styles from '../styles/dashboard.module.css';
 import { apiFetch } from '../lib/api';
@@ -9,8 +10,25 @@ import { getSocket } from '../lib/socket';
 import { useToast } from '../lib/toast';
 import { badgeClassFor, railClassFor, canCreateTickets } from '../lib/status';
 
+// Top-level Dashboard just loads `user` and picks a per-role component -
+// Developer gets its own dashboard (components/DeveloperDashboard.js);
+// every other role (Admin/Program Manager/QA/Executive/Client) keeps the
+// exact DefaultDashboard below, unchanged by the Developer redesign.
 export default function Dashboard() {
   const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) return;
+    setUser(JSON.parse(storedUser));
+  }, []);
+
+  if (!user) return <AppShell>{null}</AppShell>;
+  if (user.role === 'developer') return <DeveloperDashboard user={user} />;
+  return <DefaultDashboard user={user} />;
+}
+
+function DefaultDashboard({ user }) {
   const [issues, setIssues] = useState([]);
   const [projectCount, setProjectCount] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,9 +44,6 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) return;
-    setUser(JSON.parse(storedUser));
     load();
   }, [load]);
 
@@ -54,8 +69,6 @@ export default function Dashboard() {
     };
   }, [load, showToast]);
 
-  if (!user) return <AppShell>{null}</AppShell>;
-
   const counts = {
     Backlog: issues.filter((i) => i.status === 'Backlog').length,
     'In Progress': issues.filter((i) => i.status === 'In Progress').length,
@@ -76,8 +89,8 @@ export default function Dashboard() {
           </h1>
           <p className={issueStyles.pageSubtitle}>
             {user.role === 'admin'
-              ? 'Here\u2019s what\u2019s happening across every project.'
-              : 'Here\u2019s what\u2019s on your plate right now.'}
+              ? 'Here’s what’s happening across every project.'
+              : 'Here’s what’s on your plate right now.'}
           </p>
         </div>
         {canCreateTickets(user.role) ? (
@@ -97,31 +110,31 @@ export default function Dashboard() {
 
       <div className={styles.statsGrid}>
         <div className={`${styles.statCard} ${styles.accentOpen}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts.Backlog}</div>
+          <div className={styles.statValue}>{loading ? '–' : counts.Backlog}</div>
           <div className={styles.statLabel}>Backlog</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentInProgress}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts['In Progress']}</div>
+          <div className={styles.statValue}>{loading ? '–' : counts['In Progress']}</div>
           <div className={styles.statLabel}>In Progress</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentReview}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts['In Review']}</div>
+          <div className={styles.statValue}>{loading ? '–' : counts['In Review']}</div>
           <div className={styles.statLabel}>In Review</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentQa}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts['QA Testing']}</div>
+          <div className={styles.statValue}>{loading ? '–' : counts['QA Testing']}</div>
           <div className={styles.statLabel}>QA Testing</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentQaFailed}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts['QA Failed']}</div>
+          <div className={styles.statValue}>{loading ? '–' : counts['QA Failed']}</div>
           <div className={styles.statLabel}>QA Failed</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentClosed}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : counts['Ready for Production']}</div>
+          <div className={styles.statValue}>{loading ? '–' : counts['Ready for Production']}</div>
           <div className={styles.statLabel}>Ready for Production</div>
         </div>
         <div className={`${styles.statCard} ${styles.accentNeutral}`}>
-          <div className={styles.statValue}>{loading ? '\u2013' : projectCount}</div>
+          <div className={styles.statValue}>{loading ? '–' : projectCount}</div>
           <div className={styles.statLabel}>{user.role === 'admin' ? 'Total Projects' : 'My Projects'}</div>
         </div>
       </div>

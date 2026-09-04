@@ -60,8 +60,14 @@ export const AuditActions = {
   PROJECT_TEAM_DEACTIVATED: 'project_team_deactivated',
   TASK_CREATED: 'task_created',
   TASK_UPDATED: 'task_updated',
+  TASK_DUE_DATE_EDITED: 'task_due_date_edited',
   TASK_STATUS_CHANGED: 'task_status_changed',
   TASK_STATUS_PERCENT_UPDATED: 'task_status_percent_updated',
+  TASK_ASSIGNED: 'task_assigned',
+  TASK_DEPENDENCY_TICKET_CREATED: 'task_dependency_ticket_created',
+  TASK_QA_SUBMITTED: 'task_qa_submitted',
+  TASK_QA_APPROVED: 'task_qa_approved',
+  TASK_QA_REJECTED: 'task_qa_rejected',
   ROLLBACK_TRIGGERED: 'rollback_triggered',
 } as const;
 

@@ -29,6 +29,8 @@ import { ProjectPlanEntry } from './project-planning/project-plan-entry.entity';
 import { Phase } from './phases/phase.entity';
 import { ProjectTask } from './tasks/project-task.entity';
 import { TaskStatusPercent } from './task-status-config/task-status-percent.entity';
+import { TaskDependencyTicket } from './task-dependency-tickets/task-dependency-ticket.entity';
+import { TaskQaReview } from './task-qa-reviews/task-qa-review.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -59,6 +61,8 @@ import { ProjectTeam } from './project-teams/project-team.entity';
 import { ProjectTeamsModule } from './project-teams/project-teams.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TaskStatusConfigModule } from './task-status-config/task-status-config.module';
+import { TaskDependencyTicketsModule } from './task-dependency-tickets/task-dependency-tickets.module';
+import { TaskQaReviewsModule } from './task-qa-reviews/task-qa-reviews.module';
 import { OpsModule } from './ops/ops.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
@@ -104,6 +108,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
           ProjectTeam,
           ProjectTask,
           TaskStatusPercent,
+          TaskDependencyTicket,
+          TaskQaReview,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -142,6 +148,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
     ProjectTeamsModule,
     TasksModule,
     TaskStatusConfigModule,
+    TaskDependencyTicketsModule,
+    TaskQaReviewsModule,
     OpsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],

@@ -132,6 +132,23 @@
   margin-bottom: var(--space-4);
 }
 
+/* Groups related chained fields (e.g. Project/Module/Phase) into one row
+   instead of each stacking full-width - each column sizes to its own
+   content rather than stretching to fill the row. Collapses back to
+   stacked full-width below 640px, same breakpoint the rest of this file
+   uses for mobile. */
+.fieldGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 280px));
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 640px) {
+  .fieldGrid3 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .label {
   display: block;
   margin-bottom: var(--space-2);

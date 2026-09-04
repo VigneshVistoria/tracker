@@ -33,8 +33,11 @@ import {
   CalendarRange,
   Boxes,
   GitBranchPlus,
-  ListChecks,
   Percent,
+  Inbox,
+  ListTodo,
+  Link2,
+  FlaskConical,
   RotateCcw,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
@@ -124,12 +127,21 @@ const PROJECT_PHASES_NAV_ITEM = { href: '/project-phases', label: 'Project Phase
 // Phases).
 const PROJECT_TEAMS_NAV_ITEM = { href: '/project-teams', label: 'Project Teams', icon: UsersRound };
 
-// Admin/Executive/Program Manager/QA/Developer - Client excluded, same as
-// TasksService.findAllForUser never returning anything client-relevant.
-// Non-leadership roles only ever see their own assigned/created Tasks,
-// enforced on the backend - this just controls whether the nav entry
-// point shows up at all.
-const TASKS_NAV_ITEM = { href: '/tasks', label: 'Tasks', icon: ListChecks };
+// Task lifecycle nav (replaces the old single Tasks entry): Task Backlog
+// is viewable by Admin/Program Manager (who creates/assigns tasks - Admin
+// is view-only there, TasksController's own role checks handle that); My
+// Tasks is visible to everyone who can be assigned or view their own tasks
+// (Admin/Executive/Program Manager/QA/Developer - Client excluded, same
+// as TasksService.findAllForUser never returning anything client-
+// relevant); Dependency Clearance is Developer only, since Dependency
+// Owner is restricted to Developer role (TaskDependencyTicketsService); QA
+// Review matches TasksController.ROLES_ALLOWED_TO_VIEW_QA_QUEUE
+// (Admin/Executive/Program Manager/QA) - previously QA-only here despite
+// the backend and the page itself already allowing the other three roles.
+const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox };
+const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
+const DEPENDENCY_CLEARANCE_NAV_ITEM = { href: '/dependency-clearance', label: 'Dependency Clearance', icon: Link2 };
+const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -142,6 +154,17 @@ const CLIENT_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/issues', label: 'My Tickets', icon: Ticket },
 ];
+
+// Developer gets the Task-lifecycle-focused Dashboard (see
+// components/DeveloperDashboard.js) plus My Tasks/Dependency Clearance/
+// Time Sheets (added below via the conditional SingleNavLink blocks,
+// unchanged by this). Issues, Dependency (the old Issue-linked module),
+// Projects, Performance, and Daily Update are deliberately dropped from
+// Developer's nav - confirmed with the user 2026-09 after flagging that
+// Issues/Dependency/Performance/Daily Update each lose the Developer's
+// only way to see or do something (Daily Update is a submit action, not
+// just a view) - the user chose to hide all five anyway.
+const DEVELOPER_NAV_ITEMS = [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }];
 
 const ADMIN_NAV_ITEMS = [
   { href: '/admin/users', label: 'Users', icon: Users },
@@ -226,7 +249,13 @@ export default function AppShell({ children }) {
 
   const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
   const navItems =
-    user.role === 'client' ? CLIENT_NAV_ITEMS : user.role === 'executive' ? EXECUTIVE_NAV_ITEMS : NAV_ITEMS;
+    user.role === 'client'
+      ? CLIENT_NAV_ITEMS
+      : user.role === 'executive'
+        ? EXECUTIVE_NAV_ITEMS
+        : user.role === 'developer'
+          ? DEVELOPER_NAV_ITEMS
+          : NAV_ITEMS;
 
   return (
     <div className={styles.shell}>
@@ -303,12 +332,27 @@ export default function AppShell({ children }) {
               </Link>
             ))}
 
+            {(user.role === 'admin' || user.role === 'program_manager') && (
+              <SingleNavLink item={TASK_BACKLOG_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
             {(user.role === 'admin' ||
               user.role === 'executive' ||
               user.role === 'program_manager' ||
               user.role === 'qa' ||
               user.role === 'developer') && (
-              <SingleNavLink item={TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              <SingleNavLink item={MY_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {user.role === 'developer' && (
+              <SingleNavLink item={DEPENDENCY_CLEARANCE_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' ||
+              user.role === 'executive' ||
+              user.role === 'program_manager' ||
+              user.role === 'qa') && (
+              <SingleNavLink item={QA_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (

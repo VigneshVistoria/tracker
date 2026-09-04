@@ -1,6 +1,10 @@
-import { IsString, MinLength, IsOptional, IsInt, IsBoolean, IsDateString, IsUrl, IsIn, IsNumber, Min } from 'class-validator';
-import { TASK_STATUSES, TaskStatus } from '../../task-status-config/task-status-percent.entity';
+import { IsString, MinLength, IsInt } from 'class-validator';
 
+// Stage 1 (Task Backlog creation, Program Manager only) - deliberately
+// just the Project -> Module -> Phase chain plus Description. No
+// Assignee/Estimated Hours/Due Date here anymore - those are entered at
+// later stages (assignment, then the Assignee's own My Tasks entry) via
+// PATCH /tasks/:id/assign and PATCH /tasks/:id.
 export class CreateTaskDto {
   @IsInt()
   projectId: number;
@@ -11,45 +15,7 @@ export class CreateTaskDto {
   @IsInt()
   phaseId: number;
 
-  @IsInt()
-  sprintId: number;
-
   @IsString()
   @MinLength(1, { message: 'Task description is required.' })
   description: string;
-
-  @IsInt()
-  assigneeUserId: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  estimatedHours?: number;
-
-  @IsOptional()
-  @IsDateString()
-  dueDate?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  dependency?: boolean;
-
-  @IsOptional()
-  @IsString()
-  dependencyDescription?: string;
-
-  @IsOptional()
-  @IsInt()
-  dependencyOwnerUserId?: number;
-
-  @IsOptional()
-  @IsUrl()
-  feedbackLink?: string;
-
-  // Only honored if estimatedHours and dueDate are both supplied here too -
-  // same gating rule that applies to PATCH /tasks/:id/status, checked in
-  // TasksService.create().
-  @IsOptional()
-  @IsIn(TASK_STATUSES)
-  status?: TaskStatus;
 }

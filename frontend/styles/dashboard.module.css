@@ -35,6 +35,22 @@
   margin-top: var(--space-2);
 }
 
+/* Clickable variant of .statCard - Developer Dashboard's drill-down
+   cards (see components/DeveloperDashboard.js). Reset button chrome
+   since these render as <button>, not the plain <div> the default
+   dashboard's stat cards use. */
+.statCardButton {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.statCardButton:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.statCardButton:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
+.statCard.expanded { border-left-width: 6px; }
+
 .sectionHeader {
   display: flex;
   align-items: center;
