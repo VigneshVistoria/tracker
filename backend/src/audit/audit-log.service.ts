@@ -62,6 +62,7 @@ export const AuditActions = {
   TASK_UPDATED: 'task_updated',
   TASK_STATUS_CHANGED: 'task_status_changed',
   TASK_STATUS_PERCENT_UPDATED: 'task_status_percent_updated',
+  ROLLBACK_TRIGGERED: 'rollback_triggered',
 } as const;
 
 export interface RecordAuditEntryInput {

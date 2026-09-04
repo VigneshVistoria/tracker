@@ -35,6 +35,7 @@ import {
   GitBranchPlus,
   ListChecks,
   Percent,
+  RotateCcw,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -154,6 +155,7 @@ const ADMIN_NAV_ITEMS = [
   { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
   { href: '/admin/regression-testing', label: 'Regression Testing', icon: CheckSquare },
   { href: '/admin/task-status-config', label: 'Task Status Config', icon: Percent },
+  { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw },
 ];
 
 // A single conditionally-shown nav entry outside the main NAV_ITEMS/

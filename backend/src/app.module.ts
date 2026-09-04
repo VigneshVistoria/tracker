@@ -59,6 +59,7 @@ import { ProjectTeam } from './project-teams/project-team.entity';
 import { ProjectTeamsModule } from './project-teams/project-teams.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TaskStatusConfigModule } from './task-status-config/task-status-config.module';
+import { OpsModule } from './ops/ops.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -141,6 +142,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     ProjectTeamsModule,
     TasksModule,
     TaskStatusConfigModule,
+    OpsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
