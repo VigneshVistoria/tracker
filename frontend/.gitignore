@@ -1,6 +1,11 @@
 node_modules/
 dist/
-.next/
+# No trailing slash (unlike the other entries here) - .next is a symlink
+# after scripts/build-frontend-atomic.sh's first run, and a trailing
+# slash only matches actual directories, not symlinks, in a .gitignore
+# pattern.
+.next
+.next-builds/
 .env
 .env.local
 *.log

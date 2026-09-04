@@ -70,12 +70,21 @@ fi
 
 # Pull a couple of the actual /_next/static/... asset URLs the page
 # references and confirm they really resolve. This is the exact failure
-# mode from the 2026-09-02 incident: page returns 200 but references
-# chunk files a stale/mismatched build already deleted from disk.
-ASSET_PATHS=$(grep -oE '/_next/static/[^"'"'"')]+' "$TMP_DIR/dashboard.html" | sort -u | head -5)
-if [ -z "$ASSET_PATHS" ]; then
+# mode from the 2026-09-02 incident (and its 2026-09 recurrence): page
+# returns 200 but references chunk files a stale/mismatched build
+# already deleted from disk. _buildManifest.js/_ssgManifest.js are
+# checked first, always, rather than relying on whatever alphabetical
+# sort happens to pick - those two are the exact files that 404'd both
+# times this has happened, and they live under the buildId-specific path
+# that changes every build (unlike content-hashed chunk filenames), so
+# they're the most sensitive tripwire for this bug class.
+ALL_ASSETS=$(grep -oE '/_next/static/[^"'"'"')]+' "$TMP_DIR/dashboard.html" | sort -u)
+if [ -z "$ALL_ASSETS" ]; then
   fail "dashboard page returned 200 but referenced no /_next/static/ assets at all - looks broken/blank"
 fi
+MANIFEST_ASSETS=$(echo "$ALL_ASSETS" | grep -E '_buildManifest\.js$|_ssgManifest\.js$' || true)
+OTHER_ASSETS=$(echo "$ALL_ASSETS" | grep -vE '_buildManifest\.js$|_ssgManifest\.js$' | head -3 || true)
+ASSET_PATHS=$(printf '%s\n%s\n' "$MANIFEST_ASSETS" "$OTHER_ASSETS" | grep -v '^$')
 
 BROKEN_ASSETS=""
 while IFS= read -r asset; do

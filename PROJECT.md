@@ -148,6 +148,41 @@ while the new build's files are already on disk, which 404s the frontend
 into a blank page (this happened on 2026-09-02). `deploy.sh` guarantees a
 build can never land without its restart.
 
+**Frontend builds are atomic** (added after the 2026-09-02 fix turned out
+not to be the whole story — the same stale-chunk 404 class recurred even
+with build+restart always paired). Root cause: a plain `next build` writes
+in place into `frontend/.next`, the exact directory the *currently
+running* `tracker-frontend` process serves `/_next/static/...` from —
+live, for the entire multi-second build. Any real request landing
+mid-build could 404 or read a half-written file, and an interrupted build
+(dropped SSH session) could leave `.next` permanently half-written.
+`scripts/build-frontend-atomic.sh` fixes this: every build writes into a
+fresh `frontend/.next-builds/<timestamp>/` directory (the live `.next`
+symlink's target is never touched while a build runs), and only swaps
+`.next` to the new build via a single atomic rename once the build has
+**fully succeeded**. Verified by hammering the live site during a real
+build (zero errors) and by killing a build mid-run (site completely
+unaffected, symlink unchanged). Old build directories are pruned
+automatically (last 3 kept). **Never run a bare `npm run build`** — once
+`.next` is a symlink, a manual build with no `NEXT_DIST_DIR` set writes
+straight through it into the live build, recreating the bug; always go
+through `./deploy.sh`.
+
+`scripts/smoke-check.sh` explicitly checks `_buildManifest.js`/
+`_ssgManifest.js` first (not just an alphabetically-sampled asset) since
+those are the exact files that 404'd both times this happened — they live
+under the buildId-specific path that changes every build, unlike
+content-hashed chunk filenames.
+
+**Client-side self-healing for the one thing atomic builds can't fix:**
+a browser tab already open *before* a deploy still has HTML referencing
+the old build's buildId, and that buildId's files stop existing the
+moment a new build goes live — this is an ordinary Next.js characteristic,
+not a deploy-process bug. `pages/_app.js` installs a small handler
+(`lib/chunkErrorRecovery.js`) that detects a failed stale-asset load and
+auto-reloads the tab once, so the user sees a brief refresh instead of a
+silently broken page.
+
 nginx routes (`/etc/nginx/conf.d/`): `/api/*` and `/socket.io/*` →
 `localhost:3001` (backend), `/integrations/*` → backend, everything else →
 `localhost:3000` (frontend). TLS via Certbot/Let's Encrypt.

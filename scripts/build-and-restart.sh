@@ -1,7 +1,8 @@
 #!/bin/bash
 # Shared build+restart logic used by deploy.sh and rollback.sh so there is
 # exactly one place that knows how to bring the app back up. Never call
-# `npm run build` on its own - see CLAUDE.md for why (2026-09-02 incident).
+# `npm run build` on its own - see CLAUDE.md for why (2026-09-02 incident,
+# and the 2026-09 follow-up that showed a restart alone wasn't enough).
 set -e
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -9,8 +10,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 echo "=== Building backend ==="
 (cd backend && npm run build)
 
-echo "=== Building frontend ==="
-(cd frontend && npm run build)
+echo "=== Building frontend (atomic - live .next untouched until swap) ==="
+bash scripts/build-frontend-atomic.sh
 
 BACKEND_LOG=$(pm2 jlist | jq -r '.[] | select(.name=="tracker-backend") | .pm2_env.pm_out_log_path')
 FRONTEND_LOG=$(pm2 jlist | jq -r '.[] | select(.name=="tracker-frontend") | .pm2_env.pm_out_log_path')
