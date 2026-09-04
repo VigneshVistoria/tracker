@@ -1,19 +1,10 @@
 import { useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import Input from '../components/ui/Input';
-import Button from '../components/ui/Button';
-import ThemeToggle from '../components/ui/ThemeToggle';
 import styles from '../styles/login.module.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
-const FEATURES = [
-  'Real-time ticket tracking across every team',
-  'SLA alerts before deadlines are missed',
-  'One dashboard for sprints, QA, and releases',
-];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -58,68 +49,50 @@ export default function LoginPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.brandPanel}>
-        <div>
-          <span className={styles.brandMark}>IT</span>
-          <div className={styles.brandName}>IssueTrack</div>
-          <p className={styles.brandTagline}>
-            The issue tracker built for teams who ship on a deadline.
-          </p>
-          <ul className={styles.featureList}>
-            {FEATURES.map((feature) => (
-              <li key={feature} className={styles.featureItem}>
-                <CheckCircle2 size={18} className={styles.featureIcon} aria-hidden="true" />
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className={styles.brandFooter}>Vistoria Systems</div>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/vistoria-logo.png" alt="Vistoria Systems" className={styles.logo} />
 
-      <div className={styles.formPanel}>
-        <ThemeToggle className={styles.themeToggle} />
-        <div className={styles.formInner}>
-          <div className={styles.mobileBrand}>
-            <span className={styles.mobileBrandMark}>IT</span>
-            IssueTrack
-          </div>
+      <form className={`${styles.form} ${error ? styles.formError : ''}`} onSubmit={handleSubmit}>
+        <Input
+          leftIcon={Mail}
+          id="email"
+          name="email"
+          type="email"
+          required
+          value={form.email}
+          onChange={handleChange}
+          autoComplete="email"
+          aria-label="Email"
+          className={styles.field}
+        />
+        <Input
+          leftIcon={Lock}
+          id="password"
+          name="password"
+          type="password"
+          required
+          value={form.password}
+          onChange={handleChange}
+          autoComplete="current-password"
+          aria-label="Password"
+          className={styles.field}
+        />
+        <button
+          type="submit"
+          className={styles.submit}
+          disabled={loading}
+          aria-label={loading ? 'Signing in' : 'Sign in'}
+        >
+          {loading ? (
+            <Loader2 size={20} className={styles.spinner} aria-hidden="true" />
+          ) : (
+            <ArrowRight size={20} aria-hidden="true" />
+          )}
+        </button>
+      </form>
 
-          <h1 className={styles.title}>Sign in</h1>
-          <p className={styles.subtitle}>Welcome back. Enter your details to continue.</p>
-
-          {error && <div className={styles.error}>{error}</div>}
-
-          <form className={styles.form} onSubmit={handleSubmit}>
-            <Input
-              label="Email"
-              id="email"
-              name="email"
-              type="email"
-              required
-              value={form.email}
-              onChange={handleChange}
-              autoComplete="email"
-            />
-            <Input
-              label="Password"
-              id="password"
-              name="password"
-              type="password"
-              required
-              value={form.password}
-              onChange={handleChange}
-              autoComplete="current-password"
-            />
-            <Button type="submit" fullWidth loading={loading}>
-              {loading ? 'Signing in...' : 'Sign in'}
-            </Button>
-          </form>
-
-          <div className={styles.footer}>
-            Don&apos;t have an account? <Link href="/register">Create one</Link>
-          </div>
-        </div>
+      <div className={styles.srOnly} role="alert" aria-live="assertive">
+        {error}
       </div>
     </div>
   );
