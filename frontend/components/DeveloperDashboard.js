@@ -153,7 +153,13 @@ export default function DeveloperDashboard({ user }) {
     },
   ];
 
-  const activeCard = cards.find((c) => c.key === expanded);
+  // Only show cards for counts of 1+ - the dashboard shrinks when
+  // nothing's urgent and expands to show exactly what needs action.
+  // Still shown while loading (count is 0 by default until the fetch
+  // resolves) so the grid doesn't flash empty-then-populated.
+  const visibleCards = loading ? cards : cards.filter((c) => c.count > 0);
+  const activeCard = visibleCards.find((c) => c.key === expanded);
+  const allCaughtUp = !loading && visibleCards.length === 0;
 
   return (
     <AppShell>
@@ -168,22 +174,30 @@ export default function DeveloperDashboard({ user }) {
 
       {error && <div className={issueStyles.error}>{error}</div>}
 
-      <div className={styles.statsGrid}>
-        {cards.map((card) => (
-          <button
-            key={card.key}
-            type="button"
-            className={styles.statCardButton}
-            aria-expanded={expanded === card.key}
-            onClick={() => setExpanded((prev) => (prev === card.key ? null : card.key))}
-          >
-            <div className={`${styles.statCard} ${expanded === card.key ? styles.expanded : ''}`}>
-              <div className={styles.statValue}>{loading ? '–' : card.count}</div>
-              <div className={styles.statLabel}>{card.label}</div>
-            </div>
-          </button>
-        ))}
-      </div>
+      {allCaughtUp ? (
+        <div className={issueStyles.card}>
+          <div className={issueStyles.empty}>You&rsquo;re all caught up! Nothing needs your attention right now.</div>
+        </div>
+      ) : (
+        <div className={styles.statsGrid}>
+          {visibleCards.map((card) => (
+            <button
+              key={card.key}
+              type="button"
+              className={styles.statCardButton}
+              aria-expanded={expanded === card.key}
+              onClick={() => setExpanded((prev) => (prev === card.key ? null : card.key))}
+            >
+              <div
+                className={`${styles.statCard} ${styles.statCardCompact} ${expanded === card.key ? styles.expanded : ''}`}
+              >
+                <div className={`${styles.statValue} ${styles.statValueCompact}`}>{loading ? '–' : card.count}</div>
+                <div className={`${styles.statLabel} ${styles.statLabelCompact}`}>{card.label}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       {activeCard && (
         <>
