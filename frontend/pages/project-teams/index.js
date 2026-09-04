@@ -132,32 +132,34 @@ export default function ProjectTeamsPage() {
             Team names must be unique within a Project.
           </p>
 
-          <SearchSelectField
-            label="Project Name"
-            id="ptProject"
-            required
-            value={formProject}
-            onChange={setFormProject}
-            options={projects}
-          />
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="ptName">Team</label>
-            <input
-              className={styles.input}
-              id="ptName"
+          <div className={styles.fieldGrid3}>
+            <SearchSelectField
+              label="Project Name"
+              id="ptProject"
               required
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              placeholder="e.g. Backend, QA, Frontend"
+              value={formProject}
+              onChange={setFormProject}
+              options={projects}
             />
-          </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="ptStatus">Status</label>
-            <select className={styles.select} id="ptStatus" value={formStatus} onChange={(e) => setFormStatus(e.target.value)}>
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="ptName">Team</label>
+              <input
+                className={styles.input}
+                id="ptName"
+                required
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Backend, QA, Frontend"
+              />
+            </div>
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="ptStatus">Status</label>
+              <select className={styles.select} id="ptStatus" value={formStatus} onChange={(e) => setFormStatus(e.target.value)}>
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className={styles.actions}>

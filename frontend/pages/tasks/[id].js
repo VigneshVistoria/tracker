@@ -307,46 +307,48 @@ export default function TaskDetailPage() {
       </div>
 
       <form onSubmit={handleSaveFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="tdEHrs">Estimated Hours</label>
-          <input
-            className={styles.input}
-            id="tdEHrs"
-            type="number"
-            min="0"
-            step="0.5"
-            disabled={!canEditFields || estimatedHoursLocked}
-            value={estimatedHours}
-            onChange={(e) => setEstimatedHours(e.target.value)}
-          />
-          {estimatedHoursLocked && (
-            <p className={styles.helpText}>Locked after first entry - only Admin or Program Manager can change it now.</p>
-          )}
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="tdDueDate">Due Date</label>
-          <input
-            className={styles.input}
-            id="tdDueDate"
-            type="date"
-            disabled={!canEditFields || dueDateLocked}
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-          />
-          {dueDateLocked && (
-            <p className={styles.helpText}>Locked after first entry - only Program Manager can change it now.</p>
-          )}
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.label}>Status</label>
-          <div>
-            <StatusBadge status={task.status} />
+        <div className={styles.fieldGrid3}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdEHrs">Estimated Hours</label>
+            <input
+              className={styles.input}
+              id="tdEHrs"
+              type="number"
+              min="0"
+              step="0.5"
+              disabled={!canEditFields || estimatedHoursLocked}
+              value={estimatedHours}
+              onChange={(e) => setEstimatedHours(e.target.value)}
+            />
+            {estimatedHoursLocked && (
+              <p className={styles.helpText}>Locked after first entry - only Admin or Program Manager can change it now.</p>
+            )}
           </div>
-          {hasPendingQaReview && (
-            <p className={styles.helpText}>A QA review round is pending - status is controlled by QA Approve/Reject.</p>
-          )}
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdDueDate">Due Date</label>
+            <input
+              className={styles.input}
+              id="tdDueDate"
+              type="date"
+              disabled={!canEditFields || dueDateLocked}
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+            {dueDateLocked && (
+              <p className={styles.helpText}>Locked after first entry - only Program Manager can change it now.</p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label}>Status</label>
+            <div>
+              <StatusBadge status={task.status} />
+            </div>
+            {hasPendingQaReview && (
+              <p className={styles.helpText}>A QA review round is pending - status is controlled by QA Approve/Reject.</p>
+            )}
+          </div>
         </div>
 
         {canEditFields && (
@@ -373,14 +375,16 @@ export default function TaskDetailPage() {
               onChange={(e) => setTicketDescription(e.target.value)}
             />
           </div>
-          <SearchSelectField
-            label="Dependency Owner (Developer)"
-            id="tdTicketOwner"
-            required
-            value={ticketOwner}
-            onChange={setTicketOwner}
-            options={developers}
-          />
+          <div className={styles.fieldNarrow}>
+            <SearchSelectField
+              label="Dependency Owner (Developer)"
+              id="tdTicketOwner"
+              required
+              value={ticketOwner}
+              onChange={setTicketOwner}
+              options={developers}
+            />
+          </div>
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={filingTicket}>
               {filingTicket ? 'Filing...' : 'File Dependency Ticket'}
@@ -436,44 +440,46 @@ export default function TaskDetailPage() {
               onChange={(e) => setResolution(e.target.value)}
             />
           </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdArtifactType">Artifact Type</label>
-            <select
-              className={styles.select}
-              id="tdArtifactType"
-              required
-              value={artifactType}
-              onChange={(e) => setArtifactType(e.target.value)}
-            >
-              <option value="" disabled>— Select artifact type —</option>
-              {ARTIFACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdArtifactUrl">Artifact URL</label>
-            <input
-              className={styles.input}
-              id="tdArtifactUrl"
-              type="url"
-              required
-              placeholder="https://..."
-              value={artifactUrl}
-              onChange={(e) => setArtifactUrl(e.target.value)}
-            />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
-            <input
-              className={styles.input}
-              id="tdActualHours"
-              type="number"
-              min="0"
-              step="0.5"
-              required
-              placeholder="Total hours spent on this task so far"
-              value={actualHours}
-              onChange={(e) => setActualHours(e.target.value)}
-            />
+          <div className={styles.fieldGrid3}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="tdArtifactType">Artifact Type</label>
+              <select
+                className={styles.select}
+                id="tdArtifactType"
+                required
+                value={artifactType}
+                onChange={(e) => setArtifactType(e.target.value)}
+              >
+                <option value="" disabled>— Select artifact type —</option>
+                {ARTIFACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="tdArtifactUrl">Artifact URL</label>
+              <input
+                className={styles.input}
+                id="tdArtifactUrl"
+                type="url"
+                required
+                placeholder="https://..."
+                value={artifactUrl}
+                onChange={(e) => setArtifactUrl(e.target.value)}
+              />
+            </div>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
+              <input
+                className={styles.input}
+                id="tdActualHours"
+                type="number"
+                min="0"
+                step="0.5"
+                required
+                placeholder="Total hours spent on this task so far"
+                value={actualHours}
+                onChange={(e) => setActualHours(e.target.value)}
+              />
+            </div>
           </div>
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingQa}>

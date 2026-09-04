@@ -137,15 +137,69 @@
    content rather than stretching to fill the row. Collapses back to
    stacked full-width below 640px, same breakpoint the rest of this file
    uses for mobile. */
+/* 640px collapse leaves an ~11px gap where 3 columns at their minimum
+   (180px * 3 + 2 gaps = 572px) no longer fit the card's actual content
+   width once the sidebar goes off-canvas (card content bottoms out
+   around 561px in that range) - collapsing at 660px instead of 640px
+   closes that gap with a small margin. */
 .fieldGrid3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 280px));
   gap: var(--space-4);
   align-items: start;
 }
-@media (max-width: 640px) {
+@media (max-width: 660px) {
   .fieldGrid3 {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Same principle as .fieldGrid3, for a pair of short fields. */
+.fieldGrid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 280px));
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 660px) {
+  .fieldGrid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Same principle as .fieldGrid3, for four short chained fields
+   (e.g. Project/Module/Phase/Team). Steps down to 2 columns before
+   collapsing fully, since 4 columns gets cramped sooner than 2-3 do.
+   The step-down breakpoint is 1024px, not 900px, because the sidebar
+   (256px, fixed) comes back at widths above 900px - between 901px and
+   ~991px there isn't actually room for 4 columns at their minimum
+   (150px * 4 + 3 gaps = 648px) once the sidebar and card padding are
+   accounted for, so stepping down that early would still overflow. */
+.fieldGrid4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 220px));
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .fieldGrid4 {
+    grid-template-columns: repeat(2, minmax(180px, 280px));
+  }
+}
+@media (max-width: 660px) {
+  .fieldGrid4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Caps a single short field's width instead of letting it stretch
+   full-width when there's nothing appropriate to pair it with. */
+.fieldNarrow {
+  max-width: 280px;
+}
+@media (max-width: 640px) {
+  .fieldNarrow {
+    max-width: none;
   }
 }
 

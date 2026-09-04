@@ -163,38 +163,40 @@ export default function ProjectPhasesPage() {
             Phase names must be unique within a Module.
           </p>
 
-          <SearchSelectField
-            label="Project"
-            id="pfProject"
-            required
-            value={formProject}
-            onChange={(v) => {
-              setFormProject(v);
-              setFormModule(null);
-            }}
-            options={projects}
-          />
-          <SearchSelectField
-            label="Module"
-            id="pfModule"
-            required
-            value={formModule}
-            onChange={setFormModule}
-            options={formModules}
-            disabled={!formProject}
-            placeholder="Select a Project first"
-          />
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="pfName">Phase</label>
-            <input
-              className={styles.input}
-              id="pfName"
+          <div className={styles.fieldGrid3}>
+            <SearchSelectField
+              label="Project"
+              id="pfProject"
               required
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              placeholder="e.g. Discovery, Build, Launch"
+              value={formProject}
+              onChange={(v) => {
+                setFormProject(v);
+                setFormModule(null);
+              }}
+              options={projects}
             />
+            <SearchSelectField
+              label="Module"
+              id="pfModule"
+              required
+              value={formModule}
+              onChange={setFormModule}
+              options={formModules}
+              disabled={!formProject}
+              placeholder="Select a Project first"
+            />
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="pfName">Phase</label>
+              <input
+                className={styles.input}
+                id="pfName"
+                required
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Discovery, Build, Launch"
+              />
+            </div>
           </div>
 
           <div className={styles.actions}>

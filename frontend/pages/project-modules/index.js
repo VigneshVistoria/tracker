@@ -142,25 +142,27 @@ export default function ProjectModulesPage() {
             Module names must be unique within a Project.
           </p>
 
-          <SearchSelectField
-            label="Project"
-            id="pmProject"
-            required
-            value={formProject}
-            onChange={setFormProject}
-            options={projects}
-          />
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="pmName">Module</label>
-            <input
-              className={styles.input}
-              id="pmName"
+          <div className={styles.fieldGrid2}>
+            <SearchSelectField
+              label="Project"
+              id="pmProject"
               required
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-              placeholder="e.g. Billing, Notifications"
+              value={formProject}
+              onChange={setFormProject}
+              options={projects}
             />
+
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="pmName">Module</label>
+              <input
+                className={styles.input}
+                id="pmName"
+                required
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+                placeholder="e.g. Billing, Notifications"
+              />
+            </div>
           </div>
 
           <div className={styles.actions}>

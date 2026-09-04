@@ -237,41 +237,43 @@ export default function ProjectPlanningPage() {
             {form.id ? `Editing entry #${form.id}` : 'Project is required; Module/Phase/Team are optional.'}
           </p>
 
-          <SearchSelectField
-            label="Project"
-            id="ppProject"
-            required
-            value={form.project}
-            onChange={(v) => setForm({ ...form, project: v, module: null, phase: null, team: null })}
-            options={projects}
-          />
-          <SearchSelectField
-            label="Module"
-            id="ppModule"
-            value={form.module}
-            onChange={(v) => setForm({ ...form, module: v, phase: null })}
-            options={modules}
-            disabled={!form.project}
-            placeholder="Select a Project first"
-          />
-          <SearchSelectField
-            label="Phase"
-            id="ppPhase"
-            value={form.phase}
-            onChange={(v) => setForm({ ...form, phase: v })}
-            options={phases}
-            disabled={!form.module}
-            placeholder="Select a Module first"
-          />
-          <SearchSelectField
-            label="Team"
-            id="ppTeam"
-            value={form.team}
-            onChange={(v) => setForm({ ...form, team: v })}
-            options={teams}
-            disabled={!form.project}
-            placeholder="Select a Project first"
-          />
+          <div className={styles.fieldGrid4}>
+            <SearchSelectField
+              label="Project"
+              id="ppProject"
+              required
+              value={form.project}
+              onChange={(v) => setForm({ ...form, project: v, module: null, phase: null, team: null })}
+              options={projects}
+            />
+            <SearchSelectField
+              label="Module"
+              id="ppModule"
+              value={form.module}
+              onChange={(v) => setForm({ ...form, module: v, phase: null })}
+              options={modules}
+              disabled={!form.project}
+              placeholder="Select a Project first"
+            />
+            <SearchSelectField
+              label="Phase"
+              id="ppPhase"
+              value={form.phase}
+              onChange={(v) => setForm({ ...form, phase: v })}
+              options={phases}
+              disabled={!form.module}
+              placeholder="Select a Module first"
+            />
+            <SearchSelectField
+              label="Team"
+              id="ppTeam"
+              value={form.team}
+              onChange={(v) => setForm({ ...form, team: v })}
+              options={teams}
+              disabled={!form.project}
+              placeholder="Select a Project first"
+            />
+          </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
             <div className={styles.field} style={{ flex: '1 1 160px' }}>
