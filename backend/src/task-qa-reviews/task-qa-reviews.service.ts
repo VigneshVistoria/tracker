@@ -70,6 +70,7 @@ export class TaskQaReviewsService {
     const savedReview = await this.qaReviewsRepository.save(review);
 
     task.status = priorRounds === 0 ? 'Feedback' : 'Re-Feedback';
+    task.actualHours = dto.actualHours;
     await this.tasksRepository.save(task);
 
     await this.auditLogService.record({
@@ -113,6 +114,7 @@ export class TaskQaReviewsService {
     const savedReview = await this.qaReviewsRepository.save(pending);
 
     task.status = 'Pass';
+    task.completedAt = new Date();
     await this.tasksRepository.save(task);
 
     await this.auditLogService.record({

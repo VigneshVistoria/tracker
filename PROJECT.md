@@ -303,14 +303,45 @@ manage = **PM only**.
 
 **`tasks`** — leaf of Project → Module → Phase → Sprint. `project_tasks`
 table: full chain, description, assignee, `estimatedHours` (locked after
-first entry), dueDate, optional dependency + dependency-owner (must be a
-Developer), status (locked until estimatedHours+dueDate set), feedbackLink.
-No soft-delete. Leadership sees all tasks; others see only their own.
+first entry), `actualHours` (set on QA submit, feeds the KPI module),
+dueDate, `completedAt` (set the moment QA approves - status → `Pass`),
+status (locked until estimatedHours+dueDate set). No soft-delete.
+Leadership sees all tasks; others see only their own.
 
 **`task-dependency-tickets`** / **`task-qa-reviews`** — task-lifecycle
-extensions: cross-task dependency tickets, and a QA submit/approve/reject
-review workflow layered onto tasks (`qa-submit`, `qa-approve`,
-`qa-reject`).
+extensions: cross-task dependency tickets (`status`: open/resolved,
+`PATCH /task-dependency-tickets/:id/resolve` — owner or Admin/PM only;
+direction stays implicit, never a stored column: Outbound = you're
+`ownerUserId`, Inbound = you're `createdByUserId`), and a QA submit/
+approve/reject review workflow layered onto tasks (`qa-submit` now
+requires `actualHours`, `qa-approve`, `qa-reject`).
+
+**`kpi` (KpiModule)** — project-wise KPI dashboard (Daily/Weekly/Monthly),
+separate from and additive to the Weekly Performance Report (§ below) —
+different entity (`ProjectTask`, not `Issue`), different formula, no
+overlap. `kpi_config` (admin-editable singleton per tenant: W1-W6 +
+completion bonus cap + QA-rejection threshold, same pattern as
+`performance_scoring_config`) and `kpi_period_score` (frozen, insert-only
+snapshot per project × assignee × period — never updated after
+generation, same immutability guarantee as `weekly_reports`; embeds its
+own `weightsSnapshot` so a later config change never retroactively alters
+an issued score). Composite score = `100 − hoursExceed%×W1 − overdue%×W2 −
+targetMiss%×W3 − (excessiveRejectionFlag?100:0)×W4 −
+outboundDependencyOverdue%×W5 + MIN(completion%×W6, bonusCap)`, clamped
+0-100. A task past due is excluded from Overdue%/Target Miss% if the
+assignee has an open Inbound dependency ticket against it (not their
+fault). Outbound dependency overdue counts against the score (W5);
+Inbound is informational only, never penalized. Generated on a schedule
+(`@Cron`, mirrors `WeeklyReportSchedulerService`'s pattern: nightly/Monday
+8am/1st-of-month) or manually via `POST /kpi/generate` (Admin/PM).
+Monthly rows carry both a `headlineScore` (average of that month's frozen
+weekly scores) and an `auditScore` (recomputed straight from the month's
+raw counts), shown side by side. **Permissions**: `GET /kpi/me` is
+hardcoded to the caller's own JWT id (never accepts a user-id param,
+never returns any cross-assignee aggregate); `GET /kpi/report` (full
+breakdown across assignees) and `GET/PATCH /kpi-config` are Admin/
+Executive/Program-Manager-only — same manual-role-check pattern as
+`TimeSheetsController`.
 
 ### QA / testing
 
@@ -407,7 +438,7 @@ UX convenience, not the real enforcement.
 | Project planning | `/project-modules`, `/project-phases`, `/project-planning`, `/project-teams` |
 | QA | `/qa/test-cases`, `/qa/test-cases/new`, `/qa/test-cases/[id]`, `/qa/test-cases/bulk-import` |
 | Time / updates | `/time-sheets`, `/daily-update` |
-| Performance | `/performance-dashboard` |
+| Performance | `/performance-dashboard`, `/kpi` (Admin/Executive/PM see all assignees; everyone else sees only their own scores, server-enforced) |
 | Admin — people & projects | `/admin/users`, `/admin/users/new`, `/admin/users/[id]`, `/admin/projects`, `/admin/projects/[id]`, `/admin/sprints`, `/admin/sprints/[id]` |
 | Admin — catalogs | `/admin/issue-categories`, `/admin/labels`, `/admin/teams` |
 | Admin — config | `/admin/sla-config`, `/admin/performance-scoring-config`, `/admin/task-status-config` |
@@ -639,3 +670,8 @@ sides (`JwtAuthGuard` + `AdminGuard` on `GET /ops/releases` and
   (see §12 for why there's no automated migration runner).
 - Root disk on the production box is ~91% full — a pre-existing condition
   independent of any single feature, worth monitoring/cleaning up.
+- The KPI module's Daily report layout was inferred (no spec sheet was
+  available to confirm it against), and its Overdue%/Target Miss%
+  distinction is a documented interpretation, not a confirmed spec
+  definition — see `KpiService.computeMetrics()`'s own comment. Revisit
+  both once `KPI_Formulas_Reference.xlsx` is actually available.

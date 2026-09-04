@@ -39,6 +39,7 @@ import {
   Link2,
   FlaskConical,
   RotateCcw,
+  Gauge,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -142,6 +143,14 @@ const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', i
 const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
 const DEPENDENCY_CLEARANCE_NAV_ITEM = { href: '/dependency-clearance', label: 'Dependency Clearance', icon: Link2 };
 const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical };
+
+// Same visibility as My Tasks (Admin/Executive/Program Manager/QA/
+// Developer, Client excluded - Clients have no tasks assigned, so there's
+// nothing for this page to show them). Server-side, /kpi/me vs /kpi/report
+// is what actually restricts a non-leadership user to only their own
+// score - this nav entry point is available to everyone in that role set,
+// but what each of them sees behind it differs per role.
+const KPI_NAV_ITEM = { href: '/kpi', label: 'KPI Dashboard', icon: Gauge };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -353,6 +362,14 @@ export default function AppShell({ children }) {
               user.role === 'program_manager' ||
               user.role === 'qa') && (
               <SingleNavLink item={QA_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' ||
+              user.role === 'executive' ||
+              user.role === 'program_manager' ||
+              user.role === 'qa' ||
+              user.role === 'developer') && (
+              <SingleNavLink item={KPI_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (

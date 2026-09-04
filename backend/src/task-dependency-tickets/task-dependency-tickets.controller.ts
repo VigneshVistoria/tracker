@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards, Req, ParseIntPipe, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Req, ParseIntPipe, ForbiddenException } from '@nestjs/common';
 import { TaskDependencyTicketsService } from './task-dependency-tickets.service';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -50,5 +50,11 @@ export class TaskDependencyTicketsController {
   async create(@Body() dto: CreateTaskDependencyTicketDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.ticketsService.create(dto, currentUser, req.user.tenantId);
+  }
+
+  @Patch(':id/resolve')
+  async resolve(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.ticketsService.resolve(id, currentUser, req.user.tenantId);
   }
 }

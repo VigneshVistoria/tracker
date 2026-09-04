@@ -65,6 +65,8 @@ export const AuditActions = {
   TASK_STATUS_PERCENT_UPDATED: 'task_status_percent_updated',
   TASK_ASSIGNED: 'task_assigned',
   TASK_DEPENDENCY_TICKET_CREATED: 'task_dependency_ticket_created',
+  TASK_DEPENDENCY_TICKET_RESOLVED: 'task_dependency_ticket_resolved',
+  KPI_CONFIG_UPDATED: 'kpi_config_updated',
   TASK_QA_SUBMITTED: 'task_qa_submitted',
   TASK_QA_APPROVED: 'task_qa_approved',
   TASK_QA_REJECTED: 'task_qa_rejected',

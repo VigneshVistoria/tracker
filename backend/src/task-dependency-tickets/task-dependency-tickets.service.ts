@@ -112,4 +112,44 @@ export class TaskDependencyTicketsService {
 
     return saved;
   }
+
+  // Marks a ticket cleared - this entity had no resolution concept at all
+  // before the KPI module needed one (see the gap analysis). Callable by
+  // the ticket's own owner (the person who was blocking it - matches who
+  // is expected to actually clear it) or Admin/Program Manager.
+  async resolve(
+    id: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskDependencyTicket> {
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) {
+      throw new NotFoundException(`Dependency ticket #${id} not found`);
+    }
+    const isOwner = ticket.ownerUserId === currentUser.id;
+    const isLeadership = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.PROGRAM_MANAGER;
+    if (!isOwner && !isLeadership) {
+      throw new ForbiddenException('Only the ticket owner, Admin, or Program Manager can resolve a dependency ticket.');
+    }
+    if (ticket.status === 'resolved') {
+      throw new BadRequestException('This dependency ticket is already resolved.');
+    }
+
+    ticket.status = 'resolved';
+    ticket.resolvedAt = new Date();
+    const saved = await this.ticketsRepository.save(ticket);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_DEPENDENCY_TICKET_RESOLVED,
+      tenantId,
+      entityType: 'TaskDependencyTicket',
+      entityId: saved.id,
+      details: { parentTaskId: saved.parentTaskId },
+    });
+
+    return saved;
+  }
 }

@@ -36,4 +36,15 @@ export class TaskDependencyTicket {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  // Added for the KPI module - this entity previously had no resolution
+  // concept at all, so a ticket had no way to ever be marked cleared.
+  // 'open' | 'resolved'. Direction (Outbound/Inbound) stays implicit, as
+  // before - it's still just whichever of ownerUserId/createdByUserId
+  // matches the current user, never stored on the row itself.
+  @Column({ default: 'open' })
+  status: 'open' | 'resolved';
+
+  @Column({ type: 'timestamp', nullable: true })
+  resolvedAt: Date;
 }

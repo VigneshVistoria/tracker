@@ -72,6 +72,7 @@ export default function TaskDetailPage() {
   const [resolution, setResolution] = useState('');
   const [artifactType, setArtifactType] = useState('');
   const [artifactUrl, setArtifactUrl] = useState('');
+  const [actualHours, setActualHours] = useState('');
   const [submittingQa, setSubmittingQa] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
@@ -79,6 +80,17 @@ export default function TaskDetailPage() {
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
+  };
+
+  const handleResolveTicket = async (ticketId) => {
+    setError('');
+    try {
+      await apiFetch(`/task-dependency-tickets/${ticketId}/resolve`, { method: 'PATCH' });
+      showToast('Dependency ticket resolved', 'success');
+      loadTickets();
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   useEffect(() => {
@@ -171,20 +183,21 @@ export default function TaskDetailPage() {
   const handleSubmitForQa = async (e) => {
     e.preventDefault();
     setError('');
-    if (!resolution.trim() || !artifactType || !artifactUrl.trim()) {
-      setError('Resolution, Artifact Type, and Artifact URL are all required to submit for QA testing.');
+    if (!resolution.trim() || !artifactType || !artifactUrl.trim() || actualHours === '') {
+      setError('Resolution, Artifact Type, Artifact URL, and Actual Hours are all required to submit for QA testing.');
       return;
     }
     setSubmittingQa(true);
     try {
       await apiFetch(`/tasks/${task.id}/qa-submit`, {
         method: 'POST',
-        body: JSON.stringify({ resolution, artifactType, artifactUrl }),
+        body: JSON.stringify({ resolution, artifactType, artifactUrl, actualHours: Number(actualHours) }),
       });
       showToast('Submitted for QA testing', 'success');
       setResolution('');
       setArtifactType('');
       setArtifactUrl('');
+      setActualHours('');
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
         apiFetch(`/tasks/${task.id}/qa-reviews`),
@@ -383,11 +396,26 @@ export default function TaskDetailPage() {
         {tickets.length === 0 && <div className={styles.empty}>No dependency tickets filed for this task.</div>}
         {tickets.map((ticket) => (
           <div key={ticket.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ margin: 0 }}>{ticket.description}</p>
+            <p style={{ margin: 0 }}>
+              {ticket.description}{' '}
+              <span className={styles.badge} style={ticket.status === 'resolved' ? { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' } : { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
+                {ticket.status === 'resolved' ? 'Resolved' : 'Open'}
+              </span>
+            </p>
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Owner: {ticket.ownerEmail} &middot; Filed by {ticket.createdByEmail} &middot;{' '}
               {new Date(ticket.createdAt).toLocaleDateString()}
             </p>
+            {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)' }}
+                onClick={() => handleResolveTicket(ticket.id)}
+              >
+                Mark Resolved
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -431,6 +459,20 @@ export default function TaskDetailPage() {
               placeholder="https://..."
               value={artifactUrl}
               onChange={(e) => setArtifactUrl(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
+            <input
+              className={styles.input}
+              id="tdActualHours"
+              type="number"
+              min="0"
+              step="0.5"
+              required
+              placeholder="Total hours spent on this task so far"
+              value={actualHours}
+              onChange={(e) => setActualHours(e.target.value)}
             />
           </div>
           <div className={styles.actions}>

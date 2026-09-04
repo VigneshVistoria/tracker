@@ -65,6 +65,20 @@ export class ProjectTask {
   @Column({ type: 'date', nullable: true })
   dueDate: string;
 
+  // Required input on the QA-submit action (TaskQaReviewsService.submit())
+  // - the KPI module's Hours Exceed % needs a real logged figure to
+  // compare against estimatedHours, and QA-submit is the one
+  // Assignee-initiated action where they know total time spent.
+  @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
+  actualHours: number;
+
+  // Set once, in TaskQaReviewsService.approve() (status -> 'Pass') - the
+  // KPI module's Target Miss % needs to know exactly when a task closed,
+  // separate from updatedAt (which changes on every edit, not just
+  // completion).
+  @Column({ type: 'timestamp', nullable: true })
+  completedAt: Date;
+
   // One of TASK_STATUSES (task-status-config/task-status-percent.entity).
   // Fully auto-computed by task events, never manually set - see
   // TasksService.create() (default 'Development') and
