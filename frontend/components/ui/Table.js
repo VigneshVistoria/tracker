@@ -10,6 +10,7 @@ export default function Table({
   rows,
   getRowId = (row) => row.id,
   onRowClick,
+  rowClassName,
   sortKey: controlledSortKey,
   sortDir: controlledSortDir,
   onSortChange,
@@ -85,7 +86,9 @@ export default function Table({
           {sortedRows.map((row) => (
             <tr
               key={getRowId(row)}
-              className={onRowClick ? styles.clickableRow : ''}
+              className={[onRowClick ? styles.clickableRow : '', rowClassName ? rowClassName(row) : '']
+                .filter(Boolean)
+                .join(' ')}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
             >
               {columns.map((col) => (

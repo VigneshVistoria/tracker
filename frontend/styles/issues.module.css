@@ -87,6 +87,9 @@
 .issueRow.railQaFailed { border-left-color: var(--color-red); }
 .issueRow.railClosed { border-left-color: var(--status-closed); }
 
+.rowRejected, tbody tr.rowRejected:hover { background: var(--color-red-tint) !important; }
+tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-red-dark); }
+
 .issueMain { min-width: 0; }
 
 .issueId {

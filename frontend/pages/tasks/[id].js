@@ -3,9 +3,11 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
+import Table from '../../components/ui/Table';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip } from 'lucide-react';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'developer'];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -43,6 +45,43 @@ const ARTIFACT_TYPES = [
   'Demo Video',
   'Technical Documentation',
 ];
+
+// Artifact Type is a fixed enum today (see TaskArtifactType on the
+// backend), but this map still falls back to a generic icon for any
+// value it doesn't recognize, so a future enum addition can't break the
+// history table before its icon is added here.
+const ARTIFACT_ICONS = {
+  'Screenshot': Image,
+  'Pull Request Link': GitPullRequest,
+  'APK Build': Package,
+  'Technical Documentation': FileText,
+  'Build Pipeline Link': Workflow,
+  'Deployment Report': FileBarChart,
+  'Demo Video': Video,
+};
+
+function ArtifactIcons({ artifacts }) {
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      {artifacts.map((artifact) => {
+        const Icon = ARTIFACT_ICONS[artifact.type] || Paperclip;
+        return (
+          <a
+            key={artifact.id}
+            href={artifact.url}
+            target="_blank"
+            rel="noreferrer"
+            title={artifact.type}
+            aria-label={artifact.type}
+            style={{ display: 'inline-flex', color: 'inherit' }}
+          >
+            <Icon size={16} aria-hidden="true" />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
 
 function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
@@ -156,6 +195,36 @@ export default function TaskDetailPage() {
   const latestQaReview = qaReviews[0];
   const hasPendingQaReview = latestQaReview?.status === 'pending';
   const isQa = user.role === 'qa';
+
+  const qaReviewColumns = [
+    { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
+    { key: 'status', header: 'Status', width: 96, render: (r) => r.status.charAt(0).toUpperCase() + r.status.slice(1) },
+    { key: 'resolution', header: 'Description', render: (r) => r.resolution },
+    { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
+    {
+      key: 'submittedAt',
+      header: 'Submitted',
+      render: (r) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span>{r.submittedByEmail}</span>
+          <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{new Date(r.submittedAt).toLocaleDateString()}</span>
+        </div>
+      ),
+    },
+    {
+      key: 'reviewedAt',
+      header: 'Reviewed',
+      render: (r) => r.status === 'pending' ? null : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span>{r.reviewedByEmail}</span>
+          <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>
+            {r.reviewedAt && new Date(r.reviewedAt).toLocaleDateString()}
+          </span>
+        </div>
+      ),
+    },
+    { key: 'qaComment', header: 'Comment', render: (r) => r.qaComment || null },
+  ];
 
   const handleSaveFields = async (e) => {
     e.preventDefault();
@@ -582,31 +651,12 @@ export default function TaskDetailPage() {
         <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
           QA Review History
         </h2>
-        {qaReviews.length === 0 && <div className={styles.empty}>No QA review rounds yet.</div>}
-        {qaReviews.map((review) => (
-          <div key={review.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ margin: 0 }}>
-              <strong>Round {review.roundNumber}</strong> &middot; {review.status}
-            </p>
-            <p style={{ margin: 'var(--space-1) 0 0' }}>{review.resolution}</p>
-            {review.artifacts.map((artifact) => (
-              <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-                Artifact: {artifact.type} &middot;{' '}
-                <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
-              </p>
-            ))}
-            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Submitted by {review.submittedByEmail} &middot; {new Date(review.submittedAt).toLocaleDateString()}
-            </p>
-            {review.status !== 'pending' && (
-              <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-                Reviewed by {review.reviewedByEmail} &middot;{' '}
-                {review.reviewedAt && new Date(review.reviewedAt).toLocaleDateString()}
-                {review.qaComment && <> &middot; Comment: {review.qaComment}</>}
-              </p>
-            )}
-          </div>
-        ))}
+        <Table
+          columns={qaReviewColumns}
+          rows={[...qaReviews].sort((a, b) => a.roundNumber - b.roundNumber)}
+          rowClassName={(review) => (review.status === 'rejected' ? styles.rowRejected : '')}
+          emptyState="No QA review rounds yet."
+        />
       </div>
     </AppShell>
   );
