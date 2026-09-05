@@ -185,3 +185,58 @@
   --ds-shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.3);
   --ds-shadow-focus: 0 0 0 3px rgba(95, 163, 250, 0.35);
 }
+
+/* ============================================================
+   Terminal theme — phosphor-green CRT look: pure black canvas,
+   monospace body font, sharp (zero) corners, flat borders instead of
+   soft shadows. Overrides only the semantic tokens, same as dark
+   theme above, so every existing component re-themes automatically.
+   Applied via [data-theme='terminal'] on <html>.
+   ============================================================ */
+:root[data-theme='terminal'] {
+  --ds-bg-canvas: #000000;
+  --ds-bg-surface: #050805;
+  --ds-bg-surface-sunken: #000000;
+  --ds-bg-overlay: rgba(0, 0, 0, 0.75);
+
+  --ds-text-primary: #4dff4d;
+  --ds-text-secondary: #33cc33;
+  --ds-text-muted: #1f9d1f;
+  --ds-text-on-primary: #000000;
+  --ds-text-link: #66ffb3;
+  --ds-text-link-hover: #9dffcc;
+
+  --ds-border: #1a4d1a;
+  --ds-border-strong: #2a7a2a;
+  --ds-border-focus: #4dff4d;
+
+  --ds-color-success: #4dff4d;
+  --ds-color-success-dark: #33cc33;
+  --ds-color-success-tint: rgba(77, 255, 77, 0.14);
+
+  --ds-color-warning: #ffcc00;
+  --ds-color-warning-dark: #cc9900;
+  --ds-color-warning-tint: rgba(255, 204, 0, 0.14);
+
+  --ds-color-error: #ff4d4d;
+  --ds-color-error-dark: #ff8080;
+  --ds-color-error-tint: rgba(255, 77, 77, 0.16);
+
+  --ds-color-info: #66ffb3;
+  --ds-color-info-dark: #9dffcc;
+  --ds-color-info-tint: rgba(102, 255, 179, 0.14);
+
+  --ds-font-body: var(--ds-font-mono);
+
+  --ds-radius-sm: 0px;
+  --ds-radius-md: 0px;
+  --ds-radius-lg: 0px;
+  --ds-radius-xl: 0px;
+  --ds-radius-full: 0px;
+
+  --ds-shadow-xs: none;
+  --ds-shadow-sm: none;
+  --ds-shadow-md: none;
+  --ds-shadow-lg: none;
+  --ds-shadow-focus: 0 0 0 2px #4dff4d;
+}

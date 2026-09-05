@@ -105,6 +105,13 @@
   --status-open-tint: var(--color-slate-tint);
 }
 
+:root[data-theme='terminal'] {
+  --color-amber-tint: rgba(102, 255, 179, 0.14);
+  --color-plum-tint: rgba(77, 255, 77, 0.1);
+  --color-slate-tint: rgba(51, 204, 51, 0.12);
+  --status-open-tint: var(--color-slate-tint);
+}
+
 * {
   box-sizing: border-box;
 }

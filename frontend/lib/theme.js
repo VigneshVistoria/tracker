@@ -2,10 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 
 const ThemeContext = createContext(null);
 const STORAGE_KEY = 'theme';
-
-function systemPrefersDark() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches;
-}
+const DEFAULT_THEME = 'dark';
+export const THEMES = ['light', 'dark', 'terminal'];
 
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
@@ -19,15 +17,7 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    setTheme(stored || (systemPrefersDark() ? 'dark' : 'light'));
-
-    if (stored) return;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (e) => {
-      if (!localStorage.getItem(STORAGE_KEY)) setTheme(e.matches ? 'dark' : 'light');
-    };
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
+    setTheme(stored || DEFAULT_THEME);
   }, []);
 
   useEffect(() => {
@@ -36,7 +26,7 @@ export function ThemeProvider({ children }) {
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark';
+      const next = THEMES[(THEMES.indexOf(prev) + 1) % THEMES.length];
       localStorage.setItem(STORAGE_KEY, next);
       return next;
     });
@@ -62,7 +52,7 @@ export const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var stored = localStorage.getItem('${STORAGE_KEY}');
-    var theme = stored || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    var theme = stored || '${DEFAULT_THEME}';
     document.documentElement.setAttribute('data-theme', theme);
   } catch (e) {}
 })();
