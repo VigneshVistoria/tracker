@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 
 const ThemeContext = createContext(null);
 const STORAGE_KEY = 'theme';
-const DEFAULT_THEME = 'dark';
+const DEFAULT_THEME = 'terminal';
 export const THEMES = ['light', 'dark', 'terminal'];
 
 function applyTheme(theme) {
