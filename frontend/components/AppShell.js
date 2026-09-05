@@ -275,8 +275,8 @@ export default function AppShell({ children }) {
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
-        {!hideSidebar && (
-          <div className={styles.topbarLeft}>
+        <div className={styles.topbarLeft}>
+          {!hideSidebar && (
             <button
               className={styles.menuButton}
               onClick={() => setDrawerOpen((v) => !v)}
@@ -285,12 +285,12 @@ export default function AppShell({ children }) {
             >
               {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
             </button>
-            <Link href="/dashboard" className={styles.brand}>
-              <span className={styles.brandMark}>IT</span>
-              <span className={styles.brandName}>IssueTrack</span>
-            </Link>
-          </div>
-        )}
+          )}
+          <Link href="/dashboard" className={styles.brand}>
+            <span className={styles.brandMark}>IT</span>
+            <span className={styles.brandName}>IssueTrack</span>
+          </Link>
+        </div>
 
         {!hideSidebar && (
           <div className={styles.searchWrap}>
