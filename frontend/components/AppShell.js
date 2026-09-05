@@ -166,14 +166,14 @@ const CLIENT_NAV_ITEMS = [
 
 // Developer gets the Task-lifecycle-focused Dashboard (see
 // components/DeveloperDashboard.js) plus My Tasks/Dependency Clearance/
-// Time Sheets (added below via the conditional SingleNavLink blocks,
-// unchanged by this). Issues, Dependency (the old Issue-linked module),
-// Projects, Performance, and Daily Update are deliberately dropped from
-// Developer's nav - confirmed with the user 2026-09 after flagging that
-// Issues/Dependency/Performance/Daily Update each lose the Developer's
-// only way to see or do something (Daily Update is a submit action, not
-// just a view) - the user chose to hide all five anyway.
-const DEVELOPER_NAV_ITEMS = [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }];
+// Time Sheets (added below via the conditional SingleNavLink blocks)
+// and Issues - Developer still needs Issues to submit their own
+// in-progress tickets for review (the assignee-facing half of the
+// Issues QA workflow), so it can't be dropped from their nav.
+const DEVELOPER_NAV_ITEMS = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/issues', label: 'Issues', icon: Ticket },
+];
 
 const ADMIN_NAV_ITEMS = [
   { href: '/admin/users', label: 'Users', icon: Users },
@@ -257,12 +257,6 @@ export default function AppShell({ children }) {
   if (!user) return null;
 
   const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
-  // Developer gets no sidebar at all (confirmed with the user - a
-  // follow-up to the icon-only redesign, which is now moot since there's
-  // no nav left to render icon-only). Time Sheets/KPI Dashboard access
-  // for Developer without a sidebar is a known, deliberately deferred
-  // gap - the user asked to come back to it separately.
-  const hideSidebar = user.role === 'developer';
   const navItems =
     user.role === 'client'
       ? CLIENT_NAV_ITEMS
@@ -275,60 +269,50 @@ export default function AppShell({ children }) {
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
-        {!hideSidebar && (
-          <div className={styles.topbarLeft}>
-            <button
-              className={styles.menuButton}
-              onClick={() => setDrawerOpen((v) => !v)}
-              aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
-              aria-expanded={drawerOpen}
-            >
-              {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
-            </button>
-            <Link href="/dashboard" className={styles.brand}>
-              <span className={styles.brandMark}>IT</span>
-              <span className={styles.brandName}>IssueTrack</span>
-            </Link>
-          </div>
-        )}
+        <div className={styles.topbarLeft}>
+          <button
+            className={styles.menuButton}
+            onClick={() => setDrawerOpen((v) => !v)}
+            aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={drawerOpen}
+          >
+            {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
+          </button>
+          <Link href="/dashboard" className={styles.brand}>
+            <span className={styles.brandMark}>IT</span>
+            <span className={styles.brandName}>IssueTrack</span>
+          </Link>
+        </div>
 
-        {!hideSidebar && (
-          <div className={styles.searchWrap}>
-            <Search size={16} className={styles.searchIcon} aria-hidden="true" />
-            <input
-              type="search"
-              className={styles.searchInput}
-              placeholder="Search issues, projects, people…"
-              aria-label="Search"
-            />
-          </div>
-        )}
+        <div className={styles.searchWrap}>
+          <Search size={16} className={styles.searchIcon} aria-hidden="true" />
+          <input
+            type="search"
+            className={styles.searchInput}
+            placeholder="Search issues, projects, people…"
+            aria-label="Search"
+          />
+        </div>
 
         <div className={styles.topbarRight}>
-          {!hideSidebar && (
-            <>
-              <span
-                className={`${styles.connectionStatus} ${connected ? styles.live : ''}`}
-                title={connected ? 'Live updates connected' : 'Live updates disconnected'}
-              >
-                <span className={styles.connectionDot} aria-hidden="true" />
-                <span className={styles.connectionLabel}>{connected ? 'Live' : 'Offline'}</span>
-              </span>
-              <button type="button" className={styles.iconButton} aria-label="Notifications">
-                <Bell size={18} aria-hidden="true" />
-              </button>
-            </>
-          )}
+          <span
+            className={`${styles.connectionStatus} ${connected ? styles.live : ''}`}
+            title={connected ? 'Live updates connected' : 'Live updates disconnected'}
+          >
+            <span className={styles.connectionDot} aria-hidden="true" />
+            <span className={styles.connectionLabel}>{connected ? 'Live' : 'Offline'}</span>
+          </span>
+          <button type="button" className={styles.iconButton} aria-label="Notifications">
+            <Bell size={18} aria-hidden="true" />
+          </button>
           <ThemeToggle variant="ghost" />
-          {!hideSidebar && (
-            <div className={styles.userBadge}>
-              <span className={styles.avatar}>{initialsFor(user)}</span>
-              <span className={styles.userBadgeText}>
-                <span className={styles.userName}>{user.fullName || user.email}</span>
-                <span className={styles.userRole}>{roleLabel(user.role)}</span>
-              </span>
-            </div>
-          )}
+          <div className={styles.userBadge}>
+            <span className={styles.avatar}>{initialsFor(user)}</span>
+            <span className={styles.userBadgeText}>
+              <span className={styles.userName}>{user.fullName || user.email}</span>
+              <span className={styles.userRole}>{roleLabel(user.role)}</span>
+            </span>
+          </div>
           <button type="button" className={styles.iconButton} onClick={handleLogout} aria-label="Log out">
             <LogOut size={17} aria-hidden="true" />
           </button>
@@ -336,8 +320,6 @@ export default function AppShell({ children }) {
       </header>
 
       <div className={styles.body}>
-        {!hideSidebar && (
-          <>
         <div
           className={`${styles.overlay} ${drawerOpen ? styles.open : ''}`}
           onClick={() => setDrawerOpen(false)}
@@ -461,8 +443,6 @@ export default function AppShell({ children }) {
             {!collapsed && <span>Collapse</span>}
           </button>
         </nav>
-          </>
-        )}
 
         <main className={styles.content}>
           <div className={styles.contentInner}>{children}</div>
