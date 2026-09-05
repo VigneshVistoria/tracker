@@ -71,6 +71,7 @@ export const AuditActions = {
   TASK_QA_APPROVED: 'task_qa_approved',
   TASK_QA_REJECTED: 'task_qa_rejected',
   ROLLBACK_TRIGGERED: 'rollback_triggered',
+  EVIDENCE_SUBMITTED: 'evidence_submitted',
 } as const;
 
 export interface RecordAuditEntryInput {

@@ -42,12 +42,6 @@ export class TaskQaReview {
   @Column({ type: 'text' })
   resolution: string;
 
-  @Column({ type: 'enum', enum: TaskArtifactType })
-  artifactType: TaskArtifactType;
-
-  @Column({ type: 'text' })
-  artifactUrl: string;
-
   @Column()
   submittedByUserId: number;
 

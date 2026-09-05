@@ -70,8 +70,7 @@ export default function TaskDetailPage() {
 
   const [qaReviews, setQaReviews] = useState([]);
   const [resolution, setResolution] = useState('');
-  const [artifactType, setArtifactType] = useState('');
-  const [artifactUrl, setArtifactUrl] = useState('');
+  const [artifacts, setArtifacts] = useState([{ type: '', url: '' }]);
   const [actualHours, setActualHours] = useState('');
   const [submittingQa, setSubmittingQa] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
@@ -180,23 +179,39 @@ export default function TaskDetailPage() {
     }
   };
 
+  const addArtifactRow = () => {
+    setArtifacts((prev) => [...prev, { type: '', url: '' }]);
+  };
+
+  const removeArtifactRow = (index) => {
+    setArtifacts((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const updateArtifactRow = (index, field, value) => {
+    setArtifacts((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  };
+
   const handleSubmitForQa = async (e) => {
     e.preventDefault();
     setError('');
-    if (!resolution.trim() || !artifactType || !artifactUrl.trim() || actualHours === '') {
-      setError('Resolution, Artifact Type, Artifact URL, and Actual Hours are all required to submit for QA testing.');
+    const incomplete = artifacts.some((row) => !row.type || !row.url.trim());
+    if (!resolution.trim() || incomplete || actualHours === '') {
+      setError('Resolution, a Type and URL for every artifact, and Actual Hours are all required to submit for QA testing.');
       return;
     }
     setSubmittingQa(true);
     try {
       await apiFetch(`/tasks/${task.id}/qa-submit`, {
         method: 'POST',
-        body: JSON.stringify({ resolution, artifactType, artifactUrl, actualHours: Number(actualHours) }),
+        body: JSON.stringify({
+          resolution,
+          actualHours: Number(actualHours),
+          artifacts: artifacts.map((row) => ({ type: row.type, url: row.url.trim() })),
+        }),
       });
       showToast('Submitted for QA testing', 'success');
       setResolution('');
-      setArtifactType('');
-      setArtifactUrl('');
+      setArtifacts([{ type: '', url: '' }]);
       setActualHours('');
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
@@ -440,46 +455,66 @@ export default function TaskDetailPage() {
               onChange={(e) => setResolution(e.target.value)}
             />
           </div>
-          <div className={styles.fieldGrid3}>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="tdArtifactType">Artifact Type</label>
-              <select
-                className={styles.select}
-                id="tdArtifactType"
-                required
-                value={artifactType}
-                onChange={(e) => setArtifactType(e.target.value)}
-              >
-                <option value="" disabled>— Select artifact type —</option>
-                {ARTIFACT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
+          <label className={styles.label}>Artifacts</label>
+          {artifacts.map((row, index) => (
+            <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor={`tdArtifactType-${index}`}>Artifact Type</label>
+                <select
+                  className={styles.select}
+                  id={`tdArtifactType-${index}`}
+                  required
+                  value={row.type}
+                  onChange={(e) => updateArtifactRow(index, 'type', e.target.value)}
+                >
+                  <option value="" disabled>— Select artifact type —</option>
+                  {ARTIFACT_TYPES.filter(
+                    (t) => t === row.type || !artifacts.some((r) => r.type === t),
+                  ).map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor={`tdArtifactUrl-${index}`}>Artifact URL</label>
+                <input
+                  className={styles.input}
+                  id={`tdArtifactUrl-${index}`}
+                  type="url"
+                  required
+                  placeholder="https://..."
+                  value={row.url}
+                  onChange={(e) => updateArtifactRow(index, 'url', e.target.value)}
+                />
+              </div>
+              <div className={styles.field}>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => removeArtifactRow(index)}
+                  disabled={artifacts.length === 1}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="tdArtifactUrl">Artifact URL</label>
-              <input
-                className={styles.input}
-                id="tdArtifactUrl"
-                type="url"
-                required
-                placeholder="https://..."
-                value={artifactUrl}
-                onChange={(e) => setArtifactUrl(e.target.value)}
-              />
-            </div>
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
-              <input
-                className={styles.input}
-                id="tdActualHours"
-                type="number"
-                min="0"
-                step="0.5"
-                required
-                placeholder="Total hours spent on this task so far"
-                value={actualHours}
-                onChange={(e) => setActualHours(e.target.value)}
-              />
-            </div>
+          ))}
+          <div className={styles.actions} style={{ marginBottom: 'var(--space-3)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={addArtifactRow}>
+              + Add Another Artifact
+            </button>
+          </div>
+          <div className={styles.field} style={{ maxWidth: '260px' }}>
+            <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
+            <input
+              className={styles.input}
+              id="tdActualHours"
+              type="number"
+              min="0"
+              step="0.5"
+              required
+              placeholder="Total hours spent on this task so far"
+              value={actualHours}
+              onChange={(e) => setActualHours(e.target.value)}
+            />
           </div>
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingQa}>
@@ -495,10 +530,12 @@ export default function TaskDetailPage() {
             QA Review
           </h2>
           <p style={{ margin: 0 }}><strong>Resolution:</strong> {latestQaReview.resolution}</p>
-          <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-            Artifact: {latestQaReview.artifactType} &middot;{' '}
-            <a href={latestQaReview.artifactUrl} target="_blank" rel="noreferrer">{latestQaReview.artifactUrl}</a>
-          </p>
+          {latestQaReview.artifacts.map((artifact) => (
+            <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Artifact: {artifact.type} &middot;{' '}
+              <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
+            </p>
+          ))}
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
             Submitted by {latestQaReview.submittedByEmail} &middot;{' '}
             {new Date(latestQaReview.submittedAt).toLocaleDateString()} &middot; Round {latestQaReview.roundNumber}
@@ -552,10 +589,12 @@ export default function TaskDetailPage() {
               <strong>Round {review.roundNumber}</strong> &middot; {review.status}
             </p>
             <p style={{ margin: 'var(--space-1) 0 0' }}>{review.resolution}</p>
-            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Artifact: {review.artifactType} &middot;{' '}
-              <a href={review.artifactUrl} target="_blank" rel="noreferrer">{review.artifactUrl}</a>
-            </p>
+            {review.artifacts.map((artifact) => (
+              <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+                Artifact: {artifact.type} &middot;{' '}
+                <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
+              </p>
+            ))}
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Submitted by {review.submittedByEmail} &middot; {new Date(review.submittedAt).toLocaleDateString()}
             </p>

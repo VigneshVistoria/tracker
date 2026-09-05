@@ -55,6 +55,16 @@ export class Evidence {
   @Column({ type: 'text', nullable: true })
   comments: string;
 
+  // Groups every row created from one multi-artifact submission (one
+  // selected Artifact Type per row) so the viewer can render them back as
+  // a single dated submission rather than N unrelated rows. Nullable
+  // rather than a real submission table, since every other per-submission
+  // fact (submittedBy*, createdAt) is already duplicated identically
+  // across a batch's rows - a lookup table would just be joined right back
+  // down to this shape.
+  @Column({ type: 'uuid', nullable: true })
+  batchId: string;
+
   // Doubles as Section 11's "Submission Date" - no separate column, since
   // evidence rows are never edited after creation (a correction is a new
   // row, so the history stays intact for audit purposes).

@@ -1,7 +1,8 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { TaskQaReview } from './task-qa-review.entity';
+import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
 import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
@@ -9,11 +10,15 @@ import { TasksService } from '../tasks/tasks.service';
 import { UserRole } from '../users/user.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
+export type TaskQaReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
+
 @Injectable()
 export class TaskQaReviewsService {
   constructor(
     @InjectRepository(TaskQaReview)
     private qaReviewsRepository: Repository<TaskQaReview>,
+    @InjectRepository(TaskQaReviewArtifact)
+    private artifactsRepository: Repository<TaskQaReviewArtifact>,
     @InjectRepository(ProjectTask)
     private tasksRepository: Repository<ProjectTask>,
     private tasksService: TasksService,
@@ -22,12 +27,27 @@ export class TaskQaReviewsService {
 
   // Combined task detail view - every past QA review round for a task,
   // most recent first, so a rejection's comment stays visible even after
-  // a later round supersedes it.
-  findForTask(taskId: number, tenantId: number): Promise<TaskQaReview[]> {
-    return this.qaReviewsRepository.find({
+  // a later round supersedes it. Each round's artifacts are fetched in one
+  // extra query and grouped back onto their round, rather than N+1
+  // queries per round.
+  async findForTask(taskId: number, tenantId: number): Promise<TaskQaReviewWithArtifacts[]> {
+    const reviews = await this.qaReviewsRepository.find({
       where: { taskId, tenantId },
       order: { roundNumber: 'DESC' },
     });
+    if (reviews.length === 0) return [];
+
+    const artifacts = await this.artifactsRepository.find({
+      where: { taskQaReviewId: In(reviews.map((r) => r.id)) },
+    });
+    const byReview = new Map<number, TaskQaReviewArtifact[]>();
+    for (const artifact of artifacts) {
+      const group = byReview.get(artifact.taskQaReviewId) || [];
+      group.push(artifact);
+      byReview.set(artifact.taskQaReviewId, group);
+    }
+
+    return reviews.map((review) => ({ ...review, artifacts: byReview.get(review.id) || [] }));
   }
 
   // Stage 4: Assignee submits the task for QA testing - creates a new
@@ -42,7 +62,7 @@ export class TaskQaReviewsService {
     dto: QaSubmitTaskDto,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-  ): Promise<TaskQaReview> {
+  ): Promise<TaskQaReviewWithArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
     if (task.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the task Assignee can submit it for QA testing.');
@@ -56,18 +76,32 @@ export class TaskQaReviewsService {
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
 
-    const review = this.qaReviewsRepository.create({
-      tenantId,
-      taskId,
-      roundNumber: priorRounds + 1,
-      resolution: dto.resolution,
-      artifactType: dto.artifactType,
-      artifactUrl: dto.artifactUrl,
-      submittedByUserId: currentUser.id,
-      submittedByEmail: currentUser.email,
-      status: 'pending',
+    // Review row + its artifact rows are saved together in a transaction
+    // so a submission can never land with a round but no artifacts (or
+    // vice versa) - same reasoning as Evidence's createBatch.
+    const { savedReview, savedArtifacts } = await this.qaReviewsRepository.manager.transaction(async (manager) => {
+      const review = manager.create(TaskQaReview, {
+        tenantId,
+        taskId,
+        roundNumber: priorRounds + 1,
+        resolution: dto.resolution,
+        submittedByUserId: currentUser.id,
+        submittedByEmail: currentUser.email,
+        status: 'pending',
+      });
+      const savedReview = await manager.save(TaskQaReview, review);
+
+      const artifacts = dto.artifacts.map((item) =>
+        manager.create(TaskQaReviewArtifact, {
+          taskQaReviewId: savedReview.id,
+          type: item.type,
+          url: item.url,
+        }),
+      );
+      const savedArtifacts = await manager.save(TaskQaReviewArtifact, artifacts);
+
+      return { savedReview, savedArtifacts };
     });
-    const savedReview = await this.qaReviewsRepository.save(review);
 
     task.status = priorRounds === 0 ? 'Feedback' : 'Re-Feedback';
     task.actualHours = dto.actualHours;
@@ -81,10 +115,10 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber },
+      details: { roundNumber: savedReview.roundNumber, artifactTypes: dto.artifacts.map((a) => a.type) },
     });
 
-    return savedReview;
+    return { ...savedReview, artifacts: savedArtifacts };
   }
 
   private async findPendingRound(taskId: number, tenantId: number): Promise<TaskQaReview> {

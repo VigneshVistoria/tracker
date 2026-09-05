@@ -9,6 +9,22 @@ import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, SELF_SERVICE_TRANSITIONS, MODE_OPTIONS } from '../../lib/status';
 
+// Mirrors backend/src/evidence/evidence.entity.ts's EvidenceType enum -
+// keep these in sync if that enum ever changes.
+const EVIDENCE_TYPES = [
+  'SharePoint Link',
+  'OneDrive Link',
+  'Azure DevOps Link',
+  'Pull Request Link',
+  'Git Commit Link',
+  'Build Pipeline Link',
+  'Deployment Report',
+  'Functional Test Evidence',
+  'Screenshot',
+  'Demo Video',
+  'Technical Documentation',
+];
+
 function formatDateTime(value) {
   if (!value) return null;
   return new Date(value).toLocaleString(undefined, {
@@ -105,6 +121,14 @@ export default function IssueDetail() {
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectBox, setShowRejectBox] = useState(false);
+  const [evidenceSubmissions, setEvidenceSubmissions] = useState([]);
+  const [showEvidenceForm, setShowEvidenceForm] = useState(false);
+  // Keyed by Artifact Type - presence of a key means that type is
+  // selected; { url, comments } holds that type's own fields, since each
+  // selected type gets its own inputs rather than one shared URL field.
+  const [evidenceSelections, setEvidenceSelections] = useState({});
+  const [submittingEvidence, setSubmittingEvidence] = useState(false);
+  const [evidenceError, setEvidenceError] = useState('');
 
   const load = () => {
     if (!id) return;
@@ -129,13 +153,15 @@ export default function IssueDetail() {
           isClient ? Promise.resolve([]) : apiFetch('/users/assignable'),
           isClient ? Promise.resolve([]) : apiFetch('/projects'),
           isClient ? Promise.resolve([]) : apiFetch('/issue-categories'),
+          isClient ? Promise.resolve([]) : apiFetch(`/issues/${id}/evidence`),
         ]);
       })
-      .then(([data, allUsers, allProjects, allCategories]) => {
+      .then(([data, allUsers, allProjects, allCategories, evidence]) => {
         setIssue(data);
         setUsers(allUsers);
         setProjects(allProjects);
         setCategories(allCategories.filter((c) => c.isActive));
+        setEvidenceSubmissions(evidence);
         setForm({
           title: data.title,
           description: data.description || '',
@@ -315,6 +341,60 @@ export default function IssueDetail() {
       setError(err.message);
     } finally {
       setCreatingDependency(false);
+    }
+  };
+
+  const toggleEvidenceType = (type) => {
+    setEvidenceSelections((prev) => {
+      const next = { ...prev };
+      if (next[type]) {
+        delete next[type];
+      } else {
+        next[type] = { url: '', comments: '' };
+      }
+      return next;
+    });
+  };
+
+  const updateEvidenceField = (type, field, value) => {
+    setEvidenceSelections((prev) => ({ ...prev, [type]: { ...prev[type], [field]: value } }));
+  };
+
+  const handleSubmitEvidence = async (e) => {
+    e.preventDefault();
+    setEvidenceError('');
+    const types = Object.keys(evidenceSelections);
+    if (types.length === 0) {
+      setEvidenceError('Select at least one Artifact Type.');
+      return;
+    }
+    const missingUrlType = types.find((type) => !evidenceSelections[type].url.trim());
+    if (missingUrlType) {
+      setEvidenceError(`Enter a URL for "${missingUrlType}".`);
+      return;
+    }
+
+    setSubmittingEvidence(true);
+    try {
+      await apiFetch(`/issues/${id}/evidence`, {
+        method: 'POST',
+        body: JSON.stringify({
+          items: types.map((type) => ({
+            type,
+            url: evidenceSelections[type].url.trim(),
+            comments: evidenceSelections[type].comments.trim() || undefined,
+          })),
+        }),
+      });
+      setEvidenceSelections({});
+      setShowEvidenceForm(false);
+      showToast('Evidence submitted', 'success');
+      const evidence = await apiFetch(`/issues/${id}/evidence`);
+      setEvidenceSubmissions(evidence);
+    } catch (err) {
+      setEvidenceError(err.message);
+    } finally {
+      setSubmittingEvidence(false);
     }
   };
 
@@ -516,6 +596,89 @@ export default function IssueDetail() {
             <div className={styles.actions}>
               <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={creatingDependency}>
                 {creatingDependency ? 'Creating...' : 'Create Dependency'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+
+      <div className={styles.card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Evidence ({evidenceSubmissions.length})</h3>
+          {isAssignee && (
+            <button className={styles.buttonSecondary} type="button" onClick={() => setShowEvidenceForm((v) => !v)}>
+              {showEvidenceForm ? 'Cancel' : 'Submit Evidence'}
+            </button>
+          )}
+        </div>
+
+        {evidenceSubmissions.length === 0 && !showEvidenceForm && (
+          <p className={styles.helpText}>No evidence submitted for this issue yet.</p>
+        )}
+
+        {evidenceSubmissions.map((submission) => (
+          <div key={submission.batchId} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p className={styles.issueMeta} style={{ margin: 0 }}>
+              Submitted by {submission.submittedByEmail} &middot; {formatDateTime(submission.createdAt)}
+            </p>
+            <ul className={styles.suggestionList} style={{ marginTop: 'var(--space-2)' }}>
+              {submission.items.map((item) => (
+                <li key={item.id}>
+                  <strong>{item.type}:</strong>{' '}
+                  <a href={item.url} target="_blank" rel="noreferrer">{item.url}</a>
+                  {item.comments && <span> &mdash; {item.comments}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+
+        {showEvidenceForm && (
+          <form onSubmit={handleSubmitEvidence} style={{ marginTop: 'var(--space-4)' }}>
+            <p className={styles.helpText} style={{ marginTop: 0 }}>
+              Select every Artifact Type this submission includes, then provide a URL (and optional comment) for each.
+            </p>
+            {evidenceError && <div className={styles.error}>{evidenceError}</div>}
+            {EVIDENCE_TYPES.map((type) => (
+              <div key={type}>
+                <label className={styles.checkboxRow}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(evidenceSelections[type])}
+                    onChange={() => toggleEvidenceType(type)}
+                  />
+                  {type}
+                </label>
+                {evidenceSelections[type] && (
+                  <div className={styles.fieldGrid2} style={{ marginLeft: 'var(--space-4)', marginBottom: 'var(--space-3)' }}>
+                    <div className={styles.field}>
+                      <label className={styles.label} htmlFor={`evUrl-${type}`}>URL</label>
+                      <input
+                        className={styles.input}
+                        id={`evUrl-${type}`}
+                        type="url"
+                        required
+                        placeholder="https://..."
+                        value={evidenceSelections[type].url}
+                        onChange={(e) => updateEvidenceField(type, 'url', e.target.value)}
+                      />
+                    </div>
+                    <div className={styles.field}>
+                      <label className={styles.label} htmlFor={`evComment-${type}`}>Comment (optional)</label>
+                      <input
+                        className={styles.input}
+                        id={`evComment-${type}`}
+                        value={evidenceSelections[type].comments}
+                        onChange={(e) => updateEvidenceField(type, 'comments', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className={styles.actions}>
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingEvidence}>
+                {submittingEvidence ? 'Submitting...' : 'Submit Evidence'}
               </button>
             </div>
           </form>
