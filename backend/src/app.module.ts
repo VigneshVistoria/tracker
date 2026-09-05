@@ -33,6 +33,7 @@ import { KpiConfig } from './kpi/kpi-config.entity';
 import { KpiPeriodScore } from './kpi/kpi-period-score.entity';
 import { TaskDependencyTicket } from './task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskQaReview } from './task-qa-reviews/task-qa-review.entity';
+import { TaskQaReviewArtifact } from './task-qa-reviews/task-qa-review-artifact.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -113,6 +114,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           TaskStatusPercent,
           TaskDependencyTicket,
           TaskQaReview,
+          TaskQaReviewArtifact,
           KpiConfig,
           KpiPeriodScore,
         ],

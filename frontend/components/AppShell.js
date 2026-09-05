@@ -286,9 +286,8 @@ export default function AppShell({ children }) {
               {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
             </button>
           )}
-          <Link href="/dashboard" className={styles.brand}>
-            <span className={styles.brandMark}>IT</span>
-            <span className={styles.brandName}>IssueTrack</span>
+          <Link href="/dashboard" className={styles.iconButton} aria-label="Dashboard">
+            <LayoutDashboard size={18} aria-hidden="true" />
           </Link>
         </div>
 
