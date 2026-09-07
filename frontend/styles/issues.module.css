@@ -450,6 +450,57 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   }
 }
 
+/* ---------- My Tasks (icon-header spreadsheet table, components/ui/Table) ----------
+   These are standalone (no ".table" ancestor prefix) since that table
+   uses its own Table.module.css, not this file's .table class. */
+.descClamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 320px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.colHeaderIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Row background by Status - same tint tokens as the Status badges used
+   elsewhere (issues, task detail) so the color language stays consistent
+   app-wide. Development has no entry here on purpose - it's the neutral/
+   no-highlight baseline. */
+.rowTintPlum { background: var(--color-plum-tint); }
+.rowTintMoss { background: var(--color-moss-tint); }
+.rowTintRed { background: var(--color-red-tint); }
+.rowTintTeal { background: var(--color-teal-tint); }
+
+.statusLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  font-size: 0.8rem;
+  color: var(--color-slate);
+}
+
+.statusLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.statusLegendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
 /* ---------- Responsive (card-style rows used on dashboard/admin pages) ---------- */
 @media (max-width: 640px) {
   .issueRow {

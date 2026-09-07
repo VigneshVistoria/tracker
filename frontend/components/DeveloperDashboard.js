@@ -1,53 +1,10 @@
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import AppShell from './AppShell';
 import issueStyles from '../styles/issues.module.css';
 import styles from '../styles/dashboard.module.css';
 import { apiFetch } from '../lib/api';
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function TaskRow({ task }) {
-  return (
-    <Link key={`task-${task.id}`} href={`/tasks/${task.id}`} className={issueStyles.issueRow}>
-      <div className={issueStyles.issueMain}>
-        <p className={issueStyles.issueTitle}>
-          <span className={issueStyles.issueId}>#{task.id}</span>
-          {task.description}
-        </p>
-        <div className={issueStyles.issueMeta}>
-          <span>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</span>
-          <span>{task.dueDate ? `Due ${task.dueDate}` : 'No due date set'}</span>
-        </div>
-      </div>
-      <span className={issueStyles.badge}>{task.status}</span>
-    </Link>
-  );
-}
-
-function TicketRow({ ticket, subtitle }) {
-  return (
-    <Link key={`ticket-${ticket.id}`} href={`/tasks/${ticket.parentTaskId}`} className={issueStyles.issueRow}>
-      <div className={issueStyles.issueMain}>
-        <p className={issueStyles.issueTitle}>{ticket.description}</p>
-        <div className={issueStyles.issueMeta}>
-          <span>{ticket.parentTaskDescription ? `Task: ${ticket.parentTaskDescription}` : `Task #${ticket.parentTaskId}`}</span>
-          <span>{subtitle}</span>
-        </div>
-      </div>
-      {ticket.parentTaskDueDate && <span className={issueStyles.badge}>Task due {ticket.parentTaskDueDate}</span>}
-    </Link>
-  );
-}
-
-function CardList({ items, emptyText }) {
-  if (items.length === 0) {
-    return <div className={issueStyles.card}><div className={issueStyles.empty}>{emptyText}</div></div>;
-  }
-  return <div>{items}</div>;
-}
+import { todayISO, computeDeveloperTaskStats } from '../lib/developerTaskStats';
+import { TaskRow, TicketRow, CardList } from './TaskCardRows';
 
 // Developer-only Dashboard (confirmed with the user 2026-09): replaces
 // the generic Issues-based stat cards from DefaultDashboard
@@ -85,20 +42,7 @@ export default function DeveloperDashboard({ user }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const today = todayISO();
-  // "Rejected" - tasks QA sent back that are still waiting on this
-  // Developer to act (status 'Failed'; once resubmitted a task moves to
-  // 'Re-Feedback' and is back with QA, no longer actionable here).
-  const rejectedTasks = tasks.filter((t) => t.status === 'Failed');
-  // "Overdue" (My Tasks half) - past Due Date and not yet done. 'Pass'
-  // is excluded since a finished task isn't meaningfully overdue even if
-  // it finished after its Due Date.
-  const overdueTasks = tasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'Pass');
-  // "Overdue" (Outbound half) - dependency tickets have no Due Date of
-  // their own, so "past due" is judged by the parent task's Due Date
-  // (the task this Developer is blocking by not clearing the ticket).
-  const overdueOutbound = outbound.filter((t) => t.parentTaskDueDate && t.parentTaskDueDate < today);
-  const overdueCount = overdueTasks.length + overdueOutbound.length;
+  const { rejectedTasks, overdueTasks, overdueOutbound, overdueCount } = computeDeveloperTaskStats(tasks, outbound, todayISO());
 
   const cards = [
     {

@@ -3,7 +3,10 @@
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-xl);
   box-shadow: var(--ds-shadow-sm);
-  overflow: hidden;
+  /* overflow-x so wide/dense tables (e.g. My Tasks) scroll horizontally on
+     narrow screens instead of clipping columns - plain `overflow: hidden`
+     only ever clipped, it never let content scroll into view. */
+  overflow-x: auto;
 }
 
 .table {

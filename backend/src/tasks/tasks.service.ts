@@ -17,6 +17,10 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
   ageingDays: number;
+  // Only populated by findMine() (the one view that shows a Dependency
+  // column) - undefined everywhere else rather than a wasted query on
+  // every other task list.
+  hasOpenDependency?: boolean;
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -186,7 +190,14 @@ export class TasksService {
       order: { createdAt: 'DESC' },
     });
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
-    return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+    const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+
+    if (tasks.length === 0) return withComputed;
+    const openTickets = await this.dependencyTicketsRepository.find({
+      where: { parentTaskId: In(tasks.map((t) => t.id)), status: 'open' },
+    });
+    const taskIdsWithOpenDependency = new Set(openTickets.map((t) => t.parentTaskId));
+    return withComputed.map((t) => ({ ...t, hasOpenDependency: taskIdsWithOpenDependency.has(t.id) }));
   }
 
   async findOne(id: number, tenantId: number): Promise<ProjectTask> {
