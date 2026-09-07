@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import Input from '../components/ui/Input';
@@ -11,6 +11,11 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // A ref (not just the `loading` state) so a second submit event dispatched
+  // before React re-renders the disabled button - e.g. a duplicate event from
+  // a browser extension, or Enter + click landing in the same tick - is
+  // rejected synchronously instead of racing the button's disabled attribute.
+  const submitInFlight = useRef(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -18,6 +23,8 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
     setError('');
     setLoading(true);
 
@@ -43,6 +50,7 @@ export default function LoginPage() {
     } catch (err) {
       setError(err.message);
     } finally {
+      submitInFlight.current = false;
       setLoading(false);
     }
   };
@@ -91,9 +99,9 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <div className={styles.srOnly} role="alert" aria-live="assertive">
+      <p className={styles.error} role="alert" aria-live="assertive">
         {error}
-      </div>
+      </p>
     </div>
   );
 }

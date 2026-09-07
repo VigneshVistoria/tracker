@@ -104,6 +104,14 @@
   to { transform: rotate(360deg); }
 }
 
+.error {
+  min-height: 1.2em;
+  margin: 0;
+  color: #e5b8b8;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
 .srOnly {
   position: absolute;
   width: 1px;
