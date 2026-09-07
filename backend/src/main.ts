@@ -26,7 +26,11 @@ async function bootstrap() {
   );
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
+  // Bind to loopback only - nginx is the sole intended entry point. Without
+  // this the app also listens on the public interface, letting requests
+  // reach it directly with attacker-controlled headers (bypassing nginx's
+  // X-Real-IP, TLS, and CSP), which would make trusting X-Real-IP above unsafe.
+  await app.listen(port, '127.0.0.1');
   console.log(`Backend running on http://localhost:${port}`);
 }
 bootstrap();
