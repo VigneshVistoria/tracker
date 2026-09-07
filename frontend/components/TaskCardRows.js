@@ -1,26 +1,9 @@
 import Link from 'next/link';
 import issueStyles from '../styles/issues.module.css';
 
-// Shared row renderers for the Developer Dashboard's and My Tasks page's
-// stat-card drill-down lists (My Tasks/Rejected/Inbound/Outbound/Overdue).
-export function TaskRow({ task }) {
-  return (
-    <Link key={`task-${task.id}`} href={`/tasks/${task.id}`} className={issueStyles.issueRow}>
-      <div className={issueStyles.issueMain}>
-        <p className={`${issueStyles.issueTitle} ${issueStyles.issueTitleClamp}`}>
-          <span className={issueStyles.issueId}>#{task.id}</span>
-          {task.description}
-        </p>
-        <div className={issueStyles.issueMeta}>
-          <span>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</span>
-          <span>{task.dueDate ? `Due ${task.dueDate}` : 'No due date set'}</span>
-        </div>
-      </div>
-      <span className={issueStyles.badge}>{task.status}</span>
-    </Link>
-  );
-}
-
+// Shared row renderer for the Developer Dashboard's and My Tasks page's
+// Outbound ticket list - the one card that isn't a row in the task table
+// (Outbound tickets live on someone else's task).
 export function TicketRow({ ticket, subtitle }) {
   return (
     <Link key={`ticket-${ticket.id}`} href={`/tasks/${ticket.parentTaskId}`} className={issueStyles.issueRow}>
