@@ -265,9 +265,9 @@ export default function TaskBacklogPage() {
             <thead>
               <tr>
                 {canManage && <th></th>}
-                <th>Project</th>
-                <th>Module</th>
-                <th>Phase</th>
+                <th className={styles.colCompact}>Project</th>
+                <th className={styles.colCompact}>Module</th>
+                <th className={styles.colCompact}>Phase</th>
                 <th>Description</th>
                 {canManage && <th></th>}
               </tr>
@@ -289,10 +289,10 @@ export default function TaskBacklogPage() {
                       />
                     </td>
                   )}
-                  <td>{task.projectName}</td>
-                  <td>{task.moduleName}</td>
-                  <td>{task.phaseName}</td>
-                  <td style={{ maxWidth: 320 }}>{task.description}</td>
+                  <td className={styles.colCompact} title={task.projectName}>{task.projectName}</td>
+                  <td className={styles.colCompact} title={task.moduleName}>{task.moduleName}</td>
+                  <td className={styles.colCompact} title={task.phaseName}>{task.phaseName}</td>
+                  <td className={styles.tableDescCell} title={task.description}>{task.description}</td>
                   {canManage && (
                     <td>
                       <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>

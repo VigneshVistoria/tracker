@@ -422,6 +422,41 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   color: var(--color-ink);
 }
 
+/* ---------- Wide multi-column task tables (My Tasks / Task Backlog) ----------
+   Description is free text and, being nowrap like every other .table td,
+   used to overflow straight into the neighboring columns instead of
+   wrapping. Contain it to a fixed width, wrap it, and clamp very long
+   text with an ellipsis - the full text is one click away via the row's
+   "Open" link (or hoverable via the cell's title attribute). Project/
+   Module/Phase get a capped width too so they don't stretch to fill
+   whatever room Description used to spill into. */
+.table td.tableDescCell {
+  max-width: 320px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.table th.colCompact,
+.table td.colCompact {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* My Tasks has 10 columns, too many to stay readable on a phone screen
+   even with horizontal scroll; hide the least essential ones there and
+   rely on the row's "Open" link for full detail. */
+@media (max-width: 860px) {
+  .table th.hideOnMobile,
+  .table td.hideOnMobile {
+    display: none;
+  }
+}
+
 .modeTag {
   font-family: var(--font-mono);
   font-size: 0.72rem;
