@@ -206,7 +206,7 @@ export default function TaskDetailPage() {
       header: 'Submitted',
       render: (r) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span>{r.submittedByEmail}</span>
+          <span>{r.submittedByFullName}</span>
           <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{new Date(r.submittedAt).toLocaleDateString()}</span>
         </div>
       ),
@@ -216,7 +216,7 @@ export default function TaskDetailPage() {
       header: 'Reviewed',
       render: (r) => r.status === 'pending' ? null : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span>{r.reviewedByEmail}</span>
+          <span>{r.reviewedByFullName}</span>
           <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>
             {r.reviewedAt && new Date(r.reviewedAt).toLocaleDateString()}
           </span>
@@ -656,6 +656,7 @@ export default function TaskDetailPage() {
           rows={[...qaReviews].sort((a, b) => a.roundNumber - b.roundNumber)}
           rowClassName={(review) => (review.status === 'rejected' ? styles.rowRejected : '')}
           emptyState="No QA review rounds yet."
+          bodyVerticalAlign="top"
         />
       </div>
     </AppShell>

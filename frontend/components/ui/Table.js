@@ -16,6 +16,7 @@ export default function Table({
   onSortChange,
   emptyState,
   dense = true,
+  bodyVerticalAlign,
 }) {
   const [internalSort, setInternalSort] = useState({ key: null, dir: 'asc' });
   const sortKey = controlledSortKey !== undefined ? controlledSortKey : internalSort.key;
@@ -92,7 +93,7 @@ export default function Table({
               onClick={onRowClick ? () => onRowClick(row) : undefined}
             >
               {columns.map((col) => (
-                <td key={col.key} style={{ textAlign: col.align || 'left' }}>
+                <td key={col.key} style={{ textAlign: col.align || 'left', verticalAlign: bodyVerticalAlign }}>
                   {col.render ? col.render(row) : row[col.key]}
                 </td>
               ))}

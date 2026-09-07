@@ -119,6 +119,14 @@ export class UsersService {
     return this.usersRepository.find({ where: { role, tenantId } });
   }
 
+  // Batch lookup for read paths that stamped a userId onto a row (e.g. a
+  // QA review's submittedByUserId/reviewedByUserId) and want the current
+  // fullName for display without an N+1 query per row.
+  findByIds(ids: number[], tenantId: number): Promise<User[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.usersRepository.find({ where: { id: In(ids), tenantId } });
+  }
+
   private async resolveProjects(projectIds: number[] | undefined, tenantId: number): Promise<Project[]> {
     if (!projectIds || projectIds.length === 0) return [];
     return this.projectsRepository.find({ where: { id: In(projectIds), tenantId } });

@@ -8,9 +8,18 @@ import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { UserRole } from '../users/user.entity';
+import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 export type TaskQaReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
+
+// findForTask's display-oriented shape - adds the submitting/reviewing
+// user's current fullName, resolved via a batch lookup rather than
+// stored on the row (see findForTask below).
+export type TaskQaReviewForDisplay = TaskQaReviewWithArtifacts & {
+  submittedByFullName: string;
+  reviewedByFullName: string | null;
+};
 
 @Injectable()
 export class TaskQaReviewsService {
@@ -22,6 +31,7 @@ export class TaskQaReviewsService {
     @InjectRepository(ProjectTask)
     private tasksRepository: Repository<ProjectTask>,
     private tasksService: TasksService,
+    private usersService: UsersService,
     private auditLogService: AuditLogService,
   ) {}
 
@@ -29,8 +39,11 @@ export class TaskQaReviewsService {
   // most recent first, so a rejection's comment stays visible even after
   // a later round supersedes it. Each round's artifacts are fetched in one
   // extra query and grouped back onto their round, rather than N+1
-  // queries per round.
-  async findForTask(taskId: number, tenantId: number): Promise<TaskQaReviewWithArtifacts[]> {
+  // queries per round. The submitting/reviewing user's fullName is
+  // resolved the same way (one batch lookup, not per-row) rather than
+  // being stored on the row - so it always reflects the user's current
+  // name, and old rows don't need a backfill.
+  async findForTask(taskId: number, tenantId: number): Promise<TaskQaReviewForDisplay[]> {
     const reviews = await this.qaReviewsRepository.find({
       where: { taskId, tenantId },
       order: { roundNumber: 'DESC' },
@@ -47,7 +60,22 @@ export class TaskQaReviewsService {
       byReview.set(artifact.taskQaReviewId, group);
     }
 
-    return reviews.map((review) => ({ ...review, artifacts: byReview.get(review.id) || [] }));
+    const userIds = new Set<number>();
+    for (const review of reviews) {
+      userIds.add(review.submittedByUserId);
+      if (review.reviewedByUserId) userIds.add(review.reviewedByUserId);
+    }
+    const users = await this.usersService.findByIds([...userIds], tenantId);
+    const nameByUserId = new Map(users.map((u) => [u.id, u.fullName || u.email]));
+
+    return reviews.map((review) => ({
+      ...review,
+      artifacts: byReview.get(review.id) || [],
+      submittedByFullName: nameByUserId.get(review.submittedByUserId) || review.submittedByEmail,
+      reviewedByFullName: review.reviewedByUserId
+        ? nameByUserId.get(review.reviewedByUserId) || review.reviewedByEmail
+        : null,
+    }));
   }
 
   // Stage 4: Assignee submits the task for QA testing - creates a new
