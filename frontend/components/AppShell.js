@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
+import { apiFetch } from '../lib/api';
 import { roleLabel } from '../lib/status';
 import ThemeToggle from './ui/ThemeToggle';
 
@@ -220,6 +221,8 @@ export default function AppShell({ children }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [impersonator, setImpersonator] = useState(null);
+  const [exiting, setExiting] = useState(false);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -228,6 +231,8 @@ export default function AppShell({ children }) {
       return;
     }
     setUser(JSON.parse(storedUser));
+    const storedImpersonator = localStorage.getItem('impersonator');
+    setImpersonator(storedImpersonator ? JSON.parse(storedImpersonator) : null);
 
     const socket = getSocket();
     if (socket) {
@@ -247,7 +252,25 @@ export default function AppShell({ children }) {
     disconnectSocket();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
+    localStorage.removeItem('impersonator');
     router.push('/');
+  };
+
+  const handleExitImpersonation = async () => {
+    setExiting(true);
+    try {
+      const res = await apiFetch('/auth/exit-impersonation', { method: 'POST' });
+      localStorage.setItem('accessToken', res.accessToken);
+      localStorage.setItem('user', JSON.stringify(res.user));
+      localStorage.removeItem('impersonator');
+      router.push('/admin/users');
+    } catch (err) {
+      // Session's stale or invalid either way - safest is to drop back to
+      // a clean logged-out state rather than leave the banner stuck on.
+      handleLogout();
+    } finally {
+      setExiting(false);
+    }
   };
 
   useEffect(() => {
@@ -333,6 +356,17 @@ export default function AppShell({ children }) {
           </button>
         </div>
       </header>
+
+      {impersonator && (
+        <div className={styles.impersonationBanner}>
+          <span>
+            Viewing as <strong>{user.fullName || user.email}</strong> - impersonated by {impersonator.fullName || impersonator.email}
+          </span>
+          <button type="button" onClick={handleExitImpersonation} disabled={exiting}>
+            {exiting ? 'Exiting...' : 'Exit impersonation'}
+          </button>
+        </div>
+      )}
 
       <div className={styles.body}>
         {!hideSidebar && (

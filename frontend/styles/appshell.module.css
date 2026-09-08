@@ -113,6 +113,40 @@
   flex-shrink: 0;
 }
 
+/* ---------- Impersonation banner ---------- */
+.impersonationBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-2) var(--ds-space-5);
+  background: var(--ds-color-warning-tint);
+  color: var(--ds-color-warning-dark);
+  border-bottom: 1px solid var(--ds-color-warning);
+  font-size: 0.85rem;
+  position: sticky;
+  top: var(--ds-topbar-height);
+  z-index: var(--ds-z-sticky);
+}
+.impersonationBanner button {
+  border: 1px solid var(--ds-color-warning-dark);
+  background: transparent;
+  color: var(--ds-color-warning-dark);
+  border-radius: var(--ds-radius-md);
+  padding: 2px var(--ds-space-3);
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.impersonationBanner button:hover {
+  background: var(--ds-color-warning-dark);
+  color: var(--ds-bg-surface);
+}
+.impersonationBanner button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .iconButton {
   display: inline-flex;
   align-items: center;

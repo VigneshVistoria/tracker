@@ -22,6 +22,28 @@ export default function EditUser() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [impersonating, setImpersonating] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('user');
+    if (stored) setCurrentUserId(JSON.parse(stored).id);
+  }, []);
+
+  const handleImpersonate = async () => {
+    setError('');
+    setImpersonating(true);
+    try {
+      const res = await apiFetch(`/auth/impersonate/${id}`, { method: 'POST' });
+      localStorage.setItem('impersonator', JSON.stringify(res.impersonator));
+      localStorage.setItem('accessToken', res.accessToken);
+      localStorage.setItem('user', JSON.stringify(res.user));
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err.message);
+      setImpersonating(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -173,6 +195,17 @@ export default function EditUser() {
             <Link href="/admin/users" className={styles.buttonSecondary}>
               Back to list
             </Link>
+            {form.role !== 'admin' && Number(id) !== currentUserId && (
+              <button
+                type="button"
+                className={styles.buttonSecondary}
+                onClick={handleImpersonate}
+                disabled={impersonating}
+                title="View and act in the app as this user, for debugging/support"
+              >
+                {impersonating ? 'Switching...' : 'Impersonate'}
+              </button>
+            )}
           </div>
         </form>
       </div>
