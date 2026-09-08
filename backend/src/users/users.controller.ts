@@ -9,6 +9,7 @@ import {
   UseGuards,
   ParseIntPipe,
   Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -66,6 +67,14 @@ export class UsersController {
   @Patch(':id')
   @UseGuards(AdminGuard)
   async update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto, @Req() req: any) {
+    // An admin editing their own account can't drop their own admin role -
+    // there'd be no one left who could undo it through the app (this is
+    // exactly how production got locked out on 2026-09-08: an admin's own
+    // role got changed to "developer" via this form, and every admin
+    // route - including the fix itself - was then a 403 for them).
+    if (id === req.currentUser.id && dto.role !== undefined && dto.role !== req.currentUser.role) {
+      throw new ForbiddenException('You cannot change your own role');
+    }
     const user = await this.usersService.update(id, dto, req.user.tenantId);
     return this.toSafeUser(user);
   }

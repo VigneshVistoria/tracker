@@ -144,6 +144,7 @@ export default function EditUser() {
               name="role"
               value={form.role}
               onChange={handleChange}
+              disabled={Number(id) === currentUserId}
             >
               <option value="admin">Admin</option>
               <option value="program_manager">Program Manager</option>
@@ -153,9 +154,11 @@ export default function EditUser() {
               <option value="client">Client</option>
             </select>
             <p className={styles.helpText}>
-              Developers and QA see issues in their assigned projects. Executives get read-only
-              access to the Dashboard and Weekly Reports only. Program Managers can approve or send
-              back issues submitted for review (more than one person can hold this role at once).
+              {Number(id) === currentUserId
+                ? "You can't change your own role - ask another admin to do it."
+                : 'Developers and QA see issues in their assigned projects. Executives get read-only ' +
+                  'access to the Dashboard and Weekly Reports only. Program Managers can approve or send ' +
+                  'back issues submitted for review (more than one person can hold this role at once).'}
             </p>
           </div>
 
