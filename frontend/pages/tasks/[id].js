@@ -7,7 +7,7 @@ import Table from '../../components/ui/Table';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip } from 'lucide-react';
+import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'developer'];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -83,6 +83,60 @@ function ArtifactIcons({ artifacts }) {
   );
 }
 
+// QA's own evidence-of-testing artifact types, attached at Approve/Reject
+// time - a separate list from ARTIFACT_TYPES (the Assignee's
+// submission-time artifacts). Mirrors QaArtifactType on the backend
+// (task-qa-review-qa-artifact.entity.ts).
+const QA_ARTIFACT_TYPES = [
+  'Test Case / Test Plan',
+  'Test Execution Report',
+  'Bug Report',
+  'Screenshot',
+  'Screen Recording / Video',
+  'Log File',
+  'Staging / Test Environment URL',
+  'Regression Test Results',
+  'Automated Test Run',
+  'Sign-off / Acceptance Report',
+];
+
+const QA_ARTIFACT_ICONS = {
+  'Test Case / Test Plan': ClipboardList,
+  'Test Execution Report': FileBarChart,
+  'Bug Report': Bug,
+  'Screenshot': Image,
+  'Screen Recording / Video': Video,
+  'Log File': FileText,
+  'Staging / Test Environment URL': Globe,
+  'Regression Test Results': RefreshCw,
+  'Automated Test Run': Workflow,
+  'Sign-off / Acceptance Report': CheckCircle2,
+};
+
+function QaArtifactIcons({ artifacts }) {
+  if (!artifacts || artifacts.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+      {artifacts.map((artifact) => {
+        const Icon = QA_ARTIFACT_ICONS[artifact.type] || Paperclip;
+        return (
+          <a
+            key={artifact.id}
+            href={artifact.url}
+            target="_blank"
+            rel="noreferrer"
+            title={artifact.type}
+            aria-label={artifact.type}
+            style={{ display: 'inline-flex', color: 'inherit' }}
+          >
+            <Icon size={16} aria-hidden="true" />
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
 function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
@@ -115,6 +169,9 @@ export default function TaskDetailPage() {
   const [rejectComment, setRejectComment] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [qaActionBusy, setQaActionBusy] = useState(false);
+  // QA's own evidence artifacts - optional, shared between Approve and
+  // Reject since only one of those actions is taken per round.
+  const [qaArtifacts, setQaArtifacts] = useState([]);
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
@@ -201,6 +258,7 @@ export default function TaskDetailPage() {
     { key: 'status', header: 'Status', width: 96, render: (r) => r.status.charAt(0).toUpperCase() + r.status.slice(1) },
     { key: 'resolution', header: 'Description', render: (r) => r.resolution },
     { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
+    { key: 'qaArtifacts', header: 'QA Artifact', width: 100, render: (r) => <QaArtifactIcons artifacts={r.qaArtifacts} /> },
     {
       key: 'submittedAt',
       header: 'Submitted',
@@ -260,6 +318,30 @@ export default function TaskDetailPage() {
     setArtifacts((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
   };
 
+  const addQaArtifactRow = () => {
+    setQaArtifacts((prev) => [...prev, { type: '', url: '' }]);
+  };
+
+  const removeQaArtifactRow = (index) => {
+    setQaArtifacts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateQaArtifactRow = (index, field, value) => {
+    setQaArtifacts((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  };
+
+  // Optional - only rows with both a Type and a URL are sent. A row with
+  // just one of the two filled in is treated as a mistake rather than
+  // silently dropped, since that's more likely a forgotten field than an
+  // intentionally abandoned row.
+  const buildQaArtifactsPayload = () => {
+    const incomplete = qaArtifacts.some((row) => (row.type && !row.url.trim()) || (!row.type && row.url.trim()));
+    if (incomplete) {
+      throw new Error('Each QA artifact needs both a Type and a URL - remove any unused rows.');
+    }
+    return qaArtifacts.filter((row) => row.type && row.url.trim()).map((row) => ({ type: row.type, url: row.url.trim() }));
+  };
+
   const handleSubmitForQa = async (e) => {
     e.preventDefault();
     setError('');
@@ -297,10 +379,21 @@ export default function TaskDetailPage() {
 
   const handleQaApprove = async () => {
     setError('');
+    let payloadArtifacts;
+    try {
+      payloadArtifacts = buildQaArtifactsPayload();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
     setQaActionBusy(true);
     try {
-      await apiFetch(`/tasks/${task.id}/qa-approve`, { method: 'PATCH' });
+      await apiFetch(`/tasks/${task.id}/qa-approve`, {
+        method: 'PATCH',
+        body: JSON.stringify({ artifacts: payloadArtifacts }),
+      });
       showToast('Task approved', 'success');
+      setQaArtifacts([]);
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
         apiFetch(`/tasks/${task.id}/qa-reviews`),
@@ -321,15 +414,23 @@ export default function TaskDetailPage() {
       setError('A comment explaining the rejection is required.');
       return;
     }
+    let payloadArtifacts;
+    try {
+      payloadArtifacts = buildQaArtifactsPayload();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
     setQaActionBusy(true);
     try {
       await apiFetch(`/tasks/${task.id}/qa-reject`, {
         method: 'PATCH',
-        body: JSON.stringify({ comment: rejectComment }),
+        body: JSON.stringify({ comment: rejectComment, artifacts: payloadArtifacts }),
       });
       showToast('Task rejected', 'success');
       setRejectComment('');
       setShowRejectForm(false);
+      setQaArtifacts([]);
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
         apiFetch(`/tasks/${task.id}/qa-reviews`),
@@ -609,6 +710,49 @@ export default function TaskDetailPage() {
             Submitted by {latestQaReview.submittedByEmail} &middot;{' '}
             {new Date(latestQaReview.submittedAt).toLocaleDateString()} &middot; Round {latestQaReview.roundNumber}
           </p>
+
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <label className={styles.label}>QA Artifacts (optional)</label>
+            {qaArtifacts.map((row, index) => (
+              <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`tdQaArtifactType-${index}`}>Artifact Type</label>
+                  <select
+                    className={styles.select}
+                    id={`tdQaArtifactType-${index}`}
+                    value={row.type}
+                    onChange={(e) => updateQaArtifactRow(index, 'type', e.target.value)}
+                  >
+                    <option value="" disabled>— Select artifact type —</option>
+                    {QA_ARTIFACT_TYPES.filter(
+                      (t) => t === row.type || !qaArtifacts.some((r) => r.type === t),
+                    ).map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`tdQaArtifactUrl-${index}`}>Artifact URL</label>
+                  <input
+                    className={styles.input}
+                    id={`tdQaArtifactUrl-${index}`}
+                    type="url"
+                    placeholder="https://..."
+                    value={row.url}
+                    onChange={(e) => updateQaArtifactRow(index, 'url', e.target.value)}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <button className={styles.buttonSecondary} type="button" onClick={() => removeQaArtifactRow(index)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className={styles.actions}>
+              <button className={styles.buttonSecondary} type="button" onClick={addQaArtifactRow}>
+                + Add Artifact
+              </button>
+            </div>
+          </div>
 
           {!showRejectForm && (
             <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>

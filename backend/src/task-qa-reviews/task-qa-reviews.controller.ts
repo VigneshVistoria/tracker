@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, ParseIntPipe, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { TaskQaReviewsService } from './task-qa-reviews.service';
 import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
+import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { TasksService } from '../tasks/tasks.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -38,9 +39,9 @@ export class TaskQaReviewsController {
   }
 
   @Patch(':id/qa-approve')
-  async approve(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+  async approve(@Param('id', ParseIntPipe) id: number, @Body() dto: QaApproveTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    return this.qaReviewsService.approve(id, currentUser, req.user.tenantId);
+    return this.qaReviewsService.approve(id, dto, currentUser, req.user.tenantId);
   }
 
   @Patch(':id/qa-reject')

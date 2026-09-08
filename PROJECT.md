@@ -349,7 +349,13 @@ extensions: cross-task dependency tickets (`status`: open/resolved,
 direction stays implicit, never a stored column: Outbound = you're
 `ownerUserId`, Inbound = you're `createdByUserId`), and a QA submit/
 approve/reject review workflow layered onto tasks (`qa-submit` now
-requires `actualHours`, `qa-approve`, `qa-reject`).
+requires `actualHours`, `qa-approve`, `qa-reject`). `qa-submit`'s
+artifacts (`task_qa_review_artifacts`, mandatory, `TaskArtifactType`) are
+the Assignee's evidence; `qa-approve`/`qa-reject` separately accept their
+own optional artifacts (`task_qa_review_qa_artifacts`, `QaArtifactType`)
+as QA's own evidence-of-testing, same Type+URL shape but a distinct table
+since they're a different actor's evidence attached at a different stage
+of the same review round.
 
 **`kpi` (KpiModule)** — project-wise KPI dashboard (Daily/Weekly/Monthly),
 separate from and additive to the Weekly Performance Report (§ below) —

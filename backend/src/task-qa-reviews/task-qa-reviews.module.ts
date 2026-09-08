@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
+import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
 import { TaskQaReviewsService } from './task-qa-reviews.service';
 import { TaskQaReviewsController } from './task-qa-reviews.controller';
 import { ProjectTask } from '../tasks/project-task.entity';
@@ -12,7 +13,7 @@ import { GuardsModule } from '../common/guards.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TaskQaReview, TaskQaReviewArtifact, ProjectTask]),
+    TypeOrmModule.forFeature([TaskQaReview, TaskQaReviewArtifact, TaskQaReviewQaArtifact, ProjectTask]),
     TasksModule,
     UsersModule,
     AuditModule,

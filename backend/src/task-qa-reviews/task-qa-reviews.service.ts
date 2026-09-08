@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
+import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
 import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
+import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TasksService } from '../tasks/tasks.service';
@@ -12,13 +14,17 @@ import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 export type TaskQaReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
+export type TaskQaReviewWithQaArtifacts = TaskQaReview & { qaArtifacts: TaskQaReviewQaArtifact[] };
 
 // findForTask's display-oriented shape - adds the submitting/reviewing
 // user's current fullName, resolved via a batch lookup rather than
-// stored on the row (see findForTask below).
+// stored on the row (see findForTask below), and QA's own evidence
+// artifacts (attached at approve/reject time, separate from the
+// Assignee's submission-time `artifacts`).
 export type TaskQaReviewForDisplay = TaskQaReviewWithArtifacts & {
   submittedByFullName: string;
   reviewedByFullName: string | null;
+  qaArtifacts: TaskQaReviewQaArtifact[];
 };
 
 @Injectable()
@@ -28,6 +34,8 @@ export class TaskQaReviewsService {
     private qaReviewsRepository: Repository<TaskQaReview>,
     @InjectRepository(TaskQaReviewArtifact)
     private artifactsRepository: Repository<TaskQaReviewArtifact>,
+    @InjectRepository(TaskQaReviewQaArtifact)
+    private qaArtifactsRepository: Repository<TaskQaReviewQaArtifact>,
     @InjectRepository(ProjectTask)
     private tasksRepository: Repository<ProjectTask>,
     private tasksService: TasksService,
@@ -60,6 +68,16 @@ export class TaskQaReviewsService {
       byReview.set(artifact.taskQaReviewId, group);
     }
 
+    const qaArtifacts = await this.qaArtifactsRepository.find({
+      where: { taskQaReviewId: In(reviews.map((r) => r.id)) },
+    });
+    const qaArtifactsByReview = new Map<number, TaskQaReviewQaArtifact[]>();
+    for (const artifact of qaArtifacts) {
+      const group = qaArtifactsByReview.get(artifact.taskQaReviewId) || [];
+      group.push(artifact);
+      qaArtifactsByReview.set(artifact.taskQaReviewId, group);
+    }
+
     const userIds = new Set<number>();
     for (const review of reviews) {
       userIds.add(review.submittedByUserId);
@@ -71,6 +89,7 @@ export class TaskQaReviewsService {
     return reviews.map((review) => ({
       ...review,
       artifacts: byReview.get(review.id) || [],
+      qaArtifacts: qaArtifactsByReview.get(review.id) || [],
       submittedByFullName: nameByUserId.get(review.submittedByUserId) || review.submittedByEmail,
       reviewedByFullName: review.reviewedByUserId
         ? nameByUserId.get(review.reviewedByUserId) || review.reviewedByEmail
@@ -157,12 +176,18 @@ export class TaskQaReviewsService {
     return pending;
   }
 
-  // Stage 5a: QA approves the pending round.
+  // Stage 5a: QA approves the pending round. Any QA-side evidence
+  // artifacts are optional (unlike the Assignee's mandatory submission
+  // artifacts) but, when present, are saved alongside the review-status
+  // update in one transaction - same reasoning as submit() - so a round
+  // can never end up "approved" with only some of its evidence rows
+  // landed.
   async approve(
     taskId: number,
+    dto: QaApproveTaskDto,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-  ): Promise<TaskQaReview> {
+  ): Promise<TaskQaReviewWithQaArtifacts> {
     if (currentUser.role !== UserRole.QA) {
       throw new ForbiddenException('Only QA can approve a task under review.');
     }
@@ -173,7 +198,21 @@ export class TaskQaReviewsService {
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();
-    const savedReview = await this.qaReviewsRepository.save(pending);
+
+    const { savedReview, savedQaArtifacts } = await this.qaReviewsRepository.manager.transaction(async (manager) => {
+      const savedReview = await manager.save(TaskQaReview, pending);
+
+      const artifacts = (dto.artifacts || []).map((item) =>
+        manager.create(TaskQaReviewQaArtifact, {
+          taskQaReviewId: savedReview.id,
+          type: item.type,
+          url: item.url,
+        }),
+      );
+      const savedQaArtifacts = await manager.save(TaskQaReviewQaArtifact, artifacts);
+
+      return { savedReview, savedQaArtifacts };
+    });
 
     task.status = 'Pass';
     task.completedAt = new Date();
@@ -187,10 +226,10 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber },
+      details: { roundNumber: savedReview.roundNumber, artifactTypes: (dto.artifacts || []).map((a) => a.type) },
     });
 
-    return savedReview;
+    return { ...savedReview, qaArtifacts: savedQaArtifacts };
   }
 
   // Stage 5b/6: QA rejects the pending round with a required comment -
@@ -203,7 +242,7 @@ export class TaskQaReviewsService {
     dto: QaRejectTaskDto,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-  ): Promise<TaskQaReview> {
+  ): Promise<TaskQaReviewWithQaArtifacts> {
     if (currentUser.role !== UserRole.QA) {
       throw new ForbiddenException('Only QA can reject a task under review.');
     }
@@ -215,7 +254,21 @@ export class TaskQaReviewsService {
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();
-    const savedReview = await this.qaReviewsRepository.save(pending);
+
+    const { savedReview, savedQaArtifacts } = await this.qaReviewsRepository.manager.transaction(async (manager) => {
+      const savedReview = await manager.save(TaskQaReview, pending);
+
+      const artifacts = (dto.artifacts || []).map((item) =>
+        manager.create(TaskQaReviewQaArtifact, {
+          taskQaReviewId: savedReview.id,
+          type: item.type,
+          url: item.url,
+        }),
+      );
+      const savedQaArtifacts = await manager.save(TaskQaReviewQaArtifact, artifacts);
+
+      return { savedReview, savedQaArtifacts };
+    });
 
     task.status = 'Failed';
     await this.tasksRepository.save(task);
@@ -228,9 +281,13 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber, comment: dto.comment },
+      details: {
+        roundNumber: savedReview.roundNumber,
+        comment: dto.comment,
+        artifactTypes: (dto.artifacts || []).map((a) => a.type),
+      },
     });
 
-    return savedReview;
+    return { ...savedReview, qaArtifacts: savedQaArtifacts };
   }
 }
