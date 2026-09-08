@@ -351,7 +351,14 @@ export default function AppShell({ children }) {
               </span>
             </div>
           )}
-          <button type="button" className={styles.iconButton} onClick={handleLogout} aria-label="Log out">
+          <button
+            type="button"
+            className={styles.iconButton}
+            onClick={impersonator ? handleExitImpersonation : handleLogout}
+            disabled={impersonator ? exiting : false}
+            aria-label={impersonator ? 'Exit impersonation' : 'Log out'}
+            title={impersonator ? 'Exit impersonation' : undefined}
+          >
             <LogOut size={17} aria-hidden="true" />
           </button>
         </div>
