@@ -31,6 +31,12 @@ const TASK_STATUSES = [
   'Released - With Showstoppers',
 ];
 
+// Tasks in these statuses are done - they stay in the table forever
+// (nothing ever deletes/archives a task), which is why "My Tasks" was
+// creeping upward for long-tenured developers with no way back down.
+// Hidden by default; the "Show completed tasks" toggle below reveals them.
+const COMPLETED_STATUSES = ['Pass', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+
 // Status is deliberately not its own column here (the 8-column spec has
 // no room for it) - it's expressed purely as row background color,
 // reusing the exact tint tokens the Status badge uses everywhere else so
@@ -95,19 +101,40 @@ export default function DeveloperTaskWorkboard({
   const [dependencyFilter, setDependencyFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  const showCompletedStorageKey = `${storageKey}ShowCompleted`;
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) setActiveCard(stored);
+    setShowCompleted(localStorage.getItem(showCompletedStorageKey) === 'true');
     // storageKey is a static prop per page, not expected to change at runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const { rejectedTasks, overdueCount } = computeDeveloperTaskStats(tasks, outbound, todayISO());
+  const handleShowCompletedChange = (checked) => {
+    setShowCompleted(checked);
+    localStorage.setItem(showCompletedStorageKey, String(checked));
+    // Otherwise turning the toggle off while filtered to e.g. "Pass" leaves
+    // the table stuck empty with no visible way back.
+    if (!checked && COMPLETED_STATUSES.includes(statusFilter)) setStatusFilter('All');
+  };
+
+  // The table's whole dataset - every other computation below (card
+  // counts, Rejected/Overdue, the filter bar) reads from this, not the
+  // raw `tasks` prop, so hiding completed tasks by default actually
+  // shrinks what "My Tasks" means rather than just hiding table rows.
+  const visibleTasks = useMemo(
+    () => (showCompleted ? tasks : tasks.filter((t) => !COMPLETED_STATUSES.includes(t.status))),
+    [tasks, showCompleted],
+  );
+
+  const { rejectedTasks, overdueCount } = computeDeveloperTaskStats(visibleTasks, outbound, todayISO());
 
   const cards = useMemo(
     () => [
-      { key: 'myTasks', label: 'My Tasks', count: tasks.length, kind: 'table' },
+      { key: 'myTasks', label: 'My Tasks', count: visibleTasks.length, kind: 'table' },
       { key: 'rejected', label: 'Rejected', count: rejectedTasks.length, kind: 'table' },
       { key: 'inbound', label: 'Inbound', count: inbound.length, kind: 'table' },
       {
@@ -124,7 +151,7 @@ export default function DeveloperTaskWorkboard({
       },
       { key: 'overdue', label: 'Overdue', count: overdueCount, kind: 'table' },
     ],
-    [tasks, rejectedTasks, inbound, outbound, overdueCount],
+    [visibleTasks, rejectedTasks, inbound, outbound, overdueCount],
   );
 
   const visibleCards = hideEmptyCards ? (loading ? cards : cards.filter((c) => c.count > 0)) : cards;
@@ -160,7 +187,7 @@ export default function DeveloperTaskWorkboard({
   // covers the date half, so this adds the same status exclusion back in
   // when Overdue is the active card.
   const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
+    return visibleTasks.filter((task) => {
       if (statusFilter !== 'All' && task.status !== statusFilter) return false;
       if (dependencyFilter !== 'All') {
         const wantsYes = dependencyFilter === 'Yes';
@@ -171,7 +198,14 @@ export default function DeveloperTaskWorkboard({
       if (activeCard === 'overdue' && task.status === 'Pass') return false;
       return true;
     });
-  }, [tasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard]);
+  }, [visibleTasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard]);
+
+  // Only offer statuses that can actually appear in visibleTasks right now -
+  // with completed tasks hidden, picking "Pass" from the dropdown would
+  // otherwise always dead-end on an empty table.
+  const selectableStatuses = showCompleted
+    ? TASK_STATUSES
+    : TASK_STATUSES.filter((s) => !COMPLETED_STATUSES.includes(s));
 
   const columns = useMemo(
     () => [
@@ -276,6 +310,15 @@ export default function DeveloperTaskWorkboard({
         </div>
       )}
 
+      <label className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          checked={showCompleted}
+          onChange={(e) => handleShowCompletedChange(e.target.checked)}
+        />
+        Show completed tasks (Pass / Released)
+      </label>
+
       <button
         type="button"
         className={`${styles.button} ${styles.buttonSecondary}`}
@@ -316,7 +359,7 @@ export default function DeveloperTaskWorkboard({
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                {TASK_STATUSES.map((s) => (
+                {selectableStatuses.map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
@@ -365,7 +408,13 @@ export default function DeveloperTaskWorkboard({
             getRowId={(t) => t.id}
             onRowClick={(t) => router.push(`/tasks/${t.id}`)}
             rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
-            emptyState={tasks.length === 0 ? 'No tasks assigned to you yet.' : 'No tasks match these filters.'}
+            emptyState={
+              tasks.length === 0
+                ? 'No tasks assigned to you yet.'
+                : visibleTasks.length === 0
+                  ? "All caught up - your completed tasks are hidden. Check \"Show completed tasks\" above to see them."
+                  : 'No tasks match these filters.'
+            }
           />
         </>
       )}
