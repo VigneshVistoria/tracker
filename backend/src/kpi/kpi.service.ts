@@ -77,6 +77,7 @@ export class KpiService {
     if (dto.completionBonusWeight !== undefined) existing.completionBonusWeight = dto.completionBonusWeight;
     if (dto.completionBonusCap !== undefined) existing.completionBonusCap = dto.completionBonusCap;
     if (dto.excessiveRejectionThreshold !== undefined) existing.excessiveRejectionThreshold = dto.excessiveRejectionThreshold;
+    if (dto.qaRejectionPointsPerExcess !== undefined) existing.qaRejectionPointsPerExcess = dto.qaRejectionPointsPerExcess;
     existing.updatedByUserId = user.id;
     existing.updatedByEmail = user.email;
 
@@ -147,9 +148,11 @@ export class KpiService {
   // - Outbound/Inbound dependency direction is scoped to this project via
   //   the ticket's parent task's projectId (TaskDependencyTicket has no
   //   project field of its own).
-  // - "Excessive QA Rejection Flag" is treated as a 100%/0% penalty term
-  //   (flag true = full weight applied) so its units match every other
-  //   percent-based term in the formula.
+  // - QA rejection penalty scales with how far qaRejectionCount is past
+  //   excessiveRejectionThreshold (a grace count, not a full-penalty
+  //   trip switch) - qaRejectionPointsPerExcess percentage-points per
+  //   rejection beyond it, so repeat offenders score worse than someone
+  //   who just barely crossed the line. See kpi-config.entity.ts.
   // ---------------------------------------------------------------
 
   private async computeMetrics(
@@ -231,7 +234,8 @@ export class KpiService {
       return !!parent?.dueDate && parent.dueDate < todayStr;
     }).length;
 
-    const excessiveRejectionPenaltyPercent = excessiveRejectionFlag ? 100 : 0;
+    const excessRejections = Math.max(0, qaRejectionCount - config.excessiveRejectionThreshold);
+    const excessiveRejectionPenaltyPercent = excessRejections * Number(config.qaRejectionPointsPerExcess);
     const bonus = Math.min(completionPercent * Number(config.completionBonusWeight), Number(config.completionBonusCap));
     const raw =
       100 -
@@ -308,6 +312,7 @@ export class KpiService {
       completionBonusWeight: config.completionBonusWeight,
       completionBonusCap: config.completionBonusCap,
       excessiveRejectionThreshold: config.excessiveRejectionThreshold,
+      qaRejectionPointsPerExcess: config.qaRejectionPointsPerExcess,
     });
 
     const saved: KpiPeriodScore[] = [];
@@ -351,21 +356,61 @@ export class KpiService {
   // Reads. findMine() NEVER accepts an assigneeUserId from the caller -
   // it's always the id passed in by the controller from req.user.sub -
   // and never computes any cross-assignee aggregate. That split (not a
-  // hidden UI field) is the actual access-control boundary.
+  // hidden UI field) is the actual access-control boundary. Top-performer
+  // ranking requires comparing against other assignees, so it's only ever
+  // attached in findReport(), never findMine().
   // ---------------------------------------------------------------
 
-  findMine(tenantId: number, assigneeUserId: number, periodType?: KpiPeriodType, projectId?: number): Promise<KpiPeriodScore[]> {
+  // The score a row is judged/ranked on - Headline Score for monthly rows
+  // (the "official" number, averaged from the month's weekly scores),
+  // Composite Score for daily/weekly. Falls back to Composite Score if a
+  // monthly row has no headline (no weekly rows existed yet that month).
+  private scoreForRanking(row: KpiPeriodScore): number {
+    return row.periodType === 'monthly' ? Number(row.headlineScore ?? row.compositeScore) : Number(row.compositeScore);
+  }
+
+  // Ad hoc bands for the KPI Dashboard - distinct from the Performance
+  // Dashboard's Excellent/Good/Needs Improvement (90/70) scheme, which
+  // scores a different metric. Not tenant-configurable (yet).
+  private ratingBandFor(score: number): 'Poor' | 'Average' | 'Good' {
+    if (score >= 80) return 'Good';
+    if (score >= 50) return 'Average';
+    return 'Poor';
+  }
+
+  async findMine(tenantId: number, assigneeUserId: number, periodType?: KpiPeriodType, projectId?: number) {
     const where: any = { tenantId, assigneeUserId };
     if (periodType) where.periodType = periodType;
     if (projectId) where.projectId = projectId;
-    return this.scoreRepository.find({ where, order: { periodStart: 'DESC' } });
+    const rows = await this.scoreRepository.find({ where, order: { periodStart: 'DESC' } });
+    return rows.map((row) => ({ ...row, ratingBand: this.ratingBandFor(this.scoreForRanking(row)) }));
   }
 
-  findReport(tenantId: number, periodType?: KpiPeriodType, projectId?: number, assigneeUserId?: number): Promise<KpiPeriodScore[]> {
+  async findReport(tenantId: number, periodType?: KpiPeriodType, projectId?: number, assigneeUserId?: number) {
     const where: any = { tenantId };
     if (periodType) where.periodType = periodType;
     if (projectId) where.projectId = projectId;
     if (assigneeUserId) where.assigneeUserId = assigneeUserId;
-    return this.scoreRepository.find({ where, order: { periodStart: 'DESC' } });
+    const rows = await this.scoreRepository.find({ where, order: { periodStart: 'DESC' } });
+
+    // Top performer = highest ranking score among assignees sharing the
+    // same project + exact period (so a Daily row is never compared
+    // against a Weekly one, and Project A is never compared against B).
+    const bestByGroup = new Map<string, number>();
+    for (const row of rows) {
+      const key = `${row.projectId}:${row.periodType}:${row.periodStart}:${row.periodEnd}`;
+      const score = this.scoreForRanking(row);
+      if (!bestByGroup.has(key) || score > bestByGroup.get(key)!) bestByGroup.set(key, score);
+    }
+
+    return rows.map((row) => {
+      const key = `${row.projectId}:${row.periodType}:${row.periodStart}:${row.periodEnd}`;
+      const score = this.scoreForRanking(row);
+      return {
+        ...row,
+        ratingBand: this.ratingBandFor(score),
+        topPerformer: score === bestByGroup.get(key),
+      };
+    });
   }
 }

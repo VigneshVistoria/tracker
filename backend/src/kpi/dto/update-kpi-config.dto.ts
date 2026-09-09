@@ -40,4 +40,9 @@ export class UpdateKpiConfigDto {
   @IsInt()
   @Min(1)
   excessiveRejectionThreshold?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  qaRejectionPointsPerExcess?: number;
 }

@@ -41,11 +41,20 @@ export class KpiConfig {
   @Column({ type: 'numeric', precision: 5, scale: 2, default: 10 })
   completionBonusCap: number;
 
-  // Not given a specific value in the spec formula itself - the
-  // "Excessive QA Rejection Flag" needs a cutoff to trip on and none was
-  // specified, so this is admin-configurable like the weights.
+  // Grace count - rejections at or below this in a period cost nothing
+  // (normal QA churn). excessiveRejectionFlag (stored on the period row)
+  // still trips past this count, for display/audit.
   @Column({ type: 'int', default: 2 })
   excessiveRejectionThreshold: number;
+
+  // Percentage points of penalty added per rejection beyond
+  // excessiveRejectionThreshold, before qaRejectionWeight is applied.
+  // Deliberately uncapped at the term level (unlike the other percent
+  // metrics) - it's what lets 3 rejections and 30 rejections cost
+  // different amounts instead of both tripping the same flat penalty.
+  // The final compositeScore clamp (0-100) still bounds the outcome.
+  @Column({ type: 'numeric', precision: 6, scale: 2, default: 30 })
+  qaRejectionPointsPerExcess: number;
 
   @Column({ nullable: true })
   updatedByUserId: number;

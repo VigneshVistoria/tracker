@@ -19,6 +19,9 @@ export default function KpiDashboard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [generateMessage, setGenerateMessage] = useState('');
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -28,6 +31,10 @@ export default function KpiDashboard() {
   // Own-data-only for everyone else - enforced server-side by /kpi/me
   // (always scoped to the caller's own JWT id), not just this UI switch.
   const isWideView = currentUser && ['admin', 'program_manager', 'executive'].includes(currentUser.role);
+  // Matches the backend's actual POST /kpi/generate guard (Admin or
+  // Program Manager) - a stricter admin-only UI check would hide this
+  // from Program Managers who can call it just fine.
+  const canGenerate = currentUser && ['admin', 'program_manager'].includes(currentUser.role);
 
   useEffect(() => {
     apiFetch('/projects').then(setProjects).catch(() => {});
@@ -51,9 +58,34 @@ export default function KpiDashboard() {
       .then(setRows)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [currentUser, isWideView, periodType, projectId, assigneeUserId]);
+  }, [currentUser, isWideView, periodType, projectId, assigneeUserId, refreshKey]);
 
   const isMonthly = periodType === 'monthly';
+
+  // Admin-only: fires the same generation logic the nightly/weekly/monthly
+  // cron jobs use (KpiService.generatePeriod via POST /kpi/generate), so
+  // testing doesn't require waiting for the schedule. Uses today's date as
+  // the reference, matching the currently selected View (daily/weekly/
+  // monthly), so it covers whichever period contains today.
+  async function handleGenerateNow() {
+    setGenerating(true);
+    setGenerateMessage('');
+    setError('');
+    try {
+      const referenceDate = new Date().toISOString().slice(0, 10);
+      const created = await apiFetch('/kpi/generate', {
+        method: 'POST',
+        body: JSON.stringify({ periodType, referenceDate }),
+      });
+      const label = PERIOD_OPTIONS.find((opt) => opt.value === periodType)?.label.toLowerCase();
+      setGenerateMessage(`Generated ${created.length} ${label} KPI score${created.length === 1 ? '' : 's'} for the period containing ${referenceDate}.`);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -107,9 +139,25 @@ export default function KpiDashboard() {
               </select>
             </div>
           )}
+
+          {canGenerate && (
+            <div className={styles.field} style={{ margin: 0 }}>
+              <label className={styles.label}>&nbsp;</label>
+              <button
+                type="button"
+                className={styles.buttonSecondary}
+                onClick={handleGenerateNow}
+                disabled={generating}
+                title="Generate KPI periods now instead of waiting for the nightly/weekly/monthly schedule"
+              >
+                {generating ? 'Generating…' : 'Generate periods now'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
+      {generateMessage && <div className={styles.empty}>{generateMessage}</div>}
       {error && <div className={styles.error}>{error}</div>}
       {loading && <div className={styles.empty}>Loading...</div>}
 
@@ -142,6 +190,8 @@ export default function KpiDashboard() {
                     ) : (
                       <th>Composite Score</th>
                     )}
+                    <th>Rating</th>
+                    {isWideView && <th>Top Performer</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -167,6 +217,12 @@ export default function KpiDashboard() {
                         </>
                       ) : (
                         <td style={{ fontWeight: 600 }}>{r.compositeScore}</td>
+                      )}
+                      <td>
+                        <span className={`${styles.badge} ${styles[`badgeRating${r.ratingBand}`]}`}>{r.ratingBand}</span>
+                      </td>
+                      {isWideView && (
+                        <td>{r.topPerformer && <span className={`${styles.badge} ${styles.badgeTopPerformer}`}>Top Performer</span>}</td>
                       )}
                     </tr>
                   ))}
