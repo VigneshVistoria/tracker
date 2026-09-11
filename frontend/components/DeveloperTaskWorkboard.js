@@ -6,10 +6,12 @@ import {
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Table from './ui/Table';
+import ColHeader from './ColHeader';
 import { TicketRow, CardList } from './TaskCardRows';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { todayISO, yesterdayISO, computeDeveloperTaskStats } from '../lib/developerTaskStats';
+import { COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses } from '../lib/taskTableShared';
 
 // Shared by the My Tasks page (pages/tasks/mine.js) and the Developer
 // Dashboard (components/DeveloperDashboard.js): the stat cards (My Tasks/
@@ -17,55 +19,17 @@ import { todayISO, yesterdayISO, computeDeveloperTaskStats } from '../lib/develo
 // sortable/filterable task table those cards expand into, and the
 // Outbound ticket list (Outbound tickets live on someone else's task, so
 // they don't fit as rows in this table - same as before).
-
-// Mirrors TASK_STATUSES on the backend (task-status-percent.entity.ts) -
-// the two Released statuses are dormant (no code path sets them anymore)
-// but existing tasks can still carry one, so they stay selectable here.
-const TASK_STATUSES = [
-  'Development',
-  'Feedback',
-  'Re-Feedback',
-  'Failed',
-  'Pass',
-  'Released - No Showstoppers',
-  'Released - With Showstoppers',
-];
-
-// Tasks in these statuses are done - they stay in the table forever
-// (nothing ever deletes/archives a task), which is why "My Tasks" was
-// creeping upward for long-tenured developers with no way back down.
-// Hidden by default; the "Show completed tasks" toggle below reveals them.
-const COMPLETED_STATUSES = ['Pass', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+//
+// TASK_STATUSES/COMPLETED_STATUSES/LEGEND_ITEMS/row-tint mapping now live
+// in lib/taskTableShared.js, shared with TeamTaskWorkboard (Team Tasks) so
+// the two views can't visually drift apart from each other.
 
 // Status is deliberately not its own column here (the 8-column spec has
 // no room for it) - it's expressed purely as row background color,
 // reusing the exact tint tokens the Status badge uses everywhere else so
 // the color language stays consistent. Development has no entry - it's
 // the neutral/no-highlight baseline.
-const ROW_TINT_CLASS = {
-  Feedback: styles.rowTintPlum,
-  'Re-Feedback': styles.rowTintPlum,
-  Pass: styles.rowTintMoss,
-  Failed: styles.rowTintRed,
-  'Released - With Showstoppers': styles.rowTintRed,
-  'Released - No Showstoppers': styles.rowTintTeal,
-};
-
-const LEGEND_ITEMS = [
-  { label: 'Development', swatch: 'var(--color-slate-tint)' },
-  { label: 'Feedback / Re-Feedback', swatch: 'var(--color-plum-tint)' },
-  { label: 'Pass', swatch: 'var(--color-moss-tint)' },
-  { label: 'Failed / Released - With Showstoppers', swatch: 'var(--color-red-tint)' },
-  { label: 'Released - No Showstoppers', swatch: 'var(--color-teal-tint)' },
-];
-
-function ColHeader({ icon: Icon, label }) {
-  return (
-    <span className={styles.colHeaderIcon} title={label} aria-label={label}>
-      <Icon size={15} aria-hidden="true" />
-    </span>
-  );
-}
+const ROW_TINT_CLASS = buildRowTintClass(styles);
 
 function ProgressBar({ percent }) {
   if (percent === null || percent === undefined) {
@@ -203,9 +167,7 @@ export default function DeveloperTaskWorkboard({
   // Only offer statuses that can actually appear in visibleTasks right now -
   // with completed tasks hidden, picking "Pass" from the dropdown would
   // otherwise always dead-end on an empty table.
-  const selectableStatuses = showCompleted
-    ? TASK_STATUSES
-    : TASK_STATUSES.filter((s) => !COMPLETED_STATUSES.includes(s));
+  const statusOptions = selectableStatuses(showCompleted);
 
   const columns = useMemo(
     () => [
@@ -359,7 +321,7 @@ export default function DeveloperTaskWorkboard({
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                {selectableStatuses.map((s) => (
+                {statusOptions.map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>

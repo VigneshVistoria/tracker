@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { Between, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
@@ -17,13 +17,41 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
   ageingDays: number;
-  // Only populated by findMine() (the one view that shows a Dependency
-  // column) - undefined everywhere else rather than a wasted query on
-  // every other task list.
+  // Only populated by findMine() and findTeam() (the two views that show a
+  // Dependency column) - undefined everywhere else rather than a wasted
+  // query on every other task list.
   hasOpenDependency?: boolean;
 }
 
+export interface TeamTaskFilters {
+  page?: number;
+  pageSize?: number;
+  status?: string;
+  assigneeUserId?: number;
+  // 'Yes' | 'No' | undefined ('All') - same three-state shape as the
+  // Dependency filter on My Tasks (DeveloperTaskWorkboard.js).
+  dependency?: string;
+  dueFrom?: string;
+  dueTo?: string;
+  showCompleted?: boolean;
+}
+
+export interface TeamTasksResult {
+  tasks: ProjectTaskWithComputed[];
+  total: number;
+  statCounts: { total: number; rejected: number; openDependency: number; overdue: number };
+  assignees: Array<{ id: number; email: string; fullName: string | null }>;
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+// Tasks in these statuses are done - mirrors COMPLETED_STATUSES in
+// frontend/components/DeveloperTaskWorkboard.js exactly (no shared
+// constants file between frontend/backend in this codebase, so keep the
+// two lists in sync by hand if TASK_STATUSES ever changes). Used by
+// findTeam() below to hide Pass/Released tasks by default, same as My
+// Tasks.
+const COMPLETED_STATUSES = ['Pass', 'Released - No Showstoppers', 'Released - With Showstoppers'];
 
 // Full tenant-wide *view* access (findAllForUser/canView) - Admin and
 // Executive both get this, but it's read-only: neither is in
@@ -247,6 +275,110 @@ export class TasksService {
     });
     const taskIdsWithOpenDependency = new Set(openTickets.map((t) => t.parentTaskId));
     return withComputed.map((t) => ({ ...t, hasOpenDependency: taskIdsWithOpenDependency.has(t.id) }));
+  }
+
+  // Team Tasks view - every assigned task in the tenant, for Admin/
+  // Executive/Program Manager (leadership-wide, not project-scoped - same
+  // grant findAllForUser() gives those roles, just with server-side
+  // filtering/pagination since this spans every assignee instead of just
+  // the current user). Access is gated in the controller, not here.
+  //
+  // Filtering happens in two DB-level passes plus one JS-level pass:
+  // 1. `where` covers every filter TypeORM can express directly (status,
+  //    assigneeUserId, due range, showCompleted) and is used for the
+  //    paginated row fetch.
+  // 2. `cardWhere` is the same idea but only ever applies showCompleted/
+  //    assigneeUserId - it's the scope the stat cards themselves are
+  //    computed against, so clicking a card (which sets status/dependency/
+  //    due filters) doesn't change the card counts out from under the
+  //    user, same as DeveloperTaskWorkboard's cards read from
+  //    `visibleTasks` rather than the filtered table rows.
+  // 3. The Dependency filter can't be expressed as a `where` column at
+  //    all (it depends on a join to task_dependency_tickets), so it's
+  //    applied in JS against a Set of open-ticket task ids, exactly like
+  //    findMine() above already does for its own Dependency column.
+  async findTeam(tenantId: number, filters: TeamTaskFilters): Promise<TeamTasksResult> {
+    const page = filters.page && filters.page > 0 ? Math.floor(filters.page) : 1;
+    const pageSize = filters.pageSize && filters.pageSize > 0 ? Math.min(Math.floor(filters.pageSize), 200) : 50;
+
+    const where: Record<string, any> = { tenantId, assigneeUserId: Not(IsNull()) };
+    if (filters.status && filters.status !== 'All') {
+      where.status = filters.status;
+    } else if (!filters.showCompleted) {
+      where.status = Not(In(COMPLETED_STATUSES));
+    }
+    if (filters.assigneeUserId) {
+      where.assigneeUserId = filters.assigneeUserId;
+    }
+    if (filters.dueFrom && filters.dueTo) {
+      where.dueDate = Between(filters.dueFrom, filters.dueTo);
+    } else if (filters.dueFrom) {
+      where.dueDate = MoreThanOrEqual(filters.dueFrom);
+    } else if (filters.dueTo) {
+      where.dueDate = LessThanOrEqual(filters.dueTo);
+    }
+
+    const matching = await this.tasksRepository.find({ where, order: { createdAt: 'DESC' } });
+    const openDependencyIds = await this.findOpenDependencyTaskIds(matching.map((t) => t.id));
+
+    let filtered = matching;
+    if (filters.dependency === 'Yes') {
+      filtered = filtered.filter((t) => openDependencyIds.has(t.id));
+    } else if (filters.dependency === 'No') {
+      filtered = filtered.filter((t) => !openDependencyIds.has(t.id));
+    }
+
+    const total = filtered.length;
+    const start = (page - 1) * pageSize;
+    const pageTasks = filtered.slice(start, start + pageSize);
+
+    const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
+    const withComputed = await Promise.all(pageTasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+    const tasks = withComputed.map((t) => ({ ...t, hasOpenDependency: openDependencyIds.has(t.id) }));
+
+    const cardWhere: Record<string, any> = { tenantId, assigneeUserId: filters.assigneeUserId || Not(IsNull()) };
+    if (!filters.showCompleted) {
+      cardWhere.status = Not(In(COMPLETED_STATUSES));
+    }
+    const cardScopeTasks = await this.tasksRepository.find({ where: cardWhere });
+    const cardOpenDependencyIds = await this.findOpenDependencyTaskIds(cardScopeTasks.map((t) => t.id));
+    const today = new Date().toISOString().slice(0, 10);
+    const statCounts = {
+      total: cardScopeTasks.length,
+      rejected: cardScopeTasks.filter((t) => t.status === 'Failed').length,
+      openDependency: cardScopeTasks.filter((t) => cardOpenDependencyIds.has(t.id)).length,
+      overdue: cardScopeTasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'Pass').length,
+    };
+
+    const assignees = await this.findTeamAssignees(tenantId);
+
+    return { tasks, total, statCounts, assignees };
+  }
+
+  private async findOpenDependencyTaskIds(taskIds: number[]): Promise<Set<number>> {
+    if (taskIds.length === 0) return new Set();
+    const openTickets = await this.dependencyTicketsRepository.find({
+      where: { parentTaskId: In(taskIds), status: 'open' },
+    });
+    return new Set(openTickets.map((t) => t.parentTaskId));
+  }
+
+  // Distinct list of everyone with at least one assigned task in the
+  // tenant, for the Assignee filter dropdown - deliberately not scoped by
+  // showCompleted/status/etc (a stable list, not one that shrinks as the
+  // user filters, the same reasoning selectableStatuses documents for why
+  // it prunes but the Assignee list here should not).
+  private async findTeamAssignees(tenantId: number): Promise<Array<{ id: number; email: string; fullName: string | null }>> {
+    const rows = await this.tasksRepository.find({
+      where: { tenantId, assigneeUserId: Not(IsNull()) },
+      select: ['assigneeUserId'],
+    });
+    const uniqueIds = Array.from(new Set(rows.map((r) => r.assigneeUserId)));
+    if (uniqueIds.length === 0) return [];
+    const users = await this.usersService.findByIds(uniqueIds, tenantId);
+    return users
+      .map((u) => ({ id: u.id, email: u.email, fullName: u.fullName }))
+      .sort((a, b) => (a.fullName || a.email).localeCompare(b.fullName || b.email));
   }
 
   async findOne(id: number, tenantId: number): Promise<ProjectTask> {

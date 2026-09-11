@@ -6,6 +6,7 @@ import {
   Body,
   Param,
   ParseIntPipe,
+  Query,
   UseGuards,
   Req,
   ForbiddenException,
@@ -40,6 +41,12 @@ const ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE: UserRole[] = [UserRole.DEVELOPER]
 // DTO/service method (setPeerReviewFlag) rather than adding Admin to
 // MUTATE_ROLES, so nothing else about Admin's task permissions changes.
 const ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+// Team Tasks - view-only for Admin/Executive, same leadership-wide grant
+// findAllForUser() gives them (TasksService.LEADERSHIP_ROLES); edit rights
+// on any task opened from this screen still go through the general
+// canEdit()/MUTATE_ROLES check on the task detail page, unchanged - this
+// array only controls who can load the Team Tasks list itself.
+const ROLES_ALLOWED_TO_VIEW_TEAM_TASKS: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -94,6 +101,37 @@ export class TasksController {
   async findMine(@Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.tasksService.findMine(currentUser, req.user.tenantId);
+  }
+
+  // Team Tasks - every team member's assigned tasks in one place.
+  // Declared before ':id' for the same routing reason as 'backlog'/
+  // 'qa-queue'/'peer-review-queue'/'mine' above.
+  @Get('team')
+  async findTeam(
+    @Query('page') page: string | undefined,
+    @Query('pageSize') pageSize: string | undefined,
+    @Query('status') status: string | undefined,
+    @Query('assigneeUserId') assigneeUserId: string | undefined,
+    @Query('dependency') dependency: string | undefined,
+    @Query('dueFrom') dueFrom: string | undefined,
+    @Query('dueTo') dueTo: string | undefined,
+    @Query('showCompleted') showCompleted: string | undefined,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_VIEW_TEAM_TASKS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin, Executive, or Program Manager can view Team Tasks.');
+    }
+    return this.tasksService.findTeam(req.user.tenantId, {
+      page: page ? Number(page) : undefined,
+      pageSize: pageSize ? Number(pageSize) : undefined,
+      status,
+      assigneeUserId: assigneeUserId ? Number(assigneeUserId) : undefined,
+      dependency,
+      dueFrom,
+      dueTo,
+      showCompleted: showCompleted === 'true',
+    });
   }
 
   @Get(':id')

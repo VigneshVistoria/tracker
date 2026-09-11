@@ -36,6 +36,7 @@ import {
   Percent,
   Inbox,
   ListTodo,
+  ListChecks,
   Link2,
   FlaskConical,
   RotateCcw,
@@ -143,6 +144,11 @@ const PROJECT_TEAMS_NAV_ITEM = { href: '/project-teams', label: 'Project Teams',
 // the backend and the page itself already allowing the other three roles.
 const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox };
 const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
+// Admin/Executive/Program Manager only - leadership-wide (not project-
+// scoped), same visibility grant as Task Backlog/QA Review above. Edit
+// (reassign/due date/etc.) stays Program Manager only, enforced on the
+// task detail page itself - Admin/Executive are view-only here too.
+const TEAM_TASKS_NAV_ITEM = { href: '/tasks/team', label: 'Team Tasks', icon: ListChecks };
 const DEPENDENCY_CLEARANCE_NAV_ITEM = { href: '/dependency-clearance', label: 'Dependency Clearance', icon: Link2 };
 const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical };
 // Self-scoped to the current Developer as reviewer (TasksService.
@@ -421,6 +427,10 @@ export default function AppShell({ children }) {
               user.role === 'qa' ||
               user.role === 'developer') && (
               <SingleNavLink item={MY_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={TEAM_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {user.role === 'developer' && (
