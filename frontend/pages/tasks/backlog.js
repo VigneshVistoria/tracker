@@ -12,7 +12,7 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, description: '' };
+const EMPTY_FORM = { project: null, module: null, phase: null, description: '', peerReviewEnabled: false };
 
 export default function TaskBacklogPage() {
   const router = useRouter();
@@ -32,6 +32,12 @@ export default function TaskBacklogPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  // The Peer Review flag changes through its own dedicated endpoint
+  // (PATCH /tasks/:id/peer-review-flag), not the general PATCH /tasks/:id
+  // call this form otherwise uses - this tracks the value the task had
+  // when editing started, so handleSubmit only calls that endpoint when
+  // the checkbox actually changed.
+  const [editingOriginalPeerReview, setEditingOriginalPeerReview] = useState(false);
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAssignee, setBulkAssignee] = useState(null);
@@ -102,7 +108,9 @@ export default function TaskBacklogPage() {
       module: { id: task.moduleId, name: task.moduleName },
       phase: { id: task.phaseId, name: task.phaseName },
       description: task.description,
+      peerReviewEnabled: !!task.peerReviewEnabled,
     });
+    setEditingOriginalPeerReview(!!task.peerReviewEnabled);
     setShowForm(true);
   };
 
@@ -123,9 +131,17 @@ export default function TaskBacklogPage() {
       };
       if (editingId) {
         await apiFetch(`/tasks/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        // Peer Review flag changes through its own dedicated endpoint, not
+        // the general PATCH above - only called when it actually changed.
+        if (form.peerReviewEnabled !== editingOriginalPeerReview) {
+          await apiFetch(`/tasks/${editingId}/peer-review-flag`, {
+            method: 'PATCH',
+            body: JSON.stringify({ peerReviewEnabled: form.peerReviewEnabled }),
+          });
+        }
         showToast('Task updated', 'success');
       } else {
-        await apiFetch('/tasks', { method: 'POST', body: JSON.stringify(payload) });
+        await apiFetch('/tasks', { method: 'POST', body: JSON.stringify({ ...payload, peerReviewEnabled: form.peerReviewEnabled }) });
         showToast('Task created', 'success');
       }
       resetForm();
@@ -222,6 +238,20 @@ export default function TaskBacklogPage() {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <input
+                type="checkbox"
+                checked={form.peerReviewEnabled}
+                onChange={(e) => setForm({ ...form, peerReviewEnabled: e.target.checked })}
+              />
+              Peer Review
+            </label>
+            <p className={styles.helpText}>
+              Skips QA - the assignee will pick another developer to review this task instead.
+            </p>
           </div>
 
           <div className={styles.actions}>

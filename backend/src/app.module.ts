@@ -67,6 +67,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { TaskStatusConfigModule } from './task-status-config/task-status-config.module';
 import { TaskDependencyTicketsModule } from './task-dependency-tickets/task-dependency-tickets.module';
 import { TaskQaReviewsModule } from './task-qa-reviews/task-qa-reviews.module';
+import { PeerReviewsModule } from './peer-reviews/peer-reviews.module';
 import { OpsModule } from './ops/ops.module';
 import { KpiModule } from './kpi/kpi.module';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -159,6 +160,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     TaskStatusConfigModule,
     TaskDependencyTicketsModule,
     TaskQaReviewsModule,
+    PeerReviewsModule,
     OpsModule,
     KpiModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),

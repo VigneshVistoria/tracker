@@ -1,4 +1,4 @@
-import { IsString, MinLength, IsInt } from 'class-validator';
+import { IsString, MinLength, IsInt, IsOptional, IsBoolean } from 'class-validator';
 
 // Stage 1 (Task Backlog creation, Program Manager only) - deliberately
 // just the Project -> Module -> Phase chain plus Description. No
@@ -18,4 +18,10 @@ export class CreateTaskDto {
   @IsString()
   @MinLength(1, { message: 'Task description is required.' })
   description: string;
+
+  // Opt-in alternative to QA review - see ProjectTask.peerReviewEnabled.
+  // Defaults to false when omitted (TasksService.create()).
+  @IsOptional()
+  @IsBoolean()
+  peerReviewEnabled?: boolean;
 }

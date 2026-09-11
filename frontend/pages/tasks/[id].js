@@ -23,6 +23,10 @@ const STATUS_COLOR = {
   Development: { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' },
   Feedback: { bg: 'var(--color-plum-tint)', fg: 'var(--color-plum-dark)' },
   'Re-Feedback': { bg: 'var(--color-plum-tint)', fg: 'var(--color-plum-dark)' },
+  // Distinct color from QA's Feedback/Re-Feedback plum, so Peer Review is
+  // visually distinguishable at a glance.
+  'Peer Review': { bg: 'var(--color-teal-tint)', fg: 'var(--color-teal-dark)' },
+  'Re-Peer-Review': { bg: 'var(--color-teal-tint)', fg: 'var(--color-teal-dark)' },
   Pass: { bg: 'var(--color-moss-tint)', fg: 'var(--color-moss-dark)' },
   Failed: { bg: 'var(--color-red-tint)', fg: 'var(--color-red-dark)' },
 };
@@ -172,6 +176,12 @@ export default function TaskDetailPage() {
   // QA's own evidence artifacts - optional, shared between Approve and
   // Reject since only one of those actions is taken per round.
   const [qaArtifacts, setQaArtifacts] = useState([]);
+  // Peer Review reviewer picker - only used when task.peerReviewEnabled.
+  const [peerReviewer, setPeerReviewer] = useState(null);
+  // Review Routing card - the Peer Review checkbox on an already-assigned
+  // task, saved through its own dedicated endpoint (see handleSavePeerReviewFlag).
+  const [peerReviewEnabled, setPeerReviewEnabled] = useState(false);
+  const [savingPeerReviewFlag, setSavingPeerReviewFlag] = useState(false);
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
@@ -217,6 +227,7 @@ export default function TaskDetailPage() {
         setTask(t);
         setEstimatedHours(t.estimatedHours ?? '');
         setDueDate(t.dueDate ?? '');
+        setPeerReviewEnabled(!!t.peerReviewEnabled);
         setTickets(ticketList);
         setQaReviews(reviewList);
       })
@@ -248,13 +259,19 @@ export default function TaskDetailPage() {
   // Due Date: one-time entry for the Assignee, same lock pattern as
   // E.Hrs - Program Manager can always re-edit it, no lock applies to PM.
   const dueDateLocked = task.dueDate != null && !canManage;
+  // Narrow exception to Admin's usual view-only access to tasks - Admin
+  // may set/edit only the Peer Review checkbox (via its own dedicated
+  // endpoint below), nothing else on this page.
+  const canManagePeerReviewFlag = canManage || user.role === 'admin';
 
   const latestQaReview = qaReviews[0];
   const hasPendingQaReview = latestQaReview?.status === 'pending';
   const isQa = user.role === 'qa';
+  const isPeerReviewer = latestQaReview?.reviewType === 'peer' && latestQaReview?.reviewerUserId === user.id;
 
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
+    { key: 'reviewType', header: 'Type', width: 72, render: (r) => (r.reviewType === 'peer' ? 'Peer' : 'QA') },
     { key: 'status', header: 'Status', width: 96, render: (r) => r.status.charAt(0).toUpperCase() + r.status.slice(1) },
     { key: 'resolution', header: 'Description', render: (r) => r.resolution },
     { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
@@ -303,6 +320,28 @@ export default function TaskDetailPage() {
       setError(err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Peer Review checkbox on an already-assigned task - its own dedicated
+  // endpoint, separate from handleSaveFields/PATCH /tasks/:id above, so
+  // that form's Program-Manager-or-Assignee gating is never touched by
+  // this feature. Always allowed regardless of the task's current status
+  // - it only affects the next time the task is submitted for review.
+  const handleSavePeerReviewFlag = async () => {
+    setError('');
+    setSavingPeerReviewFlag(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/peer-review-flag`, {
+        method: 'PATCH',
+        body: JSON.stringify({ peerReviewEnabled }),
+      });
+      setTask(updated);
+      showToast('Review routing updated', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingPeerReviewFlag(false);
     }
   };
 
@@ -377,6 +416,46 @@ export default function TaskDetailPage() {
     }
   };
 
+  // Peer Review's equivalent of handleSubmitForQa above - only reachable
+  // when task.peerReviewEnabled, hits the Peer Review module's own
+  // endpoint instead of /qa-submit. handleSubmitForQa itself is untouched.
+  const handleSubmitForPeerReview = async (e) => {
+    e.preventDefault();
+    setError('');
+    const incomplete = artifacts.some((row) => !row.type || !row.url.trim());
+    if (!resolution.trim() || incomplete || actualHours === '' || !peerReviewer) {
+      setError('Resolution, a Type and URL for every artifact, Actual Hours, and a Peer Reviewer are all required to submit for Peer Review.');
+      return;
+    }
+    setSubmittingQa(true);
+    try {
+      await apiFetch(`/tasks/${task.id}/peer-review-submit`, {
+        method: 'POST',
+        body: JSON.stringify({
+          resolution,
+          actualHours: Number(actualHours),
+          artifacts: artifacts.map((row) => ({ type: row.type, url: row.url.trim() })),
+          reviewerUserId: peerReviewer.id,
+        }),
+      });
+      showToast('Submitted for Peer Review', 'success');
+      setResolution('');
+      setArtifacts([{ type: '', url: '' }]);
+      setActualHours('');
+      setPeerReviewer(null);
+      const [refreshedTask, refreshedReviews] = await Promise.all([
+        apiFetch(`/tasks/${task.id}`),
+        apiFetch(`/tasks/${task.id}/qa-reviews`),
+      ]);
+      setTask(refreshedTask);
+      setQaReviews(refreshedReviews);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmittingQa(false);
+    }
+  };
+
   const handleQaApprove = async () => {
     setError('');
     let payloadArtifacts;
@@ -424,6 +503,76 @@ export default function TaskDetailPage() {
     setQaActionBusy(true);
     try {
       await apiFetch(`/tasks/${task.id}/qa-reject`, {
+        method: 'PATCH',
+        body: JSON.stringify({ comment: rejectComment, artifacts: payloadArtifacts }),
+      });
+      showToast('Task rejected', 'success');
+      setRejectComment('');
+      setShowRejectForm(false);
+      setQaArtifacts([]);
+      const [refreshedTask, refreshedReviews] = await Promise.all([
+        apiFetch(`/tasks/${task.id}`),
+        apiFetch(`/tasks/${task.id}/qa-reviews`),
+      ]);
+      setTask(refreshedTask);
+      setQaReviews(refreshedReviews);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setQaActionBusy(false);
+    }
+  };
+
+  // Peer Review's equivalent of handleQaApprove/handleQaReject above -
+  // same shape, hits the Peer Review module's own endpoints. The existing
+  // QA handlers are untouched.
+  const handlePeerReviewApprove = async () => {
+    setError('');
+    let payloadArtifacts;
+    try {
+      payloadArtifacts = buildQaArtifactsPayload();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+    setQaActionBusy(true);
+    try {
+      await apiFetch(`/tasks/${task.id}/peer-review-approve`, {
+        method: 'PATCH',
+        body: JSON.stringify({ artifacts: payloadArtifacts }),
+      });
+      showToast('Task approved', 'success');
+      setQaArtifacts([]);
+      const [refreshedTask, refreshedReviews] = await Promise.all([
+        apiFetch(`/tasks/${task.id}`),
+        apiFetch(`/tasks/${task.id}/qa-reviews`),
+      ]);
+      setTask(refreshedTask);
+      setQaReviews(refreshedReviews);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setQaActionBusy(false);
+    }
+  };
+
+  const handlePeerReviewReject = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!rejectComment.trim()) {
+      setError('A comment explaining the rejection is required.');
+      return;
+    }
+    let payloadArtifacts;
+    try {
+      payloadArtifacts = buildQaArtifactsPayload();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+    setQaActionBusy(true);
+    try {
+      await apiFetch(`/tasks/${task.id}/peer-review-reject`, {
         method: 'PATCH',
         body: JSON.stringify({ comment: rejectComment, artifacts: payloadArtifacts }),
       });
@@ -531,7 +680,11 @@ export default function TaskDetailPage() {
               <StatusBadge status={task.status} />
             </div>
             {hasPendingQaReview && (
-              <p className={styles.helpText}>A QA review round is pending - status is controlled by QA Approve/Reject.</p>
+              <p className={styles.helpText}>
+                {latestQaReview.reviewType === 'peer'
+                  ? 'A Peer Review round is pending - status is controlled by the reviewer\'s Approve/Reject.'
+                  : 'A QA review round is pending - status is controlled by QA Approve/Reject.'}
+              </p>
             )}
           </div>
         </div>
@@ -544,6 +697,36 @@ export default function TaskDetailPage() {
           </div>
         )}
       </form>
+
+      {canManagePeerReviewFlag && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Review Routing
+          </h2>
+          <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <input
+              type="checkbox"
+              checked={peerReviewEnabled}
+              onChange={(e) => setPeerReviewEnabled(e.target.checked)}
+            />
+            Peer Review
+          </label>
+          <p className={styles.helpText}>
+            Skips QA - the assignee will pick another developer to review this task instead. Only affects the next
+            time this task is submitted for review - it won&apos;t change a round that&apos;s already in progress.
+          </p>
+          <div className={styles.actions}>
+            <button
+              className={`${styles.button} ${styles.buttonAccent}`}
+              type="button"
+              disabled={savingPeerReviewFlag || peerReviewEnabled === !!task.peerReviewEnabled}
+              onClick={handleSavePeerReviewFlag}
+            >
+              {savingPeerReviewFlag ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {isAssignee && (
         <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
@@ -609,7 +792,7 @@ export default function TaskDetailPage() {
         ))}
       </div>
 
-      {isAssignee && !hasPendingQaReview && (
+      {isAssignee && !hasPendingQaReview && !task.peerReviewEnabled && (
         <form onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for QA Testing
@@ -689,6 +872,101 @@ export default function TaskDetailPage() {
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingQa}>
               {submittingQa ? 'Submitting...' : 'Mark Ready for Feedback'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {isAssignee && !hasPendingQaReview && task.peerReviewEnabled && (
+        <form onSubmit={handleSubmitForPeerReview} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Submit for Peer Review
+          </h2>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdPeerResolution">Resolution</label>
+            <textarea
+              className={styles.textarea}
+              id="tdPeerResolution"
+              required
+              placeholder="Describe what was done / fixed"
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+            />
+          </div>
+          <label className={styles.label}>Artifacts</label>
+          {artifacts.map((row, index) => (
+            <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor={`tdPeerArtifactType-${index}`}>Artifact Type</label>
+                <select
+                  className={styles.select}
+                  id={`tdPeerArtifactType-${index}`}
+                  required
+                  value={row.type}
+                  onChange={(e) => updateArtifactRow(index, 'type', e.target.value)}
+                >
+                  <option value="" disabled>— Select artifact type —</option>
+                  {ARTIFACT_TYPES.filter(
+                    (t) => t === row.type || !artifacts.some((r) => r.type === t),
+                  ).map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor={`tdPeerArtifactUrl-${index}`}>Artifact URL</label>
+                <input
+                  className={styles.input}
+                  id={`tdPeerArtifactUrl-${index}`}
+                  type="url"
+                  required
+                  placeholder="https://..."
+                  value={row.url}
+                  onChange={(e) => updateArtifactRow(index, 'url', e.target.value)}
+                />
+              </div>
+              <div className={styles.field}>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => removeArtifactRow(index)}
+                  disabled={artifacts.length === 1}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className={styles.actions} style={{ marginBottom: 'var(--space-3)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={addArtifactRow}>
+              + Add Another Artifact
+            </button>
+          </div>
+          <div className={styles.fieldGrid3}>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="tdActualHoursPeer">Actual Hours Spent</label>
+              <input
+                className={styles.input}
+                id="tdActualHoursPeer"
+                type="number"
+                min="0"
+                step="0.5"
+                required
+                placeholder="Total hours spent on this task so far"
+                value={actualHours}
+                onChange={(e) => setActualHours(e.target.value)}
+              />
+            </div>
+            <SearchSelectField
+              label="Peer Reviewer"
+              id="tdPeerReviewer"
+              required
+              value={peerReviewer}
+              onChange={setPeerReviewer}
+              options={developers.filter((d) => d.id !== user.id)}
+            />
+          </div>
+          <div className={styles.actions}>
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingQa}>
+              {submittingQa ? 'Submitting...' : 'Submit for Peer Review'}
             </button>
           </div>
         </form>
@@ -791,9 +1069,106 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {isPeerReviewer && hasPendingQaReview && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Peer Review
+          </h2>
+          <p style={{ margin: 0 }}><strong>Resolution:</strong> {latestQaReview.resolution}</p>
+          {latestQaReview.artifacts.map((artifact) => (
+            <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Artifact: {artifact.type} &middot;{' '}
+              <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
+            </p>
+          ))}
+          <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+            Submitted by {latestQaReview.submittedByEmail} &middot;{' '}
+            {new Date(latestQaReview.submittedAt).toLocaleDateString()} &middot; Round {latestQaReview.roundNumber}
+          </p>
+
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <label className={styles.label}>Reviewer Artifacts (optional)</label>
+            {qaArtifacts.map((row, index) => (
+              <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`tdPeerQaArtifactType-${index}`}>Artifact Type</label>
+                  <select
+                    className={styles.select}
+                    id={`tdPeerQaArtifactType-${index}`}
+                    value={row.type}
+                    onChange={(e) => updateQaArtifactRow(index, 'type', e.target.value)}
+                  >
+                    <option value="" disabled>— Select artifact type —</option>
+                    {QA_ARTIFACT_TYPES.filter(
+                      (t) => t === row.type || !qaArtifacts.some((r) => r.type === t),
+                    ).map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor={`tdPeerQaArtifactUrl-${index}`}>Artifact URL</label>
+                  <input
+                    className={styles.input}
+                    id={`tdPeerQaArtifactUrl-${index}`}
+                    type="url"
+                    placeholder="https://..."
+                    value={row.url}
+                    onChange={(e) => updateQaArtifactRow(index, 'url', e.target.value)}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <button className={styles.buttonSecondary} type="button" onClick={() => removeQaArtifactRow(index)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className={styles.actions}>
+              <button className={styles.buttonSecondary} type="button" onClick={addQaArtifactRow}>
+                + Add Artifact
+              </button>
+            </div>
+          </div>
+
+          {!showRejectForm && (
+            <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handlePeerReviewApprove} disabled={qaActionBusy}>
+                {qaActionBusy ? 'Working...' : 'Approve'}
+              </button>
+              <button className={styles.button} type="button" onClick={() => setShowRejectForm(true)} disabled={qaActionBusy}>
+                Reject
+              </button>
+            </div>
+          )}
+
+          {showRejectForm && (
+            <form onSubmit={handlePeerReviewReject} style={{ marginTop: 'var(--space-3)' }}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="tdPeerRejectComment">Rejection Comment</label>
+                <textarea
+                  className={styles.textarea}
+                  id="tdPeerRejectComment"
+                  required
+                  placeholder="Explain what's incorrect, unclear, or missing"
+                  value={rejectComment}
+                  onChange={(e) => setRejectComment(e.target.value)}
+                />
+              </div>
+              <div className={styles.actions}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={qaActionBusy}>
+                  {qaActionBusy ? 'Working...' : 'Confirm Reject'}
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowRejectForm(false)} disabled={qaActionBusy}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
       <div className={styles.card}>
         <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
-          QA Review History
+          Review History
         </h2>
         <Table
           columns={qaReviewColumns}

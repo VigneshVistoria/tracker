@@ -86,6 +86,16 @@ export class ProjectTask {
   @Column()
   status: string;
 
+  // Opt-in alternative to QA review, set by Program Manager (or Admin, via
+  // the dedicated PATCH /tasks/:id/peer-review-flag endpoint - see
+  // TasksService.setPeerReviewFlag()) at creation or any time after.
+  // Consulted only at the moment the Assignee submits for review
+  // (TaskQaReviewsService.submit() vs PeerReviewsService.submit()) - so
+  // flipping this on a task mid-review never affects the round already in
+  // flight, only the next submission.
+  @Column({ default: false })
+  peerReviewEnabled: boolean;
+
   @Column({ nullable: true })
   createdByUserId: number;
 

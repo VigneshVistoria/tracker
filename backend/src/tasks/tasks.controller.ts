@@ -15,6 +15,7 @@ import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { BulkAssignTasksDto } from './dto/bulk-assign-tasks.dto';
+import { SetPeerReviewFlagDto } from './dto/set-peer-review-flag.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
@@ -28,6 +29,17 @@ const ROLES_ALLOWED_TO_CREATE_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_ASSIGN_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_BACKLOG: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_QA_QUEUE: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER, UserRole.QA];
+// Peer Review queue is self-scoped to the reviewer (TasksService.
+// findPeerReviewQueue()), so only Developers - the only role that can be
+// picked as a reviewer - need to see it.
+const ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE: UserRole[] = [UserRole.DEVELOPER];
+// Narrow, explicit exception: Admin has view-only access to every other
+// task field/endpoint (see TasksService.canEdit()'s MUTATE_ROLES comment),
+// but the Peer Review checkbox is deliberately PM-or-Admin per the
+// workflow spec. Scoped to exactly this one field via its own endpoint/
+// DTO/service method (setPeerReviewFlag) rather than adding Admin to
+// MUTATE_ROLES, so nothing else about Admin's task permissions changes.
+const ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -63,6 +75,18 @@ export class TasksController {
       throw new ForbiddenException('Only QA, Admin, Executive, or Program Manager can view the QA Review queue.');
     }
     return this.tasksService.findQaQueue(req.user.tenantId);
+  }
+
+  // Peer Review queue - tasks with a Peer Review round pending, assigned
+  // to the current user as reviewer. Declared before ':id' for the same
+  // routing reason as 'backlog'/'qa-queue'/'mine'.
+  @Get('peer-review-queue')
+  async findPeerReviewQueue(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Developers can view the Peer Review queue.');
+    }
+    return this.tasksService.findPeerReviewQueue(currentUser, req.user.tenantId);
   }
 
   // My Tasks - tasks assigned to the current user.
@@ -109,6 +133,20 @@ export class TasksController {
       throw new ForbiddenException('Only Program Manager can assign tasks.');
     }
     return this.tasksService.assignTask(id, dto.assigneeUserId, currentUser, req.user.tenantId);
+  }
+
+  // Dedicated endpoint for the Peer Review checkbox on an already-existing
+  // task - Program Manager or Admin only (the one narrow exception to
+  // Admin's view-only access to tasks). Kept separate from the general
+  // PATCH ':id'/UpdateTaskDto below so that endpoint's PM-or-Assignee
+  // gating is never affected by this feature.
+  @Patch(':id/peer-review-flag')
+  async setPeerReviewFlag(@Param('id', ParseIntPipe) id: number, @Body() dto: SetPeerReviewFlagDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager or Admin can change the Peer Review setting.');
+    }
+    return this.tasksService.setPeerReviewFlag(id, dto.peerReviewEnabled, currentUser, req.user.tenantId);
   }
 
   @Patch(':id')

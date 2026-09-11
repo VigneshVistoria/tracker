@@ -144,6 +144,11 @@ const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', i
 const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
 const DEPENDENCY_CLEARANCE_NAV_ITEM = { href: '/dependency-clearance', label: 'Dependency Clearance', icon: Link2 };
 const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical };
+// Self-scoped to the current Developer as reviewer (TasksService.
+// findPeerReviewQueue()) - only Developers can be picked as a Peer
+// Reviewer, so unlike QA_REVIEW_NAV_ITEM above this isn't shown to
+// Admin/Executive/Program Manager.
+const PEER_REVIEW_NAV_ITEM = { href: '/tasks/peer-review', label: 'Peer Review', icon: Users };
 
 // Same visibility as My Tasks (Admin/Executive/Program Manager/QA/
 // Developer, Client excluded - Clients have no tasks assigned, so there's
@@ -420,6 +425,10 @@ export default function AppShell({ children }) {
               user.role === 'program_manager' ||
               user.role === 'qa') && (
               <SingleNavLink item={QA_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {user.role === 'developer' && (
+              <SingleNavLink item={PEER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'admin' ||

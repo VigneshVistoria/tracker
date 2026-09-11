@@ -52,6 +52,10 @@ const BACKLOG_FIELDS: Array<keyof UpdateTaskDto> = ['projectId', 'moduleId', 'ph
 // rejection.
 const QA_PENDING_STATUSES = ['Feedback', 'Re-Feedback'];
 
+// Peer Review's equivalent of QA_PENDING_STATUSES above - see
+// findPeerReviewQueue() and PeerReviewsService.submit().
+const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -91,6 +95,16 @@ export class TasksService {
     if (user.role === UserRole.QA) {
       const qaReview = await this.qaReviewsRepository.findOne({ where: { taskId: task.id } });
       if (qaReview) {
+        return true;
+      }
+    }
+    // Same grant as the QA branch above, for a Peer Review reviewer - a
+    // Developer who was ever picked as reviewerUserId on one of this
+    // task's review rounds (even a resolved one) can open it, though
+    // they're neither the Assignee nor its creator.
+    if (user.role === UserRole.DEVELOPER) {
+      const peerReview = await this.qaReviewsRepository.findOne({ where: { taskId: task.id, reviewerUserId: user.id } });
+      if (peerReview) {
         return true;
       }
     }
@@ -183,6 +197,24 @@ export class TasksService {
     return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
   }
 
+  // Peer Review queue - tasks with a Peer Review round pending, scoped to
+  // the specific Developer picked as reviewer (unlike findQaQueue() above,
+  // which is tenant-wide since any QA teammate can pick up any task - a
+  // Peer Review round is assigned to one specific person, so this is
+  // self-scoped like findMine() below instead).
+  async findPeerReviewQueue(currentUser: { id: number }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
+    const pendingRounds = await this.qaReviewsRepository.find({
+      where: { tenantId, reviewType: 'peer', reviewerUserId: currentUser.id, status: 'pending' },
+    });
+    if (pendingRounds.length === 0) return [];
+    const tasks = await this.tasksRepository.find({
+      where: { tenantId, id: In(pendingRounds.map((r) => r.taskId)), status: In(PEER_REVIEW_PENDING_STATUSES) },
+      order: { createdAt: 'DESC' },
+    });
+    const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
+    return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+  }
+
   // My Tasks view - tasks assigned to the current user, whatever their role.
   async findMine(currentUser: { id: number }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
     const tasks = await this.tasksRepository.find({
@@ -243,6 +275,7 @@ export class TasksService {
       estimatedHours: null,
       dueDate: null,
       status: 'Development',
+      peerReviewEnabled: dto.peerReviewEnabled ?? false,
       createdByUserId: user.id,
       createdByEmail: user.email,
       tenantId,
@@ -390,6 +423,45 @@ export class TasksService {
         details: { previousDueDate: previous.dueDate, newDueDate: saved.dueDate },
       });
     }
+
+    return saved;
+  }
+
+  // Dedicated setter for the Peer Review checkbox on an already-existing
+  // task (PATCH /tasks/:id/peer-review-flag, Program Manager or Admin
+  // only - see TasksController) - deliberately separate from update()/
+  // UpdateTaskDto/canEdit() above, so this feature can grant Admin a
+  // narrow write exception (Admin has view-only access to every other
+  // task field) without touching the general edit path's authorization at
+  // all. Always allowed regardless of the task's current status - see
+  // ProjectTask.peerReviewEnabled for why a mid-review change is safe:
+  // it's only consulted the next time the Assignee submits, never
+  // retroactively.
+  async setPeerReviewFlag(
+    id: number,
+    peerReviewEnabled: boolean,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.peerReviewEnabled === peerReviewEnabled) {
+      return task;
+    }
+
+    const previous = task.peerReviewEnabled;
+    task.peerReviewEnabled = peerReviewEnabled;
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_PEER_REVIEW_FLAG_CHANGED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { previous, updated: peerReviewEnabled, taskStatusAtChange: task.status },
+    });
 
     return saved;
   }

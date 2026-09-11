@@ -13,10 +13,19 @@ import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeor
 // it, and the % Complete config below still carries a row for each so an
 // admin can still see/edit their percent, but no code path sets them
 // anymore now that the manual status endpoint is gone.
+// 'Peer Review'/'Re-Peer-Review' parallel 'Feedback'/'Re-Feedback' - the
+// same first-submission/resubmission split, but for a task with
+// peerReviewEnabled set (see ProjectTask.peerReviewEnabled,
+// PeerReviewsService.submit()) instead of going through QA. Kept as their
+// own status values (not a reuse of Feedback/Re-Feedback with a type
+// flag) so TasksService.findQaQueue()'s status filter never picks up a
+// peer-pending task.
 export const TASK_STATUSES = [
   'Development',
   'Feedback',
   'Re-Feedback',
+  'Peer Review',
+  'Re-Peer-Review',
   'Failed',
   'Pass',
   'Released - No Showstoppers',
@@ -31,6 +40,8 @@ export const TASK_STATUS_PERCENT_DEFAULTS: Record<TaskStatus, number> = {
   Development: 0,
   Feedback: 50,
   'Re-Feedback': 50,
+  'Peer Review': 50,
+  'Re-Peer-Review': 50,
   Failed: 0,
   Pass: 100,
   'Released - No Showstoppers': 100,
