@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
 import AppShell from '../../components/AppShell';
+import QaReviewWorkboard from '../../components/QaReviewWorkboard';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+
+const ACTIVE_CARD_STORAGE_KEY = 'qaReviewActiveCard';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa'];
 
@@ -49,30 +51,7 @@ export default function QaReviewQueuePage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
-
-      {!loading && tasks.length === 0 && (
-        <div className={styles.card}>
-          <div className={styles.empty}>No tasks are waiting on QA review right now.</div>
-        </div>
-      )}
-
-      {!loading && tasks.map((task) => (
-        <div key={task.id} className={styles.card} style={{ marginBottom: 'var(--space-3)' }}>
-          <p style={{ margin: 0 }}>{task.description}</p>
-          <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-            {task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}
-          </p>
-          <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-            Assignee: {task.assigneeEmail || 'Unassigned'}
-          </p>
-          <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-            <Link href={`/tasks/${task.id}`} className={styles.backLink}>
-              Review task &rarr;
-            </Link>
-          </div>
-        </div>
-      ))}
+      <QaReviewWorkboard tasks={tasks} loading={loading} storageKey={ACTIVE_CARD_STORAGE_KEY} />
     </AppShell>
   );
 }
