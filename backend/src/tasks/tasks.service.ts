@@ -153,6 +153,23 @@ export class TasksService {
     }
   }
 
+  // Hard block, no role exception: a task with an open Dependency Ticket
+  // cannot be submitted for QA. Deliberately QA-only - called from
+  // TaskQaReviewsService.submit() alone, never from PeerReviewsService.submit()
+  // or from assertReadyForQaSubmission() above (which both submit paths
+  // share), so an open dependency ticket never blocks the Peer Review path.
+  async assertNoOpenDependencyTickets(taskId: number, tenantId: number): Promise<void> {
+    const openTickets = await this.dependencyTicketsRepository.find({
+      where: { parentTaskId: taskId, tenantId, status: 'open' },
+    });
+    if (openTickets.length === 0) {
+      return;
+    }
+    const label = openTickets.length === 1 ? 'ticket' : 'tickets';
+    const ids = openTickets.map((t) => `#${t.id}`).join(', ');
+    throw new BadRequestException(`Cannot submit for QA - resolve the open dependency ${label} ${ids} first.`);
+  }
+
   private async withComputedFields(task: ProjectTask, tenantId: number, percentByStatus?: Record<string, number>): Promise<ProjectTaskWithComputed> {
     const map = percentByStatus ?? (await this.taskStatusConfigService.percentByStatus(tenantId));
     const percentComplete = task.status != null ? map[task.status] ?? null : null;

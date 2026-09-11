@@ -268,6 +268,10 @@ export default function TaskDetailPage() {
   const hasPendingQaReview = latestQaReview?.status === 'pending';
   const isQa = user.role === 'qa';
   const isPeerReviewer = latestQaReview?.reviewType === 'peer' && latestQaReview?.reviewerUserId === user.id;
+  // QA-only hard block (backend: TasksService.assertNoOpenDependencyTickets(),
+  // called from TaskQaReviewsService.submit()) - deliberately not consulted
+  // by the Peer Review submit form below, which stays reachable regardless.
+  const openDependencyTickets = tickets.filter((t) => t.status === 'open');
 
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
@@ -792,7 +796,19 @@ export default function TaskDetailPage() {
         ))}
       </div>
 
-      {isAssignee && !hasPendingQaReview && !task.peerReviewEnabled && (
+      {isAssignee && !hasPendingQaReview && !task.peerReviewEnabled && openDependencyTickets.length > 0 && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Submit for QA Testing
+          </h2>
+          <div className={styles.error}>
+            Cannot submit for QA - resolve the open dependency {openDependencyTickets.length === 1 ? 'ticket' : 'tickets'}{' '}
+            {openDependencyTickets.map((t) => `#${t.id}`).join(', ')} first.
+          </div>
+        </div>
+      )}
+
+      {isAssignee && !hasPendingQaReview && !task.peerReviewEnabled && openDependencyTickets.length === 0 && (
         <form onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for QA Testing

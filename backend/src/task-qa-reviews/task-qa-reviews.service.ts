@@ -115,6 +115,9 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only the task Assignee can submit it for QA testing.');
     }
     this.tasksService.assertReadyForQaSubmission(task.estimatedHours, task.dueDate);
+    // QA-only hard block, no role exception - see the method's own comment.
+    // Deliberately not called from PeerReviewsService.submit().
+    await this.tasksService.assertNoOpenDependencyTickets(taskId, tenantId);
 
     const existingPending = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId, status: 'pending' } });
     if (existingPending) {
