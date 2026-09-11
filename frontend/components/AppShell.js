@@ -40,6 +40,7 @@ import {
   FlaskConical,
   RotateCcw,
   Gauge,
+  LayoutGrid,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -157,6 +158,12 @@ const PEER_REVIEW_NAV_ITEM = { href: '/tasks/peer-review', label: 'Peer Review',
 // score - this nav entry point is available to everyone in that role set,
 // but what each of them sees behind it differs per role.
 const KPI_NAV_ITEM = { href: '/kpi', label: 'KPI Dashboard', icon: Gauge };
+
+// Same visibility as the /kpi/report endpoint it reads (Admin/Executive/
+// Program Manager only) - a grid reshape of the exact same generated,
+// immutable KpiPeriodScore rows, not a separate data source. QA/Developer
+// keep only the per-person KPI_NAV_ITEM above, unchanged.
+const KPI_MATRIX_NAV_ITEM = { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -437,6 +444,10 @@ export default function AppShell({ children }) {
               user.role === 'qa' ||
               user.role === 'developer') && (
               <SingleNavLink item={KPI_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={KPI_MATRIX_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (
