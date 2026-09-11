@@ -43,6 +43,11 @@ export interface TeamTasksResult {
   assignees: Array<{ id: number; email: string; fullName: string | null }>;
 }
 
+export interface QaQueueResult {
+  tasks: ProjectTaskWithComputed[];
+  statCounts: { pending: number; resubmissions: number; overdue: number; approved: number; rejected: number };
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 // Tasks in these statuses are done - mirrors COMPLETED_STATUSES in
@@ -233,13 +238,43 @@ export class TasksService {
   // tenant-wide, like findBacklog(), rather than assignee-scoped like
   // findMine() below - QA reviewing a task has nothing to do with who
   // it's assigned to.
-  async findQaQueue(tenantId: number): Promise<ProjectTaskWithComputed[]> {
-    const tasks = await this.tasksRepository.find({
+  //
+  // `status` is an optional escape hatch for the QA Review page's
+  // Approved/Rejected stat cards: those aren't part of the pending queue
+  // at all (a task leaves Feedback/Re-Feedback for Pass/Failed the moment
+  // QA decides it - see TaskQaReviewsService.approve()/reject()), so
+  // loading either list means querying by that status directly instead of
+  // QA_PENDING_STATUSES. Deliberately not scoped to QA-decided tasks only -
+  // Pass/Failed can also come from the separate Peer Review path
+  // (PeerReviewsService), and this endpoint doesn't distinguish the two,
+  // same as the Status badge shown elsewhere never distinguishes them
+  // either.
+  async findQaQueue(tenantId: number, status?: string): Promise<QaQueueResult> {
+    const pendingTasks = await this.tasksRepository.find({
       where: { tenantId, status: In(QA_PENDING_STATUSES) },
       order: { createdAt: 'DESC' },
     });
+    const today = new Date().toISOString().slice(0, 10);
+    const statCounts = {
+      pending: pendingTasks.length,
+      resubmissions: pendingTasks.filter((t) => t.status === 'Re-Feedback').length,
+      overdue: pendingTasks.filter((t) => t.dueDate && t.dueDate < today).length,
+      approved: await this.tasksRepository.count({ where: { tenantId, status: 'Pass' } }),
+      rejected: await this.tasksRepository.count({ where: { tenantId, status: 'Failed' } }),
+    };
+
+    let tasks: ProjectTask[];
+    if (status === 'Pass' || status === 'Failed') {
+      tasks = await this.tasksRepository.find({ where: { tenantId, status }, order: { createdAt: 'DESC' } });
+    } else if (status === 'Feedback' || status === 'Re-Feedback') {
+      tasks = pendingTasks.filter((t) => t.status === status);
+    } else {
+      tasks = pendingTasks;
+    }
+
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
-    return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+    const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+    return { tasks: withComputed, statCounts };
   }
 
   // Peer Review queue - tasks with a Peer Review round pending, scoped to

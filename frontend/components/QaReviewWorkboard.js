@@ -9,29 +9,43 @@ import Table from './ui/Table';
 import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { todayISO, yesterdayISO } from '../lib/developerTaskStats';
+import { yesterdayISO } from '../lib/developerTaskStats';
 import { LEGEND_ITEMS, buildRowTintClass } from '../lib/taskTableShared';
+import { apiFetch } from '../lib/api';
 
 // QA Review queue - same icon-header/sortable table, row-tint, and
-// stat-cards-as-filter-presets pattern as My Tasks (DeveloperTaskWorkboard),
-// applied to the (much smaller, tenant-wide, unpaginated) set of tasks
-// findQaQueue() returns. Columns are deliberately limited to the same
-// information the previous plain card-list layout showed - this is a
-// layout change, not a change to what QA sees or how "Review task" works.
+// stat-cards-as-filter-presets pattern as My Tasks (DeveloperTaskWorkboard).
+// Columns are deliberately limited to the same information the previous
+// plain card-list layout showed - this is a layout change, not a change to
+// what QA sees or how "Review task" works.
 //
-// Unlike Team Tasks, this stays fully client-side like My Tasks: the
-// queue is already a small, bounded list (status IN Feedback/Re-Feedback),
-// not paginated by the backend, so filtering/sorting/the Assignee dropdown
-// all just work off the array already fetched.
+// Pending/Resubmissions/Overdue are the small, tenant-wide "queue" proper
+// (status IN Feedback/Re-Feedback) - Approved/Rejected are already-decided
+// tasks (Pass/Failed) that have left the queue entirely, so selecting
+// either one re-fetches from the backend instead of filtering client-side,
+// same server-driven-by-status-filter pattern TeamTaskWorkboard uses.
+// Card counts (statCounts from the backend) are independent of whichever
+// status is currently loaded into the table, so the five card numbers
+// never change just because you clicked into a different one.
 
 const ROW_TINT_CLASS = buildRowTintClass(styles);
 
-// Only Feedback/Re-Feedback (both plum) can ever appear in this queue, so
-// the legend only shows that one entry rather than the full 5-item legend
-// My Tasks/Team Tasks show (Pass/Failed/Released can't occur here).
-const QA_LEGEND_ITEMS = LEGEND_ITEMS.filter((item) => item.label.includes('Feedback'));
+// Feedback/Re-Feedback (plum), Pass (moss), and Failed (red) are the only
+// statuses that can ever appear in this table now - Development and the
+// two Released statuses can't, so they're left out of the legend here.
+const QA_LEGEND_ITEMS = LEGEND_ITEMS.filter(
+  (item) => item.label.includes('Feedback') || item.label === 'Pass' || item.label.startsWith('Failed'),
+);
 
-export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
+const CARD_DEFS = [
+  { key: 'pending', label: 'Pending QA Review', statusFilter: 'All' },
+  { key: 'resubmissions', label: 'Resubmissions', statusFilter: 'Re-Feedback' },
+  { key: 'overdue', label: 'Overdue', statusFilter: 'All', overdue: true },
+  { key: 'approved', label: 'Approved', statusFilter: 'Pass' },
+  { key: 'rejected', label: 'Rejected', statusFilter: 'Failed' },
+];
+
+export default function QaReviewWorkboard({ storageKey }) {
   const router = useRouter();
 
   const [activeCard, setActiveCard] = useState(null);
@@ -40,6 +54,11 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
 
+  const [tasks, setTasks] = useState([]);
+  const [statCounts, setStatCounts] = useState({ pending: 0, resubmissions: 0, overdue: 0, approved: 0, rejected: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) setActiveCard(stored);
@@ -47,30 +66,44 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Distinct list of assignees among the tasks currently in the queue, for
-  // the new Assignee filter - derived client-side since this view has no
-  // server-side pagination to drive a separate lookup off of.
-  const assignees = useMemo(() => {
-    const seen = new Map();
-    tasks.forEach((t) => {
-      if (t.assigneeEmail && !seen.has(t.assigneeEmail)) seen.set(t.assigneeEmail, t.assigneeEmail);
-    });
-    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
-  }, [tasks]);
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter !== 'All') params.set('status', statusFilter);
 
-  const resubmissionCount = useMemo(() => tasks.filter((t) => t.status === 'Re-Feedback').length, [tasks]);
-  const overdueCount = useMemo(() => {
-    const today = todayISO();
-    return tasks.filter((t) => t.dueDate && t.dueDate < today).length;
+    let cancelled = false;
+    setLoading(true);
+    apiFetch(`/tasks/qa-queue${params.toString() ? `?${params.toString()}` : ''}`)
+      .then((res) => {
+        if (cancelled) return;
+        setTasks(res.tasks);
+        setStatCounts(res.statCounts);
+        setError('');
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [statusFilter]);
+
+  // Distinct list of assignees among the tasks currently loaded, for the
+  // Assignee filter - rebuilds whenever the loaded set changes (e.g.
+  // switching from Pending to Approved).
+  const assignees = useMemo(() => {
+    const seen = new Set();
+    tasks.forEach((t) => {
+      if (t.assigneeEmail) seen.add(t.assigneeEmail);
+    });
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
   }, [tasks]);
 
   const cards = useMemo(
-    () => [
-      { key: 'pending', label: 'Pending QA Review', count: tasks.length, kind: 'table' },
-      { key: 'resubmissions', label: 'Resubmissions', count: resubmissionCount, kind: 'table' },
-      { key: 'overdue', label: 'Overdue', count: overdueCount, kind: 'table' },
-    ],
-    [tasks, resubmissionCount, overdueCount],
+    () => CARD_DEFS.map((c) => ({ ...c, count: statCounts[c.key] ?? 0 })),
+    [statCounts],
   );
 
   const handleCardClick = (card) => {
@@ -79,13 +112,9 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
       localStorage.setItem(storageKey, next || '');
       return next;
     });
-    if (card.key === 'pending') {
-      setStatusFilter('All'); setDueFrom(''); setDueTo('');
-    } else if (card.key === 'resubmissions') {
-      setStatusFilter('Re-Feedback'); setDueFrom(''); setDueTo('');
-    } else if (card.key === 'overdue') {
-      setStatusFilter('All'); setDueTo(yesterdayISO());
-    }
+    setStatusFilter(card.statusFilter);
+    setDueTo(card.overdue ? yesterdayISO() : '');
+    setDueFrom('');
   };
 
   const handleGenericToggle = () => {
@@ -98,13 +127,12 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      if (statusFilter !== 'All' && task.status !== statusFilter) return false;
       if (assigneeFilter !== 'All' && task.assigneeEmail !== assigneeFilter) return false;
       if (dueFrom && (!task.dueDate || task.dueDate < dueFrom)) return false;
       if (dueTo && (!task.dueDate || task.dueDate > dueTo)) return false;
       return true;
     });
-  }, [tasks, statusFilter, assigneeFilter, dueFrom, dueTo]);
+  }, [tasks, assigneeFilter, dueFrom, dueTo]);
 
   const columns = useMemo(
     () => [
@@ -182,6 +210,8 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
         {activeCard ? 'Hide detailed table' : 'Show detailed table'}
       </button>
 
+      {error && <div className={styles.error}>{error}</div>}
+
       {activeCard && activeCardDef && (
         <>
           <div className={styles.statusLegend}>
@@ -217,9 +247,11 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
-                <option value="All">All</option>
+                <option value="All">All (Feedback + Re-Feedback)</option>
                 <option value="Feedback">Feedback</option>
                 <option value="Re-Feedback">Re-Feedback</option>
+                <option value="Pass">Approved</option>
+                <option value="Failed">Rejected</option>
               </select>
             </div>
 
@@ -252,11 +284,7 @@ export default function QaReviewWorkboard({ tasks, loading, storageKey }) {
             getRowId={(t) => t.id}
             onRowClick={(t) => router.push(`/tasks/${t.id}`)}
             rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
-            emptyState={
-              tasks.length === 0
-                ? 'No tasks are waiting on QA review right now.'
-                : 'No tasks match these filters.'
-            }
+            emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
           />
         </>
       )}

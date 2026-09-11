@@ -73,15 +73,17 @@ export class TasksController {
     return this.tasksService.findBacklog(req.user.tenantId);
   }
 
-  // QA Review queue - tasks with a QA review round pending. Declared
-  // before ':id' for the same routing reason as 'backlog'/'mine' above.
+  // QA Review queue - tasks with a QA review round pending by default, or
+  // (via ?status=) already-decided tasks the queue's Approved/Rejected
+  // stat cards filter into. Declared before ':id' for the same routing
+  // reason as 'backlog'/'mine' above.
   @Get('qa-queue')
-  async findQaQueue(@Req() req: any) {
+  async findQaQueue(@Query('status') status: string | undefined, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (!ROLES_ALLOWED_TO_VIEW_QA_QUEUE.includes(currentUser.role)) {
       throw new ForbiddenException('Only QA, Admin, Executive, or Program Manager can view the QA Review queue.');
     }
-    return this.tasksService.findQaQueue(req.user.tenantId);
+    return this.tasksService.findQaQueue(req.user.tenantId, status);
   }
 
   // Peer Review queue - tasks with a Peer Review round pending, assigned

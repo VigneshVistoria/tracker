@@ -3,7 +3,6 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import QaReviewWorkboard from '../../components/QaReviewWorkboard';
 import styles from '../../styles/issues.module.css';
-import { apiFetch } from '../../lib/api';
 
 const ACTIVE_CARD_STORAGE_KEY = 'qaReviewActiveCard';
 
@@ -13,9 +12,6 @@ export default function QaReviewQueuePage() {
   const router = useRouter();
 
   const [user, setUser] = useState(null);
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -29,11 +25,6 @@ export default function QaReviewQueuePage() {
       return;
     }
     setUser(parsed);
-    setLoading(true);
-    apiFetch('/tasks/qa-queue')
-      .then(setTasks)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
   }, [router]);
 
   if (!user) return null;
@@ -49,9 +40,7 @@ export default function QaReviewQueuePage() {
         </div>
       </div>
 
-      {error && <div className={styles.error}>{error}</div>}
-
-      <QaReviewWorkboard tasks={tasks} loading={loading} storageKey={ACTIVE_CARD_STORAGE_KEY} />
+      <QaReviewWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} />
     </AppShell>
   );
 }
