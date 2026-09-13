@@ -105,6 +105,34 @@
   box-shadow: var(--ds-shadow-focus);
 }
 
+/* Warm theme only (Admin/Executive/Program Manager - see
+   lib/newDesignRoles.js): full-pill search bar with a decorative "⌘K"
+   hint, matching the reference. The hint is a CSS-generated ::after on
+   the wrapper (not real DOM/JSX) since <input> doesn't support
+   pseudo-elements - pointer-events: none keeps it purely decorative so
+   it can never intercept a click or a keystroke. Scoped entirely by the
+   :root[data-theme='warm'] ancestor, so Developer/QA/Client/Designer/
+   DevOps (never in that theme) get the exact same search bar as today. */
+:root[data-theme='warm'] .searchInput {
+  border-radius: var(--ds-radius-full);
+  padding-right: 52px;
+}
+:root[data-theme='warm'] .searchWrap::after {
+  content: '⌘K';
+  position: absolute;
+  right: var(--ds-space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: var(--ds-weight-bold);
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  padding: 1px 6px;
+  pointer-events: none;
+}
+
 .topbarRight {
   display: flex;
   align-items: center;
@@ -250,7 +278,7 @@
 .sidebar {
   width: var(--ds-sidebar-width);
   flex-shrink: 0;
-  background: var(--ds-bg-surface);
+  background: var(--ds-sidebar-bg);
   border-right: 1px solid var(--ds-border);
   position: sticky;
   top: var(--ds-topbar-height);
@@ -302,16 +330,34 @@
 }
 
 .navLink.active {
-  /* Semantic info tint/text, not the raw primary-50/700 palette steps -
+  /* --ds-sidebar-active-bg, not the raw primary-50/700 palette steps -
      those are fixed light-mode values and would render as a near-white
-     highlight behind dark-mode-illegible text on a dark sidebar. */
-  background: var(--ds-color-info-tint);
+     highlight behind dark-mode-illegible text on a dark sidebar. Defaults
+     to the same --ds-color-info-tint value this used before the token
+     was introduced (see tokens.css); only the 'warm' theme diverges. */
+  background: var(--ds-sidebar-active-bg);
   color: var(--ds-color-info-dark);
   border-left-color: var(--ds-color-primary-600);
   font-weight: var(--ds-weight-semibold);
 }
 
 .navIcon {
+  flex-shrink: 0;
+}
+
+/* Nav sidebar count badge (e.g. "My Tasks 6") - only ever rendered with
+   content for the gated new-design roles (AppShell.js only passes a
+   non-null count for those - see navCounts), so no theme-scoping is
+   needed here the way the searchInput/statCard warm overrides above
+   needed it. */
+.navCount {
+  margin-left: auto;
+  background: var(--ds-bg-surface);
+  color: var(--ds-color-primary-700);
+  font-size: 10px;
+  font-weight: var(--ds-weight-bold);
+  padding: 1px 7px;
+  border-radius: var(--ds-radius-full);
   flex-shrink: 0;
 }
 

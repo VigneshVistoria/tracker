@@ -42,11 +42,14 @@ import {
   RotateCcw,
   Gauge,
   LayoutGrid,
+  Bug,
+  AlertTriangle,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
 import { apiFetch } from '../lib/api';
-import { roleLabel } from '../lib/status';
+import { roleLabel, DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
+import { isNewDesignRole } from '../lib/newDesignRoles';
 import ThemeToggle from './ui/ThemeToggle';
 
 const NAV_ITEMS = [
@@ -135,14 +138,18 @@ const PROJECT_TEAMS_NAV_ITEM = { href: '/project-teams', label: 'Project Teams',
 // is viewable by Admin/Program Manager (who creates/assigns tasks - Admin
 // is view-only there, TasksController's own role checks handle that); My
 // Tasks is visible to everyone who can be assigned or view their own tasks
-// (Admin/Executive/Program Manager/QA/Developer - Client excluded, same
-// as TasksService.findAllForUser never returning anything client-
-// relevant); Dependency Clearance is Developer only, since Dependency
-// Owner is restricted to Developer role (TaskDependencyTicketsService); QA
+// (Admin/Executive/Program Manager/QA/Developer, plus Designer/DevOps who
+// are DEVELOPER_EQUIVALENT_ROLES - Client excluded, same as TasksService.
+// findAllForUser never returning anything client-relevant); Dependency
+// Clearance is Developer(-equivalent) only, since Dependency Owner is
+// restricted to DEVELOPER_EQUIVALENT_ROLES (TaskDependencyTicketsService); QA
 // Review matches TasksController.ROLES_ALLOWED_TO_VIEW_QA_QUEUE
 // (Admin/Executive/Program Manager/QA) - previously QA-only here despite
 // the backend and the page itself already allowing the other three roles.
 const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox };
+// Same visibility split as Task Backlog - Admin/Program Manager view,
+// only Program Manager can act (reassign/close as Junk) within the page.
+const ESCALATIONS_NAV_ITEM = { href: '/tasks/escalations', label: 'Escalations', icon: AlertTriangle };
 const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
 // Admin/Executive/Program Manager only - leadership-wide (not project-
 // scoped), same visibility grant as Task Backlog/QA Review above. Edit
@@ -151,11 +158,15 @@ const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTo
 const TEAM_TASKS_NAV_ITEM = { href: '/tasks/team', label: 'Team Tasks', icon: ListChecks };
 const DEPENDENCY_CLEARANCE_NAV_ITEM = { href: '/dependency-clearance', label: 'Dependency Clearance', icon: Link2 };
 const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical };
-// Self-scoped to the current Developer as reviewer (TasksService.
-// findPeerReviewQueue()) - only Developers can be picked as a Peer
-// Reviewer, so unlike QA_REVIEW_NAV_ITEM above this isn't shown to
-// Admin/Executive/Program Manager.
+// Self-scoped to the current Developer (or Designer/DevOps) as reviewer
+// (TasksService.findPeerReviewQueue()) - only DEVELOPER_EQUIVALENT_ROLES
+// can be picked as a Peer Reviewer, so unlike QA_REVIEW_NAV_ITEM above
+// this isn't shown to Admin/Executive/Program Manager.
 const PEER_REVIEW_NAV_ITEM = { href: '/tasks/peer-review', label: 'Peer Review', icon: Users };
+// QA only - defects a QA person raised, self-scoped (unlike QA_REVIEW_NAV_ITEM
+// above, which is the shared tenant-wide queue). Also the entry point to
+// Create Defect, linked from that page's header.
+const MY_DEFECTS_NAV_ITEM = { href: '/tasks/my-defects', label: 'My Defects', icon: Bug };
 
 // Same visibility as My Tasks (Admin/Executive/Program Manager/QA/
 // Developer, Client excluded - Clients have no tasks assigned, so there's
@@ -212,7 +223,7 @@ const ADMIN_NAV_ITEMS = [
 // A single conditionally-shown nav entry outside the main NAV_ITEMS/
 // ADMIN_NAV_ITEMS arrays (e.g. Test Cases, Showstopper Review) - visible
 // to a specific set of roles that doesn't match either of those groups.
-function SingleNavLink({ item, isActive, collapsed }) {
+function SingleNavLink({ item, isActive, collapsed, count }) {
   return (
     <Link
       href={item.href}
@@ -221,6 +232,10 @@ function SingleNavLink({ item, isActive, collapsed }) {
     >
       <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
       {!collapsed && <span>{item.label}</span>}
+      {/* Only ever passed a number for the gated new-design roles (see
+          the navCounts fetch below) - null/undefined renders nothing, so
+          every other role's nav is byte-for-byte what it was before. */}
+      {!collapsed && count != null && <span className={styles.navCount}>{count}</span>}
     </Link>
   );
 }
@@ -241,6 +256,11 @@ export default function AppShell({ children }) {
   const [connected, setConnected] = useState(false);
   const [impersonator, setImpersonator] = useState(null);
   const [exiting, setExiting] = useState(false);
+  // Nav sidebar count badges (e.g. "My Tasks 6") - Phase 1 redesign,
+  // gated new-design roles only (see lib/newDesignRoles.js). null means
+  // "don't render a badge" - SingleNavLink only shows one once a number
+  // has actually loaded.
+  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -295,21 +315,43 @@ export default function AppShell({ children }) {
     setDrawerOpen(false);
   }, [router.pathname]);
 
+  // Refetch the nav badge counts on every navigation, same trigger as the
+  // drawer-close effect above - keeps them from ever going stale as the
+  // user works through tasks. Skipped entirely for roles outside the
+  // Phase 1 gate, so this adds no network activity for Developer/QA/
+  // Client/Designer/DevOps.
+  useEffect(() => {
+    if (!user || !isNewDesignRole(user.role)) return;
+    let cancelled = false;
+    Promise.all([
+      apiFetch('/tasks/mine').catch(() => []),
+      apiFetch('/tasks/qa-queue').catch(() => []),
+    ]).then(([mine, qaQueue]) => {
+      if (cancelled) return;
+      setNavCounts({ myTasks: mine.length, qaReview: qaQueue.length });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, router.pathname]);
+
   if (!user) return null;
 
   const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
-  // Developer gets no sidebar at all (confirmed with the user - a
-  // follow-up to the icon-only redesign, which is now moot since there's
-  // no nav left to render icon-only). Time Sheets/KPI Dashboard access
-  // for Developer without a sidebar is a known, deliberately deferred
-  // gap - the user asked to come back to it separately.
-  const hideSidebar = user.role === 'developer';
+  // Developer (and Designer/DevOps, who get identical treatment - see
+  // DEVELOPER_EQUIVALENT_ROLES) gets no sidebar at all (confirmed with
+  // the user - a follow-up to the icon-only redesign, which is now moot
+  // since there's no nav left to render icon-only). Time Sheets/KPI
+  // Dashboard access for Developer without a sidebar is a known,
+  // deliberately deferred gap - the user asked to come back to it
+  // separately.
+  const hideSidebar = DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
   const navItems =
     user.role === 'client'
       ? CLIENT_NAV_ITEMS
       : user.role === 'executive'
         ? EXECUTIVE_NAV_ITEMS
-        : user.role === 'developer'
+        : DEVELOPER_EQUIVALENT_ROLES.includes(user.role)
           ? DEVELOPER_NAV_ITEMS
           : NAV_ITEMS;
 
@@ -359,7 +401,7 @@ export default function AppShell({ children }) {
               </button>
             </>
           )}
-          <ThemeToggle variant="ghost" />
+          <ThemeToggle variant="ghost" role={user.role} />
           {!hideSidebar && (
             <div className={styles.userBadge}>
               <span className={styles.avatar}>{initialsFor(user)}</span>
@@ -421,19 +463,23 @@ export default function AppShell({ children }) {
               <SingleNavLink item={TASK_BACKLOG_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
+            {(user.role === 'admin' || user.role === 'program_manager') && (
+              <SingleNavLink item={ESCALATIONS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
             {(user.role === 'admin' ||
               user.role === 'executive' ||
               user.role === 'program_manager' ||
               user.role === 'qa' ||
-              user.role === 'developer') && (
-              <SingleNavLink item={MY_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) && (
+              <SingleNavLink item={MY_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.myTasks} />
             )}
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={TEAM_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
-            {user.role === 'developer' && (
+            {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
               <SingleNavLink item={DEPENDENCY_CLEARANCE_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
@@ -441,18 +487,22 @@ export default function AppShell({ children }) {
               user.role === 'executive' ||
               user.role === 'program_manager' ||
               user.role === 'qa') && (
-              <SingleNavLink item={QA_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              <SingleNavLink item={QA_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.qaReview} />
             )}
 
-            {user.role === 'developer' && (
+            {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
               <SingleNavLink item={PEER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {user.role === 'qa' && (
+              <SingleNavLink item={MY_DEFECTS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'admin' ||
               user.role === 'executive' ||
               user.role === 'program_manager' ||
               user.role === 'qa' ||
-              user.role === 'developer') && (
+              DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) && (
               <SingleNavLink item={KPI_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
@@ -467,7 +517,7 @@ export default function AppShell({ children }) {
               </>
             )}
 
-            {(user.role === 'developer' || user.role === 'program_manager' || user.role === 'admin') && (
+            {(DEVELOPER_EQUIVALENT_ROLES.includes(user.role) || user.role === 'program_manager' || user.role === 'admin') && (
               <SingleNavLink item={TIME_SHEETS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 

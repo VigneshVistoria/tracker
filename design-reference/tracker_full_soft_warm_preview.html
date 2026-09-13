@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Tracker Portal — Soft & Warm Full Preview</title>
+<style>
+  :root {
+    --page: #fbf7f2;
+    --surface: #ffffff;
+    --sidebar: #fff3ea;
+    --sidebar-active: #ffe1c9;
+    --ink: #3a2f28;
+    --ink-soft: #7a6f66;
+    --muted: #a89a8d;
+    --accent: #ff9466;
+    --accent-2: #7fb8a4;
+    --pill-good: #d9f0e3; --pill-good-ink: #1f7a4c;
+    --pill-avg: #fdecc8; --pill-avg-ink: #8a5a00;
+    --pill-poor: #fbdcdc; --pill-poor-ink: #b23a3a;
+    --line: #f0e2d4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--page); color: var(--ink); }
+  .flag { text-align:center; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; background:#fff3ea; color:#b8672f; padding:6px; }
+  .shell { display:flex; min-height: 100vh; }
+  .sidebar { width:224px; background:var(--sidebar); padding:20px 12px; flex-shrink:0; }
+  .brand { display:flex; align-items:center; gap:8px; font-weight:800; font-size:16px; padding:4px 10px 20px 10px; }
+  .brand .dot { width:12px; height:12px; border-radius:50%; background:var(--accent); }
+  .glabel { font-size:11px; font-weight:700; color:#c98a54; padding:12px 12px 6px 12px; display:flex; justify-content:space-between; }
+  .nitem { display:flex; align-items:center; gap:10px; font-size:13.5px; padding:9px 12px; border-radius:14px; margin-bottom:3px; color:#6b5a4c; }
+  .nitem.active { background:var(--sidebar-active); font-weight:700; color:#3a2f28; }
+  .nitem .count { margin-left:auto; background:#fff; color:#b8672f; font-size:10px; font-weight:800; padding:1px 7px; border-radius:999px; }
+  .main { flex:1; padding: 22px 30px; min-width:0; }
+  .topbar { display:flex; align-items:center; gap:16px; margin-bottom:22px; }
+  .search { flex:1; max-width:380px; background:#fff; border-radius:999px; padding:10px 16px; color:var(--muted); font-size:13px; box-shadow: 0 2px 10px rgba(0,0,0,0.04); display:flex; align-items:center; gap:8px; }
+  .search kbd { margin-left:auto; font-size:10px; border:1px solid var(--line); border-radius:5px; padding:1px 6px; color:var(--muted); background:#fff; }
+  .bell { position:relative; font-size:19px; }
+  .bell .b { position:absolute; top:-4px; right:-7px; background:var(--accent); color:#fff; font-size:9px; border-radius:999px; padding:1px 5px; font-weight:800; }
+  .avatar { width:32px; height:32px; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px; margin-left:auto; }
+  h1 { font-size:23px; margin:0 0 2px 0; }
+  .sub { color:var(--ink-soft); font-size:13.5px; margin:0 0 20px 0; }
+  .stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+  .tile { background:var(--surface); border-radius:20px; padding:18px 20px; box-shadow:0 4px 16px rgba(160,120,90,0.08); cursor:default; }
+  .tile.selected { outline: 2px solid var(--accent); }
+  .tile .l { font-size:11.5px; color:var(--ink-soft); font-weight:700; text-transform:uppercase; letter-spacing:.02em; }
+  .tile .v { font-size:27px; font-weight:800; margin-top:6px; color:var(--accent); }
+  .tile .n { font-size:12px; color:var(--ink-soft); margin-top:2px; }
+  .card { background:var(--surface); border-radius:22px; padding:20px 22px; margin-bottom:20px; box-shadow:0 4px 16px rgba(160,120,90,0.08); }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  thead th { text-align:left; font-size:11px; text-transform:uppercase; color:var(--ink-soft); font-weight:700; padding:8px 12px; }
+  tbody td { padding:14px 12px; border-top:1px solid var(--line); vertical-align:middle; }
+  .pill { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:4px 12px; border-radius:999px; }
+  .pill.good { background:var(--pill-good); color:var(--pill-good-ink); }
+  .pill.avg { background:var(--pill-avg); color:var(--pill-avg-ink); }
+  .pill.poor { background:var(--pill-poor); color:var(--pill-poor-ink); }
+  .tt { border-bottom: 1px dotted var(--muted); cursor: help; }
+  .tt .q { display:inline-flex; width:15px; height:15px; border-radius:50%; background:#fdecc8; color:#8a5a00; font-size:10px; font-weight:800; align-items:center; justify-content:center; margin-left:4px; }
+  .detail-grid { display:grid; grid-template-columns:1.3fr 1fr; gap:22px; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; }
+  .tab { font-size:12px; font-weight:700; padding:6px 14px; border-radius:999px; color:var(--ink-soft); background:#fbf3ea; }
+  .tab.active { background:var(--accent); color:#fff; }
+  .history-item { display:flex; gap:10px; font-size:12.5px; padding:9px 0; border-top:1px solid var(--line); }
+  .history-item:first-child { border-top:none; }
+  .history-dot { width:8px; height:8px; border-radius:50%; background:var(--accent-2); margin-top:5px; flex-shrink:0; }
+  .history-item .when { color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+  <div class="flag">Full preview — Soft &amp; Warm style, chosen direction</div>
+  <div class="shell">
+    <div class="sidebar">
+      <div class="brand"><span class="dot"></span> Tracker</div>
+      <div class="glabel">My Work</div>
+      <div class="nitem active">🏠 Dashboard</div>
+      <div class="nitem">🗂 My Tasks <span class="count">6</span></div>
+      <div class="nitem">📋 Task Backlog</div>
+      <div class="nitem">📝 Daily Update</div>
+      <div class="glabel">Team</div>
+      <div class="nitem">👫 Team Tasks</div>
+      <div class="nitem">🔬 QA Review <span class="count">3</span></div>
+      <div class="nitem">🔗 Dependency</div>
+      <div class="nitem">⚠️ Showstopper Review</div>
+      <div class="glabel">Reports</div>
+      <div class="nitem">📈 Performance</div>
+      <div class="nitem">📊 KPI Dashboard</div>
+      <div class="nitem">🗓 Time Sheets</div>
+      <div class="glabel">Admin</div>
+      <div class="nitem">📁 Projects</div>
+      <div class="nitem">🛡 Manage Roles</div>
+    </div>
+    <div class="main">
+      <div class="topbar">
+        <div class="search">🔍 Search tickets, people, projects… <kbd>⌘K</kbd></div>
+        <div class="bell">🔔<span class="b">4</span></div>
+        <span style="font-size:14px;">☾</span>
+        <div class="avatar">V</div>
+      </div>
+
+      <h1>Hey Vignesh 👋</h1>
+      <p class="sub">Here's what's on your plate right now.</p>
+
+      <div class="stat-grid">
+        <div class="tile selected"><div class="l">My Tasks</div><div class="v">6</div><div class="n">click to filter</div></div>
+        <div class="tile"><div class="l">Rejected</div><div class="v">1</div><div class="n">needs a fix</div></div>
+        <div class="tile"><div class="l">Inbound</div><div class="v">2</div><div class="n">waiting on you</div></div>
+        <div class="tile"><div class="l">Overdue</div><div class="v">0</div><div class="n">all clear! 🎉</div></div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>Ticket</th><th>Project</th><th>Status</th><th>Due</th></tr></thead>
+          <tbody>
+            <tr><td>Create Login Page <span class="tt"><span class="q">?</span></span></td><td>LMS</td><td><span class="pill good">On Track</span></td><td>Sep 18</td></tr>
+            <tr><td>Reset Password</td><td>LMS</td><td><span class="pill avg">Feedback</span></td><td>Sep 20</td></tr>
+            <tr><td>Create 2FA</td><td>LMS</td><td><span class="pill poor">Rejected</span></td><td>Sep 15</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card detail-grid">
+        <div>
+          <div class="tabs">
+            <span class="tab active">Details</span>
+            <span class="tab">History</span>
+            <span class="tab">Comments</span>
+          </div>
+          <h1 style="font-size:16px;">Create Login Page</h1>
+          <p class="sub">Design and develop a secure login page with input validation and API integration.</p>
+          <p style="font-size:12.5px; color:var(--ink-soft);">
+            <span class="tt">Peer Review <span class="q">?</span></span> — this ticket skips QA and goes to another developer for approval instead.
+          </p>
+        </div>
+        <div>
+          <div style="font-size:11.5px; font-weight:800; color:var(--ink-soft); margin-bottom:8px; text-transform:uppercase; letter-spacing:.03em;">Activity History</div>
+          <div class="history-item"><div class="history-dot"></div><div><div>Bhavani created this ticket</div><div class="when">Sep 8, 9:02 AM</div></div></div>
+          <div class="history-item"><div class="history-dot"></div><div><div>Assigned to Bhavani by PM</div><div class="when">Sep 8, 9:05 AM</div></div></div>
+          <div class="history-item"><div class="history-dot"></div><div><div>Submitted for Peer Review</div><div class="when">Sep 11, 4:20 PM</div></div></div>
+          <div class="history-item"><div class="history-dot"></div><div><div>Reviewed by Talha — Approved ✅</div><div class="when">Sep 12, 10:11 AM</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

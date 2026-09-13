@@ -21,6 +21,26 @@
 .statCard.accentClosed { border-left-color: var(--status-closed); }
 .statCard.accentNeutral { border-left-color: var(--color-ink); }
 
+/* Warm theme only (Admin/Executive/Program Manager - see
+   lib/newDesignRoles.js): flat tiles like the reference (no left accent
+   bar), with the same per-status color moved onto the number itself
+   instead - keeps the existing color-coding meaningful rather than
+   flattening every tile to one accent color like the reference literally
+   does. Scoped entirely by the :root[data-theme='warm'] ancestor, so
+   Developer/QA/Client/Designer/DevOps (never in that theme) render this
+   file exactly as before. */
+:root[data-theme='warm'] .statCard {
+  border-left: none;
+  padding: var(--space-5) var(--space-6);
+}
+:root[data-theme='warm'] .statCard.accentOpen .statValue { color: var(--status-open); }
+:root[data-theme='warm'] .statCard.accentInProgress .statValue { color: var(--status-inprogress); }
+:root[data-theme='warm'] .statCard.accentReview .statValue { color: var(--status-review); }
+:root[data-theme='warm'] .statCard.accentQa .statValue { color: var(--status-qa); }
+:root[data-theme='warm'] .statCard.accentQaFailed .statValue { color: var(--color-red); }
+:root[data-theme='warm'] .statCard.accentClosed .statValue { color: var(--status-closed); }
+:root[data-theme='warm'] .statCard.accentNeutral .statValue { color: var(--color-ink); }
+
 .statValue {
   font-family: var(--font-mono);
   font-size: 2rem;

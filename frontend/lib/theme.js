@@ -1,12 +1,29 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { isNewDesignRole } from './newDesignRoles';
 
 const ThemeContext = createContext(null);
 const STORAGE_KEY = 'theme';
 const DEFAULT_THEME = 'terminal';
 export const THEMES = ['light', 'dark', 'terminal'];
 
+// Phase 1 redesign gate (see lib/newDesignRoles.js) - reads the same
+// localStorage 'user' key AppShell reads, independently, so this stays
+// correct even though ThemeProvider mounts above AppShell in the tree.
+// Any failure (missing/stale/corrupt value) falls through to `null`,
+// meaning "use the normal per-user theme preference" - never forces the
+// new design on an unconfirmed role.
+function currentDesignRole() {
+  try {
+    const stored = localStorage.getItem('user');
+    if (!stored) return null;
+    return JSON.parse(stored)?.role ?? null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('data-theme', isNewDesignRole(currentDesignRole()) ? 'warm' : theme);
 }
 
 export function ThemeProvider({ children }) {
@@ -48,11 +65,21 @@ export function useTheme() {
 // Inlined into _document.js as a blocking <script> so the correct theme is
 // set on <html> before first paint - without this, the page always flashes
 // light mode first because localStorage isn't readable during SSR.
+//
+// Mirrors lib/newDesignRoles.js's NEW_DESIGN_ROLES (can't import a module
+// into an inlined script string, so the role list is duplicated here - keep
+// the two in sync). Any missing/unparsable 'user' value falls through to
+// the normal stored theme, same fail-safe-to-old-design behavior as
+// applyTheme() above.
 export const THEME_INIT_SCRIPT = `
 (function () {
   try {
-    var stored = localStorage.getItem('${STORAGE_KEY}');
-    var theme = stored || '${DEFAULT_THEME}';
+    var theme = localStorage.getItem('${STORAGE_KEY}') || '${DEFAULT_THEME}';
+    var newDesignRoles = ['admin', 'executive', 'program_manager'];
+    try {
+      var user = JSON.parse(localStorage.getItem('user') || 'null');
+      if (user && newDesignRoles.indexOf(user.role) !== -1) theme = 'warm';
+    } catch (e) {}
     document.documentElement.setAttribute('data-theme', theme);
   } catch (e) {}
 })();

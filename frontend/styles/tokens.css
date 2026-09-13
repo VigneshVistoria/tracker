@@ -135,6 +135,14 @@
   --ds-z-overlay: 40;
   --ds-z-modal: 50;
   --ds-z-toast: 60;
+
+  /* ---- Sidebar-specific surface tokens ----
+     Default to the existing surface/info-tint values (so light/dark/
+     terminal render identically to before these were introduced); the
+     'warm' theme below overrides them to its own distinct peach tones
+     instead of reusing --ds-bg-surface / --ds-color-info-tint. */
+  --ds-sidebar-bg: var(--ds-bg-surface);
+  --ds-sidebar-active-bg: var(--ds-color-info-tint);
 }
 
 /* ============================================================
@@ -239,4 +247,108 @@
   --ds-shadow-md: none;
   --ds-shadow-lg: none;
   --ds-shadow-focus: 0 0 0 2px #4dff4d;
+}
+
+/* ============================================================
+   Warm theme — Phase 1 redesign (see ~/tracker/design-reference/
+   tracker_full_soft_warm_preview.html), gated to Admin/Executive/
+   Program Manager only (frontend/lib/newDesignRoles.js). Overrides only
+   the semantic tokens, same as dark/terminal above, so every existing
+   component (Badge, Card, StatCard, Table, Button, AppShell, ...)
+   re-themes automatically with no component changes. Applied via
+   [data-theme='warm'] on <html>.
+   ============================================================ */
+:root[data-theme='warm'] {
+  /* Orange scale anchored on the reference's #ff9466 accent at step 600
+     (this theme's "brand default"), same convention as the blue scale in
+     :root above. 100/200 intentionally match the reference's sidebar/
+     sidebar-active peach tones exactly. */
+  --ds-color-primary-50: #fff8f2;
+  --ds-color-primary-100: #fff3ea;
+  --ds-color-primary-200: #ffe1c9;
+  --ds-color-primary-300: #ffc9a3;
+  --ds-color-primary-400: #ffab7d;
+  --ds-color-primary-500: #ffab7d;
+  --ds-color-primary-600: #ff9466;
+  --ds-color-primary-700: #e37a4f;
+  --ds-color-primary-800: #b85f3a;
+  --ds-color-primary-900: #8a4529;
+
+  --ds-bg-canvas: #fbf7f2;
+  --ds-bg-surface: #ffffff;
+  --ds-bg-surface-sunken: #fff3ea;
+  --ds-bg-overlay: rgba(58, 47, 40, 0.42);
+
+  --ds-text-primary: #3a2f28;
+  --ds-text-secondary: #7a6f66;
+  --ds-text-muted: #a89a8d;
+  --ds-text-on-primary: #ffffff;
+  /* Primary-700, not 600 - the raw accent orange is too low-contrast for
+     body-text links on a white surface. */
+  --ds-text-link: var(--ds-color-primary-700);
+  --ds-text-link-hover: var(--ds-color-primary-800);
+
+  --ds-border: #f0e2d4;
+  --ds-border-strong: #e3cdb5;
+  --ds-border-focus: var(--ds-color-primary-600);
+
+  --ds-color-success: #2f9e63;
+  --ds-color-success-dark: #1f7a4c;
+  --ds-color-success-tint: #d9f0e3;
+
+  --ds-color-warning: #b8791f;
+  --ds-color-warning-dark: #8a5a00;
+  --ds-color-warning-tint: #fdecc8;
+
+  --ds-color-error: #cc5252;
+  --ds-color-error-dark: #b23a3a;
+  --ds-color-error-tint: #fbdcdc;
+
+  --ds-color-info: var(--ds-color-primary-600);
+  --ds-color-info-dark: var(--ds-color-primary-800);
+  --ds-color-info-tint: var(--ds-color-primary-100);
+
+  /* Pushed noticeably rounder than the first pass (was 8/10/14/20) - the
+     reference's felt "soft" character comes from radius that reads as
+     near-pill on compact elements (nav items, buttons, inputs), not just
+     a couple px more than the base blue theme. md/lg intentionally land
+     on the reference's own literal nav-item (14px) and stat-tile (20px)
+     values. */
+  --ds-radius-sm: 10px;
+  --ds-radius-md: 14px;
+  --ds-radius-lg: 20px;
+  --ds-radius-xl: 24px;
+
+  /* Warm-brown-tinted shadows (rgba(160,120,90,...)) instead of slate,
+     matching the reference's .tile/.card box-shadow exactly. */
+  --ds-shadow-xs: 0 1px 2px rgba(160, 120, 90, 0.06);
+  --ds-shadow-sm: 0 1px 3px rgba(160, 120, 90, 0.1), 0 1px 2px rgba(160, 120, 90, 0.06);
+  --ds-shadow-md: 0 4px 16px rgba(160, 120, 90, 0.08), 0 2px 4px rgba(160, 120, 90, 0.05);
+  --ds-shadow-lg: 0 16px 32px rgba(160, 120, 90, 0.16), 0 4px 8px rgba(160, 120, 90, 0.06);
+  --ds-shadow-focus: 0 0 0 3px rgba(255, 148, 102, 0.28);
+
+  /* Distinct peach sidebar, not a reuse of --ds-bg-surface/
+     --ds-color-info-tint - see the --ds-sidebar-* default declarations
+     in :root above. */
+  --ds-sidebar-bg: #fff3ea;
+  --ds-sidebar-active-bg: #ffe1c9;
+
+  /* Roomier spacing than the base theme (was untouched in the first
+     pass) - the reference's cards/tiles/nav read airier than the current
+     4px-grid density. Overrides both the --ds-space-* scale (tokens.css
+     consumers: Card, StatCard, Table, AppShell, Button, ...) and the
+     legacy --space-* scale (globals.css consumers: dashboard.module.css,
+     issues.module.css, ...) so the roomier feel is consistent everywhere,
+     not just in components migrated to the newer --ds- names. */
+  --ds-space-3: 14px;
+  --ds-space-4: 18px;
+  --ds-space-5: 24px;
+  --ds-space-6: 28px;
+  --ds-space-8: 36px;
+
+  --space-3: 14px;
+  --space-4: 18px;
+  --space-5: 28px;
+  --space-6: 36px;
+  --space-8: 52px;
 }
