@@ -82,6 +82,15 @@
   opacity: 0.4;
 }
 
+/* Only ever rendered when a caller passes Table's optional
+   expandedContent prop (currently just Team Tasks) - no effect on any
+   other consumer. */
+.expandedRow td.expandedCell {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  background: var(--ds-bg-surface-sunken);
+  border-bottom: 1px solid var(--ds-border);
+}
+
 .emptyCell {
   padding: var(--ds-space-8) var(--ds-space-4) !important;
   text-align: center;

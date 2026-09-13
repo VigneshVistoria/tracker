@@ -3,14 +3,15 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
   Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User,
-  ChevronDown, ChevronUp, ChevronLeft, ChevronRight,
+  ChevronDown, ChevronUp, ChevronRight, ChevronLeft, List, LayoutGrid,
 } from 'lucide-react';
 import Table from './ui/Table';
+import Badge from './ui/Badge';
 import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO } from '../lib/developerTaskStats';
-import { LEGEND_ITEMS, buildRowTintClass, selectableStatuses } from '../lib/taskTableShared';
+import { LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, visibleStatusTabs, COMPLETED_STATUSES } from '../lib/taskTableShared';
 import { apiFetch } from '../lib/api';
 
 // Team Tasks - every team member's assigned tasks in one place, for
@@ -28,10 +29,17 @@ import { apiFetch } from '../lib/api';
 // Sorting is the one thing that stays client-side, exactly like My
 // Tasks - it applies only within whichever page is currently loaded,
 // the standard trade-off for a paginated table.
+//
+// Table view and tile view share this exact same fetch/filter/pagination
+// state - the toggle only swaps which of the two render blocks below is
+// used for the current page's rows, so the two views can never drift out
+// of sync with each other.
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
+const DEFAULT_PAGE_SIZE = 50;
 
 const ROW_TINT_CLASS = buildRowTintClass(styles);
+const ROW_RAIL_CLASS = buildRowRailClass(styles);
 
 // Keys match TeamTasksResult.statCounts exactly (TasksService.findTeam) -
 // 'total' rather than 'all', since it's a count field there, not a filter
@@ -57,32 +65,103 @@ function ProgressBar({ percent }) {
   );
 }
 
+// Dependency tree content - shared by the table view's expandable row
+// (Table's expandedContent prop) and the tile view's inline expansion.
+// Only ever rendered for a task that actually has dependency tickets
+// (see the callers below); defects are intentionally out of scope here -
+// there's no data linking a defect back to an originating task today.
+function DependencyTree({ tickets }) {
+  return (
+    <div className={styles.dependencyTree}>
+      {tickets.map((tk) => (
+        <div key={tk.id} className={styles.dependencyTreeItem}>
+          <Link2 size={13} aria-hidden="true" />
+          <span>{tk.description}</span>
+          <span className={styles.dependencyTreeOwner}>{tk.ownerEmail}</span>
+          <Badge tone={tk.status === 'open' ? 'warning' : 'success'}>{tk.status === 'open' ? 'Open' : 'Resolved'}</Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TaskTile({ task, railClass, expanded, onToggleExpand, onOpen }) {
+  const depCount = task.dependencyTickets?.length || 0;
+  return (
+    <div className={`${styles.taskTile} ${railClass || ''}`} onClick={onOpen}>
+      <div className={styles.taskTileTop}>
+        <Link href={`/tasks/${task.id}`} className={styles.issueId} onClick={(e) => e.stopPropagation()}>
+          #{task.id}
+        </Link>
+        <Badge tone="neutral">{task.status}</Badge>
+      </div>
+      <div className={styles.taskTileDesc} title={task.description}>
+        {task.description}
+      </div>
+      <div className={styles.taskTileMeta}>
+        <span><User size={12} aria-hidden="true" /> {task.assigneeEmail || '—'}</span>
+        <span><CalendarClock size={12} aria-hidden="true" /> {task.dueDate || '—'}</span>
+      </div>
+      {depCount > 0 && (
+        <button
+          type="button"
+          className={styles.dependencyToggle}
+          style={{ marginTop: 'var(--space-3)' }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand(task.id);
+          }}
+        >
+          {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+          Dependencies ({depCount})
+        </button>
+      )}
+      {expanded && depCount > 0 && (
+        <div style={{ marginTop: 'var(--space-2)' }} onClick={(e) => e.stopPropagation()}>
+          <DependencyTree tickets={task.dependencyTickets} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TeamTaskWorkboard({ storageKey }) {
   const router = useRouter();
 
   const [activeCard, setActiveCard] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState('All');
+  const [phaseFilter, setPhaseFilter] = useState('All');
   const [dependencyFilter, setDependencyFilter] = useState('All');
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [viewMode, setViewMode] = useState('table');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [expandedTaskIds, setExpandedTaskIds] = useState(() => new Set());
 
   const [tasks, setTasks] = useState([]);
   const [total, setTotal] = useState(0);
   const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0 });
   const [assignees, setAssignees] = useState([]);
+  const [phases, setPhases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const showCompletedStorageKey = `${storageKey}ShowCompleted`;
+  const viewModeStorageKey = `${storageKey}ViewMode`;
+  const pageSizeStorageKey = `${storageKey}PageSize`;
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) setActiveCard(stored);
     setShowCompleted(localStorage.getItem(showCompletedStorageKey) === 'true');
+    const storedViewMode = localStorage.getItem(viewModeStorageKey);
+    if (storedViewMode === 'tile' || storedViewMode === 'table') setViewMode(storedViewMode);
+    const storedPageSize = Number(localStorage.getItem(pageSizeStorageKey));
+    if (PAGE_SIZE_OPTIONS.includes(storedPageSize)) setPageSize(storedPageSize);
     // storageKey is a static prop per page, not expected to change at runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -90,8 +169,14 @@ export default function TeamTaskWorkboard({ storageKey }) {
   useEffect(() => {
     const params = new URLSearchParams();
     params.set('page', String(page));
-    params.set('pageSize', String(PAGE_SIZE));
+    params.set('pageSize', String(pageSize));
+    // statusFilter is either 'All' or a raw status/comma-joined status list
+    // ready to send straight through - set directly by the status tabs
+    // (tab.statuses.join(',')) below, or a single exact status when a stat
+    // card sets it (e.g. 'Failed' for the Rejected card, which must stay a
+    // precise match to that card's own count - see handleCardClick).
     if (statusFilter !== 'All') params.set('status', statusFilter);
+    if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
     if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
@@ -107,6 +192,7 @@ export default function TeamTaskWorkboard({ storageKey }) {
         setTotal(res.total);
         setStatCounts(res.statCounts);
         setAssignees(res.assignees);
+        setPhases(res.phases || []);
         setError('');
       })
       .catch((err) => {
@@ -118,28 +204,52 @@ export default function TeamTaskWorkboard({ storageKey }) {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, dependencyFilter, assigneeFilter, dueFrom, dueTo, showCompleted, page]);
+  }, [statusFilter, phaseFilter, dependencyFilter, assigneeFilter, dueFrom, dueTo, showCompleted, page, pageSize]);
 
-  // Any filter change invalidates the current page - jumping back to
-  // page 1 avoids landing on a now out-of-range page (e.g. page 3 of a
-  // filter that now only has 1 page of results).
+  // Any filter (or page size) change invalidates the current page -
+  // jumping back to page 1 avoids landing on a now out-of-range page
+  // (e.g. page 3 of a filter that now only has 1 page of results).
   useEffect(() => {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, dependencyFilter, assigneeFilter, dueFrom, dueTo, showCompleted]);
+  }, [statusFilter, phaseFilter, dependencyFilter, assigneeFilter, dueFrom, dueTo, showCompleted, pageSize]);
 
   const handleShowCompletedChange = (checked) => {
     setShowCompleted(checked);
     localStorage.setItem(showCompletedStorageKey, String(checked));
   };
 
-  const statusOptions = selectableStatuses(showCompleted);
-  // Same guard My Tasks applies: don't let a "completed" status stay
-  // selected once completed tasks are hidden, or the table gets stuck
-  // empty with no visible way back.
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    localStorage.setItem(viewModeStorageKey, mode);
+  };
+
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    localStorage.setItem(pageSizeStorageKey, String(size));
+  };
+
+  const toggleExpanded = (taskId) => {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  const visibleTabs = visibleStatusTabs(showCompleted);
+  // Same guard My Tasks applies: don't let a selected status (from a tab
+  // or a stat card) stay selected once completed tasks are hidden, or the
+  // table gets stuck empty with no visible way back. Checks every status
+  // in the current filter (it may be several, comma-joined, from a
+  // grouped tab) rather than comparing against a tab key directly, since
+  // a stat card can also set a single raw status that doesn't match any
+  // tab's exact joined string.
   useEffect(() => {
-    if (!showCompleted && statusFilter !== 'All' && !statusOptions.includes(statusFilter)) {
-      setStatusFilter('All');
+    if (!showCompleted && statusFilter !== 'All') {
+      const parts = statusFilter.split(',');
+      if (parts.every((s) => COMPLETED_STATUSES.includes(s))) setStatusFilter('All');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCompleted]);
@@ -227,7 +337,25 @@ export default function TeamTaskWorkboard({ storageKey }) {
         key: 'hasOpenDependency',
         header: <ColHeader icon={Link2} label="Dependency" />,
         sortable: true,
-        render: (t) => (t.hasOpenDependency ? 'Yes' : 'No'),
+        render: (t) => {
+          const depCount = t.dependencyTickets?.length || 0;
+          const label = t.hasOpenDependency ? 'Yes' : 'No';
+          if (depCount === 0) return label;
+          const isExpanded = expandedTaskIds.has(t.id);
+          return (
+            <button
+              type="button"
+              className={styles.dependencyToggle}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpanded(t.id);
+              }}
+            >
+              {isExpanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+              {label} ({depCount})
+            </button>
+          );
+        },
       },
       {
         key: 'percentComplete',
@@ -243,11 +371,11 @@ export default function TeamTaskWorkboard({ storageKey }) {
         render: (t) => `${t.ageingDays}d`,
       },
     ],
-    [],
+    [expandedTaskIds],
   );
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <>
@@ -302,6 +430,22 @@ export default function TeamTaskWorkboard({ storageKey }) {
             ))}
           </div>
 
+          <div className={styles.statusTabs}>
+            {visibleTabs.map((tab) => {
+              const tabValue = tab.key === 'All' ? 'All' : tab.statuses.join(',');
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`${styles.statusTab} ${statusFilter === tabValue ? styles.statusTabActive : ''}`}
+                  onClick={() => setStatusFilter(tabValue)}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
           <div className={styles.filterBar}>
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="teamAssigneeFilter">Assignee</label>
@@ -319,16 +463,16 @@ export default function TeamTaskWorkboard({ storageKey }) {
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="teamStatusFilter">Status</label>
+              <label className={styles.filterLabel} htmlFor="teamPhaseFilter">Project Phase</label>
               <select
-                id="teamStatusFilter"
+                id="teamPhaseFilter"
                 className={styles.filterSelect}
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                value={phaseFilter}
+                onChange={(e) => setPhaseFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                {statusOptions.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                {phases.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
             </div>
@@ -368,40 +512,98 @@ export default function TeamTaskWorkboard({ storageKey }) {
                 onChange={(e) => setDueTo(e.target.value)}
               />
             </div>
+
+            <div className={styles.filterGroup} style={{ marginLeft: 'auto' }}>
+              <label className={styles.filterLabel}>View</label>
+              <div className={styles.viewToggle}>
+                <button
+                  type="button"
+                  className={`${styles.viewToggleButton} ${viewMode === 'table' ? styles.viewToggleActive : ''}`}
+                  onClick={() => handleViewModeChange('table')}
+                >
+                  <List size={14} aria-hidden="true" /> Table
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.viewToggleButton} ${viewMode === 'tile' ? styles.viewToggleActive : ''}`}
+                  onClick={() => handleViewModeChange('tile')}
+                >
+                  <LayoutGrid size={14} aria-hidden="true" /> Tiles
+                </button>
+              </div>
+            </div>
           </div>
 
-          <Table
-            columns={columns}
-            rows={tasks}
-            getRowId={(t) => t.id}
-            onRowClick={(t) => router.push(`/tasks/${t.id}`)}
-            rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
-            emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
-          />
+          {viewMode === 'tile' ? (
+            <div className={styles.taskTileGrid}>
+              {tasks.length === 0 && (
+                <div className={styles.card}>{loading ? 'Loading...' : 'No tasks match these filters.'}</div>
+              )}
+              {tasks.map((t) => (
+                <TaskTile
+                  key={t.id}
+                  task={t}
+                  railClass={ROW_RAIL_CLASS[t.status]}
+                  expanded={expandedTaskIds.has(t.id)}
+                  onToggleExpand={toggleExpanded}
+                  onOpen={() => router.push(`/tasks/${t.id}`)}
+                />
+              ))}
+            </div>
+          ) : (
+            <Table
+              columns={columns}
+              rows={tasks}
+              getRowId={(t) => t.id}
+              onRowClick={(t) => router.push(`/tasks/${t.id}`)}
+              rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
+              emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
+              expandedContent={(t) =>
+                expandedTaskIds.has(t.id) && t.dependencyTickets?.length > 0 ? (
+                  <DependencyTree tickets={t.dependencyTickets} />
+                ) : null
+              }
+            />
+          )}
 
           <div className={styles.filterBar} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <span className={styles.issueMeta}>
-              {total === 0 ? '0 tasks' : `Showing ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)} of ${total}`}
+              {total === 0 ? '0 tasks' : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
             </span>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <button
-                type="button"
-                className={`${styles.button} ${styles.buttonSecondary}`}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1 || loading}
-              >
-                <ChevronLeft size={16} aria-hidden="true" />
-                Previous
-              </button>
-              <button
-                type="button"
-                className={`${styles.button} ${styles.buttonSecondary}`}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages || loading}
-              >
-                Next
-                <ChevronRight size={16} aria-hidden="true" />
-              </button>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+              <div className={styles.filterGroup} style={{ minWidth: 90 }}>
+                <label className={styles.filterLabel} htmlFor="teamPageSize">Per page</label>
+                <select
+                  id="teamPageSize"
+                  className={styles.filterSelect}
+                  value={pageSize}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                >
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                >
+                  <ChevronLeft size={16} aria-hidden="true" />
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || loading}
+                >
+                  Next
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           </div>
         </>

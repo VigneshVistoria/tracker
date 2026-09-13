@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import styles from './Table.module.css';
 
@@ -17,6 +17,14 @@ export default function Table({
   emptyState,
   dense = true,
   bodyVerticalAlign,
+  // Optional, additive - undefined for every existing caller (My Tasks,
+  // QA Review, Task Detail, design-preview), so their rendering is
+  // unchanged. When given, called per row; a non-null/false return value
+  // renders as a full-width row directly underneath (Team Tasks' own
+  // dependency-tree expansion - the toggle affordance itself lives in
+  // that caller's own column render(), not here, so Table doesn't need to
+  // know anything about expand/collapse state).
+  expandedContent,
 }) {
   const [internalSort, setInternalSort] = useState({ key: null, dir: 'asc' });
   const sortKey = controlledSortKey !== undefined ? controlledSortKey : internalSort.key;
@@ -84,21 +92,32 @@ export default function Table({
               </td>
             </tr>
           )}
-          {sortedRows.map((row) => (
-            <tr
-              key={getRowId(row)}
-              className={[onRowClick ? styles.clickableRow : '', rowClassName ? rowClassName(row) : '']
-                .filter(Boolean)
-                .join(' ')}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-            >
-              {columns.map((col) => (
-                <td key={col.key} style={{ textAlign: col.align || 'left', verticalAlign: bodyVerticalAlign }}>
-                  {col.render ? col.render(row) : row[col.key]}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sortedRows.map((row) => {
+            const expanded = expandedContent ? expandedContent(row) : null;
+            return (
+              <Fragment key={getRowId(row)}>
+                <tr
+                  className={[onRowClick ? styles.clickableRow : '', rowClassName ? rowClassName(row) : '']
+                    .filter(Boolean)
+                    .join(' ')}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
+                  {columns.map((col) => (
+                    <td key={col.key} style={{ textAlign: col.align || 'left', verticalAlign: bodyVerticalAlign }}>
+                      {col.render ? col.render(row) : row[col.key]}
+                    </td>
+                  ))}
+                </tr>
+                {expanded && (
+                  <tr className={styles.expandedRow}>
+                    <td colSpan={columns.length} className={styles.expandedCell}>
+                      {expanded}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
