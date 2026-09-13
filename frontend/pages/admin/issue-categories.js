@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
+import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+
+// Mirrors IssueCategoriesService.PROTECTED_NAMES on the backend exactly -
+// these two are matched by name (not id) in 3 other backend services
+// (risk scoring, weekly reports, showstopper validation), so renaming is
+// blocked there regardless. The pencil icon is hidden for them here
+// rather than letting someone click through to a 409 that looks broken.
+const PROTECTED_NAMES = ['Critical', 'Showstopper'];
 
 export default function IssueCategoriesPage() {
   const router = useRouter();
@@ -62,6 +70,15 @@ export default function IssueCategoriesPage() {
       setError(err.message);
       load();
     }
+  };
+
+  const handleRename = async (category, newName) => {
+    await apiFetch(`/issue-categories/${category.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    });
+    showToast('Category renamed', 'success');
+    load();
   };
 
   const handleToggleActive = async (category) => {
@@ -125,10 +142,10 @@ export default function IssueCategoriesPage() {
                 {categories.map((category) => (
                   <tr key={category.id}>
                     <td>
-                      <input
-                        className={styles.input}
-                        defaultValue={category.name}
-                        onBlur={(e) => e.target.value !== category.name && handleUpdate(category.id, 'name', e.target.value)}
+                      <InlineEditName
+                        value={category.name}
+                        canEdit={!PROTECTED_NAMES.includes(category.name)}
+                        onSave={(newName) => handleRename(category, newName)}
                       />
                     </td>
                     <td>

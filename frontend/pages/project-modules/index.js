@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
+import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
@@ -67,6 +68,15 @@ export default function ProjectModulesPage() {
   }, [router]);
 
   const canManage = user && (user.role === 'admin' || user.role === 'program_manager');
+
+  const handleRename = async (module, newName) => {
+    await apiFetch(`/modules/${module.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    });
+    showToast('Module renamed', 'success');
+    load();
+  };
 
   const resetForm = () => {
     setFormProject(null);
@@ -206,7 +216,13 @@ export default function ProjectModulesPage() {
               {visibleModules.map((module) => (
                 <tr key={module.id} style={{ opacity: module.isActive ? 1 : 0.55 }}>
                   <td>{module.projectName}</td>
-                  <td>{module.name}</td>
+                  <td>
+                    <InlineEditName
+                      value={module.name}
+                      canEdit={canManage}
+                      onSave={(newName) => handleRename(module, newName)}
+                    />
+                  </td>
                   <td><ProgressBar percent={module.percentComplete} /></td>
                   <td>
                     <span

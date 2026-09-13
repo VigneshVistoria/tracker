@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
+import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
@@ -55,6 +56,20 @@ export default function ProjectTeamsPage() {
   }, [router]);
 
   const canManage = user && user.role === 'program_manager';
+  // Rename-only ability, wider than canManage above (which stays PM-only
+  // for create/activate/deactivate/status) - Admin gets the inline
+  // pencil-edit on the Team name itself, matching PATCH /project-teams/
+  // :id's own assertCanRename split on the backend.
+  const canRename = user && (user.role === 'admin' || user.role === 'program_manager');
+
+  const handleRename = async (team, newName) => {
+    await apiFetch(`/project-teams/${team.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    });
+    showToast('Team renamed', 'success');
+    load();
+  };
 
   const resetForm = () => {
     setFormProject(null);
@@ -202,7 +217,13 @@ export default function ProjectTeamsPage() {
               {visibleTeams.map((team) => (
                 <tr key={team.id} style={{ opacity: team.status === 'Active' ? 1 : 0.55 }}>
                   <td>{team.projectName}</td>
-                  <td>{team.name}</td>
+                  <td>
+                    <InlineEditName
+                      value={team.name}
+                      canEdit={canRename}
+                      onSave={(newName) => handleRename(team, newName)}
+                    />
+                  </td>
                   <td>
                     <span
                       className={styles.badge}

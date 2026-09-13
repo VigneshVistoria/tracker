@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Phase } from './phase.entity';
 import { Issue, IssueStatus } from '../issues/issue.entity';
 import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
+import { ProjectTask } from '../tasks/project-task.entity';
 import { CreatePhaseDto } from './dto/create-phase.dto';
 import { UpdatePhaseDto } from './dto/update-phase.dto';
 import { ModulesService } from '../modules/modules.service';
@@ -24,6 +25,8 @@ export class PhasesService {
     private issuesRepository: Repository<Issue>,
     @InjectRepository(ProjectPlanEntry)
     private projectPlanEntriesRepository: Repository<ProjectPlanEntry>,
+    @InjectRepository(ProjectTask)
+    private projectTasksRepository: Repository<ProjectTask>,
     private modulesService: ModulesService,
     private auditLogService: AuditLogService,
   ) {}
@@ -119,10 +122,15 @@ export class PhasesService {
 
     const saved = await this.phasesRepository.save(phase);
 
-    // Keep the denormalized phase name on every issue in this phase in
-    // sync, same as Module does for its own name changes.
+    // Keep every denormalized copy of the phase name in sync, same as
+    // Module does for its own name changes - Issue, ProjectTask (Task
+    // Backlog/My Tasks/Team Tasks all display phaseName), and
+    // ProjectPlanEntry (Project Planning) each keep their own snapshot
+    // rather than a live join.
     if (dto.name !== undefined) {
       await this.issuesRepository.update({ phaseId: id, tenantId }, { phaseName: saved.name });
+      await this.projectTasksRepository.update({ phaseId: id, tenantId }, { phaseName: saved.name });
+      await this.projectPlanEntriesRepository.update({ phaseId: id, tenantId }, { phaseName: saved.name });
     }
 
     await this.auditLogService.record({

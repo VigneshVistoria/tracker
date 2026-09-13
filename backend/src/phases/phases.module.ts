@@ -5,6 +5,7 @@ import { PhasesService } from './phases.service';
 import { PhasesController } from './phases.controller';
 import { Issue } from '../issues/issue.entity';
 import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
+import { ProjectTask } from '../tasks/project-task.entity';
 import { ModulesModule } from '../modules/modules.module';
 import { GuardsModule } from '../common/guards.module';
 import { AuditModule } from '../audit/audit.module';
@@ -12,7 +13,7 @@ import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Phase, Issue, ProjectPlanEntry]),
+    TypeOrmModule.forFeature([Phase, Issue, ProjectPlanEntry, ProjectTask]),
     ModulesModule,
     GuardsModule,
     AuditModule,

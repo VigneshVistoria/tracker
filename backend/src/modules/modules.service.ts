@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { ProjectModule } from './project-module.entity';
 import { Issue, IssueStatus, IssueCategory } from '../issues/issue.entity';
 import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
+import { ProjectTask } from '../tasks/project-task.entity';
+import { Phase } from '../phases/phase.entity';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { ProjectsService } from '../projects/projects.service';
@@ -66,6 +68,10 @@ export class ModulesService {
     private issuesRepository: Repository<Issue>,
     @InjectRepository(ProjectPlanEntry)
     private projectPlanEntriesRepository: Repository<ProjectPlanEntry>,
+    @InjectRepository(ProjectTask)
+    private projectTasksRepository: Repository<ProjectTask>,
+    @InjectRepository(Phase)
+    private phasesRepository: Repository<Phase>,
     private projectsService: ProjectsService,
     private eventsGateway: EventsGateway,
     private auditLogService: AuditLogService,
@@ -176,10 +182,17 @@ export class ModulesService {
 
     const saved = await this.modulesRepository.save(module);
 
-    // Keep the denormalized module name on every issue in this module in
-    // sync, same as Sprint does for its own name changes.
+    // Keep every denormalized copy of the module name in sync, same as
+    // Sprint does for its own name changes - Issue, ProjectTask (Task
+    // Backlog/My Tasks/Team Tasks all display moduleName), and
+    // ProjectPlanEntry (Project Planning) each keep their own snapshot
+    // rather than a live join. (Phase's own rename got this same fix -
+    // see PhasesService.update() - Module had the identical gap.)
     if (dto.name !== undefined) {
       await this.issuesRepository.update({ moduleId: id, tenantId }, { moduleName: saved.name });
+      await this.projectTasksRepository.update({ moduleId: id, tenantId }, { moduleName: saved.name });
+      await this.projectPlanEntriesRepository.update({ moduleId: id, tenantId }, { moduleName: saved.name });
+      await this.phasesRepository.update({ moduleId: id, tenantId }, { moduleName: saved.name });
     }
 
     this.eventsGateway.emitModuleUpdated(saved);

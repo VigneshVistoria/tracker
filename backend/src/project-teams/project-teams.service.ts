@@ -6,12 +6,15 @@ import { CreateProjectTeamDto } from './dto/create-project-team.dto';
 import { UpdateProjectTeamDto } from './dto/update-project-team.dto';
 import { ProjectsService } from '../projects/projects.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
 
 @Injectable()
 export class ProjectTeamsService {
   constructor(
     @InjectRepository(ProjectTeam)
     private projectTeamsRepository: Repository<ProjectTeam>,
+    @InjectRepository(ProjectPlanEntry)
+    private projectPlanEntriesRepository: Repository<ProjectPlanEntry>,
     private projectsService: ProjectsService,
     private auditLogService: AuditLogService,
   ) {}
@@ -96,6 +99,13 @@ export class ProjectTeamsService {
     if (dto.status !== undefined) team.status = dto.status;
 
     const saved = await this.projectTeamsRepository.save(team);
+
+    // Keep the denormalized team name on every Project Planning entry
+    // that references this team in sync, same reasoning as Module/Phase
+    // do for their own name changes.
+    if (dto.name !== undefined) {
+      await this.projectPlanEntriesRepository.update({ teamId: id, tenantId }, { teamName: saved.name });
+    }
 
     await this.auditLogService.record({
       userId: user.id,

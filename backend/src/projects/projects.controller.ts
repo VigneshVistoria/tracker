@@ -66,6 +66,6 @@ export class ProjectsController {
   @Patch(':id')
   @UseGuards(AdminGuard)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateProjectDto, @Req() req: any) {
-    return this.projectsService.update(id, dto, req.user.tenantId);
+    return this.projectsService.update(id, dto, { id: req.user.sub, email: req.user.email }, req.user.tenantId);
   }
 }

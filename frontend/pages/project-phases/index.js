@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
+import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
@@ -82,6 +83,20 @@ export default function ProjectPhasesPage() {
   }, [formProject]);
 
   const canManage = user && user.role === 'program_manager';
+  // Rename-only ability, wider than canManage above (which stays PM-only
+  // for create/activate/deactivate) - Admin gets the inline pencil-edit
+  // on the Phase name itself, matching PATCH /phases/:id's own
+  // assertCanRename split on the backend.
+  const canRename = user && (user.role === 'admin' || user.role === 'program_manager');
+
+  const handleRename = async (phase, newName) => {
+    await apiFetch(`/phases/${phase.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: newName }),
+    });
+    showToast('Phase renamed', 'success');
+    load();
+  };
 
   const resetForm = () => {
     setFormProject(null);
@@ -256,7 +271,13 @@ export default function ProjectPhasesPage() {
                 <tr key={phase.id} style={{ opacity: phase.isActive ? 1 : 0.55 }}>
                   <td>{phase.projectName}</td>
                   <td>{phase.moduleName}</td>
-                  <td>{phase.name}</td>
+                  <td>
+                    <InlineEditName
+                      value={phase.name}
+                      canEdit={canRename}
+                      onSave={(newName) => handleRename(phase, newName)}
+                    />
+                  </td>
                   <td><ProgressBar percent={phase.percentComplete} /></td>
                   <td>
                     <span
