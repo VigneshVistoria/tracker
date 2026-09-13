@@ -8,12 +8,13 @@ import styles from '../styles/dashboard.module.css';
 import { apiFetch } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useToast } from '../lib/toast';
-import { badgeClassFor, railClassFor, canCreateTickets } from '../lib/status';
+import { badgeClassFor, railClassFor, canCreateTickets, DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
 
 // Top-level Dashboard just loads `user` and picks a per-role component -
-// Developer gets its own dashboard (components/DeveloperDashboard.js);
-// every other role (Admin/Program Manager/QA/Executive/Client) keeps the
-// exact DefaultDashboard below, unchanged by the Developer redesign.
+// Developer (and Designer/DevOps, who are DEVELOPER_EQUIVALENT_ROLES) gets
+// its own dashboard (components/DeveloperDashboard.js); every other role
+// (Admin/Program Manager/QA/Executive/Client) keeps the exact
+// DefaultDashboard below, unchanged by the Developer redesign.
 export default function Dashboard() {
   const [user, setUser] = useState(null);
 
@@ -24,7 +25,7 @@ export default function Dashboard() {
   }, []);
 
   if (!user) return <AppShell>{null}</AppShell>;
-  if (user.role === 'developer') return <DeveloperDashboard user={user} />;
+  if (DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) return <DeveloperDashboard user={user} />;
   return <DefaultDashboard user={user} />;
 }
 

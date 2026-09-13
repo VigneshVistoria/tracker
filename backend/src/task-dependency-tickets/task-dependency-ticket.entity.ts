@@ -20,8 +20,8 @@ export class TaskDependencyTicket {
   @Column({ type: 'text' })
   description: string;
 
-  // Restricted to UserRole.DEVELOPER, enforced in
-  // TaskDependencyTicketsService.create().
+  // Restricted to DEVELOPER_EQUIVALENT_ROLES (Developer/Designer/DevOps),
+  // enforced in TaskDependencyTicketsService.create().
   @Column()
   ownerUserId: number;
 

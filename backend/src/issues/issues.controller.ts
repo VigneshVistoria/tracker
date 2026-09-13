@@ -20,7 +20,7 @@ import { CreateDependencyDto } from './dto/create-dependency.dto';
 import { ShowstopperReviewDecisionDto } from './dto/showstopper-review-decision.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
-import { UserRole } from '../users/user.entity';
+import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { SlaService } from '../sla/sla.service';
 
 @Controller('issues')
@@ -68,7 +68,7 @@ export class IssuesController {
       issues = await this.issuesService.findAll(req.user.tenantId);
     } else if (currentUser.role === UserRole.CLIENT) {
       issues = await this.issuesService.findByCreator(currentUser.id, req.user.tenantId);
-    } else if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
+    } else if (DEVELOPER_EQUIVALENT_ROLES.includes(currentUser.role) || currentUser.role === UserRole.QA) {
       issues = await this.issuesService.findByAssignee(currentUser.id, req.user.tenantId);
     } else {
       const projectIds = (currentUser.projects || []).map((p) => p.id);
@@ -114,7 +114,7 @@ export class IssuesController {
       if (issue.createdByUserId !== currentUser.id) {
         throw new ForbiddenException('You do not have access to this issue');
       }
-    } else if (currentUser.role === UserRole.DEVELOPER || currentUser.role === UserRole.QA) {
+    } else if (DEVELOPER_EQUIVALENT_ROLES.includes(currentUser.role) || currentUser.role === UserRole.QA) {
       const hasAccess = issue.assigneeUserId === currentUser.id || issue.createdByUserId === currentUser.id;
       if (!hasAccess) {
         throw new ForbiddenException('You do not have access to this issue');

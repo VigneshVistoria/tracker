@@ -149,6 +149,8 @@ export default function EditUser() {
               <option value="admin">Admin</option>
               <option value="program_manager">Program Manager</option>
               <option value="developer">Developer</option>
+              <option value="designer">Designer</option>
+              <option value="devops">DevOps</option>
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
               <option value="client">Client</option>
@@ -156,7 +158,8 @@ export default function EditUser() {
             <p className={styles.helpText}>
               {Number(id) === currentUserId
                 ? "You can't change your own role - ask another admin to do it."
-                : 'Developers and QA see issues in their assigned projects. Executives get read-only ' +
+                : 'Developers (and Designers/DevOps, who behave identically) and QA see issues in their ' +
+                  'assigned projects. Executives get read-only ' +
                   'access to the Dashboard and Weekly Reports only. Program Managers can approve or send ' +
                   'back issues submitted for review (more than one person can hold this role at once).'}
             </p>

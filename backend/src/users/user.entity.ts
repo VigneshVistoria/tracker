@@ -25,7 +25,26 @@ export enum UserRole {
   // never the internal ticket list, assignees, or any other client's
   // tickets.
   CLIENT = 'client',
+  // Designer and DevOps (2026-09, per Vignesh): identical permissions/
+  // visibility/behavior to Developer in every respect - task assignment,
+  // QA Feedback/Peer Review, everything. Kept as distinct role values
+  // (rather than aliasing to DEVELOPER) purely so headcount can be
+  // labeled correctly on the Users page; every authorization check that
+  // used to test `role === UserRole.DEVELOPER` alone now tests
+  // DEVELOPER_EQUIVALENT_ROLES below instead.
+  DESIGNER = 'designer',
+  DEVOPS = 'devops',
 }
+
+// Every place in the app that grants Developer a permission or a piece
+// of visibility grants the exact same thing to Designer/DevOps - see the
+// enum comment above. Use this instead of `=== UserRole.DEVELOPER` so a
+// future fourth "acts like a Developer" role only needs to change here.
+export const DEVELOPER_EQUIVALENT_ROLES: UserRole[] = [
+  UserRole.DEVELOPER,
+  UserRole.DESIGNER,
+  UserRole.DEVOPS,
+];
 
 // Multi-tenant conversion Phase B: email is unique within a tenant, not
 // globally - two different tenants may have users with the same email.

@@ -17,13 +17,13 @@ import { CreateTimeEntryDto } from './dto/create-time-entry.dto';
 import { UpdateTimeEntryDto } from './dto/update-time-entry.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
-import { UserRole } from '../users/user.entity';
+import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 
 // Logging time is Developer + Admin only for now - QA and Program
 // Manager don't log time yet. Viewing the aggregated report is a
 // separate permission (Admin/Executive/Program Manager), same
 // leadership-wide-visibility set Performance Dashboard uses.
-const ROLES_ALLOWED_TO_LOG_TIME: UserRole[] = [UserRole.ADMIN, UserRole.DEVELOPER];
+const ROLES_ALLOWED_TO_LOG_TIME: UserRole[] = [UserRole.ADMIN, ...DEVELOPER_EQUIVALENT_ROLES];
 
 @Controller('time-entries')
 @UseGuards(JwtAuthGuard)

@@ -16,7 +16,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../common/admin.guard';
-import { User } from './user.entity';
+import { User, UserRole, DEVELOPER_EQUIVALENT_ROLES } from './user.entity';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard) // every route requires login; admin-only ones add AdminGuard below
@@ -35,11 +35,19 @@ export class UsersController {
   // Any logged-in user can see this minimal list - needed to populate the
   // "Assignee" dropdown when creating/editing an issue. Optional ?role=
   // filter added for Task's Dependency Owner field (Developer-only) -
-  // existing callers that don't pass it are unaffected.
+  // existing callers that don't pass it are unaffected. `role=developer`
+  // is special-cased to the full DEVELOPER_EQUIVALENT_ROLES set so every
+  // "pick a developer" picker (defect assignee, dependency owner, peer
+  // reviewer, escalation reassignment) also surfaces Designer/DevOps
+  // users without every caller needing to know that equivalence.
   @Get('assignable')
   async findAssignable(@Query('role') role: string | undefined, @Req() req: any) {
     const users = await this.usersService.findAll(req.user.tenantId);
-    const filtered = role ? users.filter((u) => u.role === role) : users;
+    const filtered = !role
+      ? users
+      : role === UserRole.DEVELOPER
+        ? users.filter((u) => DEVELOPER_EQUIVALENT_ROLES.includes(u.role))
+        : users.filter((u) => u.role === role);
     return filtered.map((u) => ({ id: u.id, email: u.email, fullName: u.fullName, role: u.role }));
   }
 

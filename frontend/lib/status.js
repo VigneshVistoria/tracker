@@ -18,6 +18,8 @@ export const ROLE_LABELS = {
   admin: 'Admin',
   program_manager: 'Program Manager',
   developer: 'Developer',
+  designer: 'Designer',
+  devops: 'DevOps',
   qa: 'QA',
   executive: 'Executive',
   client: 'Client',
@@ -25,6 +27,12 @@ export const ROLE_LABELS = {
 export function roleLabel(role) {
   return ROLE_LABELS[role] || role;
 }
+
+// Mirrors backend/src/users/user.entity.ts's DEVELOPER_EQUIVALENT_ROLES -
+// Designer and DevOps have identical permissions/visibility/behavior to
+// Developer everywhere, so every frontend check that used to test
+// `role === 'developer'` alone now tests this set instead.
+export const DEVELOPER_EQUIVALENT_ROLES = ['developer', 'designer', 'devops'];
 
 // Which forward moves a regular (non-admin) user can make directly via
 // the status dropdown. Moving into "In Review", "QA Testing", or

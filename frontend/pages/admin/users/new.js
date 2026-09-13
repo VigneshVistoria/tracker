@@ -121,6 +121,8 @@ export default function NewUser() {
               <option value="admin">Admin</option>
               <option value="program_manager">Program Manager</option>
               <option value="developer">Developer</option>
+              <option value="designer">Designer</option>
+              <option value="devops">DevOps</option>
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
               <option value="client">Client</option>

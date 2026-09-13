@@ -5,7 +5,7 @@ import { TaskDependencyTicket } from './task-dependency-ticket.entity';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { TasksService } from '../tasks/tasks.service';
 import { UsersService } from '../users/users.service';
-import { UserRole } from '../users/user.entity';
+import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
@@ -84,8 +84,8 @@ export class TaskDependencyTicketsService {
     if (!owner) {
       throw new NotFoundException(`User #${dto.ownerUserId} not found`);
     }
-    if (owner.role !== UserRole.DEVELOPER) {
-      throw new BadRequestException('Dependency Owner must be a Developer.');
+    if (!DEVELOPER_EQUIVALENT_ROLES.includes(owner.role)) {
+      throw new BadRequestException('Dependency Owner must be a Developer, Designer, or DevOps.');
     }
 
     const ticket = this.ticketsRepository.create({

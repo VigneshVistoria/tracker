@@ -7,7 +7,7 @@ import { UsersService } from '../users/users.service';
 
 // Every staff role except 'client' - Evidence isn't a client-facing
 // concept today, same reasoning as the Task QA review viewer's role list.
-const EVIDENCE_VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'developer'];
+const EVIDENCE_VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'developer', 'designer', 'devops'];
 
 // Mounted at the same 'issues' prefix as IssuesController - same reasoning
 // as TaskQaReviewsController sharing 'tasks' with TasksController: these

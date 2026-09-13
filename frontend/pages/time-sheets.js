@@ -5,6 +5,7 @@ import StatCard from '../components/ui/StatCard';
 import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../lib/toast';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
 
 function toDateInputValue(date) {
   return date.toISOString().slice(0, 10);
@@ -306,7 +307,7 @@ export default function TimeSheets() {
     if (storedUser) setCurrentUser(JSON.parse(storedUser));
   }, []);
 
-  const canLogTime = currentUser && ['admin', 'developer'].includes(currentUser.role);
+  const canLogTime = currentUser && (currentUser.role === 'admin' || DEVELOPER_EQUIVALENT_ROLES.includes(currentUser.role));
   const isWideView = currentUser && ['admin', 'executive', 'program_manager'].includes(currentUser.role);
 
   const loadMine = () => {

@@ -4,8 +4,9 @@ import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
-const VIEW_ROLES = ['developer'];
+const VIEW_ROLES = DEVELOPER_EQUIVALENT_ROLES;
 
 export default function DependencyClearancePage() {
   const router = useRouter();
