@@ -22,6 +22,7 @@ confirmed this file covers what you need.
 11. [Microsoft Teams integration](#11-microsoft-teams-integration)
 12. [Backup & rollback safety net](#12-backup--rollback-safety-net)
 13. [Known limitations / production hardening](#13-known-limitations--production-hardening)
+14. [Permissions/RBAC centralization — audit & phased plan](#14-permissionsrbac-centralization--audit--phased-plan)
 
 ---
 
@@ -716,3 +717,108 @@ sides (`JwtAuthGuard` + `AdminGuard` on `GET /ops/releases` and
   distinction is a documented interpretation, not a confirmed spec
   definition — see `KpiService.computeMetrics()`'s own comment. Revisit
   both once `KPI_Formulas_Reference.xlsx` is actually available.
+
+## 14. Permissions/RBAC centralization — audit & phased plan
+
+Recorded 2026-09-13 as phase 1 (investigation/planning only, no code
+changed) of a larger effort to eventually let Admin create and manage
+custom roles from the UI instead of roles being fixed in code. This is a
+live production system, so this is deliberately being done in slow,
+separately-verified phases rather than as one large change.
+
+**Role model, corrected.** There are six roles today, not five:
+`UserRole` (`backend/src/users/user.entity.ts:12-28`) = `ADMIN`,
+`DEVELOPER`, `QA`, `EXECUTIVE`, `PROGRAM_MANAGER`, `CLIENT`. Separately,
+`isPlatformSuperadmin` (`user.entity.ts:62-63`) is a boolean staff flag,
+not a role — it's orthogonal and cross-tenant (gates tenant provisioning
+only: `tenants.controller.ts`, `platform-superadmin.guard.ts`,
+`frontend/pages/platform/tenants.js`). It must stay outside any future
+role/permission table, since it operates above the tenant boundary that
+table would live inside.
+
+**Current state.** There is no RBAC abstraction today — no `@Roles()`
+decorator, no generic `RolesGuard`. Access control is two binary guards
+(`AdminGuard`, `PlatformSuperadminGuard`) plus ~25 files' worth of
+hand-rolled `if (role === X)` conditionals, `ROLES_ALLOWED_TO_...`
+arrays, and inconsistently-named local helpers (`assertCanView`,
+`assertCanManage`, `canEdit`, `hasLeadershipWideAccess`, etc.) doing the
+same job with different shapes — this is the inconsistency already
+flagged in §13. A full audit (four parallel searches across
+`backend/src` and `frontend/pages`+`frontend/components`+`frontend/lib`)
+found role checks fall into five shapes: who can create a ticket/task/
+defect, who can see a screen or queue (often duplicated three times —
+nav item in `AppShell.js`, page-level `VIEW_ROLES` redirect guard, and
+the backend endpoint guard, independently), who can edit a record, who
+can approve/reject a workflow transition, and a handful of cross-cutting
+mechanisms (impersonation restrictions, self-role-change prevention,
+first-user-becomes-Admin bootstrap, role-driven ticket auto-tagging,
+role-targeted notifications, audit-log role snapshots).
+
+**Proposed design.** A `permissions` table keyed by
+`(role_id, action_key, scope?)` — `action_key` a flat string like
+`issue.create` / `task.assign` / `kpi.view_report`, `scope` a small enum
+(`all` / `own` / `assigned_projects` / `team`) since most "view" rules
+here gate *which rows*, not just whether the screen is visible at all.
+Roles get a `protected: boolean` flag; protected roles' seeded
+permissions are immutable via the future admin UI, custom roles are
+fully editable. Backend: replace `AdminGuard` and every ad hoc
+array/`assertCanX` with one `PermissionGuard` + `@RequirePermission()`
+decorator backed by a `PermissionsService`. Frontend: add a
+`permissions: string[]` array to the login/profile response (natural
+extension of `auth.service.ts`'s existing `toPublicUser`/
+`buildAuthResponse`) and one `usePermissions()` hook that both
+`AppShell.js` nav and every page's `VIEW_ROLES` guard read from, instead
+of each hardcoding its own role list.
+
+**Which roles are "protected."** All six, not a subset — the audit found
+Developer, QA, Executive, and Client are referenced by literal string
+value inside business logic itself, not just permission gates (see risk
+list below), so none of the six can be safely redefined as "just a
+custom role" until that identity-coupled logic is separately
+generalized. A newly Admin-created custom role should initially only be
+composed from the flat action-permission set above, never the deeper
+identity hooks below.
+
+**Migration sequencing** (this write-up is step 1):
+1. *(done)* This audit.
+2. Build the schema + `PermissionsService`/`PermissionGuard`, seeded to
+   reproduce today's behavior exactly for the 6 existing roles, with
+   parity tests comparing old vs. new checks before deleting old code.
+3. Migrate module-by-module, starting with the ~20 duplicated
+   `VIEW_ROLES`/`assertCanView` screens (biggest win, lowest behavior
+   risk), keeping old checks as a fallback per module until
+   parity-tested.
+4. Only once everything reads from the permissions table does it become
+   safe to expose "create a custom role" in the Admin UI — and even
+   then, gate which actions are grantable per the risk list below.
+
+**Especially risky to migrate:**
+- Assignee/owner "must hold role DEVELOPER" checks (`tasks.service.ts`
+  defect assignment, `task-dependency-tickets.service.ts:87` ticket
+  ownership, `peer-reviews.service.ts:81` reviewer assignment) — these
+  test *who the target user is*, not what the acting user can do. A
+  custom role has no defined meaning here.
+- Creator-role-driven auto-tagging (`issues.service.ts:142-146`) —
+  Executive/PM/Client role read as domain data (drives priority +
+  category), not as a permission check.
+- Admin bootstrap (first user in a tenant auto-becomes Admin,
+  `auth.service.ts:55`) and an invariant assumption that ≥1 Admin always
+  exists per tenant (`regression-testing.service.ts:111`) — both
+  hardwired to the literal Admin role.
+- Impersonation's "can't impersonate an Admin" rule
+  (`auth.service.ts:92`) needs a role-hierarchy/ranking concept that
+  doesn't exist yet — without one, an Admin-equivalent custom role could
+  still be impersonable.
+- Self-role-change prevention (`users.controller.ts:68-77`) currently
+  compares role values directly; needs reframing as "can't remove your
+  own user-management permission."
+- AI-assist's deliberate no-Admin-override (`ai-assist.controller.ts:22`)
+  — the one place in the app where Admin does *not* bypass everything.
+  A generic "Admin has all permissions" shortcut would silently regrant
+  this.
+- Client-role isolation is enforced by ~6 independent branches, not one
+  central rule (`issues.controller.ts`, `evidence.controller.ts`,
+  `performance-dashboard.controller.ts`, `dependencies.controller.ts`,
+  `issues/new.js`, `issues/[id].js`) — the highest-consequence one to
+  get wrong, since a missed branch could leak cross-tenant or
+  internal-staff data to an external-facing custom role.
