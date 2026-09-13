@@ -8,7 +8,7 @@ You don't self-register. An Admin creates your account from **Admin → Users**,
 
 ## 2. Your home base: the Dashboard
 
-As a Developer, the sidebar is intentionally hidden — Dashboard is your single navigation link, and it doubles as a control center. It shows up to five stat tiles, each one only appearing if it has something in it:
+As a Developer, the sidebar is intentionally hidden — Dashboard is your single navigation link, and it doubles as a control center. It shows up to six stat tiles, each one only appearing if it has something in it:
 
 | Tile | What it means |
 |---|---|
@@ -17,6 +17,7 @@ As a Developer, the sidebar is intentionally hidden — Dashboard is your single
 | **Inbound** | Dependency tickets *you* filed against another developer, still unresolved |
 | **Outbound** | Dependency tickets *another developer* filed against you, still unresolved |
 | **Overdue** | Tasks past their Due Date, plus Outbound tickets whose parent task is overdue |
+| **Defects** | Defect tickets QA raised directly against you — no Task Backlog step, assigned straight to you by QA |
 
 Click a tile to expand its list, then click any row to open that task's detail page — this is how you get to almost everything else in the app.
 
@@ -36,6 +37,8 @@ Open a task from your Dashboard to reach the Task Detail page — this is where 
 
 ## 4. Submitting work for QA
 
+A defect ticket (tile: **Defects**) works exactly like any other task — same Resolution + artifact submission below, same Pass/Failed/retest mechanics. The one difference: your feedback always goes back to the specific QA person who raised that defect, not the general QA queue.
+
 Once a task is ready, use **Submit for QA Testing** on the task detail page:
 
 1. **Resolution** — describe what you did/fixed.
@@ -51,6 +54,8 @@ This moves the task to `Feedback` (first round) or `Re-Feedback` (if you're resu
 
 **If QA approves**, the task status becomes `Pass` and you're done.
 
+**If QA escalates your round to their Program Manager instead** (this happens when your resolution looks unclear or unrelated to the actual task), the status becomes `Escalated` and the task moves into the PM's own queue — you'll see a notice on the task detail page and won't be able to resubmit it. The PM will either reassign it (possibly to a different developer, restarting the normal flow from `Development`) or close it as `Junk` if it turns out not to have been a real issue at all. A `Junk` closure never counts against your KPI or rejection count, since escalating and later junking a ticket isn't the same as rejecting it.
+
 ## 5. Reading QA Review History
 
 Every task detail page has a QA Review History table showing every round: Round number, Status, your Description, Artifact (small icons — hover for the type, click to open the link), who submitted/reviewed and when, and QA's Comment. Rejected rounds are highlighted so you can spot them at a glance — that's always where to look first if a task bounced back to you.
@@ -63,7 +68,9 @@ Every task detail page has a QA Review History table showing every round: Round 
 | `Feedback` | Your first submission is awaiting QA review |
 | `Failed` | QA rejected the pending round — action needed from you |
 | `Re-Feedback` | You resubmitted after a rejection, awaiting QA again |
+| `Escalated` | QA sent it to their Program Manager instead of approving/rejecting — waiting on the PM, not you |
 | `Pass` | QA approved — task complete |
+| `Junk` | PM closed an escalated ticket as not a real issue — final, doesn't count against your KPI |
 
 You'll occasionally see older tasks with legacy statuses like `Released - No Showstoppers` — those predate the current workflow and aren't something you can trigger.
 
