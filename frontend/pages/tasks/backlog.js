@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
+import RichTextEditor from '../../components/ui/RichTextEditor';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { stripHtmlForPreview } from '../../lib/richText';
+import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -12,7 +15,7 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, description: '', peerReviewEnabled: false };
+const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false };
 
 export default function TaskBacklogPage() {
   const router = useRouter();
@@ -107,6 +110,7 @@ export default function TaskBacklogPage() {
       project: { id: task.projectId, name: task.projectName },
       module: { id: task.moduleId, name: task.moduleName },
       phase: { id: task.phaseId, name: task.phaseName },
+      title: task.title,
       description: task.description,
       peerReviewEnabled: !!task.peerReviewEnabled,
     });
@@ -117,8 +121,8 @@ export default function TaskBacklogPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.project || !form.module || !form.phase || !form.description.trim()) {
-      setError('Project, Module, Phase, and Description are all required.');
+    if (!form.project || !form.module || !form.phase || !form.title.trim() || !stripHtmlForPreview(form.description).trim()) {
+      setError('Project, Module, Phase, Title, and Description are all required.');
       return;
     }
     setSaving(true);
@@ -127,6 +131,7 @@ export default function TaskBacklogPage() {
         projectId: form.project.id,
         moduleId: form.module.id,
         phaseId: form.phase.id,
+        title: form.title.trim(),
         description: form.description,
       };
       if (editingId) {
@@ -230,13 +235,25 @@ export default function TaskBacklogPage() {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="bkDescription">Task Description</label>
-            <textarea
-              className={styles.textarea}
-              id="bkDescription"
+            <label className={styles.label} htmlFor="bkTitle">Title</label>
+            <input
+              className={styles.input}
+              id="bkTitle"
               required
+              maxLength={TASK_TITLE_MAX_LENGTH}
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="Short, human-readable name for this task"
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="bkDescription">Task Description</label>
+            <RichTextEditor
+              id="bkDescription"
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              onChange={(html) => setForm({ ...form, description: html })}
+              placeholder="Describe the task..."
             />
           </div>
 
@@ -298,7 +315,7 @@ export default function TaskBacklogPage() {
                 <th className={styles.colCompact}>Project</th>
                 <th className={styles.colCompact}>Module</th>
                 <th className={styles.colCompact}>Phase</th>
-                <th>Description</th>
+                <th>Title</th>
                 {canManage && <th></th>}
               </tr>
             </thead>
@@ -322,7 +339,7 @@ export default function TaskBacklogPage() {
                   <td className={styles.colCompact} title={task.projectName}>{task.projectName}</td>
                   <td className={styles.colCompact} title={task.moduleName}>{task.moduleName}</td>
                   <td className={styles.colCompact} title={task.phaseName}>{task.phaseName}</td>
-                  <td className={styles.tableDescCell} title={task.description}>{task.description}</td>
+                  <td className={styles.tableDescCell} title={task.title}>{task.title}</td>
                   {canManage && (
                     <td>
                       <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>

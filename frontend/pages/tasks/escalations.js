@@ -141,8 +141,8 @@ export default function EscalationsPage() {
                   <td className={styles.colCompact} title={task.projectName}>{task.projectName}</td>
                   <td className={styles.colCompact} title={task.moduleName}>{task.moduleName}</td>
                   <td className={styles.colCompact} title={task.phaseName}>{task.phaseName}</td>
-                  <td className={styles.tableDescCell} title={task.description}>
-                    <Link href={`/tasks/${task.id}`} className={styles.issueId}>#{task.id}</Link> {task.description}
+                  <td className={styles.tableDescCell} title={task.title}>
+                    <Link href={`/tasks/${task.id}`} className={styles.issueId}>#{task.id}</Link> {task.title}
                   </td>
                   <td className={styles.colCompact}>{task.assigneeEmail || '—'}</td>
                   <td>

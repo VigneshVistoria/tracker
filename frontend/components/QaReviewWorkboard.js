@@ -164,12 +164,12 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
         ),
       },
       {
-        key: 'description',
-        header: <ColHeader icon={FileText} label="Description" />,
+        key: 'title',
+        header: <ColHeader icon={FileText} label="Title" />,
         sortable: true,
         render: (t) => (
-          <span className={styles.descClamp} title={t.description}>
-            {t.description}
+          <span className={styles.descClamp} title={t.title}>
+            {t.title}
           </span>
         ),
       },

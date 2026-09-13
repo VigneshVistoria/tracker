@@ -40,6 +40,18 @@ export class ProjectTask {
   @Column()
   phaseName: string;
 
+  // Short human-readable name, shown everywhere a task is listed (My
+  // Tasks, Team Tasks, Task Backlog, QA Review, Escalations, Peer Review,
+  // notifications) instead of relying on `description`'s text - the same
+  // idea as Issue.title. Plain text, not rich text (unlike description) -
+  // always rendered via plain interpolation, never dangerouslySetInnerHTML,
+  // so no HTML sanitization is needed here, just a trim + length cap
+  // (CreateTaskDto/CreateDefectTaskDto/UpdateTaskDto). Required for every
+  // task created from here on; existing rows were backfilled from their
+  // description's first line/heading (see scripts/backfill-task-titles.js).
+  @Column()
+  title: string;
+
   @Column({ type: 'text' })
   description: string;
 

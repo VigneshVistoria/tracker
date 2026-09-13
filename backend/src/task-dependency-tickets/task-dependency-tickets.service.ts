@@ -9,7 +9,7 @@ import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
-  parentTaskDescription: string | null;
+  parentTaskTitle: string | null;
   parentTaskDueDate: string | null;
 }
 
@@ -34,9 +34,9 @@ export class TaskDependencyTicketsService {
 
   // Dependency Clearance inbox - tickets routed to the current user to act
   // on ("Outbound": others waiting on me). Enriched with the parent
-  // task's Description/Due Date so the Developer Dashboard's Outbound
-  // card can compute "past due" without a second round-trip per ticket -
-  // the ticket itself has no Due Date of its own.
+  // task's Title/Due Date so the Developer Dashboard's Outbound card can
+  // compute "past due" without a second round-trip per ticket - the
+  // ticket itself has no Due Date of its own.
   async findMine(ownerUserId: number, tenantId: number): Promise<TaskDependencyTicketWithParent[]> {
     const tickets = await this.ticketsRepository.find({
       where: { ownerUserId, tenantId },
@@ -65,7 +65,7 @@ export class TaskDependencyTicketsService {
     const parentTaskById = new Map(parentTasks.map((t) => [t.id, t]));
     return tickets.map((ticket) => ({
       ...ticket,
-      parentTaskDescription: parentTaskById.get(ticket.parentTaskId)?.description ?? null,
+      parentTaskTitle: parentTaskById.get(ticket.parentTaskId)?.title ?? null,
       parentTaskDueDate: parentTaskById.get(ticket.parentTaskId)?.dueDate ?? null,
     }));
   }

@@ -10,7 +10,7 @@ export function TicketRow({ ticket, subtitle }) {
       <div className={issueStyles.issueMain}>
         <p className={`${issueStyles.issueTitle} ${issueStyles.issueTitleClamp}`}>{ticket.description}</p>
         <div className={issueStyles.issueMeta}>
-          <span>{ticket.parentTaskDescription ? `Task: ${ticket.parentTaskDescription}` : `Task #${ticket.parentTaskId}`}</span>
+          <span>{ticket.parentTaskTitle ? `Task: ${ticket.parentTaskTitle}` : `Task #${ticket.parentTaskId}`}</span>
           <span>{subtitle}</span>
         </div>
       </div>

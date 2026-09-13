@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsInt, IsDateString, IsNumber, Min } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsDateString, IsNumber, Min, MinLength, MaxLength } from 'class-validator';
+import { TASK_TITLE_MAX_LENGTH } from '../task-title.constants';
 
 // General field edits - deliberately excludes `status`, which is now
 // fully auto-computed by task events (task creation, QA submit/approve/
@@ -9,8 +10,8 @@ import { IsString, IsOptional, IsInt, IsDateString, IsNumber, Min } from 'class-
 // TasksService.update() rejects assigneeUserId here to prevent that check
 // being bypassed.
 //
-// projectId/moduleId/phaseId/description are "backlog fields" - only
-// Program Manager may set them (enforced in TasksService.update());
+// projectId/moduleId/phaseId/title/description are "backlog fields" -
+// only Program Manager may set them (enforced in TasksService.update());
 // estimatedHours/dueDate are the Assignee's own Stage 2 fields, each
 // locked to a one-time entry for the Assignee once set (Program Manager
 // can always re-edit either one, no lock applies to PM's own edits).
@@ -28,6 +29,12 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsInt()
   phaseId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1, { message: 'Title is required.' })
+  @MaxLength(TASK_TITLE_MAX_LENGTH, { message: `Title must be ${TASK_TITLE_MAX_LENGTH} characters or fewer.` })
+  title?: string;
 
   @IsOptional()
   @IsString()

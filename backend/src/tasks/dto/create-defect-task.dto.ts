@@ -1,6 +1,7 @@
-import { IsString, MinLength, IsInt, IsArray, IsOptional, ValidateNested, Validate } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsInt, IsArray, IsOptional, ValidateNested, Validate } from 'class-validator';
 import { Type } from 'class-transformer';
 import { QaReviewArtifactDto, UniqueQaArtifactTypesConstraint } from '../../task-qa-reviews/dto/qa-review-artifact.dto';
+import { TASK_TITLE_MAX_LENGTH } from '../task-title.constants';
 
 // Create Defect (QA only, TasksController.createDefect) - always a fresh,
 // standalone ticket assigned straight to a Developer, skipping the Task
@@ -17,6 +18,11 @@ export class CreateDefectTaskDto {
 
   @IsInt()
   phaseId: number;
+
+  @IsString()
+  @MinLength(1, { message: 'Title is required.' })
+  @MaxLength(TASK_TITLE_MAX_LENGTH, { message: `Title must be ${TASK_TITLE_MAX_LENGTH} characters or fewer.` })
+  title: string;
 
   @IsString()
   @MinLength(1, { message: 'Task description is required.' })

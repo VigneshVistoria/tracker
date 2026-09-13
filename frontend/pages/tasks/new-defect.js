@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
+import RichTextEditor from '../../components/ui/RichTextEditor';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { stripHtmlForPreview } from '../../lib/richText';
+import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 
 const VIEW_ROLES = ['qa'];
 
@@ -12,7 +15,7 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, description: '', assignee: null };
+const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', assignee: null };
 
 // Same list as QA_ARTIFACT_TYPES on the task detail page (pages/tasks/[id].js)
 // - this is the same "QA's own evidence" concept, just captured at
@@ -115,7 +118,7 @@ export default function NewDefectPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.project || !form.module || !form.phase || !form.description.trim() || !form.assignee) {
+    if (!form.project || !form.module || !form.phase || !form.title.trim() || !stripHtmlForPreview(form.description).trim() || !form.assignee) {
       setError('Project, Module, Phase, Description, and Assignee are all required.');
       return;
     }
@@ -134,6 +137,7 @@ export default function NewDefectPage() {
           projectId: form.project.id,
           moduleId: form.module.id,
           phaseId: form.phase.id,
+          title: form.title.trim(),
           description: form.description,
           assigneeUserId: form.assignee.id,
           artifacts: payloadArtifacts,
@@ -194,13 +198,25 @@ export default function NewDefectPage() {
         </div>
 
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="ndDescription">Defect Description</label>
-          <textarea
-            className={styles.textarea}
-            id="ndDescription"
+          <label className={styles.label} htmlFor="ndTitle">Title</label>
+          <input
+            className={styles.input}
+            id="ndTitle"
             required
+            maxLength={TASK_TITLE_MAX_LENGTH}
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Short, human-readable name for this defect"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="ndDescription">Defect Description</label>
+          <RichTextEditor
+            id="ndDescription"
             value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            onChange={(html) => setForm({ ...form, description: html })}
+            placeholder="Describe the defect..."
           />
         </div>
 

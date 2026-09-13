@@ -4,10 +4,14 @@ import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
 import Table from '../../components/ui/Table';
+import RichTextEditor from '../../components/ui/RichTextEditor';
+import RichTextDisplay from '../../components/ui/RichTextDisplay';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
+import { stripHtmlForPreview } from '../../lib/richText';
+import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
@@ -192,6 +196,7 @@ export default function TaskDetailPage() {
   const [defectProject, setDefectProject] = useState(null);
   const [defectModule, setDefectModule] = useState(null);
   const [defectPhase, setDefectPhase] = useState(null);
+  const [defectTitle, setDefectTitle] = useState('');
   const [defectDescription, setDefectDescription] = useState('');
   const [savingDefectFields, setSavingDefectFields] = useState(false);
   // Off by default - the page should open into the read-only summary
@@ -294,6 +299,7 @@ export default function TaskDetailPage() {
         setDefectProject({ id: t.projectId, name: t.projectName });
         setDefectModule({ id: t.moduleId, name: t.moduleName });
         setDefectPhase({ id: t.phaseId, name: t.phaseName });
+        setDefectTitle(t.title);
         setDefectDescription(t.description);
         setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeEmail } : null);
         setTickets(ticketList);
@@ -362,7 +368,7 @@ export default function TaskDetailPage() {
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
     { key: 'reviewType', header: 'Type', width: 72, render: (r) => (r.reviewType === 'peer' ? 'Peer' : 'QA') },
     { key: 'status', header: 'Status', width: 96, render: (r) => r.status.charAt(0).toUpperCase() + r.status.slice(1) },
-    { key: 'resolution', header: 'Description', render: (r) => r.resolution },
+    { key: 'resolution', header: 'Description', render: (r) => stripHtmlForPreview(r.resolution) },
     { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
     { key: 'qaArtifacts', header: 'QA Artifact', width: 100, render: (r) => <QaArtifactIcons artifacts={r.qaArtifacts} /> },
     {
@@ -387,7 +393,7 @@ export default function TaskDetailPage() {
         </div>
       ),
     },
-    { key: 'qaComment', header: 'Comment', render: (r) => r.qaComment || null },
+    { key: 'qaComment', header: 'Comment', render: (r) => stripHtmlForPreview(r.qaComment) || null },
   ];
 
   const handleSaveFields = async (e) => {
@@ -420,8 +426,8 @@ export default function TaskDetailPage() {
   const handleSaveDefectFields = async (e) => {
     e.preventDefault();
     setError('');
-    if (!defectProject || !defectModule || !defectPhase || !defectDescription.trim()) {
-      setError('Project, Module, Phase, and Description are all required.');
+    if (!defectProject || !defectModule || !defectPhase || !defectTitle.trim() || !stripHtmlForPreview(defectDescription).trim()) {
+      setError('Project, Module, Phase, Title, and Description are all required.');
       return;
     }
     setSavingDefectFields(true);
@@ -432,6 +438,7 @@ export default function TaskDetailPage() {
           projectId: defectProject.id,
           moduleId: defectModule.id,
           phaseId: defectPhase.id,
+          title: defectTitle.trim(),
           description: defectDescription,
         }),
       });
@@ -453,6 +460,7 @@ export default function TaskDetailPage() {
     setDefectProject({ id: task.projectId, name: task.projectName });
     setDefectModule({ id: task.moduleId, name: task.moduleName });
     setDefectPhase({ id: task.phaseId, name: task.phaseName });
+    setDefectTitle(task.title);
     setDefectDescription(task.description);
     setEditingDefectFields(false);
   };
@@ -546,7 +554,7 @@ export default function TaskDetailPage() {
     e.preventDefault();
     setError('');
     const incomplete = artifacts.some((row) => !row.type || !row.url.trim());
-    if (!resolution.trim() || incomplete || actualHours === '') {
+    if (!stripHtmlForPreview(resolution).trim() || incomplete || actualHours === '') {
       setError('Resolution, a Type and URL for every artifact, and Actual Hours are all required to submit for QA testing.');
       return;
     }
@@ -584,7 +592,7 @@ export default function TaskDetailPage() {
     e.preventDefault();
     setError('');
     const incomplete = artifacts.some((row) => !row.type || !row.url.trim());
-    if (!resolution.trim() || incomplete || actualHours === '' || !peerReviewer) {
+    if (!stripHtmlForPreview(resolution).trim() || incomplete || actualHours === '' || !peerReviewer) {
       setError('Resolution, a Type and URL for every artifact, Actual Hours, and a Peer Reviewer are all required to submit for Peer Review.');
       return;
     }
@@ -651,7 +659,7 @@ export default function TaskDetailPage() {
   const handleQaReject = async (e) => {
     e.preventDefault();
     setError('');
-    if (!rejectComment.trim()) {
+    if (!stripHtmlForPreview(rejectComment).trim()) {
       setError('A comment explaining the rejection is required.');
       return;
     }
@@ -691,7 +699,7 @@ export default function TaskDetailPage() {
   const handleQaEscalate = async (e) => {
     e.preventDefault();
     setError('');
-    if (!escalateComment.trim()) {
+    if (!stripHtmlForPreview(escalateComment).trim()) {
       setError('A comment explaining the escalation is required.');
       return;
     }
@@ -754,7 +762,7 @@ export default function TaskDetailPage() {
   const handlePeerReviewReject = async (e) => {
     e.preventDefault();
     setError('');
-    if (!rejectComment.trim()) {
+    if (!stripHtmlForPreview(rejectComment).trim()) {
       setError('A comment explaining the rejection is required.');
       return;
     }
@@ -820,7 +828,7 @@ export default function TaskDetailPage() {
     <AppShell>
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>Task #{task.id}</h1>
+          <h1 className={styles.pageTitle}>#{task.id} - {task.title}</h1>
           <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
         </div>
         <Link href="/tasks/mine" className={styles.backLink}>&larr; Back to My Tasks</Link>
@@ -834,7 +842,7 @@ export default function TaskDetailPage() {
             Defect
           </span>
         )}
-        <p style={{ marginTop: 0 }}>{task.description}</p>
+        <RichTextDisplay value={task.description} />
         <p className={styles.issueMeta}>
           Assignee: {task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
           {task.isDefect && <> &middot; Raised by {task.createdByEmail}</>}
@@ -922,13 +930,23 @@ export default function TaskDetailPage() {
             />
           </div>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="defectDescription">Description</label>
-            <textarea
-              className={styles.textarea}
-              id="defectDescription"
+            <label className={styles.label} htmlFor="defectTitleField">Title</label>
+            <input
+              className={styles.input}
+              id="defectTitleField"
               required
+              maxLength={TASK_TITLE_MAX_LENGTH}
+              value={defectTitle}
+              onChange={(e) => setDefectTitle(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="defectDescription">Description</label>
+            <RichTextEditor
+              id="defectDescription"
               value={defectDescription}
-              onChange={(e) => setDefectDescription(e.target.value)}
+              onChange={setDefectDescription}
+              placeholder="Describe the defect..."
             />
           </div>
           <div className={styles.actions}>
@@ -1125,13 +1143,11 @@ export default function TaskDetailPage() {
           </h2>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="tdResolution">Resolution</label>
-            <textarea
-              className={styles.textarea}
+            <RichTextEditor
               id="tdResolution"
-              required
               placeholder="Describe what was done / fixed"
               value={resolution}
-              onChange={(e) => setResolution(e.target.value)}
+              onChange={setResolution}
             />
           </div>
           <label className={styles.label}>Artifacts</label>
@@ -1210,13 +1226,11 @@ export default function TaskDetailPage() {
           </h2>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="tdPeerResolution">Resolution</label>
-            <textarea
-              className={styles.textarea}
+            <RichTextEditor
               id="tdPeerResolution"
-              required
               placeholder="Describe what was done / fixed"
               value={resolution}
-              onChange={(e) => setResolution(e.target.value)}
+              onChange={setResolution}
             />
           </div>
           <label className={styles.label}>Artifacts</label>
@@ -1303,7 +1317,8 @@ export default function TaskDetailPage() {
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             QA Review
           </h2>
-          <p style={{ margin: 0 }}><strong>Resolution:</strong> {latestQaReview.resolution}</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
+          <RichTextDisplay value={latestQaReview.resolution} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Artifact: {artifact.type} &middot;{' '}
@@ -1362,12 +1377,11 @@ export default function TaskDetailPage() {
             <>
               <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
                 <label className={styles.label} htmlFor="tdApproveComment">Comment (optional)</label>
-                <textarea
-                  className={styles.textarea}
+                <RichTextEditor
                   id="tdApproveComment"
                   placeholder="Add a note for the record (optional)"
                   value={approveComment}
-                  onChange={(e) => setApproveComment(e.target.value)}
+                  onChange={setApproveComment}
                 />
               </div>
               <div className={styles.actions}>
@@ -1388,13 +1402,11 @@ export default function TaskDetailPage() {
             <form onSubmit={handleQaReject} style={{ marginTop: 'var(--space-3)' }}>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="tdRejectComment">Rejection Comment</label>
-                <textarea
-                  className={styles.textarea}
+                <RichTextEditor
                   id="tdRejectComment"
-                  required
                   placeholder="Explain what's incorrect, unclear, or missing"
                   value={rejectComment}
-                  onChange={(e) => setRejectComment(e.target.value)}
+                  onChange={setRejectComment}
                 />
               </div>
               <div className={styles.actions}>
@@ -1412,13 +1424,11 @@ export default function TaskDetailPage() {
             <form onSubmit={handleQaEscalate} style={{ marginTop: 'var(--space-3)' }}>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="tdEscalateComment">Escalation Comment</label>
-                <textarea
-                  className={styles.textarea}
+                <RichTextEditor
                   id="tdEscalateComment"
-                  required
                   placeholder="Explain why this needs PM's attention instead of a straightforward pass/fail (e.g. resolution is unclear or unrelated to the task)"
                   value={escalateComment}
-                  onChange={(e) => setEscalateComment(e.target.value)}
+                  onChange={setEscalateComment}
                 />
               </div>
               <div className={styles.actions}>
@@ -1439,7 +1449,8 @@ export default function TaskDetailPage() {
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Peer Review
           </h2>
-          <p style={{ margin: 0 }}><strong>Resolution:</strong> {latestQaReview.resolution}</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
+          <RichTextDisplay value={latestQaReview.resolution} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Artifact: {artifact.type} &middot;{' '}
@@ -1498,12 +1509,11 @@ export default function TaskDetailPage() {
             <>
               <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
                 <label className={styles.label} htmlFor="tdPeerApproveComment">Comment (optional)</label>
-                <textarea
-                  className={styles.textarea}
+                <RichTextEditor
                   id="tdPeerApproveComment"
                   placeholder="Add a note for the record (optional)"
                   value={approveComment}
-                  onChange={(e) => setApproveComment(e.target.value)}
+                  onChange={setApproveComment}
                 />
               </div>
               <div className={styles.actions}>
@@ -1521,13 +1531,11 @@ export default function TaskDetailPage() {
             <form onSubmit={handlePeerReviewReject} style={{ marginTop: 'var(--space-3)' }}>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="tdPeerRejectComment">Rejection Comment</label>
-                <textarea
-                  className={styles.textarea}
+                <RichTextEditor
                   id="tdPeerRejectComment"
-                  required
                   placeholder="Explain what's incorrect, unclear, or missing"
                   value={rejectComment}
-                  onChange={(e) => setRejectComment(e.target.value)}
+                  onChange={setRejectComment}
                 />
               </div>
               <div className={styles.actions}>

@@ -64,7 +64,7 @@ export default function PeerReviewQueuePage() {
 
       {!loading && tasks.map((task) => (
         <div key={task.id} className={styles.card} style={{ marginBottom: 'var(--space-3)' }}>
-          <p style={{ margin: 0 }}>{task.description}</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>{task.title}</p>
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
             {task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}
           </p>

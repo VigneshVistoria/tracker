@@ -95,8 +95,8 @@ function TaskTile({ task, railClass, expanded, onToggleExpand, onOpen }) {
         </Link>
         <Badge tone="neutral">{task.status}</Badge>
       </div>
-      <div className={styles.taskTileDesc} title={task.description}>
-        {task.description}
+      <div className={styles.taskTileDesc} title={task.title}>
+        {task.title}
       </div>
       <div className={styles.taskTileMeta}>
         <span><User size={12} aria-hidden="true" /> {task.assigneeEmail || '—'}</span>
@@ -310,12 +310,12 @@ export default function TeamTaskWorkboard({ storageKey }) {
         render: (t) => new Date(t.createdAt).toLocaleDateString(),
       },
       {
-        key: 'description',
-        header: <ColHeader icon={FileText} label="Description" />,
+        key: 'title',
+        header: <ColHeader icon={FileText} label="Title" />,
         sortable: true,
         render: (t) => (
-          <span className={styles.descClamp} title={t.description}>
-            {t.description}
+          <span className={styles.descClamp} title={t.title}>
+            {t.title}
           </span>
         ),
       },
