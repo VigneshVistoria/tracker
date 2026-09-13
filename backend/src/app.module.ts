@@ -35,6 +35,9 @@ import { TaskDependencyTicket } from './task-dependency-tickets/task-dependency-
 import { TaskQaReview } from './task-qa-reviews/task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-reviews/task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-reviews/task-qa-review-qa-artifact.entity';
+import { TaskDefectArtifact } from './tasks/task-defect-artifact.entity';
+import { Role } from './permissions/role.entity';
+import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { IssuesModule } from './issues/issues.module';
@@ -70,6 +73,7 @@ import { TaskQaReviewsModule } from './task-qa-reviews/task-qa-reviews.module';
 import { PeerReviewsModule } from './peer-reviews/peer-reviews.module';
 import { OpsModule } from './ops/ops.module';
 import { KpiModule } from './kpi/kpi.module';
+import { PermissionsModule } from './permissions/permissions.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -118,8 +122,11 @@ import { ThrottlerModule } from '@nestjs/throttler';
           TaskQaReview,
           TaskQaReviewArtifact,
           TaskQaReviewQaArtifact,
+          TaskDefectArtifact,
           KpiConfig,
           KpiPeriodScore,
+          Role,
+          RolePermission,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -163,6 +170,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     PeerReviewsModule,
     OpsModule,
     KpiModule,
+    PermissionsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
