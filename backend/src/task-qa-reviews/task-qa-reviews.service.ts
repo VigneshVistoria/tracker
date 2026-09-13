@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { In, Repository } from 'typeorm';
 import { TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
@@ -7,6 +8,7 @@ import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
 import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
 import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
+import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { UserRole } from '../users/user.entity';
@@ -41,6 +43,7 @@ export class TaskQaReviewsService {
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   // Combined task detail view - every past QA review round for a task,
@@ -113,6 +116,13 @@ export class TaskQaReviewsService {
     const task = await this.tasksService.findOne(taskId, tenantId);
     if (task.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the task Assignee can submit it for QA testing.');
+    }
+    // An escalated task has no 'pending' round (the escalate() round is
+    // terminal, status 'escalated') but must still block resubmission
+    // until PM reassigns it - otherwise the Assignee could resubmit
+    // straight past the PM Escalation queue entirely.
+    if (task.status === 'Escalated') {
+      throw new BadRequestException('This task is escalated to PM and cannot be resubmitted until PM reassigns it.');
     }
     this.tasksService.assertReadyForQaSubmission(task.estimatedHours, task.dueDate);
     // QA-only hard block, no role exception - see the method's own comment.
@@ -195,9 +205,21 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only QA can approve a task under review.');
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
+    // A defect round routes back to the specific QA who raised it
+    // (task.createdByUserId), not the shared QA queue - any other QA
+    // hitting this endpoint on a defect task is blocked, same as a Peer
+    // Review round is locked to its picked reviewer.
+    if (task.isDefect && task.createdByUserId !== currentUser.id) {
+      throw new ForbiddenException('Only the QA who raised this defect can approve it.');
+    }
     const pending = await this.findPendingRound(taskId, tenantId);
 
     pending.status = 'approved';
+    // Optional, unlike reject's required comment - only set qaComment if
+    // QA actually left one, same column reject/escalate write to.
+    if (dto.comment) {
+      pending.qaComment = dto.comment;
+    }
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();
@@ -229,7 +251,11 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber, artifactTypes: (dto.artifacts || []).map((a) => a.type) },
+      details: {
+        roundNumber: savedReview.roundNumber,
+        comment: dto.comment,
+        artifactTypes: (dto.artifacts || []).map((a) => a.type),
+      },
     });
 
     return { ...savedReview, qaArtifacts: savedQaArtifacts };
@@ -250,6 +276,10 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only QA can reject a task under review.');
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
+    // Same defect-routing lock as approve() above.
+    if (task.isDefect && task.createdByUserId !== currentUser.id) {
+      throw new ForbiddenException('Only the QA who raised this defect can reject it.');
+    }
     const pending = await this.findPendingRound(taskId, tenantId);
 
     pending.status = 'rejected';
@@ -292,5 +322,63 @@ export class TaskQaReviewsService {
     });
 
     return { ...savedReview, qaArtifacts: savedQaArtifacts };
+  }
+
+  // QA Feedback escalation to PM - an alternative to Approve/Reject for
+  // when the resolution is unclear or looks unrelated to the actual task,
+  // not a straightforward pass/fail call. Ends the pending round the same
+  // way reject() does (status/reviewedBy/reviewedAt), just with a
+  // different terminal value ('escalated', not 'rejected') so it never
+  // touches KpiService's rejection-count query - escalating isn't itself
+  // a rejection. QA Feedback only: blocked for a 'peer' round (Peer
+  // Review has its own separate approve/reject endpoints and was never
+  // meant to reach PM this way) and, like approve()/reject(), blocked for
+  // any QA other than the one who raised a defect ticket.
+  async escalate(
+    taskId: number,
+    dto: QaEscalateTaskDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskQaReview> {
+    if (currentUser.role !== UserRole.QA) {
+      throw new ForbiddenException('Only QA can escalate a task under review.');
+    }
+    const task = await this.tasksService.findOne(taskId, tenantId);
+    if (task.isDefect && task.createdByUserId !== currentUser.id) {
+      throw new ForbiddenException('Only the QA who raised this defect can escalate it.');
+    }
+    const pending = await this.findPendingRound(taskId, tenantId);
+    if (pending.reviewType !== 'qa') {
+      throw new BadRequestException('Only a QA Feedback round can be escalated to PM - not Peer Review.');
+    }
+
+    pending.status = 'escalated';
+    pending.qaComment = dto.comment;
+    pending.reviewedByUserId = currentUser.id;
+    pending.reviewedByEmail = currentUser.email;
+    pending.reviewedAt = new Date();
+    const savedReview = await this.qaReviewsRepository.save(pending);
+
+    task.status = 'Escalated';
+    const savedTask = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_QA_ESCALATED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: taskId,
+      details: { roundNumber: savedReview.roundNumber, comment: dto.comment },
+    });
+
+    this.eventEmitter.emit('task.escalatedToPm', {
+      task: savedTask,
+      escalatedByEmail: currentUser.email,
+      comment: dto.comment,
+    });
+
+    return savedReview;
   }
 }

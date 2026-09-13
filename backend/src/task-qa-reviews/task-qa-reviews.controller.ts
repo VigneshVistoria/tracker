@@ -3,6 +3,7 @@ import { TaskQaReviewsService } from './task-qa-reviews.service';
 import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
 import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
+import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { TasksService } from '../tasks/tasks.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
@@ -48,5 +49,11 @@ export class TaskQaReviewsController {
   async reject(@Param('id', ParseIntPipe) id: number, @Body() dto: QaRejectTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.qaReviewsService.reject(id, dto, currentUser, req.user.tenantId);
+  }
+
+  @Patch(':id/qa-escalate')
+  async escalate(@Param('id', ParseIntPipe) id: number, @Body() dto: QaEscalateTaskDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.qaReviewsService.escalate(id, dto, currentUser, req.user.tenantId);
   }
 }

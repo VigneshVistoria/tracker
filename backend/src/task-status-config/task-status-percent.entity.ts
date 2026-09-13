@@ -20,14 +20,23 @@ import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeor
 // own status values (not a reuse of Feedback/Re-Feedback with a type
 // flag) so TasksService.findQaQueue()'s status filter never picks up a
 // peer-pending task.
+// 'Escalated' - QA Feedback escalated to PM instead of Approve/Reject
+// (TaskQaReviewsService.escalate()) - in-flight, not terminal, still
+// counts as "due, not completed" for KPI same as Feedback/Development.
+// 'Junk' - PM closed an escalated ticket as not a real issue
+// (TasksService.closeAsJunk()) - terminal, and unlike every other
+// status, fully excluded from KPI (KpiService.computeMetrics()'
+// `Not('Junk')` filters) rather than just scored as incomplete/rejected.
 export const TASK_STATUSES = [
   'Development',
   'Feedback',
   'Re-Feedback',
   'Peer Review',
   'Re-Peer-Review',
+  'Escalated',
   'Failed',
   'Pass',
+  'Junk',
   'Released - No Showstoppers',
   'Released - With Showstoppers',
 ] as const;
@@ -42,8 +51,10 @@ export const TASK_STATUS_PERCENT_DEFAULTS: Record<TaskStatus, number> = {
   'Re-Feedback': 50,
   'Peer Review': 50,
   'Re-Peer-Review': 50,
+  Escalated: 50,
   Failed: 0,
   Pass: 100,
+  Junk: 0,
   'Released - No Showstoppers': 100,
   'Released - With Showstoppers': 0,
 };

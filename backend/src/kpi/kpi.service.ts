@@ -166,8 +166,13 @@ export class KpiService {
     const endStr = this.toDateOnly(range.end);
     const todayStr = this.toDateOnly(new Date());
 
+    // status: Not('Junk') - a ticket QA escalated and PM then closed as
+    // Junk was never a real issue, so it's excluded from every metric
+    // below entirely (not scored as incomplete, not scored as overdue,
+    // not scored late) rather than counted against the assignee like a
+    // normal open/incomplete task would be.
     const dueTasks = await this.tasksRepository.find({
-      where: { tenantId, projectId, assigneeUserId, dueDate: Between(startStr, endStr) },
+      where: { tenantId, projectId, assigneeUserId, dueDate: Between(startStr, endStr), status: Not('Junk') },
     });
     const ticketsDue = dueTasks.length;
 
@@ -197,8 +202,12 @@ export class KpiService {
 
     // QA rejection count - across every task this assignee has in this
     // project (not just ones due this period), rejected within the period.
+    // Same Not('Junk') exclusion as dueTasks above - a task later closed
+    // as Junk has its rejection/retest history excluded entirely too, not
+    // just its completion/overdue numbers, since the whole ticket turned
+    // out not to be a real issue.
     const allAssigneeTasks = await this.tasksRepository.find({
-      where: { tenantId, projectId, assigneeUserId },
+      where: { tenantId, projectId, assigneeUserId, status: Not('Junk') },
       select: ['id'],
     });
     const allTaskIds = allAssigneeTasks.map((t) => t.id);

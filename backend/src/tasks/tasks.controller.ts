@@ -13,15 +13,23 @@ import {
 } from '@nestjs/common';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
+import { CreateDefectTaskDto } from './dto/create-defect-task.dto';
+import { ReassignEscalatedTaskDto } from './dto/reassign-escalated-task.dto';
+import { ReassignTeamTaskDto } from './dto/reassign-team-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { BulkAssignTasksDto } from './dto/bulk-assign-tasks.dto';
 import { SetPeerReviewFlagDto } from './dto/set-peer-review-flag.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
-import { UserRole } from '../users/user.entity';
+import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 
 const ROLES_ALLOWED_TO_CREATE_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
+// Create Defect skips the Task Backlog entirely and assigns a Developer
+// up front - QA only, matching who raises/owns a defect. Deliberately not
+// Admin - Admin stays view-only across Tasks (MUTATE_ROLES comment in
+// TasksService), same restriction as regular task creation above.
+const ROLES_ALLOWED_TO_CREATE_DEFECTS: UserRole[] = [UserRole.QA];
 // Assigning (single or bulk) is a mutation, not a view - Program Manager
 // only. Admin can still see the Backlog (ROLES_ALLOWED_TO_VIEW_BACKLOG
 // below) but, like Executive, has view-only access to the Task workflow -
@@ -29,11 +37,15 @@ const ROLES_ALLOWED_TO_CREATE_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
 // matching restriction lives in TasksService.canEdit()).
 const ROLES_ALLOWED_TO_ASSIGN_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_BACKLOG: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
+// Escalation queue: same view/mutate split as Task Backlog above - Admin
+// can view it, only Program Manager can act (reassign/close as Junk).
+const ROLES_ALLOWED_TO_VIEW_ESCALATIONS: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
+const ROLES_ALLOWED_TO_ACT_ON_ESCALATIONS: UserRole[] = [UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_QA_QUEUE: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER, UserRole.QA];
 // Peer Review queue is self-scoped to the reviewer (TasksService.
-// findPeerReviewQueue()), so only Developers - the only role that can be
-// picked as a reviewer - need to see it.
-const ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE: UserRole[] = [UserRole.DEVELOPER];
+// findPeerReviewQueue()), so only Developer/Designer/DevOps - the only
+// roles that can be picked as a reviewer - need to see it.
+const ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE: UserRole[] = DEVELOPER_EQUIVALENT_ROLES;
 // Narrow, explicit exception: Admin has view-only access to every other
 // task field/endpoint (see TasksService.canEdit()'s MUTATE_ROLES comment),
 // but the Peer Review checkbox is deliberately PM-or-Admin per the
@@ -98,6 +110,31 @@ export class TasksController {
     return this.tasksService.findPeerReviewQueue(currentUser, req.user.tenantId);
   }
 
+  // PM Escalation queue - tasks QA escalated instead of Approve/Reject.
+  // Declared before ':id' for the same routing reason as 'backlog'/
+  // 'qa-queue'/'peer-review-queue'/'defect-queue'/'mine'.
+  @Get('escalations')
+  async findEscalationQueue(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_VIEW_ESCALATIONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin and Program Manager can view the Escalation queue.');
+    }
+    return this.tasksService.findEscalationQueue(req.user.tenantId);
+  }
+
+  // Defect queue - defect tickets with a QA review round pending, self-
+  // scoped to the QA user who raised them (unlike qa-queue above, which
+  // is tenant-wide). Declared before ':id' for the same routing reason as
+  // 'backlog'/'qa-queue'/'peer-review-queue'/'mine'.
+  @Get('defect-queue')
+  async findDefectQueue(@Query('status') status: string | undefined, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (currentUser.role !== UserRole.QA) {
+      throw new ForbiddenException('Only QA can view the Defect queue.');
+    }
+    return this.tasksService.findDefectQueue(currentUser, req.user.tenantId, status);
+  }
+
   // My Tasks - tasks assigned to the current user.
   @Get('mine')
   async findMine(@Req() req: any) {
@@ -114,6 +151,7 @@ export class TasksController {
     @Query('pageSize') pageSize: string | undefined,
     @Query('status') status: string | undefined,
     @Query('assigneeUserId') assigneeUserId: string | undefined,
+    @Query('phaseId') phaseId: string | undefined,
     @Query('dependency') dependency: string | undefined,
     @Query('dueFrom') dueFrom: string | undefined,
     @Query('dueTo') dueTo: string | undefined,
@@ -129,6 +167,7 @@ export class TasksController {
       pageSize: pageSize ? Number(pageSize) : undefined,
       status,
       assigneeUserId: assigneeUserId ? Number(assigneeUserId) : undefined,
+      phaseId: phaseId ? Number(phaseId) : undefined,
       dependency,
       dueFrom,
       dueTo,
@@ -146,6 +185,18 @@ export class TasksController {
     return this.tasksService.findOneWithComputed(id, req.user.tenantId);
   }
 
+  // Evidence QA attached at Create Defect time - same view gate as the
+  // task itself.
+  @Get(':id/defect-artifacts')
+  async findDefectArtifacts(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    const task = await this.tasksService.findOne(id, req.user.tenantId);
+    if (!(await this.tasksService.canView(task, currentUser))) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    return this.tasksService.findDefectArtifacts(id);
+  }
+
   @Post()
   async create(@Body() dto: CreateTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -153,6 +204,18 @@ export class TasksController {
       throw new ForbiddenException('Only Program Manager can create tasks.');
     }
     return this.tasksService.create(dto, currentUser, req.user.tenantId);
+  }
+
+  // Create Defect - standalone, no Task Backlog step, assignee set at
+  // creation time. Declared as its own path (not reusing POST /tasks)
+  // since it takes a different DTO (assigneeUserId required).
+  @Post('defects')
+  async createDefect(@Body() dto: CreateDefectTaskDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_CREATE_DEFECTS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA can create a defect ticket.');
+    }
+    return this.tasksService.createDefect(dto, currentUser, req.user.tenantId);
   }
 
   // Bulk assign - declared before ':id' so 'bulk-assign' isn't swallowed by
@@ -173,6 +236,49 @@ export class TasksController {
       throw new ForbiddenException('Only Program Manager can assign tasks.');
     }
     return this.tasksService.assignTask(id, dto.assigneeUserId, currentUser, req.user.tenantId);
+  }
+
+  // Team Tasks - PM edits the Assignee directly (pick a new one, or clear
+  // it to send the task back to the Task Backlog). Program Manager only,
+  // same gate as the assign/bulk-assign endpoints above - Admin stays
+  // view-only across Tasks, same as everywhere else in this module.
+  @Patch(':id/reassign')
+  async reassignTeamTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReassignTeamTaskDto,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_ASSIGN_TASKS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager can reassign tasks.');
+    }
+    return this.tasksService.reassignTeamTask(id, dto, currentUser, req.user.tenantId);
+  }
+
+  // PM Escalation queue, option (a) - reassign to any Developer, Program
+  // Manager only (Admin stays view-only, same split as everywhere else in
+  // Tasks).
+  @Patch(':id/escalation-reassign')
+  async reassignEscalatedTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReassignEscalatedTaskDto,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_ACT_ON_ESCALATIONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager can reassign an escalated task.');
+    }
+    return this.tasksService.reassignEscalatedTask(id, dto, currentUser, req.user.tenantId);
+  }
+
+  // PM Escalation queue, option (b) - close as Junk, Program Manager only.
+  @Patch(':id/escalation-junk')
+  async closeAsJunk(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_ACT_ON_ESCALATIONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager can close an escalated task as Junk.');
+    }
+    return this.tasksService.closeAsJunk(id, currentUser, req.user.tenantId);
   }
 
   // Dedicated endpoint for the Peer Review checkbox on an already-existing

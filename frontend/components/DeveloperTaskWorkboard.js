@@ -114,6 +114,7 @@ export default function DeveloperTaskWorkboard({
         ),
       },
       { key: 'overdue', label: 'Overdue', count: overdueCount, kind: 'table' },
+      { key: 'defects', label: 'Defects', count: visibleTasks.filter((t) => t.isDefect).length, kind: 'table' },
     ],
     [visibleTasks, rejectedTasks, inbound, outbound, overdueCount],
   );
@@ -135,6 +136,8 @@ export default function DeveloperTaskWorkboard({
       setStatusFilter('All'); setDependencyFilter('Yes'); setDueFrom(''); setDueTo('');
     } else if (card.key === 'overdue') {
       setStatusFilter('All'); setDependencyFilter('All'); setDueFrom(''); setDueTo(yesterdayISO());
+    } else if (card.key === 'defects') {
+      setStatusFilter('All'); setDependencyFilter('All'); setDueFrom(''); setDueTo('');
     }
   };
 
@@ -159,7 +162,8 @@ export default function DeveloperTaskWorkboard({
       }
       if (dueFrom && (!task.dueDate || task.dueDate < dueFrom)) return false;
       if (dueTo && (!task.dueDate || task.dueDate > dueTo)) return false;
-      if (activeCard === 'overdue' && task.status === 'Pass') return false;
+      if (activeCard === 'overdue' && (task.status === 'Pass' || task.status === 'Junk')) return false;
+      if (activeCard === 'defects' && !task.isDefect) return false;
       return true;
     });
   }, [visibleTasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard]);

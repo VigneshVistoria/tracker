@@ -4,11 +4,13 @@ import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
 // Self-scoped to the current user as reviewer (TasksService.
-// findPeerReviewQueue()) - only Developers can be picked as a reviewer,
-// same as ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE on the backend.
-const VIEW_ROLES = ['developer'];
+// findPeerReviewQueue()) - only Developer/Designer/DevOps can be picked
+// as a reviewer, same as ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE on the
+// backend.
+const VIEW_ROLES = DEVELOPER_EQUIVALENT_ROLES;
 
 export default function PeerReviewQueuePage() {
   const router = useRouter();

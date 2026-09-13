@@ -18,13 +18,14 @@ export function yesterdayISO() {
 // and is back with QA, no longer actionable here).
 //
 // "Overdue" is two halves added together: tasks past their own Due Date
-// (excluding 'Pass' - a finished task isn't meaningfully overdue even if
-// it finished after its Due Date), plus dependency tickets this Developer
-// owns to clear (Outbound) whose *parent task's* Due Date has passed -
-// those tickets have no Due Date of their own.
+// (excluding 'Pass'/'Junk' - a finished task isn't meaningfully overdue
+// even if it finished after its Due Date, and a Junk-closed task was
+// never a real issue in the first place), plus dependency tickets this
+// Developer owns to clear (Outbound) whose *parent task's* Due Date has
+// passed - those tickets have no Due Date of their own.
 export function computeDeveloperTaskStats(tasks, outbound, today = todayISO()) {
   const rejectedTasks = tasks.filter((t) => t.status === 'Failed');
-  const overdueTasks = tasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'Pass');
+  const overdueTasks = tasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'Pass' && t.status !== 'Junk');
   const overdueOutbound = outbound.filter((t) => t.parentTaskDueDate && t.parentTaskDueDate < today);
   return {
     rejectedTasks,

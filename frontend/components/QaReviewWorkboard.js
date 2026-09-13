@@ -45,7 +45,7 @@ const CARD_DEFS = [
   { key: 'rejected', label: 'Rejected', statusFilter: 'Failed' },
 ];
 
-export default function QaReviewWorkboard({ storageKey }) {
+export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue' }) {
   const router = useRouter();
 
   const [activeCard, setActiveCard] = useState(null);
@@ -72,7 +72,7 @@ export default function QaReviewWorkboard({ storageKey }) {
 
     let cancelled = false;
     setLoading(true);
-    apiFetch(`/tasks/qa-queue${params.toString() ? `?${params.toString()}` : ''}`)
+    apiFetch(`${endpoint}${params.toString() ? `?${params.toString()}` : ''}`)
       .then((res) => {
         if (cancelled) return;
         setTasks(res.tasks);
@@ -88,7 +88,7 @@ export default function QaReviewWorkboard({ storageKey }) {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter]);
+  }, [statusFilter, endpoint]);
 
   // Distinct list of assignees among the tasks currently loaded, for the
   // Assignee filter - rebuilds whenever the loaded set changes (e.g.

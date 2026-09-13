@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProjectTask } from './project-task.entity';
+import { TaskDefectArtifact } from './task-defect-artifact.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { TasksService } from './tasks.service';
@@ -15,7 +16,7 @@ import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,

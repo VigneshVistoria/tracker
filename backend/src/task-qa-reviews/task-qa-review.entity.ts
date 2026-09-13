@@ -15,7 +15,14 @@ export enum TaskArtifactType {
   TECHNICAL_DOCUMENTATION = 'Technical Documentation',
 }
 
-export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected';
+// 'escalated' - QA Feedback escalated to PM instead of Approve/Reject
+// (TaskQaReviewsService.escalate(), 'qa'-type rounds only - never reached
+// from the Peer Review path). Ends the round the same way
+// 'approved'/'rejected' do (reviewedByUserId/reviewedAt stamped), reusing
+// the same qaComment field reject() uses for its reason - just a
+// different terminal outcome, not a rejection, so it never touches
+// KpiService's rejection-count query (status: 'rejected' only).
+export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated';
 
 // 'qa' (default) is a round any QA teammate can pick up from the tenant-
 // wide QA queue - reviewerUserId/Email stay null. 'peer' is a Peer Review

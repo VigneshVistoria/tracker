@@ -9,7 +9,7 @@ import { ApprovePeerReviewDto } from './dto/approve-peer-review.dto';
 import { RejectPeerReviewDto } from './dto/reject-peer-review.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TasksService } from '../tasks/tasks.service';
-import { UserRole } from '../users/user.entity';
+import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
@@ -65,14 +65,21 @@ export class PeerReviewsService {
     if (!task.peerReviewEnabled) {
       throw new BadRequestException('Peer Review is not enabled for this task.');
     }
+    // Same guard as TaskQaReviewsService.submit() - an escalated task has
+    // no 'pending' round (escalate() is QA-Feedback-only and terminal,
+    // status 'escalated'), so without this check the Assignee could route
+    // straight around the PM Escalation queue via the Peer Review path.
+    if (task.status === 'Escalated') {
+      throw new BadRequestException('This task is escalated to PM and cannot be resubmitted until PM reassigns it.');
+    }
     this.tasksService.assertReadyForQaSubmission(task.estimatedHours, task.dueDate);
 
     if (dto.reviewerUserId === currentUser.id) {
       throw new ForbiddenException('You cannot select yourself as the Peer Reviewer.');
     }
     const reviewer = await this.usersService.findByIdAndTenant(dto.reviewerUserId, tenantId);
-    if (!reviewer || reviewer.role !== UserRole.DEVELOPER) {
-      throw new BadRequestException('Peer Reviewer must be another Developer.');
+    if (!reviewer || !DEVELOPER_EQUIVALENT_ROLES.includes(reviewer.role)) {
+      throw new BadRequestException('Peer Reviewer must be another Developer, Designer, or DevOps.');
     }
 
     const existingPending = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId, status: 'pending' } });
@@ -147,6 +154,11 @@ export class PeerReviewsService {
     }
 
     pending.status = 'approved';
+    // Optional, unlike reject's required comment - only set qaComment if
+    // the reviewer actually left one, same column reject writes to.
+    if (dto.comment) {
+      pending.qaComment = dto.comment;
+    }
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();
@@ -178,7 +190,11 @@ export class PeerReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber, artifactTypes: (dto.artifacts || []).map((a) => a.type) },
+      details: {
+        roundNumber: savedReview.roundNumber,
+        comment: dto.comment,
+        artifactTypes: (dto.artifacts || []).map((a) => a.type),
+      },
     });
 
     return { ...savedReview, qaArtifacts: savedQaArtifacts };

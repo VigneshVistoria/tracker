@@ -7,9 +7,10 @@ import Table from '../../components/ui/Table';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 
-const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'developer'];
+const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
 // neither can edit - matches the backend's canEdit()/MUTATE_ROLES, which
 // is Program Manager only (plus the task's own Assignee, handled
@@ -27,8 +28,14 @@ const STATUS_COLOR = {
   // visually distinguishable at a glance.
   'Peer Review': { bg: 'var(--color-teal-tint)', fg: 'var(--color-teal-dark)' },
   'Re-Peer-Review': { bg: 'var(--color-teal-tint)', fg: 'var(--color-teal-dark)' },
+  // Escalated to PM (TaskQaReviewsService.escalate()) - amber, distinct
+  // from both QA's Feedback plum and Peer Review's teal.
+  Escalated: { bg: 'var(--color-amber-tint)', fg: 'var(--color-amber-dark)' },
   Pass: { bg: 'var(--color-moss-tint)', fg: 'var(--color-moss-dark)' },
   Failed: { bg: 'var(--color-red-tint)', fg: 'var(--color-red-dark)' },
+  // Closed as Junk by PM (TasksService.closeAsJunk()) - neutral slate,
+  // deliberately not red/moss since it's neither a pass nor a fail.
+  Junk: { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' },
 };
 
 function StatusBadge({ status }) {
@@ -154,6 +161,15 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [developers, setDevelopers] = useState([]);
+  // Team Tasks - Assignee edit (Program Manager only). A separate,
+  // unrestricted-by-role list from `developers` above (which is scoped to
+  // DEVELOPER_EQUIVALENT_ROLES for defect/peer-reviewer pickers) - matches
+  // /tasks/backlog's own assignableUsers, since the Assignee here can be
+  // anyone, not just a Developer/Designer/DevOps.
+  const [assignableUsers, setAssignableUsers] = useState([]);
+  const [editingAssignee, setEditingAssignee] = useState(false);
+  const [assigneeSelection, setAssigneeSelection] = useState(null);
+  const [savingAssignee, setSavingAssignee] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -165,13 +181,40 @@ export default function TaskDetailPage() {
   const [ticketOwner, setTicketOwner] = useState(null);
   const [filingTicket, setFilingTicket] = useState(false);
 
+  // Defect scope editing (Project/Module/Phase/Description) - only
+  // Program Manager or the QA who raised the defect may edit these, own
+  // card/save path separate from handleSaveFields (Estimated Hours/Due
+  // Date) below, same reasoning as the Review Routing card having its own
+  // dedicated endpoint/state.
+  const [projects, setProjects] = useState([]);
+  const [defectModules, setDefectModules] = useState([]);
+  const [defectPhases, setDefectPhases] = useState([]);
+  const [defectProject, setDefectProject] = useState(null);
+  const [defectModule, setDefectModule] = useState(null);
+  const [defectPhase, setDefectPhase] = useState(null);
+  const [defectDescription, setDefectDescription] = useState('');
+  const [savingDefectFields, setSavingDefectFields] = useState(false);
+  // Off by default - the page should open into the read-only summary
+  // card, not straight into this form. Cancel/save both drop back out.
+  const [editingDefectFields, setEditingDefectFields] = useState(false);
+
   const [qaReviews, setQaReviews] = useState([]);
+  // Evidence QA attached at Create Defect time - only fetched/shown for
+  // defect tickets.
+  const [defectArtifacts, setDefectArtifacts] = useState([]);
   const [resolution, setResolution] = useState('');
   const [artifacts, setArtifacts] = useState([{ type: '', url: '' }]);
   const [actualHours, setActualHours] = useState('');
   const [submittingQa, setSubmittingQa] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
+  // Optional note on Approve - unlike rejectComment above, never required
+  // and never gated behind a toggle, since there's no decision to
+  // confirm. Shared between the QA Feedback and Peer Review panels the
+  // same way rejectComment is (only one panel is ever visible at once).
+  const [approveComment, setApproveComment] = useState('');
+  const [escalateComment, setEscalateComment] = useState('');
+  const [showEscalateForm, setShowEscalateForm] = useState(false);
   const [qaActionBusy, setQaActionBusy] = useState(false);
   // QA's own evidence artifacts - optional, shared between Approve and
   // Reject since only one of those actions is taken per round.
@@ -211,8 +254,28 @@ export default function TaskDetailPage() {
     }
     setUser(parsed);
     apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map(userToOption))).catch(() => {});
+    apiFetch('/projects').then(setProjects).catch(() => {});
+    if (MANAGE_ROLES.includes(parsed.role)) {
+      apiFetch('/users/assignable').then((rows) => setAssignableUsers(rows.map(userToOption))).catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  useEffect(() => {
+    if (!defectProject) {
+      setDefectModules([]);
+      return;
+    }
+    apiFetch(`/modules?projectId=${defectProject.id}`).then(setDefectModules).catch(() => setDefectModules([]));
+  }, [defectProject]);
+
+  useEffect(() => {
+    if (!defectModule) {
+      setDefectPhases([]);
+      return;
+    }
+    apiFetch(`/phases?moduleId=${defectModule.id}`).then(setDefectPhases).catch(() => setDefectPhases([]));
+  }, [defectModule]);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -228,6 +291,11 @@ export default function TaskDetailPage() {
         setEstimatedHours(t.estimatedHours ?? '');
         setDueDate(t.dueDate ?? '');
         setPeerReviewEnabled(!!t.peerReviewEnabled);
+        setDefectProject({ id: t.projectId, name: t.projectName });
+        setDefectModule({ id: t.moduleId, name: t.moduleName });
+        setDefectPhase({ id: t.phaseId, name: t.phaseName });
+        setDefectDescription(t.description);
+        setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeEmail } : null);
         setTickets(ticketList);
         setQaReviews(reviewList);
       })
@@ -235,6 +303,11 @@ export default function TaskDetailPage() {
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, id]);
+
+  useEffect(() => {
+    if (!task?.isDefect) return;
+    apiFetch(`/tasks/${task.id}/defect-artifacts`).then(setDefectArtifacts).catch(() => setDefectArtifacts([]));
+  }, [task?.id, task?.isDefect]);
 
   if (!user || loading) {
     return (
@@ -263,10 +336,22 @@ export default function TaskDetailPage() {
   // may set/edit only the Peer Review checkbox (via its own dedicated
   // endpoint below), nothing else on this page.
   const canManagePeerReviewFlag = canManage || user.role === 'admin';
+  // Backend mirror: TasksService.canEdit()'s isDefect/createdByUserId
+  // branch - only Program Manager or the QA who raised this defect may
+  // edit its Project/Module/Phase/Description.
+  const canEditDefectScope = task.isDefect && (canManage || task.createdByUserId === user.id);
 
   const latestQaReview = qaReviews[0];
   const hasPendingQaReview = latestQaReview?.status === 'pending';
   const isQa = user.role === 'qa';
+  // Backend mirror: TaskQaReviewsService.approve()/reject()'s isDefect
+  // check - a defect's QA panel is only actionable by whoever raised it,
+  // not any QA teammate.
+  const canActOnQaReview = isQa && (!task.isDefect || task.createdByUserId === user.id);
+  // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
+  // submit()'s isEscalated guard - the Assignee can't resubmit either way
+  // until PM reassigns it from the Escalations queue.
+  const isEscalated = task.status === 'Escalated';
   const isPeerReviewer = latestQaReview?.reviewType === 'peer' && latestQaReview?.reviewerUserId === user.id;
   // QA-only hard block (backend: TasksService.assertNoOpenDependencyTickets(),
   // called from TaskQaReviewsService.submit()) - deliberately not consulted
@@ -332,6 +417,78 @@ export default function TaskDetailPage() {
   // that form's Program-Manager-or-Assignee gating is never touched by
   // this feature. Always allowed regardless of the task's current status
   // - it only affects the next time the task is submitted for review.
+  const handleSaveDefectFields = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!defectProject || !defectModule || !defectPhase || !defectDescription.trim()) {
+      setError('Project, Module, Phase, and Description are all required.');
+      return;
+    }
+    setSavingDefectFields(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          projectId: defectProject.id,
+          moduleId: defectModule.id,
+          phaseId: defectPhase.id,
+          description: defectDescription,
+        }),
+      });
+      setTask(updated);
+      setEditingDefectFields(false);
+      showToast('Defect details updated', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingDefectFields(false);
+    }
+  };
+
+  // Discards any unsaved edits by resetting the fields back to the task's
+  // last-saved values, same values the initial load effect populated them
+  // with - Cancel should never leave stale edits sitting in state for the
+  // next time Edit is clicked.
+  const handleCancelEditDefectFields = () => {
+    setDefectProject({ id: task.projectId, name: task.projectName });
+    setDefectModule({ id: task.moduleId, name: task.moduleName });
+    setDefectPhase({ id: task.phaseId, name: task.phaseName });
+    setDefectDescription(task.description);
+    setEditingDefectFields(false);
+  };
+
+  // Team Tasks - PM edits the Assignee directly (PATCH /tasks/:id/reassign,
+  // its own dedicated endpoint - see TasksService.reassignTeamTask() for
+  // why this is deliberately separate from handleSaveFields/PATCH
+  // /tasks/:id above). Clearing the field (assigneeSelection null) sends
+  // the task back to the Task Backlog; picking someone new moves it into
+  // their My Tasks. Either way, any Peer Review/Escalation/Dependency
+  // Ticket currently in flight on this task is untouched - it keeps
+  // routing to whoever it's already routed to.
+  const handleSaveAssignee = async () => {
+    setError('');
+    setSavingAssignee(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/reassign`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigneeUserId: assigneeSelection ? assigneeSelection.id : null }),
+      });
+      setTask(updated);
+      setAssigneeSelection(updated.assigneeUserId ? { id: updated.assigneeUserId, name: updated.assigneeEmail } : null);
+      setEditingAssignee(false);
+      showToast(updated.assigneeEmail ? `Reassigned to ${updated.assigneeEmail}` : 'Assignee cleared - task returned to Task Backlog', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAssignee(false);
+    }
+  };
+
+  const handleCancelEditAssignee = () => {
+    setAssigneeSelection(task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeEmail } : null);
+    setEditingAssignee(false);
+  };
+
   const handleSavePeerReviewFlag = async () => {
     setError('');
     setSavingPeerReviewFlag(true);
@@ -473,9 +630,10 @@ export default function TaskDetailPage() {
     try {
       await apiFetch(`/tasks/${task.id}/qa-approve`, {
         method: 'PATCH',
-        body: JSON.stringify({ artifacts: payloadArtifacts }),
+        body: JSON.stringify({ comment: approveComment.trim() || undefined, artifacts: payloadArtifacts }),
       });
       showToast('Task approved', 'success');
+      setApproveComment('');
       setQaArtifacts([]);
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
@@ -527,6 +685,38 @@ export default function TaskDetailPage() {
     }
   };
 
+  // QA Feedback escalation to PM - an alternative to Approve/Reject, not
+  // available on the Peer Review panel below (that path has its own,
+  // separate approve/reject and no escalate option at all).
+  const handleQaEscalate = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!escalateComment.trim()) {
+      setError('A comment explaining the escalation is required.');
+      return;
+    }
+    setQaActionBusy(true);
+    try {
+      await apiFetch(`/tasks/${task.id}/qa-escalate`, {
+        method: 'PATCH',
+        body: JSON.stringify({ comment: escalateComment }),
+      });
+      showToast('Task escalated to PM', 'success');
+      setEscalateComment('');
+      setShowEscalateForm(false);
+      const [refreshedTask, refreshedReviews] = await Promise.all([
+        apiFetch(`/tasks/${task.id}`),
+        apiFetch(`/tasks/${task.id}/qa-reviews`),
+      ]);
+      setTask(refreshedTask);
+      setQaReviews(refreshedReviews);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setQaActionBusy(false);
+    }
+  };
+
   // Peer Review's equivalent of handleQaApprove/handleQaReject above -
   // same shape, hits the Peer Review module's own endpoints. The existing
   // QA handlers are untouched.
@@ -543,9 +733,10 @@ export default function TaskDetailPage() {
     try {
       await apiFetch(`/tasks/${task.id}/peer-review-approve`, {
         method: 'PATCH',
-        body: JSON.stringify({ artifacts: payloadArtifacts }),
+        body: JSON.stringify({ comment: approveComment.trim() || undefined, artifacts: payloadArtifacts }),
       });
       showToast('Task approved', 'success');
+      setApproveComment('');
       setQaArtifacts([]);
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
@@ -638,11 +829,118 @@ export default function TaskDetailPage() {
       {error && <div className={styles.error}>{error}</div>}
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        {task.isDefect && (
+          <span className={styles.badge} style={{ background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
+            Defect
+          </span>
+        )}
         <p style={{ marginTop: 0 }}>{task.description}</p>
         <p className={styles.issueMeta}>
           Assignee: {task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
+          {task.isDefect && <> &middot; Raised by {task.createdByEmail}</>}
         </p>
+        {canManage && !editingAssignee && (
+          <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingAssignee(true)}>
+              Edit Assignee
+            </button>
+          </div>
+        )}
+        {canManage && editingAssignee && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <SearchSelectField
+              label="Assignee"
+              id="taskAssignee"
+              value={assigneeSelection}
+              onChange={setAssigneeSelection}
+              options={assignableUsers}
+              placeholder="Leave blank to send back to Task Backlog"
+            />
+            <p className={styles.helpText}>
+              Leave this blank to send the task back to the Task Backlog, unassigned. Past QA/Peer Review history stays
+              attributed to whoever was assigned at the time - reassigning never rewrites it. A Peer Review, Escalation to
+              PM, or Dependency Ticket already in progress keeps going to whoever it's currently routed to.
+            </p>
+            <div className={styles.actions}>
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingAssignee} onClick={handleSaveAssignee}>
+                {savingAssignee ? 'Saving...' : 'Save Assignee'}
+              </button>
+              <button className={styles.buttonSecondary} type="button" disabled={savingAssignee} onClick={handleCancelEditAssignee}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {task.isDefect && defectArtifacts.length > 0 && (
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            <span className={styles.issueMeta}>Evidence: </span>
+            <QaArtifactIcons artifacts={defectArtifacts} />
+          </div>
+        )}
+        {canEditDefectScope && !editingDefectFields && (
+          <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDefectFields(true)}>
+              Edit Defect Details
+            </button>
+          </div>
+        )}
       </div>
+
+      {canEditDefectScope && editingDefectFields && (
+        <form onSubmit={handleSaveDefectFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Edit Defect Details
+          </h2>
+          <div className={styles.fieldGrid3}>
+            <SearchSelectField
+              label="Project"
+              id="defectProject"
+              required
+              value={defectProject}
+              onChange={(v) => { setDefectProject(v); setDefectModule(null); setDefectPhase(null); }}
+              options={projects}
+            />
+            <SearchSelectField
+              label="Module"
+              id="defectModule"
+              required
+              value={defectModule}
+              onChange={(v) => { setDefectModule(v); setDefectPhase(null); }}
+              options={defectModules}
+              disabled={!defectProject}
+              placeholder="Select a Project first"
+            />
+            <SearchSelectField
+              label="Phase"
+              id="defectPhase"
+              required
+              value={defectPhase}
+              onChange={setDefectPhase}
+              options={defectPhases}
+              disabled={!defectModule}
+              placeholder="Select a Module first"
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="defectDescription">Description</label>
+            <textarea
+              className={styles.textarea}
+              id="defectDescription"
+              required
+              value={defectDescription}
+              onChange={(e) => setDefectDescription(e.target.value)}
+            />
+          </div>
+          <div className={styles.actions}>
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={savingDefectFields}>
+              {savingDefectFields ? 'Saving...' : 'Save Defect Details'}
+            </button>
+            <button className={styles.button} type="button" onClick={handleCancelEditDefectFields} disabled={savingDefectFields}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
 
       <form onSubmit={handleSaveFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         <div className={styles.fieldGrid3}>
@@ -796,7 +1094,19 @@ export default function TaskDetailPage() {
         ))}
       </div>
 
-      {isAssignee && !hasPendingQaReview && !task.peerReviewEnabled && openDependencyTickets.length > 0 && (
+      {isAssignee && isEscalated && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Escalated to PM
+          </h2>
+          <p style={{ margin: 0 }}>
+            QA escalated this task instead of approving or rejecting it. It's waiting in the PM Escalation queue -
+            you can&apos;t resubmit it until PM reassigns it.
+          </p>
+        </div>
+      )}
+
+      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length > 0 && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for QA Testing
@@ -808,7 +1118,7 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {isAssignee && !hasPendingQaReview && !task.peerReviewEnabled && openDependencyTickets.length === 0 && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length === 0 && (
         <form onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for QA Testing
@@ -893,7 +1203,7 @@ export default function TaskDetailPage() {
         </form>
       )}
 
-      {isAssignee && !hasPendingQaReview && task.peerReviewEnabled && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && task.peerReviewEnabled && (
         <form onSubmit={handleSubmitForPeerReview} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for Peer Review
@@ -988,7 +1298,7 @@ export default function TaskDetailPage() {
         </form>
       )}
 
-      {isQa && hasPendingQaReview && (
+      {canActOnQaReview && hasPendingQaReview && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             QA Review
@@ -1048,15 +1358,30 @@ export default function TaskDetailPage() {
             </div>
           </div>
 
-          {!showRejectForm && (
-            <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handleQaApprove} disabled={qaActionBusy}>
-                {qaActionBusy ? 'Working...' : 'Approve'}
-              </button>
-              <button className={styles.button} type="button" onClick={() => setShowRejectForm(true)} disabled={qaActionBusy}>
-                Reject
-              </button>
-            </div>
+          {!showRejectForm && !showEscalateForm && (
+            <>
+              <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
+                <label className={styles.label} htmlFor="tdApproveComment">Comment (optional)</label>
+                <textarea
+                  className={styles.textarea}
+                  id="tdApproveComment"
+                  placeholder="Add a note for the record (optional)"
+                  value={approveComment}
+                  onChange={(e) => setApproveComment(e.target.value)}
+                />
+              </div>
+              <div className={styles.actions}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handleQaApprove} disabled={qaActionBusy}>
+                  {qaActionBusy ? 'Working...' : 'Approve'}
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowRejectForm(true)} disabled={qaActionBusy}>
+                  Reject
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowEscalateForm(true)} disabled={qaActionBusy}>
+                  Escalate to PM
+                </button>
+              </div>
+            </>
           )}
 
           {showRejectForm && (
@@ -1077,6 +1402,30 @@ export default function TaskDetailPage() {
                   {qaActionBusy ? 'Working...' : 'Confirm Reject'}
                 </button>
                 <button className={styles.button} type="button" onClick={() => setShowRejectForm(false)} disabled={qaActionBusy}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {showEscalateForm && (
+            <form onSubmit={handleQaEscalate} style={{ marginTop: 'var(--space-3)' }}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="tdEscalateComment">Escalation Comment</label>
+                <textarea
+                  className={styles.textarea}
+                  id="tdEscalateComment"
+                  required
+                  placeholder="Explain why this needs PM's attention instead of a straightforward pass/fail (e.g. resolution is unclear or unrelated to the task)"
+                  value={escalateComment}
+                  onChange={(e) => setEscalateComment(e.target.value)}
+                />
+              </div>
+              <div className={styles.actions}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={qaActionBusy}>
+                  {qaActionBusy ? 'Working...' : 'Confirm Escalation'}
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowEscalateForm(false)} disabled={qaActionBusy}>
                   Cancel
                 </button>
               </div>
@@ -1146,14 +1495,26 @@ export default function TaskDetailPage() {
           </div>
 
           {!showRejectForm && (
-            <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handlePeerReviewApprove} disabled={qaActionBusy}>
-                {qaActionBusy ? 'Working...' : 'Approve'}
-              </button>
-              <button className={styles.button} type="button" onClick={() => setShowRejectForm(true)} disabled={qaActionBusy}>
-                Reject
-              </button>
-            </div>
+            <>
+              <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
+                <label className={styles.label} htmlFor="tdPeerApproveComment">Comment (optional)</label>
+                <textarea
+                  className={styles.textarea}
+                  id="tdPeerApproveComment"
+                  placeholder="Add a note for the record (optional)"
+                  value={approveComment}
+                  onChange={(e) => setApproveComment(e.target.value)}
+                />
+              </div>
+              <div className={styles.actions}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handlePeerReviewApprove} disabled={qaActionBusy}>
+                  {qaActionBusy ? 'Working...' : 'Approve'}
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowRejectForm(true)} disabled={qaActionBusy}>
+                  Reject
+                </button>
+              </div>
+            </>
           )}
 
           {showRejectForm && (

@@ -96,6 +96,17 @@ export class ProjectTask {
   @Column({ default: false })
   peerReviewEnabled: boolean;
 
+  // Set only by TasksService.createDefect() (QA-only, see TasksController)
+  // - a defect skips the Task Backlog entirely (created with an assignee
+  // already set) and its QA review round routes back to createdByUserId
+  // specifically (the QA who raised it) instead of the shared QA queue -
+  // see TaskQaReviewsService.approve()/reject() and TasksService.
+  // findDefectQueue()/findQaQueue(). No separate "raised by" column - for
+  // a defect the creator IS the raiser, so createdByUserId already means
+  // that.
+  @Column({ default: false })
+  isDefect: boolean;
+
   @Column({ nullable: true })
   createdByUserId: number;
 

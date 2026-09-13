@@ -4,8 +4,9 @@ import AppShell from '../../components/AppShell';
 import DeveloperTaskWorkboard from '../../components/DeveloperTaskWorkboard';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
-const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'developer'];
+const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
 
 // Remembers which stat card (if any) is expanded below the table, the
 // same simple localStorage pattern lib/theme.js already uses for the
@@ -35,7 +36,7 @@ export default function MyTasksPage() {
     }
     setUser(parsed);
     setLoading(true);
-    const isDeveloper = parsed.role === 'developer';
+    const isDeveloper = DEVELOPER_EQUIVALENT_ROLES.includes(parsed.role);
     Promise.all([
       apiFetch('/tasks/mine'),
       isDeveloper ? apiFetch('/task-dependency-tickets/mine') : Promise.resolve([]),
@@ -75,7 +76,7 @@ export default function MyTasksPage() {
           inbound={inbound}
           loading={loading}
           storageKey={ACTIVE_CARD_STORAGE_KEY}
-          showCards={user.role === 'developer'}
+          showCards={DEVELOPER_EQUIVALENT_ROLES.includes(user.role)}
         />
       )}
     </AppShell>
