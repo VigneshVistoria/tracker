@@ -12,6 +12,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { sanitizeRichText } from '../common/sanitize-rich-text';
 
 export type PeerReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
 export type PeerReviewWithQaArtifacts = TaskQaReview & { qaArtifacts: TaskQaReviewQaArtifact[] };
@@ -94,7 +95,7 @@ export class PeerReviewsService {
         tenantId,
         taskId,
         roundNumber: priorRounds + 1,
-        resolution: dto.resolution,
+        resolution: sanitizeRichText(dto.resolution),
         submittedByUserId: currentUser.id,
         submittedByEmail: currentUser.email,
         status: 'pending',
@@ -157,7 +158,7 @@ export class PeerReviewsService {
     // Optional, unlike reject's required comment - only set qaComment if
     // the reviewer actually left one, same column reject writes to.
     if (dto.comment) {
-      pending.qaComment = dto.comment;
+      pending.qaComment = sanitizeRichText(dto.comment);
     }
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
@@ -218,7 +219,7 @@ export class PeerReviewsService {
     }
 
     pending.status = 'rejected';
-    pending.qaComment = dto.comment;
+    pending.qaComment = sanitizeRichText(dto.comment);
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();

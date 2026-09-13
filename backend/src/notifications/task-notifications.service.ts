@@ -3,6 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { MailService } from '../mail/mail.service';
 import { UsersService } from '../users/users.service';
 import { ProjectTask } from '../tasks/project-task.entity';
+import { richTextToPlainText } from '../common/sanitize-rich-text';
 
 // First notification wired up for the Tasks module - same EventEmitter2 +
 // MailService.sendToAssignee pattern IssueNotificationsService already
@@ -40,11 +41,13 @@ export class TaskNotificationsService {
       return;
     }
 
+    // task.title is plain text already (unlike description, which is rich
+    // text/HTML) - comment still needs the plain-text conversion.
     const subject = `Task #${task.id} escalated to you for review`;
     const html =
-      `<p><strong>${escapeHtml(escalatedByEmail)}</strong> escalated task <strong>#${task.id} - ${escapeHtml(task.description)}</strong>` +
+      `<p><strong>${escapeHtml(escalatedByEmail)}</strong> escalated task <strong>#${task.id} - ${escapeHtml(task.title)}</strong>` +
       ` in project <strong>${escapeHtml(task.projectName)}</strong> instead of approving or rejecting it.</p>` +
-      `<p><strong>Reason:</strong> ${escapeHtml(comment)}</p>` +
+      `<p><strong>Reason:</strong> ${escapeHtml(richTextToPlainText(comment))}</p>` +
       `<p>Reassign it to a developer or close it as Junk from the Escalations queue.</p>`;
 
     await Promise.all(

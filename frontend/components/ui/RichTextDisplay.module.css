@@ -1,0 +1,19 @@
+.content p {
+  margin: 0 0 var(--space-2);
+}
+.content p:last-child {
+  margin-bottom: 0;
+}
+.content h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: var(--space-2) 0 var(--space-1);
+}
+.content h2:first-child {
+  margin-top: 0;
+}
+.content ul,
+.content ol {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-5);
+}

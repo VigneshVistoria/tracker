@@ -14,6 +14,7 @@ import { TasksService } from '../tasks/tasks.service';
 import { UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { sanitizeRichText } from '../common/sanitize-rich-text';
 
 export type TaskQaReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
 export type TaskQaReviewWithQaArtifacts = TaskQaReview & { qaArtifacts: TaskQaReviewQaArtifact[] };
@@ -144,7 +145,7 @@ export class TaskQaReviewsService {
         tenantId,
         taskId,
         roundNumber: priorRounds + 1,
-        resolution: dto.resolution,
+        resolution: sanitizeRichText(dto.resolution),
         submittedByUserId: currentUser.id,
         submittedByEmail: currentUser.email,
         status: 'pending',
@@ -218,7 +219,7 @@ export class TaskQaReviewsService {
     // Optional, unlike reject's required comment - only set qaComment if
     // QA actually left one, same column reject/escalate write to.
     if (dto.comment) {
-      pending.qaComment = dto.comment;
+      pending.qaComment = sanitizeRichText(dto.comment);
     }
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
@@ -283,7 +284,7 @@ export class TaskQaReviewsService {
     const pending = await this.findPendingRound(taskId, tenantId);
 
     pending.status = 'rejected';
-    pending.qaComment = dto.comment;
+    pending.qaComment = sanitizeRichText(dto.comment);
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();
@@ -353,7 +354,7 @@ export class TaskQaReviewsService {
     }
 
     pending.status = 'escalated';
-    pending.qaComment = dto.comment;
+    pending.qaComment = sanitizeRichText(dto.comment);
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();

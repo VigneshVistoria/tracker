@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { TaskStatusConfigService } from '../task-status-config/task-status-config.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { sanitizeRichText } from '../common/sanitize-rich-text';
 
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
@@ -91,7 +92,7 @@ const MUTATE_ROLES: UserRole[] = [UserRole.PROGRAM_MANAGER];
 // Program Manager, matching who's allowed to create a task in the first
 // place - the Assignee's own edit rights (estimatedHours/dueDate) are
 // handled separately in update() below.
-const BACKLOG_FIELDS: Array<keyof UpdateTaskDto> = ['projectId', 'moduleId', 'phaseId', 'description'];
+const BACKLOG_FIELDS: Array<keyof UpdateTaskDto> = ['projectId', 'moduleId', 'phaseId', 'title', 'description'];
 
 // Status while a QA review round is pending (Stage 4/5) - the task shows
 // up in the QA queue (findQaQueue() below) under either value, whether
@@ -592,7 +593,8 @@ export class TasksService {
       moduleName: module.name,
       phaseId: phase.id,
       phaseName: phase.name,
-      description: dto.description,
+      title: dto.title.trim(),
+      description: sanitizeRichText(dto.description),
       assigneeUserId: null,
       assigneeEmail: null,
       estimatedHours: null,
@@ -648,7 +650,8 @@ export class TasksService {
         moduleName: module.name,
         phaseId: phase.id,
         phaseName: phase.name,
-        description: dto.description,
+        title: dto.title.trim(),
+        description: sanitizeRichText(dto.description),
         assigneeUserId: assignee.id,
         assigneeEmail: assignee.email,
         estimatedHours: null,
@@ -952,7 +955,8 @@ export class TasksService {
       task.phaseName = phase.name;
     }
 
-    if (dto.description !== undefined) task.description = dto.description;
+    if (dto.title !== undefined) task.title = dto.title.trim();
+    if (dto.description !== undefined) task.description = sanitizeRichText(dto.description);
     if (dto.estimatedHours !== undefined) task.estimatedHours = dto.estimatedHours;
     if (dto.dueDate !== undefined) task.dueDate = dto.dueDate;
 
