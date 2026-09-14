@@ -25,6 +25,11 @@ export default function Table({
   // that caller's own column render(), not here, so Table doesn't need to
   // know anything about expand/collapse state).
   expandedContent,
+  // Optional, additive - merged onto the outer wrap div's className.
+  // undefined for every existing caller except Team Tasks' full screen
+  // mode, which uses it to flex-grow the table to fill leftover vertical
+  // space instead of leaving it blank.
+  className,
 }) {
   const [internalSort, setInternalSort] = useState({ key: null, dir: 'asc' });
   const sortKey = controlledSortKey !== undefined ? controlledSortKey : internalSort.key;
@@ -57,7 +62,7 @@ export default function Table({
   }, [rows, sortKey, sortDir, columns, onSortChange]);
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap} ${className || ''}`}>
       <table className={`${styles.table} ${dense ? styles.dense : ''}`}>
         <thead>
           <tr>

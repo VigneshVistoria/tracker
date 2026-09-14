@@ -403,6 +403,15 @@
   margin: 0 auto;
 }
 
+/* Full screen mode (AppShell's fullScreen prop, currently only Team
+   Tasks) - the max-width/centering above exists for the normal sidebar+
+   topbar layout, where it keeps line lengths readable; with the sidebar
+   gone and the whole point being to fill a projected/shared screen, that
+   same cap instead reads as wasted space on either side. */
+.contentInnerFullScreen {
+  max-width: none;
+}
+
 /* ---------- Mobile drawer ---------- */
 .overlay {
   display: none;

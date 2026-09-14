@@ -51,15 +51,25 @@ export interface TeamTaskFilters {
   // 'Yes' | 'No' | undefined ('All') - same three-state shape as the
   // Dependency filter on My Tasks (DeveloperTaskWorkboard.js).
   dependency?: string;
+  // 'Yes' | 'No' | undefined ('All') - same three-state shape as
+  // `dependency` above, but a plain column so it goes straight into the
+  // `where` clause instead of needing dependency's JS post-filter.
+  isDefect?: string;
   dueFrom?: string;
   dueTo?: string;
   showCompleted?: boolean;
+  // Workload view only (TeamTaskWorkboard.js) - returns every matching
+  // task in one response instead of one page, since a weekly assignee×week
+  // grid needs the full filtered set to bucket correctly, not just
+  // whatever page happens to be current. Table/Tiles never set this, so
+  // their normal pagination is unaffected.
+  all?: boolean;
 }
 
 export interface TeamTasksResult {
   tasks: ProjectTaskWithComputed[];
   total: number;
-  statCounts: { total: number; rejected: number; openDependency: number; overdue: number };
+  statCounts: { total: number; rejected: number; openDependency: number; overdue: number; defects: number };
   assignees: Array<{ id: number; email: string; fullName: string | null }>;
   phases: Array<{ id: number; name: string }>;
 }
@@ -490,6 +500,11 @@ export class TasksService {
     if (filters.phaseId) {
       where.phaseId = filters.phaseId;
     }
+    if (filters.isDefect === 'Yes') {
+      where.isDefect = true;
+    } else if (filters.isDefect === 'No') {
+      where.isDefect = false;
+    }
     if (filters.dueFrom && filters.dueTo) {
       where.dueDate = Between(filters.dueFrom, filters.dueTo);
     } else if (filters.dueFrom) {
@@ -510,7 +525,7 @@ export class TasksService {
 
     const total = filtered.length;
     const start = (page - 1) * pageSize;
-    const pageTasks = filtered.slice(start, start + pageSize);
+    const pageTasks = filters.all ? filtered : filtered.slice(start, start + pageSize);
 
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     const withComputed = await Promise.all(pageTasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
@@ -533,6 +548,7 @@ export class TasksService {
       rejected: cardScopeTasks.filter((t) => t.status === 'Failed').length,
       openDependency: cardScopeTasks.filter((t) => cardOpenDependencyIds.has(t.id)).length,
       overdue: cardScopeTasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'Pass' && t.status !== 'Junk').length,
+      defects: cardScopeTasks.filter((t) => t.isDefect).length,
     };
 
     const assignees = await this.findTeamAssignees(tenantId);

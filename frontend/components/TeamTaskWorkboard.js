@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Flag, Activity,
-  ChevronDown, ChevronUp, ChevronRight, ChevronLeft, List, LayoutGrid,
+  ChevronDown, ChevronRight, ChevronLeft, List, LayoutGrid, X, Users,
 } from 'lucide-react';
 import Table from './ui/Table';
 import Badge from './ui/Badge';
@@ -11,8 +11,8 @@ import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
 import {
-  LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, visibleStatusTabs, COMPLETED_STATUSES,
-  priorityRank, priorityTone, priorityLabel, statusBadgeStyle,
+  buildRowTintClass, buildRowRailClass, visibleStatusTabs,
+  priorityRank, priorityTone, priorityLabel, priorityStripeColor, statusBadgeStyle,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
@@ -20,8 +20,10 @@ import { apiFetch } from '../lib/api';
 // Team Tasks - every team member's assigned tasks in one place, for
 // Admin/Executive/Program Manager. Modeled directly on
 // DeveloperTaskWorkboard (My Tasks): same icon-header/sortable table
-// (components/ui/Table), same row-tint-by-status + legend, same "hide
-// completed by default" toggle, same stat-cards-as-filter-presets pattern.
+// (components/ui/Table), same row-tint-by-status, same stat-cards-as-
+// filter-presets pattern. Unlike My Tasks, completed tasks (Pass/Junk/
+// Released) are always hidden here - confirmed with the user 2026-09 when
+// the "Show completed tasks" toggle was removed, no per-user override.
 //
 // The one structural difference: My Tasks fetches its (necessarily small,
 // one-person) task list once and does all filtering/sorting/"pagination"
@@ -44,14 +46,57 @@ const DEFAULT_PAGE_SIZE = 50;
 const ROW_TINT_CLASS = buildRowTintClass(styles);
 const ROW_RAIL_CLASS = buildRowRailClass(styles);
 
+// Workload view - calendar weeks (Monday-Sunday), 6 shown at a time.
+// Confirmed with the user 2026-09.
+const WORKLOAD_WEEK_COUNT = 6;
+
+// Local-date-safe formatting (no UTC conversion, unlike toISOString) - see
+// lib/formatDate.js's identical reasoning for why this matters for a
+// date-only value like ProjectTask.dueDate.
+function toDateOnlyString(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function startOfWeek(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diffToMonday);
+  return d;
+}
+
+// The WORKLOAD_WEEK_COUNT calendar weeks starting at weekOffset weeks from
+// this week's Monday - weekOffset shifts the whole window backward/forward
+// via the Workload view's "prev/next" buttons.
+function buildWorkloadWeeks(weekOffset) {
+  const base = startOfWeek(new Date());
+  base.setDate(base.getDate() + weekOffset * 7);
+  const weeks = [];
+  for (let i = 0; i < WORKLOAD_WEEK_COUNT; i++) {
+    const start = new Date(base);
+    start.setDate(start.getDate() + i * 7);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    weeks.push({ key: toDateOnlyString(start), start: toDateOnlyString(start), end: toDateOnlyString(end) });
+  }
+  return weeks;
+}
+
 // Keys match TeamTasksResult.statCounts exactly (TasksService.findTeam) -
 // 'total' rather than 'all', since it's a count field there, not a filter
-// preset key.
+// preset key. `accent` is only set for the two that indicate a problem
+// (Rejected/Overdue) - Team Tasks/Open Dependency are neutral counts, no
+// accent color.
 const CARD_DEFS = [
   { key: 'total', label: 'Team Tasks' },
-  { key: 'rejected', label: 'Rejected' },
+  { key: 'rejected', label: 'Rejected', accent: 'danger' },
   { key: 'openDependency', label: 'Open Dependency' },
-  { key: 'overdue', label: 'Overdue' },
+  { key: 'overdue', label: 'Overdue', accent: 'warning' },
+  { key: 'defects', label: 'Defects' },
 ];
 
 function ProgressBar({ percent }) {
@@ -139,39 +184,87 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
   );
 }
 
-export default function TeamTaskWorkboard({ storageKey }) {
+// Workload view chip - status fill (same statusBadgeStyle used by the
+// Status column/badge elsewhere on this page) + a colored left-edge stripe
+// for Priority. Opens the task the same way every other click-to-open spot
+// on this page does (new tab).
+function WorkloadChip({ task }) {
+  return (
+    <button
+      type="button"
+      className={styles.workloadChip}
+      style={{ ...statusBadgeStyle(task.status), borderLeftColor: priorityStripeColor(task.priority) }}
+      title={`#${task.id} ${task.title}`}
+      onClick={() => window.open(`/tasks/${task.id}`, '_blank', 'noopener,noreferrer')}
+    >
+      #{task.id}
+    </button>
+  );
+}
+
+// One assignee×week (or Overdue/Later/No Due Date) cell - fixed height
+// with its own internal scrollbar once it has more chips than fit, so
+// every cell in the grid stays the same height regardless of how many
+// tasks are in it (confirmed with the user 2026-09, over a "+N more"
+// popover alternative).
+function WorkloadCell({ tasks }) {
+  return (
+    <div className={styles.workloadCell}>
+      <div className={styles.workloadCellBody}>
+        {tasks.length === 0 ? (
+          <span className={styles.workloadCellEmpty}>—</span>
+        ) : (
+          tasks.map((t) => <WorkloadChip key={t.id} task={t} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   const [activeCard, setActiveCard] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState('All');
   const [phaseFilter, setPhaseFilter] = useState('All');
   const [dependencyFilter, setDependencyFilter] = useState('All');
+  // 'All' | 'Yes' | 'No' - only ever set to 'Yes' today, by clicking the
+  // Defects stat card, same as Rejected/Overdue reusing statusFilter/dueTo
+  // rather than exposing this as its own dropdown.
+  const [defectFilter, setDefectFilter] = useState('All');
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
-  const [showCompleted, setShowCompleted] = useState(false);
   const [viewMode, setViewMode] = useState('table');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [expandedTaskIds, setExpandedTaskIds] = useState(() => new Set());
+  // Workload view's 6-week window, in whole-week steps from this week -
+  // shifted by the view's own prev/next buttons, independent of page/
+  // pageSize which Table/Tiles use instead.
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const [tasks, setTasks] = useState([]);
   const [total, setTotal] = useState(0);
-  const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0 });
+  const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0, defects: 0 });
   const [assignees, setAssignees] = useState([]);
   const [phases, setPhases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Workload view's own data - every matching task (all=true, no
+  // pagination), fetched separately from Table/Tiles' paginated `tasks`
+  // above and only while that view is active, so switching to/from
+  // Workload never adds a wasted request to the other two views.
+  const [workloadTasks, setWorkloadTasks] = useState([]);
+  const [workloadLoading, setWorkloadLoading] = useState(false);
 
-  const showCompletedStorageKey = `${storageKey}ShowCompleted`;
   const viewModeStorageKey = `${storageKey}ViewMode`;
   const pageSizeStorageKey = `${storageKey}PageSize`;
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) setActiveCard(stored);
-    setShowCompleted(localStorage.getItem(showCompletedStorageKey) === 'true');
     const storedViewMode = localStorage.getItem(viewModeStorageKey);
-    if (storedViewMode === 'tile' || storedViewMode === 'table') setViewMode(storedViewMode);
+    if (storedViewMode === 'tile' || storedViewMode === 'table' || storedViewMode === 'workload') setViewMode(storedViewMode);
     const storedPageSize = Number(localStorage.getItem(pageSizeStorageKey));
     if (PAGE_SIZE_OPTIONS.includes(storedPageSize)) setPageSize(storedPageSize);
     // storageKey is a static prop per page, not expected to change at runtime.
@@ -190,10 +283,10 @@ export default function TeamTaskWorkboard({ storageKey }) {
     if (statusFilter !== 'All') params.set('status', statusFilter);
     if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
     if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
+    if (defectFilter !== 'All') params.set('isDefect', defectFilter);
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
-    if (showCompleted) params.set('showCompleted', 'true');
 
     let cancelled = false;
     setLoading(true);
@@ -216,7 +309,42 @@ export default function TeamTaskWorkboard({ storageKey }) {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, phaseFilter, dependencyFilter, assigneeFilter, dueFrom, dueTo, showCompleted, page, pageSize]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, page, pageSize]);
+
+  // Workload view's own fetch - same filters as above, minus page/pageSize
+  // (all=true instead, see TasksService.findTeam()) since the weekly grid
+  // needs every matching task to bucket correctly. Only runs while
+  // Workload is the active view.
+  useEffect(() => {
+    if (viewMode !== 'workload') return;
+    const params = new URLSearchParams();
+    params.set('all', 'true');
+    if (statusFilter !== 'All') params.set('status', statusFilter);
+    if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
+    if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
+    if (defectFilter !== 'All') params.set('isDefect', defectFilter);
+    if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
+    if (dueFrom) params.set('dueFrom', dueFrom);
+    if (dueTo) params.set('dueTo', dueTo);
+
+    let cancelled = false;
+    setWorkloadLoading(true);
+    apiFetch(`/tasks/team?${params.toString()}`)
+      .then((res) => {
+        if (cancelled) return;
+        setWorkloadTasks(res.tasks);
+        setError('');
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setWorkloadLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo]);
 
   // Any filter (or page size) change invalidates the current page -
   // jumping back to page 1 avoids landing on a now out-of-range page
@@ -224,12 +352,7 @@ export default function TeamTaskWorkboard({ storageKey }) {
   useEffect(() => {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, phaseFilter, dependencyFilter, assigneeFilter, dueFrom, dueTo, showCompleted, pageSize]);
-
-  const handleShowCompletedChange = (checked) => {
-    setShowCompleted(checked);
-    localStorage.setItem(showCompletedStorageKey, String(checked));
-  };
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, pageSize]);
 
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
@@ -250,21 +373,11 @@ export default function TeamTaskWorkboard({ storageKey }) {
     });
   };
 
-  const visibleTabs = visibleStatusTabs(showCompleted);
-  // Same guard My Tasks applies: don't let a selected status (from a tab
-  // or a stat card) stay selected once completed tasks are hidden, or the
-  // table gets stuck empty with no visible way back. Checks every status
-  // in the current filter (it may be several, comma-joined, from a
-  // grouped tab) rather than comparing against a tab key directly, since
-  // a stat card can also set a single raw status that doesn't match any
-  // tab's exact joined string.
-  useEffect(() => {
-    if (!showCompleted && statusFilter !== 'All') {
-      const parts = statusFilter.split(',');
-      if (parts.every((s) => COMPLETED_STATUSES.includes(s))) setStatusFilter('All');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCompleted]);
+  // Completed tasks (Pass/Junk/Released) are always hidden on Team Tasks
+  // now - confirmed with the user 2026-09 when the "Show completed tasks"
+  // toggle was removed - so the tabs that are entirely completed statuses
+  // (Pass, Released - No Showstoppers) never show here.
+  const visibleTabs = visibleStatusTabs(false);
 
   const cards = useMemo(
     () => CARD_DEFS.map((c) => ({ ...c, count: statCounts[c.key] ?? 0, kind: 'table' })),
@@ -276,6 +389,46 @@ export default function TeamTaskWorkboard({ storageKey }) {
   // the raw email, falling back to email for anyone with no Full Name set.
   const assigneeLabelById = useMemo(() => new Map(assignees.map((a) => [a.id, a.fullName || a.email])), [assignees]);
 
+  const workloadWeeks = useMemo(() => buildWorkloadWeeks(weekOffset), [weekOffset]);
+
+  // Groups workloadTasks by assignee, then buckets each assignee's tasks
+  // into Overdue / one column per visible week / Later / No Due Date - see
+  // buildWorkloadWeeks above for the week boundaries. Rows are only built
+  // for assignees who actually appear in the current (filtered) task set,
+  // not TasksService.findTeamAssignees()'s full tenant-wide, all-time
+  // roster - otherwise the grid would show rows for people with zero open
+  // work right now.
+  const workloadRows = useMemo(() => {
+    const byAssignee = new Map();
+    for (const t of workloadTasks) {
+      if (t.assigneeUserId == null) continue;
+      if (!byAssignee.has(t.assigneeUserId)) {
+        byAssignee.set(t.assigneeUserId, {
+          id: t.assigneeUserId,
+          label: assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || `#${t.assigneeUserId}`,
+          total: 0,
+          overdue: [],
+          weekBuckets: workloadWeeks.map(() => []),
+          later: [],
+          noDueDate: [],
+        });
+      }
+      const row = byAssignee.get(t.assigneeUserId);
+      row.total += 1;
+      if (!t.dueDate) {
+        row.noDueDate.push(t);
+      } else if (t.dueDate < workloadWeeks[0].start) {
+        row.overdue.push(t);
+      } else if (t.dueDate > workloadWeeks[workloadWeeks.length - 1].end) {
+        row.later.push(t);
+      } else {
+        const weekIndex = workloadWeeks.findIndex((w) => t.dueDate >= w.start && t.dueDate <= w.end);
+        row.weekBuckets[weekIndex].push(t);
+      }
+    }
+    return Array.from(byAssignee.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [workloadTasks, workloadWeeks, assigneeLabelById]);
+
   const handleCardClick = (card) => {
     setActiveCard((prev) => {
       const next = prev === card.key ? null : card.key;
@@ -283,22 +436,16 @@ export default function TeamTaskWorkboard({ storageKey }) {
       return next;
     });
     if (card.key === 'total') {
-      setStatusFilter('All'); setDependencyFilter('All'); setDueFrom(''); setDueTo('');
+      setStatusFilter('All'); setDependencyFilter('All'); setDefectFilter('All'); setDueFrom(''); setDueTo('');
     } else if (card.key === 'rejected') {
-      setStatusFilter('Failed'); setDependencyFilter('All'); setDueFrom(''); setDueTo('');
+      setStatusFilter('Failed'); setDependencyFilter('All'); setDefectFilter('All'); setDueFrom(''); setDueTo('');
     } else if (card.key === 'openDependency') {
-      setStatusFilter('All'); setDependencyFilter('Yes'); setDueFrom(''); setDueTo('');
+      setStatusFilter('All'); setDependencyFilter('Yes'); setDefectFilter('All'); setDueFrom(''); setDueTo('');
     } else if (card.key === 'overdue') {
-      setStatusFilter('All'); setDependencyFilter('All'); setDueTo(yesterdayISO());
+      setStatusFilter('All'); setDependencyFilter('All'); setDefectFilter('All'); setDueTo(yesterdayISO());
+    } else if (card.key === 'defects') {
+      setStatusFilter('All'); setDependencyFilter('All'); setDefectFilter('Yes'); setDueFrom(''); setDueTo('');
     }
-  };
-
-  const handleGenericToggle = () => {
-    setActiveCard((prev) => {
-      const next = prev ? null : 'total';
-      localStorage.setItem(storageKey, next || '');
-      return next;
-    });
   };
 
   const columns = useMemo(
@@ -416,58 +563,36 @@ export default function TeamTaskWorkboard({ storageKey }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <>
-      <div className={dashboardStyles.statsGrid}>
+    <div className={fullScreen ? styles.fullScreenPage : undefined}>
+      <div className={dashboardStyles.statsStrip}>
         {cards.map((card) => (
           <button
             key={card.key}
             type="button"
-            className={dashboardStyles.statCardButton}
+            className={`${dashboardStyles.statStripSegment} ${activeCard === card.key ? dashboardStyles.expanded : ''}`}
             aria-expanded={activeCard === card.key}
             onClick={() => handleCardClick(card)}
           >
             <div
-              className={`${dashboardStyles.statCard} ${dashboardStyles.statCardCompact} ${activeCard === card.key ? dashboardStyles.expanded : ''}`}
+              className={`${dashboardStyles.statStripValue} ${
+                card.accent === 'danger'
+                  ? dashboardStyles.accentDanger
+                  : card.accent === 'warning'
+                    ? dashboardStyles.accentWarning
+                    : ''
+              }`}
             >
-              <div className={`${dashboardStyles.statValue} ${dashboardStyles.statValueCompact}`}>{loading ? '–' : card.count}</div>
-              <div className={`${dashboardStyles.statLabel} ${dashboardStyles.statLabelCompact}`}>{card.label}</div>
+              {loading ? '–' : card.count}
             </div>
+            <div className={dashboardStyles.statStripLabel}>{card.label}</div>
           </button>
         ))}
       </div>
 
-      <label className={styles.checkboxRow}>
-        <input
-          type="checkbox"
-          checked={showCompleted}
-          onChange={(e) => handleShowCompletedChange(e.target.checked)}
-        />
-        Show completed tasks (Pass / Released)
-      </label>
-
-      <button
-        type="button"
-        className={`${styles.button} ${styles.buttonSecondary}`}
-        onClick={handleGenericToggle}
-        style={{ marginBottom: 'var(--space-4)' }}
-      >
-        {activeCard ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
-        {activeCard ? 'Hide detailed table' : 'Show detailed table'}
-      </button>
-
       {error && <div className={styles.error}>{error}</div>}
 
       {activeCard && activeCardDef && (
-        <>
-          <div className={styles.statusLegend}>
-            {LEGEND_ITEMS.map((item) => (
-              <span key={item.label} className={styles.statusLegendItem}>
-                <span className={styles.statusLegendDot} style={{ background: item.swatch }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
-
+        <div className={fullScreen ? styles.fullScreenSection : undefined}>
           <div className={styles.statusTabs}>
             {visibleTabs.map((tab) => {
               const tabValue = tab.key === 'All' ? 'All' : tab.statuses.join(',');
@@ -484,22 +609,28 @@ export default function TeamTaskWorkboard({ storageKey }) {
             })}
           </div>
 
-          <div className={styles.filterBar}>
-            <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="teamAssigneeFilter">Assignee</label>
-              <select
-                id="teamAssigneeFilter"
-                className={styles.filterSelect}
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
+          <label className={styles.filterLabel}>Assignee</label>
+          <div className={styles.statusTabs}>
+            <button
+              type="button"
+              className={`${styles.statusTab} ${assigneeFilter === 'All' ? styles.statusTabActive : ''}`}
+              onClick={() => setAssigneeFilter('All')}
+            >
+              All
+            </button>
+            {assignees.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className={`${styles.statusTab} ${assigneeFilter === String(a.id) ? styles.statusTabActive : ''}`}
+                onClick={() => setAssigneeFilter(String(a.id))}
               >
-                <option value="All">All</option>
-                {assignees.map((a) => (
-                  <option key={a.id} value={a.id}>{a.fullName || a.email}</option>
-                ))}
-              </select>
-            </div>
+                {a.fullName || a.email}
+              </button>
+            ))}
+          </div>
 
+          <div className={styles.filterBar}>
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="teamPhaseFilter">Project Phase</label>
               <select
@@ -531,24 +662,50 @@ export default function TeamTaskWorkboard({ storageKey }) {
 
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="teamDueFrom">Due from</label>
-              <input
-                id="teamDueFrom"
-                type="date"
-                className={styles.filterSelect}
-                value={dueFrom}
-                onChange={(e) => setDueFrom(e.target.value)}
-              />
+              <div className={styles.dateFieldWrap}>
+                <input
+                  id="teamDueFrom"
+                  type="date"
+                  className={styles.filterSelect}
+                  style={dueFrom ? { paddingRight: '2.5rem' } : undefined}
+                  value={dueFrom}
+                  onChange={(e) => setDueFrom(e.target.value)}
+                />
+                {dueFrom && (
+                  <button
+                    type="button"
+                    className={styles.dateFieldClear}
+                    aria-label="Clear due from"
+                    onClick={() => setDueFrom('')}
+                  >
+                    <X size={13} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="teamDueTo">Due to</label>
-              <input
-                id="teamDueTo"
-                type="date"
-                className={styles.filterSelect}
-                value={dueTo}
-                onChange={(e) => setDueTo(e.target.value)}
-              />
+              <div className={styles.dateFieldWrap}>
+                <input
+                  id="teamDueTo"
+                  type="date"
+                  className={styles.filterSelect}
+                  style={dueTo ? { paddingRight: '2.5rem' } : undefined}
+                  value={dueTo}
+                  onChange={(e) => setDueTo(e.target.value)}
+                />
+                {dueTo && (
+                  <button
+                    type="button"
+                    className={styles.dateFieldClear}
+                    aria-label="Clear due to"
+                    onClick={() => setDueTo('')}
+                  >
+                    <X size={13} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className={styles.filterGroup} style={{ marginLeft: 'auto' }}>
@@ -568,12 +725,85 @@ export default function TeamTaskWorkboard({ storageKey }) {
                 >
                   <LayoutGrid size={14} aria-hidden="true" /> Tiles
                 </button>
+                <button
+                  type="button"
+                  className={`${styles.viewToggleButton} ${viewMode === 'workload' ? styles.viewToggleActive : ''}`}
+                  onClick={() => handleViewModeChange('workload')}
+                >
+                  <Users size={14} aria-hidden="true" /> Workload
+                </button>
               </div>
             </div>
           </div>
 
-          {viewMode === 'tile' ? (
-            <div className={styles.taskTileGrid}>
+          {viewMode === 'workload' ? (
+            <>
+              <div className={styles.workloadNav}>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => setWeekOffset((w) => w - 1)}
+                >
+                  <ChevronLeft size={16} aria-hidden="true" />
+                  Previous week
+                </button>
+                {weekOffset !== 0 && (
+                  <button
+                    type="button"
+                    className={`${styles.button} ${styles.buttonSecondary}`}
+                    onClick={() => setWeekOffset(0)}
+                  >
+                    This week
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonSecondary}`}
+                  onClick={() => setWeekOffset((w) => w + 1)}
+                >
+                  Next week
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className={`${styles.workloadWrap} ${fullScreen ? styles.fullScreenTableWrap : ''}`}>
+                {workloadRows.length === 0 ? (
+                  <div className={styles.card}>{workloadLoading ? 'Loading...' : 'No tasks match these filters.'}</div>
+                ) : (
+                  <div
+                    className={styles.workloadGrid}
+                    style={{ gridTemplateColumns: `220px repeat(${workloadWeeks.length + 3}, minmax(140px, 1fr))` }}
+                  >
+                    <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>Assignee</div>
+                    <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>Overdue</div>
+                    {workloadWeeks.map((w) => (
+                      <div key={w.key} className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>
+                        {formatDate(w.start)} – {formatDate(w.end)}
+                      </div>
+                    ))}
+                    <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>Later</div>
+                    <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>No Due Date</div>
+
+                    {workloadRows.map((row) => (
+                      <Fragment key={row.id}>
+                        <div className={`${styles.workloadCell} ${styles.workloadAssigneeCell}`}>
+                          <div className={styles.workloadAssigneeName}>{row.label}</div>
+                          <div className={styles.workloadAssigneeCount}>{row.total} open</div>
+                        </div>
+                        <WorkloadCell tasks={row.overdue} />
+                        {row.weekBuckets.map((bucket, i) => (
+                          <WorkloadCell key={workloadWeeks[i].key} tasks={bucket} />
+                        ))}
+                        <WorkloadCell tasks={row.later} />
+                        <WorkloadCell tasks={row.noDueDate} />
+                      </Fragment>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : viewMode === 'tile' ? (
+            <div className={`${styles.taskTileGrid} ${fullScreen ? styles.fullScreenTableWrap : ''}`}>
               {tasks.length === 0 && (
                 <div className={styles.card}>{loading ? 'Loading...' : 'No tasks match these filters.'}</div>
               )}
@@ -597,6 +827,7 @@ export default function TeamTaskWorkboard({ storageKey }) {
               onRowClick={(t) => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
               rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
               emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
+              className={fullScreen ? styles.fullScreenTableWrap : undefined}
               expandedContent={(t) =>
                 expandedTaskIds.has(t.id) && t.dependencyTickets?.length > 0 ? (
                   <DependencyTree tickets={t.dependencyTickets} />
@@ -605,48 +836,50 @@ export default function TeamTaskWorkboard({ storageKey }) {
             />
           )}
 
-          <div className={styles.filterBar} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className={styles.issueMeta}>
-              {total === 0 ? '0 tasks' : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
-            </span>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-              <div className={styles.filterGroup} style={{ minWidth: 90 }}>
-                <label className={styles.filterLabel} htmlFor="teamPageSize">Per page</label>
-                <select
-                  id="teamPageSize"
-                  className={styles.filterSelect}
-                  value={pageSize}
-                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                >
-                  {PAGE_SIZE_OPTIONS.map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <button
-                  type="button"
-                  className={`${styles.button} ${styles.buttonSecondary}`}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loading}
-                >
-                  <ChevronLeft size={16} aria-hidden="true" />
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.button} ${styles.buttonSecondary}`}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loading}
-                >
-                  Next
-                  <ChevronRight size={16} aria-hidden="true" />
-                </button>
+          {viewMode !== 'workload' && (
+            <div className={styles.filterBar} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className={styles.issueMeta}>
+                {total === 0 ? '0 tasks' : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
+              </span>
+              <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+                <div className={styles.filterGroup} style={{ minWidth: 90 }}>
+                  <label className={styles.filterLabel} htmlFor="teamPageSize">Per page</label>
+                  <select
+                    id="teamPageSize"
+                    className={styles.filterSelect}
+                    value={pageSize}
+                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <button
+                    type="button"
+                    className={`${styles.button} ${styles.buttonSecondary}`}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1 || loading}
+                  >
+                    <ChevronLeft size={16} aria-hidden="true" />
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.button} ${styles.buttonSecondary}`}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages || loading}
+                  >
+                    Next
+                    <ChevronRight size={16} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </>
+          )}
+        </div>
       )}
-    </>
+    </div>
   );
 }

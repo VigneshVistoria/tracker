@@ -154,3 +154,19 @@ export function priorityTone(priority) {
 export function priorityLabel(priority) {
   return priority || 'Not Set';
 }
+
+// Same three colors as priorityTone above, but as an actual CSS color
+// instead of an abstract Badge tone - for Team Tasks' Workload view, whose
+// chips use a raw inline style (colored left-edge stripe) rather than the
+// Badge component. Pulled from the same --ds-color-error/warning/info
+// tokens Badge's tone classes resolve to, so a task's stripe color always
+// matches its Priority badge color everywhere else.
+const PRIORITY_STRIPE_COLOR = {
+  Immediate: 'var(--ds-color-error)',
+  High: 'var(--ds-color-warning)',
+  Medium: 'var(--ds-color-info)',
+};
+
+export function priorityStripeColor(priority) {
+  return PRIORITY_STRIPE_COLOR[priority] || 'var(--color-border-strong)';
+}

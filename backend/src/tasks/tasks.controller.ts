@@ -153,9 +153,11 @@ export class TasksController {
     @Query('assigneeUserId') assigneeUserId: string | undefined,
     @Query('phaseId') phaseId: string | undefined,
     @Query('dependency') dependency: string | undefined,
+    @Query('isDefect') isDefect: string | undefined,
     @Query('dueFrom') dueFrom: string | undefined,
     @Query('dueTo') dueTo: string | undefined,
     @Query('showCompleted') showCompleted: string | undefined,
+    @Query('all') all: string | undefined,
     @Req() req: any,
   ) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -169,9 +171,11 @@ export class TasksController {
       assigneeUserId: assigneeUserId ? Number(assigneeUserId) : undefined,
       phaseId: phaseId ? Number(phaseId) : undefined,
       dependency,
+      isDefect,
       dueFrom,
       dueTo,
       showCompleted: showCompleted === 'true',
+      all: all === 'true',
     });
   }
 

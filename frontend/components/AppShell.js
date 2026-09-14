@@ -587,7 +587,7 @@ export default function AppShell({ children, fullScreen = false }) {
         )}
 
         <main className={styles.content}>
-          <div className={styles.contentInner}>{children}</div>
+          <div className={`${styles.contentInner} ${fullScreen ? styles.contentInnerFullScreen : ''}`}>{children}</div>
         </main>
       </div>
     </div>

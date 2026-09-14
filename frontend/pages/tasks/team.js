@@ -23,9 +23,11 @@ export default function TeamTasksPage() {
   const [user, setUser] = useState(null);
   // Hides the sidebar/top nav (AppShell's fullScreen prop) so the task
   // table/tiles fill the whole screen - useful for screen-sharing in
-  // meetings. Plain component state, not persisted - it's a per-session
-  // view, not a standing preference like the page's other toggles.
-  const [fullScreen, setFullScreen] = useState(false);
+  // meetings. Defaults on (confirmed with the user 2026-09) since this
+  // page is opened for that purpose often enough to make it the default
+  // rather than an extra click. Plain component state, not persisted -
+  // it's a per-session view, not a standing preference.
+  const [fullScreen, setFullScreen] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -48,12 +50,6 @@ export default function TeamTasksPage() {
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>Team Tasks</h1>
-          <p className={styles.pageSubtitle}>
-            Every team member&apos;s assigned tasks in one place.
-            {user.role === 'program_manager'
-              ? ' Open a task to reassign it, change its due date, or edit other details.'
-              : ' View-only - open a task to see its full detail.'}
-          </p>
         </div>
         <button
           type="button"
@@ -65,7 +61,7 @@ export default function TeamTasksPage() {
         </button>
       </div>
 
-      <TeamTaskWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} />
+      <TeamTaskWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} fullScreen={fullScreen} />
     </AppShell>
   );
 }
