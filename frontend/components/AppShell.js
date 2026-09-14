@@ -248,7 +248,7 @@ function initialsFor(user) {
   return user.email[0].toUpperCase();
 }
 
-export default function AppShell({ children }) {
+export default function AppShell({ children, fullScreen = false }) {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -357,6 +357,7 @@ export default function AppShell({ children }) {
 
   return (
     <div className={styles.shell}>
+      {!fullScreen && (
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           {!hideSidebar && (
@@ -423,6 +424,7 @@ export default function AppShell({ children }) {
           </button>
         </div>
       </header>
+      )}
 
       {impersonator && (
         <div className={styles.impersonationBanner}>
@@ -436,7 +438,7 @@ export default function AppShell({ children }) {
       )}
 
       <div className={styles.body}>
-        {!hideSidebar && (
+        {!hideSidebar && !fullScreen && (
           <>
         <div
           className={`${styles.overlay} ${drawerOpen ? styles.open : ''}`}

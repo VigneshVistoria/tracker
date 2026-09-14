@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Flag,
+  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Flag, Activity,
   ChevronDown, ChevronUp, ChevronRight, ChevronLeft, List, LayoutGrid,
 } from 'lucide-react';
 import Table from './ui/Table';
@@ -12,7 +12,7 @@ import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
 import {
   LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, visibleStatusTabs, COMPLETED_STATUSES,
-  priorityRank, priorityTone, priorityLabel,
+  priorityRank, priorityTone, priorityLabel, statusBadgeStyle,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
@@ -104,7 +104,7 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
         </Link>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
-          <Badge tone="neutral">{task.status}</Badge>
+          <span className={styles.badge} style={statusBadgeStyle(task.status)}>{task.status}</span>
         </div>
       </div>
       <div className={styles.taskTileDesc} title={task.title}>
@@ -341,6 +341,12 @@ export default function TeamTaskWorkboard({ storageKey }) {
             {t.title}
           </span>
         ),
+      },
+      {
+        key: 'status',
+        header: <ColHeader icon={Activity} label="Status" />,
+        sortable: true,
+        render: (t) => <span className={styles.badge} style={statusBadgeStyle(t.status)}>{t.status}</span>,
       },
       {
         key: 'priority',

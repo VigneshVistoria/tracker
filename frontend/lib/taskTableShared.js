@@ -38,10 +38,12 @@ export const LEGEND_ITEMS = [
   { label: 'Released - No Showstoppers', swatch: 'var(--color-teal-tint)' },
 ];
 
-// Status is deliberately not its own table column in either view - it's
-// expressed purely as row background color. Takes the importing
-// component's own `styles` (issues.module.css) import so the returned
-// class names resolve against that module instance.
+// Status is expressed as row background color in every task list except
+// Team Tasks, which also shows a colored Status badge (see
+// statusBadgeStyle below) - confirmed with the user 2026-09, scoped to
+// Team Tasks only for now. Takes the importing component's own `styles`
+// (issues.module.css) import so the returned class names resolve against
+// that module instance.
 export function buildRowTintClass(styles) {
   return {
     Feedback: styles.rowTintPlum,
@@ -69,6 +71,27 @@ export function buildRowRailClass(styles) {
     'Released - With Showstoppers': styles.railRed,
     'Released - No Showstoppers': styles.railTeal,
   };
+}
+
+// Same status->color grouping as buildRowTintClass/buildRowRailClass above,
+// for Team Tasks' colored Status badge (table column + tile) - an inline
+// style object rather than a CSS module class, since these pair a tint
+// background with a matching dark foreground rather than reusing an
+// existing class. Development (and any unrecognized status) falls through
+// to the same neutral slate LEGEND_ITEMS gives it.
+const STATUS_BADGE_STYLE = {
+  Feedback: { background: 'var(--color-plum-tint)', color: 'var(--color-plum-dark)' },
+  'Re-Feedback': { background: 'var(--color-plum-tint)', color: 'var(--color-plum-dark)' },
+  Escalated: { background: 'var(--color-amber-tint)', color: 'var(--color-amber-dark)' },
+  Pass: { background: 'var(--color-moss-tint)', color: 'var(--color-moss-dark)' },
+  Failed: { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
+  Junk: { background: 'var(--color-slate-tint)', color: 'var(--color-ink-soft)' },
+  'Released - With Showstoppers': { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
+  'Released - No Showstoppers': { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' },
+};
+
+export function statusBadgeStyle(status) {
+  return STATUS_BADGE_STYLE[status] || { background: 'var(--color-slate-tint)', color: 'var(--color-ink-soft)' };
 }
 
 // Team Tasks' status tabs (TeamTaskWorkboard.js) - one tab per LEGEND_ITEMS
