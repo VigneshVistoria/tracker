@@ -8,6 +8,7 @@ import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, SELF_SERVICE_TRANSITIONS, MODE_OPTIONS } from '../../lib/status';
+import { formatDateTime } from '../../lib/formatDate';
 
 // Mirrors backend/src/evidence/evidence.entity.ts's EvidenceType enum -
 // keep these in sync if that enum ever changes.
@@ -24,13 +25,6 @@ const EVIDENCE_TYPES = [
   'Demo Video',
   'Technical Documentation',
 ];
-
-function formatDateTime(value) {
-  if (!value) return null;
-  return new Date(value).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
 
 // Shown to Program Manager/QA/Admin when this ticket's showstopper claim
 // was flagged as questionable (Feature 4) - lets them confirm it's

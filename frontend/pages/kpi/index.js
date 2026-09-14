@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDate } from '../../lib/formatDate';
 
 const PERIOD_OPTIONS = [
   { value: 'daily', label: 'Daily' },
@@ -61,6 +62,11 @@ export default function KpiDashboard() {
   }, [currentUser, isWideView, periodType, projectId, assigneeUserId, refreshKey]);
 
   const isMonthly = periodType === 'monthly';
+
+  // Full Name is already fetched for the Assignee filter dropdown - reused
+  // here so the table's Assignee column shows the same name instead of the
+  // raw email, falling back to email for anyone with no Full Name set.
+  const userLabelById = useMemo(() => new Map(users.map((u) => [u.id, u.fullName || u.email])), [users]);
 
   // Admin-only: fires the same generation logic the nightly/weekly/monthly
   // cron jobs use (KpiService.generatePeriod via POST /kpi/generate), so
@@ -197,9 +203,9 @@ export default function KpiDashboard() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id}>
-                      <td className={styles.issueMeta}>{r.periodStart} → {r.periodEnd}</td>
+                      <td className={styles.issueMeta}>{formatDate(r.periodStart)} → {formatDate(r.periodEnd)}</td>
                       <td>{r.projectName}</td>
-                      {isWideView && <td>{r.assigneeEmail}</td>}
+                      {isWideView && <td>{userLabelById.get(r.assigneeUserId) || r.assigneeEmail}</td>}
                       <td>{r.ticketsDue}</td>
                       <td>{r.ticketsCompleted}</td>
                       <td>{r.completionPercent}%</td>

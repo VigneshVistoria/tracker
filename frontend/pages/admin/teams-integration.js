@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 
 export default function TeamsIntegrationPage() {
@@ -132,7 +133,7 @@ export default function TeamsIntegrationPage() {
               <div className={styles.issueMain}>
                 <p className={styles.issueTitle}>{s.channelName || s.channelId}</p>
                 <p className={styles.issueMeta}>
-                  Expires {new Date(s.expirationDateTime).toLocaleString()} ·{' '}
+                  Expires {formatDateTime(s.expirationDateTime)} ·{' '}
                   <span className={styles.badge} style={statusStyle}>{statusLabel}</span>
                 </p>
               </div>

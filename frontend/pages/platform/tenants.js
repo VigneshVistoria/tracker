@@ -4,15 +4,9 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { formatDateTime } from '../../lib/formatDate';
 
 const EMPTY_FORM = { name: '', subdomain: '', adminEmail: '', adminFullName: '' };
-
-function formatDateTime(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
 
 export default function PlatformTenantsPage() {
   const router = useRouter();

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
   Hash, User, FolderKanban, FileText, Flag,
@@ -47,8 +46,6 @@ const CARD_DEFS = [
 ];
 
 export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue' }) {
-  const router = useRouter();
-
   const [activeCard, setActiveCard] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [assigneeFilter, setAssigneeFilter] = useState('All');
@@ -93,13 +90,19 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
 
   // Distinct list of assignees among the tasks currently loaded, for the
   // Assignee filter - rebuilds whenever the loaded set changes (e.g.
-  // switching from Pending to Approved).
+  // switching from Pending to Approved). The filter itself still matches
+  // on email (see filteredTasks below) - only the dropdown's visible label
+  // uses Full Name, falling back to email for anyone with none set.
   const assignees = useMemo(() => {
-    const seen = new Set();
+    const byEmail = new Map();
     tasks.forEach((t) => {
-      if (t.assigneeEmail) seen.add(t.assigneeEmail);
+      if (t.assigneeEmail && !byEmail.has(t.assigneeEmail)) {
+        byEmail.set(t.assigneeEmail, t.assigneeFullName || t.assigneeEmail);
+      }
     });
-    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+    return Array.from(byEmail.entries())
+      .map(([email, label]) => ({ email, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [tasks]);
 
   const cards = useMemo(
@@ -152,7 +155,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
         key: 'assigneeEmail',
         header: <ColHeader icon={User} label="Assignee" />,
         sortable: true,
-        render: (t) => t.assigneeEmail || '—',
+        render: (t) => t.assigneeFullName || t.assigneeEmail || '—',
       },
       {
         key: 'projectName',
@@ -241,8 +244,8 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
                 onChange={(e) => setAssigneeFilter(e.target.value)}
               >
                 <option value="All">All</option>
-                {assignees.map((email) => (
-                  <option key={email} value={email}>{email}</option>
+                {assignees.map((a) => (
+                  <option key={a.email} value={a.email}>{a.label}</option>
                 ))}
               </select>
             </div>
@@ -290,7 +293,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             columns={columns}
             rows={filteredTasks}
             getRowId={(t) => t.id}
-            onRowClick={(t) => router.push(`/tasks/${t.id}`)}
+            onRowClick={(t) => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
             rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
             emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
           />

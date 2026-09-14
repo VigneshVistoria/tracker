@@ -2,15 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDate } from '../../lib/formatDate';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function parseDateOnly(value) {
   return new Date(`${value}T00:00:00`);
-}
-
-function formatShort(value) {
-  return parseDateOnly(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function currentMonthValue() {
@@ -96,7 +93,7 @@ export default function KpiMatrix() {
         .map((c, i) => ({
           key: c.periodStart,
           title: `Week ${i + 1}`,
-          subtitle: `${formatShort(c.periodStart)}–${formatShort(c.periodEnd)}`,
+          subtitle: `${formatDate(c.periodStart)}–${formatDate(c.periodEnd)}`,
           match: (r) => r.periodStart === c.periodStart && r.periodEnd === c.periodEnd,
         }));
     }

@@ -24,6 +24,7 @@ import { ToastStack } from '../components/ui/Toast';
 import EmptyState from '../components/ui/EmptyState';
 import { SkeletonTable } from '../components/ui/Skeleton';
 import { apiFetch } from '../lib/api';
+import { formatDate } from '../lib/formatDate';
 
 const STATUS_TONE = {
   Backlog: 'neutral',
@@ -133,7 +134,7 @@ export default function DesignPreviewPage() {
       header: 'Updated',
       align: 'right',
       sortable: true,
-      render: (row) => new Date(row.updatedAt).toLocaleDateString(),
+      render: (row) => formatDate(row.updatedAt),
     },
   ];
 

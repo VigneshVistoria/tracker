@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
   Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, Flag,
@@ -11,11 +10,12 @@ import ColHeader from './ColHeader';
 import { TicketRow, CardList } from './TaskCardRows';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { todayISO, yesterdayISO, computeDeveloperTaskStats } from '../lib/developerTaskStats';
+import { todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask } from '../lib/developerTaskStats';
 import {
   COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses,
   priorityRank, priorityTone, priorityLabel,
 } from '../lib/taskTableShared';
+import { formatDate } from '../lib/formatDate';
 
 // Shared by the My Tasks page (pages/tasks/mine.js) and the Developer
 // Dashboard (components/DeveloperDashboard.js): the stat cards (My Tasks/
@@ -58,8 +58,6 @@ export default function DeveloperTaskWorkboard({
   showCards = true,
   hideEmptyCards = false,
 }) {
-  const router = useRouter();
-
   // null = collapsed. Otherwise the key of whichever stat card is driving
   // the expanded view below - every card shows the filtered task table
   // (kind: 'table') except Outbound (kind: 'list').
@@ -185,7 +183,13 @@ export default function DeveloperTaskWorkboard({
         width: 70,
         sortable: true,
         render: (t) => (
-          <Link href={`/tasks/${t.id}`} className={styles.issueId} onClick={(e) => e.stopPropagation()}>
+          <Link
+            href={`/tasks/${t.id}`}
+            className={styles.issueId}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
             #{t.id}
           </Link>
         ),
@@ -194,7 +198,7 @@ export default function DeveloperTaskWorkboard({
         key: 'createdAt',
         header: <ColHeader icon={CalendarDays} label="Created Date" />,
         sortable: true,
-        render: (t) => new Date(t.createdAt).toLocaleDateString(),
+        render: (t) => formatDate(t.createdAt),
       },
       {
         key: 'title',
@@ -217,7 +221,9 @@ export default function DeveloperTaskWorkboard({
         key: 'dueDate',
         header: <ColHeader icon={CalendarClock} label="Due Date" />,
         sortable: true,
-        render: (t) => t.dueDate || '—',
+        render: (t) => (
+          <span className={isOverdueTask(t) ? styles.dueDateOverdue : undefined}>{formatDate(t.dueDate)}</span>
+        ),
       },
       {
         key: 'estimatedHours',
@@ -383,7 +389,7 @@ export default function DeveloperTaskWorkboard({
             columns={columns}
             rows={filteredTasks}
             getRowId={(t) => t.id}
-            onRowClick={(t) => router.push(`/tasks/${t.id}`)}
+            onRowClick={(t) => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
             rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
             emptyState={
               tasks.length === 0

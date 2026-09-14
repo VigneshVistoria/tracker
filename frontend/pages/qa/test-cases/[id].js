@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
+import { formatDateTime } from '../../../lib/formatDate';
 import { useToast } from '../../../lib/toast';
 
 const RESULT_OPTIONS = ['Passed', 'Failed', 'Blocked'];
@@ -192,7 +193,7 @@ export default function TestCaseDetail() {
                     <td>{exec.notes || '—'}</td>
                     <td>{exec.defectIssueId ? <Link href={`/issues/${exec.defectIssueId}`}>#{exec.defectIssueId}</Link> : '—'}</td>
                     <td>{exec.executedByEmail || '—'}</td>
-                    <td>{new Date(exec.executedAt).toLocaleString()}</td>
+                    <td>{formatDateTime(exec.executedAt)}</td>
                   </tr>
                 ))}
               </tbody>

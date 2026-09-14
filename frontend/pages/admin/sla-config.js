@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 
 const KEY_DESCRIPTIONS = {
@@ -112,7 +113,7 @@ export default function SlaConfigPage() {
                     />
                   </td>
                   <td className={styles.issueMeta}>
-                    {row.updatedByEmail ? `${row.updatedByEmail}, ${new Date(row.updatedAt).toLocaleString()}` : '—'}
+                    {row.updatedByEmail ? `${row.updatedByEmail}, ${formatDateTime(row.updatedAt)}` : '—'}
                   </td>
                   <td>
                     <button

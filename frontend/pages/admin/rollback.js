@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 
 export default function RollbackPage() {
@@ -143,7 +144,7 @@ export default function RollbackPage() {
                     </td>
                     <td>{r.index}</td>
                     <td style={{ fontFamily: 'monospace' }}>{r.releaseId}</td>
-                    <td className={styles.issueMeta}>{new Date(r.timestamp).toLocaleString()}</td>
+                    <td className={styles.issueMeta}>{formatDateTime(r.timestamp)}</td>
                     <td className={styles.issueMeta} style={{ fontFamily: 'monospace' }}>
                       {r.gitHead ? r.gitHead.slice(0, 8) : 'n/a'}
                       {r.gitDirty ? ' (dirty)' : ''}

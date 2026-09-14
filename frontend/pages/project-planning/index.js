@@ -5,6 +5,7 @@ import SearchSelectField from '../../components/SearchSelectField';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { formatDate } from '../../lib/formatDate';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 const STATUS_OPTIONS = ['ToDo', 'In Progress', 'Completed', 'Delayed'];
@@ -369,8 +370,8 @@ export default function ProjectPlanningPage() {
                   <td>{entry.moduleName || '—'}</td>
                   <td>{entry.phaseName || '—'}</td>
                   <td>{entry.teamName || '—'}</td>
-                  <td>{entry.startDate}</td>
-                  <td>{entry.targetDate}</td>
+                  <td>{formatDate(entry.startDate)}</td>
+                  <td>{formatDate(entry.targetDate)}</td>
                   <td>
                     {canManage ? (
                       <select

@@ -5,6 +5,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
+import { formatDate } from '../../lib/formatDate';
 
 const VIEW_ROLES = DEVELOPER_EQUIVALENT_ROLES;
 
@@ -62,10 +63,10 @@ export default function DependencyClearancePage() {
         <div key={ticket.id} className={styles.card} style={{ marginBottom: 'var(--space-3)' }}>
           <p style={{ margin: 0 }}>{ticket.description}</p>
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-            Filed by {ticket.createdByEmail} &middot; {new Date(ticket.createdAt).toLocaleDateString()}
+            Filed by {ticket.createdByEmail} &middot; {formatDate(ticket.createdAt)}
           </p>
           <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-            <Link href={`/tasks/${ticket.parentTaskId}`} className={styles.backLink}>
+            <Link href={`/tasks/${ticket.parentTaskId}`} className={styles.backLink} target="_blank" rel="noopener noreferrer">
               View parent task &rarr;
             </Link>
           </div>

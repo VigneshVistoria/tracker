@@ -6,6 +6,7 @@ import CompletionVsTargetBar from '../components/CompletionVsTargetBar';
 import StatCard from '../components/ui/StatCard';
 import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
+import { formatDate } from '../lib/formatDate';
 
 const PERIOD_OPTIONS = [
   { value: 'day', label: 'Daily' },
@@ -415,7 +416,7 @@ export default function PerformanceDashboard() {
                         <td className={styles.tableTitleCell}>{r.title}</td>
                         <td>{r.assigneeEmail}</td>
                         <td>{r.projectName || '—'}</td>
-                        <td>{r.qaReviewedAt ? new Date(r.qaReviewedAt).toLocaleDateString() : '—'}</td>
+                        <td>{formatDate(r.qaReviewedAt)}</td>
                       </tr>
                     ))}
                   </tbody>

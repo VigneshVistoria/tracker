@@ -3,6 +3,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { formatDate } from '../../lib/formatDate';
 
 function Section({ title, children }) {
   return (
@@ -40,7 +41,7 @@ function ReportCard({ report, defaultOpen }) {
         onClick={() => setOpen((v) => !v)}
       >
         <div>
-          <strong>{d.weekStartDate} to {d.weekEndDate}</strong>
+          <strong>{formatDate(d.weekStartDate)} to {formatDate(d.weekEndDate)}</strong>
           <span className={styles.issueMeta} style={{ marginLeft: 'var(--space-3)' }}>
             {d.overall.completionPercent}% overall completion
           </span>
@@ -50,7 +51,7 @@ function ReportCard({ report, defaultOpen }) {
 
       {open && (
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <Section title={`Completed previous week (${d.previousWeekStartDate} to ${d.previousWeekEndDate})`}>
+          <Section title={`Completed previous week (${formatDate(d.previousWeekStartDate)} to ${formatDate(d.previousWeekEndDate)})`}>
             <IssueList items={d.completedPreviousWeek} />
           </Section>
           <Section title="Carry-forward items">

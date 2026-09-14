@@ -1,20 +1,12 @@
+import { formatDate, formatDateTime } from './formatDate';
+
 export const STATUS_OPTIONS = ['Open', 'Under Review', 'Assigned', 'In Progress', 'Resolved', 'Closed', 'Blocked', 'Escalated'];
 export const BLOCKED_STATUSES = ['Blocked', 'Escalated'];
 export const RESOLVED_STATUSES = ['Resolved', 'Closed'];
 export const PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
 export const IMPACT_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
 
-export function formatDate(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-export function formatDateTime(value) {
-  if (!value) return '—';
-  return new Date(value).toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
+export { formatDate, formatDateTime };
 
 // Collapses the entity's 8 workflow statuses down to the 3 buckets an
 // inbox actually needs to scan at a glance - the precise status is still

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
+import { formatDate } from '../../../lib/formatDate';
 
 const RESULT_BADGE_STYLE = {
   Passed: { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' },
@@ -89,7 +90,7 @@ export default function TestCasesList() {
                   <td>{tc.category || '—'}</td>
                   <td>{tc.status}</td>
                   <td><ResultBadge result={tc.lastResult} /></td>
-                  <td>{tc.lastExecutedAt ? new Date(tc.lastExecutedAt).toLocaleDateString() : '—'}</td>
+                  <td>{formatDate(tc.lastExecutedAt)}</td>
                 </tr>
               ))}
             </tbody>

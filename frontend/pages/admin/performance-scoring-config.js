@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 
 const WEIGHT_FIELDS = [
@@ -289,7 +290,7 @@ export default function PerformanceScoringConfigPage() {
             </button>
             {config.updatedByEmail && (
               <p className={styles.issueMeta} style={{ marginTop: 'var(--space-3)' }}>
-                Last updated by {config.updatedByEmail} on {new Date(config.updatedAt).toLocaleString()}
+                Last updated by {config.updatedByEmail} on {formatDateTime(config.updatedAt)}
               </p>
             )}
           </div>

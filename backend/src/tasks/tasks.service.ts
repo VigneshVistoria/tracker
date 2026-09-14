@@ -32,6 +32,11 @@ export interface ProjectTaskWithComputed extends ProjectTask {
   // for whichever page is currently on screen, so this is left undefined
   // everywhere else rather than a wasted query on every other task list.
   dependencyTickets?: Array<{ id: number; description: string; ownerEmail: string; status: string }>;
+  // Only populated by findQaQueue()/findDefectQueue() (QA Review's Assignee
+  // column) - Team Tasks/KPI already have a separate id-keyed user list
+  // fetched client-side to build their own display label from, so this
+  // would be a wasted lookup on every other task list.
+  assigneeFullName?: string;
 }
 
 export interface TeamTaskFilters {
@@ -247,11 +252,25 @@ export class TasksService {
     return [...tasks].sort((a, b) => (PRIORITY_RANK[a.priority as string] ?? 3) - (PRIORITY_RANK[b.priority as string] ?? 3));
   }
 
-  private async withComputedFields(task: ProjectTask, tenantId: number, percentByStatus?: Record<string, number>): Promise<ProjectTaskWithComputed> {
+  private async withComputedFields(
+    task: ProjectTask,
+    tenantId: number,
+    percentByStatus?: Record<string, number>,
+    fullNameByUserId?: Map<number, string>,
+  ): Promise<ProjectTaskWithComputed> {
     const map = percentByStatus ?? (await this.taskStatusConfigService.percentByStatus(tenantId));
     const percentComplete = task.status != null ? map[task.status] ?? null : null;
     const ageingDays = Math.floor((Date.now() - new Date(task.createdAt).getTime()) / MS_PER_DAY);
-    return { ...task, percentComplete, ageingDays };
+    const assigneeFullName = task.assigneeUserId != null ? fullNameByUserId?.get(task.assigneeUserId) : undefined;
+    return { ...task, percentComplete, ageingDays, assigneeFullName };
+  }
+
+  // Batch lookup for withComputedFields()'s assigneeFullName - one query
+  // per queue fetch instead of one per row.
+  private async fullNameByUserId(tasks: ProjectTask[], tenantId: number): Promise<Map<number, string>> {
+    const ids = Array.from(new Set(tasks.map((t) => t.assigneeUserId).filter((id): id is number => id != null)));
+    const users = await this.usersService.findByIds(ids, tenantId);
+    return new Map(users.map((u) => [u.id, u.fullName]));
   }
 
   async findAllForUser(currentUser: { id: number; role: UserRole }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
@@ -328,10 +347,12 @@ export class TasksService {
   // this shared, pick-up-anything queue entirely - they only ever surface
   // in findDefectQueue() below, self-scoped to the QA who raised them.
   async findQaQueue(tenantId: number, status?: string): Promise<QaQueueResult> {
-    const pendingTasks = await this.tasksRepository.find({
-      where: { tenantId, isDefect: false, status: In(QA_PENDING_STATUSES) },
-      order: { createdAt: 'DESC' },
-    });
+    const pendingTasks = this.sortByPriority(
+      await this.tasksRepository.find({
+        where: { tenantId, isDefect: false, status: In(QA_PENDING_STATUSES) },
+        order: { createdAt: 'DESC' },
+      }),
+    );
     const today = new Date().toISOString().slice(0, 10);
     const statCounts = {
       pending: pendingTasks.length,
@@ -343,7 +364,9 @@ export class TasksService {
 
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
-      tasks = await this.tasksRepository.find({ where: { tenantId, isDefect: false, status }, order: { createdAt: 'DESC' } });
+      tasks = this.sortByPriority(
+        await this.tasksRepository.find({ where: { tenantId, isDefect: false, status }, order: { createdAt: 'DESC' } }),
+      );
     } else if (status === 'Feedback' || status === 'Re-Feedback') {
       tasks = pendingTasks.filter((t) => t.status === status);
     } else {
@@ -351,7 +374,8 @@ export class TasksService {
     }
 
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
-    const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+    const fullNameByUserId = await this.fullNameByUserId(tasks, tenantId);
+    const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus, fullNameByUserId)));
     return { tasks: withComputed, statCounts };
   }
 
@@ -387,7 +411,8 @@ export class TasksService {
     }
 
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
-    const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
+    const fullNameByUserId = await this.fullNameByUserId(tasks, tenantId);
+    const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus, fullNameByUserId)));
     return { tasks: withComputed, statCounts };
   }
 
@@ -589,7 +614,8 @@ export class TasksService {
 
   async findOneWithComputed(id: number, tenantId: number): Promise<ProjectTaskWithComputed> {
     const task = await this.findOne(id, tenantId);
-    return this.withComputedFields(task, tenantId);
+    const fullNameByUserId = await this.fullNameByUserId([task], tenantId);
+    return this.withComputedFields(task, tenantId, undefined, fullNameByUserId);
   }
 
   // Bulk lookup by id, no view-access filtering - callers are trusted
@@ -804,10 +830,11 @@ export class TasksService {
     dto: ReassignTeamTaskDto,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-  ): Promise<ProjectTask> {
+  ): Promise<ProjectTask & { assigneeFullName?: string }> {
     const task = await this.findOne(id, tenantId);
     const previousAssigneeUserId = task.assigneeUserId;
     const previousAssigneeEmail = task.assigneeEmail;
+    let assigneeFullName: string | undefined;
 
     if (dto.assigneeUserId == null) {
       task.assigneeUserId = null;
@@ -819,6 +846,7 @@ export class TasksService {
       }
       task.assigneeUserId = assignee.id;
       task.assigneeEmail = assignee.email;
+      assigneeFullName = assignee.fullName;
     }
     const saved = await this.tasksRepository.save(task);
 
@@ -838,7 +866,7 @@ export class TasksService {
       },
     });
 
-    return saved;
+    return { ...saved, assigneeFullName };
   }
 
   // PM Escalation queue, option (a): reassign to a Developer (any

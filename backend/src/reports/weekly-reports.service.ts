@@ -5,6 +5,7 @@ import { WeeklyReport } from './weekly-report.entity';
 import { Issue, IssueStatus, IssueCategory } from '../issues/issue.entity';
 import { MailService } from '../mail/mail.service';
 import { PdfPerformanceReportService, AssigneePerformanceStat } from './pdf-performance-report.service';
+import { UsersService } from '../users/users.service';
 
 // A simple, tunable heuristic turning an issue's current status into a
 // "how healthy is this work" score. Not a precise measurement - just a
@@ -28,6 +29,7 @@ export class WeeklyReportsService {
     private issuesRepository: Repository<Issue>,
     private mailService: MailService,
     private pdfPerformanceReportService: PdfPerformanceReportService,
+    private usersService: UsersService,
   ) {}
 
   // Business week = Monday through Friday. Given any date, returns the
@@ -87,6 +89,11 @@ export class WeeklyReportsService {
     const prevStatsByEmail = new Map<string, any>(
       ((prevReport?.data?.assigneeStats as any[]) || []).map((s: any) => [s.assigneeEmail, s]),
     );
+
+    // For display only (PDF header, "By assignee" summary, email greeting) -
+    // the actual send-to address everywhere else stays assigneeEmail.
+    const allUsers = await this.usersService.findAll(tenantId);
+    const fullNameByEmail = new Map(allUsers.map((u) => [u.email, u.fullName]));
 
     // Dependency Log lookups: only OPEN children can still be "blocking" -
     // a completed dependency ticket no longer holds anything up. Built from
@@ -201,6 +208,7 @@ export class WeeklyReportsService {
 
         return {
           assigneeEmail: entry.assigneeEmail,
+          assigneeFullName: fullNameByEmail.get(entry.assigneeEmail) || entry.assigneeEmail,
           totalAssigned: entry.totalAssigned,
           completedAllTime: entry.completedAllTime,
           completionPercent,
@@ -304,7 +312,7 @@ export class WeeklyReportsService {
         ${data.assigneeStats
           .map(
             (a: any) =>
-              `<li>${a.assigneeEmail}: ${a.completionPercent}% completion (${a.completedAllTime}/${a.totalAssigned}), performance ${a.performancePercent}%</li>`,
+              `<li>${a.assigneeFullName || a.assigneeEmail}: ${a.completionPercent}% completion (${a.completedAllTime}/${a.totalAssigned}), performance ${a.performancePercent}%</li>`,
           )
           .join('')}
       </ul>
@@ -403,7 +411,7 @@ export class WeeklyReportsService {
         : 'None';
     return `
       <h2>Weekly Performance Report – ${meta.weekEndDate}</h2>
-      <p>Hi ${stat.assigneeEmail},</p>
+      <p>Hi ${stat.assigneeFullName || stat.assigneeEmail},</p>
       <p>Your performance report for the week of ${meta.weekStartDate} to ${meta.weekEndDate} is attached as a PDF. Summary:</p>
       <ul>
         <li><strong>Overall completion:</strong> ${stat.completionPercent}%</li>

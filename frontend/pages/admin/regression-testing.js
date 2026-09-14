@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
+import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 import { getSocket } from '../../lib/socket';
 
@@ -89,7 +90,7 @@ function RunSummary({ run, defaultOpen }) {
             {run.status === 'passed' ? 'All checks passed' : `${run.failedCount} failed`}
           </span>{' '}
           <span style={{ marginLeft: 'var(--space-2)' }}>
-            {new Date(run.startedAt).toLocaleString()}
+            {formatDateTime(run.startedAt)}
           </span>
         </div>
         <span className={styles.issueMeta}>

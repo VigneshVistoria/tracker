@@ -14,6 +14,7 @@ import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
+import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
@@ -305,7 +306,7 @@ export default function TaskDetailPage() {
         setDefectPhase({ id: t.phaseId, name: t.phaseName });
         setDefectTitle(t.title);
         setDefectDescription(t.description);
-        setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeEmail } : null);
+        setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeFullName || t.assigneeEmail } : null);
         setTickets(ticketList);
         setQaReviews(reviewList);
       })
@@ -381,7 +382,7 @@ export default function TaskDetailPage() {
       render: (r) => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span>{r.submittedByFullName}</span>
-          <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{new Date(r.submittedAt).toLocaleDateString()}</span>
+          <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>{formatDate(r.submittedAt)}</span>
         </div>
       ),
     },
@@ -392,7 +393,7 @@ export default function TaskDetailPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span>{r.reviewedByFullName}</span>
           <span style={{ fontSize: 12, color: 'var(--ds-text-muted)' }}>
-            {r.reviewedAt && new Date(r.reviewedAt).toLocaleDateString()}
+            {r.reviewedAt && formatDate(r.reviewedAt)}
           </span>
         </div>
       ),
@@ -489,9 +490,9 @@ export default function TaskDetailPage() {
         body: JSON.stringify({ assigneeUserId: assigneeSelection ? assigneeSelection.id : null }),
       });
       setTask(updated);
-      setAssigneeSelection(updated.assigneeUserId ? { id: updated.assigneeUserId, name: updated.assigneeEmail } : null);
+      setAssigneeSelection(updated.assigneeUserId ? { id: updated.assigneeUserId, name: updated.assigneeFullName || updated.assigneeEmail } : null);
       setEditingAssignee(false);
-      showToast(updated.assigneeEmail ? `Reassigned to ${updated.assigneeEmail}` : 'Assignee cleared - task returned to Task Backlog', 'success');
+      showToast(updated.assigneeEmail ? `Reassigned to ${updated.assigneeFullName || updated.assigneeEmail}` : 'Assignee cleared - task returned to Task Backlog', 'success');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -500,7 +501,7 @@ export default function TaskDetailPage() {
   };
 
   const handleCancelEditAssignee = () => {
-    setAssigneeSelection(task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeEmail } : null);
+    setAssigneeSelection(task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeFullName || task.assigneeEmail } : null);
     setEditingAssignee(false);
   };
 
@@ -851,7 +852,7 @@ export default function TaskDetailPage() {
         )}
         <RichTextDisplay value={task.description} />
         <p className={styles.issueMeta}>
-          Assignee: {task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
+          Assignee: {task.assigneeFullName || task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
           {task.isDefect && <> &middot; Raised by {task.createdByEmail}</>}
         </p>
         {canManage && !editingAssignee && (
@@ -1124,7 +1125,7 @@ export default function TaskDetailPage() {
             </p>
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Owner: {ticket.ownerEmail} &middot; Filed by {ticket.createdByEmail} &middot;{' '}
-              {new Date(ticket.createdAt).toLocaleDateString()}
+              {formatDate(ticket.createdAt)}
             </p>
             {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
               <button
@@ -1355,7 +1356,7 @@ export default function TaskDetailPage() {
           ))}
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
             Submitted by {latestQaReview.submittedByEmail} &middot;{' '}
-            {new Date(latestQaReview.submittedAt).toLocaleDateString()} &middot; Round {latestQaReview.roundNumber}
+            {formatDate(latestQaReview.submittedAt)} &middot; Round {latestQaReview.roundNumber}
           </p>
 
           <div style={{ marginTop: 'var(--space-3)' }}>
@@ -1487,7 +1488,7 @@ export default function TaskDetailPage() {
           ))}
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
             Submitted by {latestQaReview.submittedByEmail} &middot;{' '}
-            {new Date(latestQaReview.submittedAt).toLocaleDateString()} &middot; Round {latestQaReview.roundNumber}
+            {formatDate(latestQaReview.submittedAt)} &middot; Round {latestQaReview.roundNumber}
           </p>
 
           <div style={{ marginTop: 'var(--space-3)' }}>

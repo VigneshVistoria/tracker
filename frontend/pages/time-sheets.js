@@ -6,6 +6,7 @@ import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
+import { formatDate } from '../lib/formatDate';
 
 function toDateInputValue(date) {
   return date.toISOString().slice(0, 10);
@@ -201,7 +202,7 @@ function MyWeek({ entries, onChanged }) {
             <tbody>
               {entries.map((entry) => (
                 <tr key={entry.id}>
-                  <td>{entry.date}</td>
+                  <td>{formatDate(entry.date)}</td>
                   <td>{entry.issueId ? `#${entry.issueId} - ${entry.issueTitle}` : entry.projectName}</td>
                   {editingId === entry.id ? (
                     <>
@@ -251,7 +252,7 @@ function MyWeek({ entries, onChanged }) {
 function TeamReport({ report, users, onRefresh, userId, setUserId }) {
   return (
     <div className={styles.card}>
-      <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Team Report {report ? `(${report.startDate} – ${report.endDate})` : ''}</h3>
+      <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Team Report {report ? `(${formatDate(report.startDate)} – ${formatDate(report.endDate)})` : ''}</h3>
       <div className={styles.field} style={{ maxWidth: '260px' }}>
         <label className={styles.label} htmlFor="userFilter">User</label>
         <select className={styles.select} id="userFilter" value={userId} onChange={(e) => { setUserId(e.target.value); onRefresh(e.target.value); }}>

@@ -491,6 +491,11 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   color: var(--color-slate);
 }
 
+.dueDateOverdue {
+  color: var(--color-red-dark);
+  font-weight: 700;
+}
+
 @media (max-width: 700px) {
   .filterBar {
     flex-direction: column;

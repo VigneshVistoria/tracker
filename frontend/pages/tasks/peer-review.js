@@ -72,7 +72,7 @@ export default function PeerReviewQueuePage() {
             Assignee: {task.assigneeEmail || 'Unassigned'}
           </p>
           <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-            <Link href={`/tasks/${task.id}`} className={styles.backLink}>
+            <Link href={`/tasks/${task.id}`} className={styles.backLink} target="_blank" rel="noopener noreferrer">
               Review task &rarr;
             </Link>
           </div>

@@ -8,12 +8,7 @@ import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets, getIssueMoveAction } from '../../lib/status';
-
-function formatDate(value) {
-  if (!value) return '—';
-  const d = new Date(value);
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
+import { formatDate } from '../../lib/formatDate';
 
 const MOVE_ACTION_TO_REQUEST = {
   patch: (id, targetStatus) => ({ path: `/issues/${id}`, options: { method: 'PATCH', body: JSON.stringify({ status: targetStatus }) } }),

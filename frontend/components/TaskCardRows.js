@@ -1,12 +1,19 @@
 import Link from 'next/link';
 import issueStyles from '../styles/issues.module.css';
+import { formatDate } from '../lib/formatDate';
 
 // Shared row renderer for the Developer Dashboard's and My Tasks page's
 // Outbound ticket list - the one card that isn't a row in the task table
 // (Outbound tickets live on someone else's task).
 export function TicketRow({ ticket, subtitle }) {
   return (
-    <Link key={`ticket-${ticket.id}`} href={`/tasks/${ticket.parentTaskId}`} className={issueStyles.issueRow}>
+    <Link
+      key={`ticket-${ticket.id}`}
+      href={`/tasks/${ticket.parentTaskId}`}
+      className={issueStyles.issueRow}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
       <div className={issueStyles.issueMain}>
         <p className={`${issueStyles.issueTitle} ${issueStyles.issueTitleClamp}`}>{ticket.description}</p>
         <div className={issueStyles.issueMeta}>
@@ -14,7 +21,7 @@ export function TicketRow({ ticket, subtitle }) {
           <span>{subtitle}</span>
         </div>
       </div>
-      {ticket.parentTaskDueDate && <span className={issueStyles.badge}>Task due {ticket.parentTaskDueDate}</span>}
+      {ticket.parentTaskDueDate && <span className={issueStyles.badge}>Task due {formatDate(ticket.parentTaskDueDate)}</span>}
     </Link>
   );
 }

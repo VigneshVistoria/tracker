@@ -5,6 +5,11 @@ import PDFDocument from 'pdfkit';
 // that file for exactly how each field is computed.
 export interface AssigneePerformanceStat {
   assigneeEmail: string;
+  // Optional - only populated on reports generated after this field was
+  // added (WeeklyReportsService.generate()). Older reports' stored JSON
+  // won't have it, so every read site falls back to assigneeEmail rather
+  // than assuming this is always present.
+  assigneeFullName?: string;
   totalAssigned: number;
   completedAllTime: number;
   completionPercent: number;
@@ -54,7 +59,7 @@ export class PdfPerformanceReportService {
   private renderHeader(doc: PDFKit.PDFDocument, meta: PerformanceReportMeta, stat: AssigneePerformanceStat) {
     doc.fontSize(20).fillColor('#1a1a1a').text('Weekly Performance Report', { align: 'left' });
     doc.fontSize(11).fillColor('#555555').text(`Week: ${meta.weekStartDate} to ${meta.weekEndDate}`);
-    doc.text(`Assignee: ${stat.assigneeEmail}`);
+    doc.text(`Assignee: ${stat.assigneeFullName || stat.assigneeEmail}`);
     doc.moveDown(1);
     this.hr(doc);
     doc.moveDown(0.5);
@@ -67,7 +72,7 @@ export class PdfPerformanceReportService {
       .fontSize(10)
       .fillColor('#222222')
       .text(
-        `${stat.assigneeEmail} completed ${stat.completedThisWeek.length} item(s) this week and currently has ` +
+        `${stat.assigneeFullName || stat.assigneeEmail} completed ${stat.completedThisWeek.length} item(s) this week and currently has ` +
           `${stat.currentOpenCount} open item(s), for an overall completion rate of ${stat.completionPercent}% ` +
           `(${stat.completedAllTime}/${stat.totalAssigned} all-time). ${trendLine}`,
       );

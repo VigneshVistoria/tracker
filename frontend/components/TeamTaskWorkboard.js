@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
   Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Flag,
@@ -10,11 +9,12 @@ import Badge from './ui/Badge';
 import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { yesterdayISO } from '../lib/developerTaskStats';
+import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
 import {
   LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, visibleStatusTabs, COMPLETED_STATUSES,
   priorityRank, priorityTone, priorityLabel,
 } from '../lib/taskTableShared';
+import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
 
 // Team Tasks - every team member's assigned tasks in one place, for
@@ -88,12 +88,18 @@ function DependencyTree({ tickets }) {
   );
 }
 
-function TaskTile({ task, railClass, expanded, onToggleExpand, onOpen }) {
+function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, onOpen }) {
   const depCount = task.dependencyTickets?.length || 0;
   return (
     <div className={`${styles.taskTile} ${railClass || ''}`} onClick={onOpen}>
       <div className={styles.taskTileTop}>
-        <Link href={`/tasks/${task.id}`} className={styles.issueId} onClick={(e) => e.stopPropagation()}>
+        <Link
+          href={`/tasks/${task.id}`}
+          className={styles.issueId}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
           #{task.id}
         </Link>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -105,8 +111,10 @@ function TaskTile({ task, railClass, expanded, onToggleExpand, onOpen }) {
         {task.title}
       </div>
       <div className={styles.taskTileMeta}>
-        <span><User size={12} aria-hidden="true" /> {task.assigneeEmail || '—'}</span>
-        <span><CalendarClock size={12} aria-hidden="true" /> {task.dueDate || '—'}</span>
+        <span><User size={12} aria-hidden="true" /> {assigneeLabel}</span>
+        <span className={isOverdueTask(task) ? styles.dueDateOverdue : undefined}>
+          <CalendarClock size={12} aria-hidden="true" /> {formatDate(task.dueDate)}
+        </span>
       </div>
       {depCount > 0 && (
         <button
@@ -132,8 +140,6 @@ function TaskTile({ task, railClass, expanded, onToggleExpand, onOpen }) {
 }
 
 export default function TeamTaskWorkboard({ storageKey }) {
-  const router = useRouter();
-
   const [activeCard, setActiveCard] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState('All');
@@ -265,6 +271,11 @@ export default function TeamTaskWorkboard({ storageKey }) {
     [statCounts],
   );
 
+  // Full Name is already fetched for the Assignee filter dropdown - reused
+  // here so the table/tile Assignee display shows the same name instead of
+  // the raw email, falling back to email for anyone with no Full Name set.
+  const assigneeLabelById = useMemo(() => new Map(assignees.map((a) => [a.id, a.fullName || a.email])), [assignees]);
+
   const handleCardClick = (card) => {
     setActiveCard((prev) => {
       const next = prev === card.key ? null : card.key;
@@ -298,7 +309,13 @@ export default function TeamTaskWorkboard({ storageKey }) {
         width: 70,
         sortable: true,
         render: (t) => (
-          <Link href={`/tasks/${t.id}`} className={styles.issueId} onClick={(e) => e.stopPropagation()}>
+          <Link
+            href={`/tasks/${t.id}`}
+            className={styles.issueId}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
             #{t.id}
           </Link>
         ),
@@ -307,13 +324,13 @@ export default function TeamTaskWorkboard({ storageKey }) {
         key: 'assigneeEmail',
         header: <ColHeader icon={User} label="Assignee" />,
         sortable: true,
-        render: (t) => t.assigneeEmail || '—',
+        render: (t) => assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—',
       },
       {
         key: 'createdAt',
         header: <ColHeader icon={CalendarDays} label="Created Date" />,
         sortable: true,
-        render: (t) => new Date(t.createdAt).toLocaleDateString(),
+        render: (t) => formatDate(t.createdAt),
       },
       {
         key: 'title',
@@ -336,7 +353,9 @@ export default function TeamTaskWorkboard({ storageKey }) {
         key: 'dueDate',
         header: <ColHeader icon={CalendarClock} label="Due Date" />,
         sortable: true,
-        render: (t) => t.dueDate || '—',
+        render: (t) => (
+          <span className={isOverdueTask(t) ? styles.dueDateOverdue : undefined}>{formatDate(t.dueDate)}</span>
+        ),
       },
       {
         key: 'estimatedHours',
@@ -384,7 +403,7 @@ export default function TeamTaskWorkboard({ storageKey }) {
         render: (t) => `${t.ageingDays}d`,
       },
     ],
-    [expandedTaskIds],
+    [expandedTaskIds, assigneeLabelById],
   );
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
@@ -556,10 +575,11 @@ export default function TeamTaskWorkboard({ storageKey }) {
                 <TaskTile
                   key={t.id}
                   task={t}
+                  assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
                   railClass={ROW_RAIL_CLASS[t.status]}
                   expanded={expandedTaskIds.has(t.id)}
                   onToggleExpand={toggleExpanded}
-                  onOpen={() => router.push(`/tasks/${t.id}`)}
+                  onOpen={() => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
                 />
               ))}
             </div>
@@ -568,7 +588,7 @@ export default function TeamTaskWorkboard({ storageKey }) {
               columns={columns}
               rows={tasks}
               getRowId={(t) => t.id}
-              onRowClick={(t) => router.push(`/tasks/${t.id}`)}
+              onRowClick={(t) => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
               rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
               emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
               expandedContent={(t) =>

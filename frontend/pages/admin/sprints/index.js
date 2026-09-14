@@ -6,6 +6,7 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
+import { formatDate } from '../../../lib/formatDate';
 
 const STATUS_BADGE_STYLE = {
   Planned: { background: 'var(--color-slate-tint, #eef0f2)', color: 'var(--color-ink-soft)' },
@@ -187,9 +188,9 @@ export default function SprintsListPage() {
             <div className={styles.issueMain}>
               <p className={styles.issueTitle}>{s.name}</p>
               <p className={styles.issueMeta}>
-                {s.startDate ? new Date(s.startDate).toLocaleDateString() : 'No start date'}
+                {s.startDate ? formatDate(s.startDate) : 'No start date'}
                 {' \u2013 '}
-                {s.endDate ? new Date(s.endDate).toLocaleDateString() : 'No end date'}
+                {s.endDate ? formatDate(s.endDate) : 'No end date'}
                 {s.goal ? ` \u00b7 ${s.goal}` : ''}
               </p>
             </div>
