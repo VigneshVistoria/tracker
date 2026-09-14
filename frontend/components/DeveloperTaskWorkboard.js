@@ -2,16 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
-  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass,
+  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, Flag,
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Table from './ui/Table';
+import Badge from './ui/Badge';
 import ColHeader from './ColHeader';
 import { TicketRow, CardList } from './TaskCardRows';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { todayISO, yesterdayISO, computeDeveloperTaskStats } from '../lib/developerTaskStats';
-import { COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses } from '../lib/taskTableShared';
+import {
+  COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses,
+  priorityRank, priorityTone, priorityLabel,
+} from '../lib/taskTableShared';
 
 // Shared by the My Tasks page (pages/tasks/mine.js) and the Developer
 // Dashboard (components/DeveloperDashboard.js): the stat cards (My Tasks/
@@ -201,6 +205,13 @@ export default function DeveloperTaskWorkboard({
             {t.title}
           </span>
         ),
+      },
+      {
+        key: 'priority',
+        header: <ColHeader icon={Flag} label="Priority" />,
+        sortable: true,
+        sortAccessor: (t) => priorityRank(t.priority),
+        render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
       },
       {
         key: 'dueDate',

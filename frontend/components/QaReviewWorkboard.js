@@ -2,15 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
-  Hash, User, FolderKanban, FileText,
+  Hash, User, FolderKanban, FileText, Flag,
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Table from './ui/Table';
+import Badge from './ui/Badge';
 import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO } from '../lib/developerTaskStats';
-import { LEGEND_ITEMS, buildRowTintClass } from '../lib/taskTableShared';
+import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel } from '../lib/taskTableShared';
 import { apiFetch } from '../lib/api';
 
 // QA Review queue - same icon-header/sortable table, row-tint, and
@@ -172,6 +173,13 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             {t.title}
           </span>
         ),
+      },
+      {
+        key: 'priority',
+        header: <ColHeader icon={Flag} label="Priority" />,
+        sortable: true,
+        sortAccessor: (t) => priorityRank(t.priority),
+        render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
       },
     ],
     [],

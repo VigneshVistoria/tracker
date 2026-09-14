@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import {
-  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User,
+  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Flag,
   ChevronDown, ChevronUp, ChevronRight, ChevronLeft, List, LayoutGrid,
 } from 'lucide-react';
 import Table from './ui/Table';
@@ -11,7 +11,10 @@ import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO } from '../lib/developerTaskStats';
-import { LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, visibleStatusTabs, COMPLETED_STATUSES } from '../lib/taskTableShared';
+import {
+  LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, visibleStatusTabs, COMPLETED_STATUSES,
+  priorityRank, priorityTone, priorityLabel,
+} from '../lib/taskTableShared';
 import { apiFetch } from '../lib/api';
 
 // Team Tasks - every team member's assigned tasks in one place, for
@@ -93,7 +96,10 @@ function TaskTile({ task, railClass, expanded, onToggleExpand, onOpen }) {
         <Link href={`/tasks/${task.id}`} className={styles.issueId} onClick={(e) => e.stopPropagation()}>
           #{task.id}
         </Link>
-        <Badge tone="neutral">{task.status}</Badge>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
+          <Badge tone="neutral">{task.status}</Badge>
+        </div>
       </div>
       <div className={styles.taskTileDesc} title={task.title}>
         {task.title}
@@ -318,6 +324,13 @@ export default function TeamTaskWorkboard({ storageKey }) {
             {t.title}
           </span>
         ),
+      },
+      {
+        key: 'priority',
+        header: <ColHeader icon={Flag} label="Priority" />,
+        sortable: true,
+        sortAccessor: (t) => priorityRank(t.priority),
+        render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
       },
       {
         key: 'dueDate',

@@ -1,5 +1,6 @@
-import { IsString, MinLength, MaxLength, IsInt, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsInt, IsOptional, IsBoolean, IsEnum } from 'class-validator';
 import { TASK_TITLE_MAX_LENGTH } from '../task-title.constants';
+import { TaskPriority } from '../task-priority.enum';
 
 // Stage 1 (Task Backlog creation, Program Manager only) - deliberately
 // just the Project -> Module -> Phase chain plus Title/Description. No
@@ -33,4 +34,12 @@ export class CreateTaskDto {
   @IsOptional()
   @IsBoolean()
   peerReviewEnabled?: boolean;
+
+  // Program Manager only - enforced by ROLES_ALLOWED_TO_CREATE_TASKS on
+  // this same endpoint, so no separate check is needed here. Left
+  // undefined/omitted means "Not Set", never auto-assigned - see
+  // ProjectTask.priority.
+  @IsOptional()
+  @IsEnum(TaskPriority)
+  priority?: TaskPriority;
 }

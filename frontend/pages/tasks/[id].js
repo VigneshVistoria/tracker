@@ -6,12 +6,14 @@ import SearchSelectField from '../../components/SearchSelectField';
 import Table from '../../components/ui/Table';
 import RichTextEditor from '../../components/ui/RichTextEditor';
 import RichTextDisplay from '../../components/ui/RichTextDisplay';
+import Badge from '../../components/ui/Badge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
+import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
@@ -180,6 +182,7 @@ export default function TaskDetailPage() {
 
   const [estimatedHours, setEstimatedHours] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [priority, setPriority] = useState('');
 
   const [ticketDescription, setTicketDescription] = useState('');
   const [ticketOwner, setTicketOwner] = useState(null);
@@ -295,6 +298,7 @@ export default function TaskDetailPage() {
         setTask(t);
         setEstimatedHours(t.estimatedHours ?? '');
         setDueDate(t.dueDate ?? '');
+        setPriority(t.priority ?? '');
         setPeerReviewEnabled(!!t.peerReviewEnabled);
         setDefectProject({ id: t.projectId, name: t.projectName });
         setDefectModule({ id: t.moduleId, name: t.moduleName });
@@ -407,6 +411,9 @@ export default function TaskDetailPage() {
       }
       if (!dueDateLocked && dueDate && dueDate !== task.dueDate) {
         payload.dueDate = dueDate;
+      }
+      if (canManage && priority !== (task.priority || '')) {
+        payload.priority = priority || null;
       }
       const updated = await apiFetch(`/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       setTask(updated);
@@ -961,7 +968,7 @@ export default function TaskDetailPage() {
       )}
 
       <form onSubmit={handleSaveFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <div className={styles.fieldGrid3}>
+        <div className={styles.fieldGrid4}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="tdEHrs">Estimated Hours</label>
             <input
@@ -991,6 +998,27 @@ export default function TaskDetailPage() {
             />
             {dueDateLocked && (
               <p className={styles.helpText}>Locked after first entry - only Program Manager can change it now.</p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdPriority">Priority</label>
+            {canManage ? (
+              <select
+                className={styles.input}
+                id="tdPriority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="">Not Set</option>
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            ) : (
+              <div>
+                <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
+              </div>
             )}
           </div>
 

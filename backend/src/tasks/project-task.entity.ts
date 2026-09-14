@@ -1,4 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { TaskPriority } from './task-priority.enum';
 
 // A task-level work item, required through the Project -> Module -> Phase
 // chain - a more granular, more constrained concept than Issue (which
@@ -97,6 +98,15 @@ export class ProjectTask {
   // TaskQaReviewsService.submit()/approve()/reject().
   @Column()
   status: string;
+
+  // Program Manager only (see TasksService.update()'s PRIORITY_MUTATE_ROLES
+  // check) - never auto-assigned, including on task creation, so existing
+  // and new tasks alike sit at null ("Not Set") until a PM reviews and sets
+  // one. Used to sort My Tasks/Team Tasks/Task Backlog (Immediate -> High
+  // -> Medium -> Not Set), never to gate the QA/Peer Review workflow or KPI
+  // scoring.
+  @Column({ type: 'enum', enum: TaskPriority, nullable: true })
+  priority: TaskPriority | null;
 
   // Opt-in alternative to QA review, set by Program Manager (or Admin, via
   // the dedicated PATCH /tasks/:id/peer-review-flag endpoint - see

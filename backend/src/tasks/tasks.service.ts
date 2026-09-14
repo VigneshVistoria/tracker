@@ -15,6 +15,7 @@ import { ModulesService } from '../modules/modules.service';
 import { PhasesService } from '../phases/phases.service';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
+import { TaskPriority } from './task-priority.enum';
 import { TaskStatusConfigService } from '../task-status-config/task-status-config.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
@@ -93,6 +94,16 @@ const MUTATE_ROLES: UserRole[] = [UserRole.PROGRAM_MANAGER];
 // place - the Assignee's own edit rights (estimatedHours/dueDate) are
 // handled separately in update() below.
 const BACKLOG_FIELDS: Array<keyof UpdateTaskDto> = ['projectId', 'moduleId', 'phaseId', 'title', 'description'];
+
+// Sort weight for My Tasks/Team Tasks/Task Backlog - Immediate first, then
+// High, then Medium, with unset ("Not Set") tasks pushed to the bottom.
+// Kept out of PRIORITY_RANK's reach so a typo'd/removed enum value falls
+// back to "unset" rather than throwing.
+const PRIORITY_RANK: Record<string, number> = {
+  [TaskPriority.IMMEDIATE]: 0,
+  [TaskPriority.HIGH]: 1,
+  [TaskPriority.MEDIUM]: 2,
+};
 
 // Status while a QA review round is pending (Stage 4/5) - the task shows
 // up in the QA queue (findQaQueue() below) under either value, whether
@@ -228,6 +239,14 @@ export class TasksService {
     throw new BadRequestException(`Cannot submit for QA - resolve the open dependency ${label} ${ids} first.`);
   }
 
+  // Stable sort (Array.prototype.sort's guaranteed since ES2019) - tasks
+  // sharing a priority (including two unset ones) keep whatever relative
+  // order the caller's own query already put them in (e.g. createdAt DESC),
+  // so this only ever reorders across priority tiers, never within one.
+  private sortByPriority<T extends { priority?: TaskPriority | null }>(tasks: T[]): T[] {
+    return [...tasks].sort((a, b) => (PRIORITY_RANK[a.priority as string] ?? 3) - (PRIORITY_RANK[b.priority as string] ?? 3));
+  }
+
   private async withComputedFields(task: ProjectTask, tenantId: number, percentByStatus?: Record<string, number>): Promise<ProjectTaskWithComputed> {
     const map = percentByStatus ?? (await this.taskStatusConfigService.percentByStatus(tenantId));
     const percentComplete = task.status != null ? map[task.status] ?? null : null;
@@ -250,10 +269,12 @@ export class TasksService {
   // Task Backlog view - unassigned tasks, Admin/Program Manager only
   // (enforced in the controller).
   async findBacklog(tenantId: number): Promise<ProjectTaskWithComputed[]> {
-    const tasks = await this.tasksRepository.find({
-      where: { tenantId, assigneeUserId: IsNull() },
-      order: { createdAt: 'DESC' },
-    });
+    const tasks = this.sortByPriority(
+      await this.tasksRepository.find({
+        where: { tenantId, assigneeUserId: IsNull() },
+        order: { createdAt: 'DESC' },
+      }),
+    );
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
   }
@@ -390,10 +411,12 @@ export class TasksService {
 
   // My Tasks view - tasks assigned to the current user, whatever their role.
   async findMine(currentUser: { id: number }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
-    const tasks = await this.tasksRepository.find({
-      where: { tenantId, assigneeUserId: currentUser.id },
-      order: { createdAt: 'DESC' },
-    });
+    const tasks = this.sortByPriority(
+      await this.tasksRepository.find({
+        where: { tenantId, assigneeUserId: currentUser.id },
+        order: { createdAt: 'DESC' },
+      }),
+    );
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
 
@@ -450,7 +473,7 @@ export class TasksService {
       where.dueDate = LessThanOrEqual(filters.dueTo);
     }
 
-    const matching = await this.tasksRepository.find({ where, order: { createdAt: 'DESC' } });
+    const matching = this.sortByPriority(await this.tasksRepository.find({ where, order: { createdAt: 'DESC' } }));
     const openDependencyIds = await this.findOpenDependencyTaskIds(matching.map((t) => t.id));
 
     let filtered = matching;
@@ -601,6 +624,11 @@ export class TasksService {
       dueDate: null,
       status: 'Development',
       peerReviewEnabled: dto.peerReviewEnabled ?? false,
+      // Never auto-assigned - omitted means "Not Set" (null), same as an
+      // existing task nobody has reviewed yet. Task creation is already
+      // Program Manager only (ROLES_ALLOWED_TO_CREATE_TASKS), so no
+      // separate priority permission check is needed here.
+      priority: dto.priority ?? null,
       createdByUserId: user.id,
       createdByEmail: user.email,
       tenantId,
@@ -920,6 +948,13 @@ export class TasksService {
       }
     }
 
+    // Priority is Program Manager only - not even the task's own Assignee
+    // or the QA who raised a defect (both of whom otherwise pass canEdit()
+    // above) may set or change it.
+    if (dto.priority !== undefined && !canMutate) {
+      throw new ForbiddenException("Only Program Manager can set or change a task's priority.");
+    }
+
     // E.Hrs lock: once set, only Program Manager may change it further -
     // the Assignee (who otherwise has general edit rights) is blocked.
     if (dto.estimatedHours !== undefined && task.estimatedHours != null) {
@@ -959,6 +994,7 @@ export class TasksService {
     if (dto.description !== undefined) task.description = sanitizeRichText(dto.description);
     if (dto.estimatedHours !== undefined) task.estimatedHours = dto.estimatedHours;
     if (dto.dueDate !== undefined) task.dueDate = dto.dueDate;
+    if (dto.priority !== undefined) task.priority = dto.priority;
 
     const saved = await this.tasksRepository.save(task);
 

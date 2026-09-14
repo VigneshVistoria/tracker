@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsInt, IsDateString, IsNumber, Min, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsInt, IsDateString, IsNumber, IsEnum, Min, MinLength, MaxLength } from 'class-validator';
 import { TASK_TITLE_MAX_LENGTH } from '../task-title.constants';
+import { TaskPriority } from '../task-priority.enum';
 
 // General field edits - deliberately excludes `status`, which is now
 // fully auto-computed by task events (task creation, QA submit/approve/
@@ -48,4 +49,12 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsDateString()
   dueDate?: string;
+
+  // Program Manager only, enforced in TasksService.update() (not here) -
+  // omit the field to leave priority untouched, or send `null` to reset a
+  // task back to "Not Set" (IsOptional already skips IsEnum for null,
+  // exactly like undefined).
+  @IsOptional()
+  @IsEnum(TaskPriority)
+  priority?: TaskPriority | null;
 }

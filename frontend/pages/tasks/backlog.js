@@ -3,11 +3,13 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
 import RichTextEditor from '../../components/ui/RichTextEditor';
+import Badge from '../../components/ui/Badge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
+import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -15,7 +17,7 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false };
+const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false, priority: '' };
 
 export default function TaskBacklogPage() {
   const router = useRouter();
@@ -113,6 +115,7 @@ export default function TaskBacklogPage() {
       title: task.title,
       description: task.description,
       peerReviewEnabled: !!task.peerReviewEnabled,
+      priority: task.priority || '',
     });
     setEditingOriginalPeerReview(!!task.peerReviewEnabled);
     setShowForm(true);
@@ -133,6 +136,7 @@ export default function TaskBacklogPage() {
         phaseId: form.phase.id,
         title: form.title.trim(),
         description: form.description,
+        priority: form.priority || null,
       };
       if (editingId) {
         await apiFetch(`/tasks/${editingId}`, { method: 'PATCH', body: JSON.stringify(payload) });
@@ -271,6 +275,21 @@ export default function TaskBacklogPage() {
             </p>
           </div>
 
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="bkPriority">Priority</label>
+            <select
+              className={styles.input}
+              id="bkPriority"
+              value={form.priority}
+              onChange={(e) => setForm({ ...form, priority: e.target.value })}
+            >
+              <option value="">Not Set</option>
+              {TASK_PRIORITIES.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
               {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Task'}
@@ -316,13 +335,14 @@ export default function TaskBacklogPage() {
                 <th className={styles.colCompact}>Module</th>
                 <th className={styles.colCompact}>Phase</th>
                 <th>Title</th>
+                <th className={styles.colCompact}>Priority</th>
                 {canManage && <th></th>}
               </tr>
             </thead>
             <tbody>
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={canManage ? 6 : 4} className={styles.empty}>The Task Backlog is empty.</td>
+                  <td colSpan={canManage ? 7 : 5} className={styles.empty}>The Task Backlog is empty.</td>
                 </tr>
               )}
               {tasks.map((task) => (
@@ -340,6 +360,9 @@ export default function TaskBacklogPage() {
                   <td className={styles.colCompact} title={task.moduleName}>{task.moduleName}</td>
                   <td className={styles.colCompact} title={task.phaseName}>{task.phaseName}</td>
                   <td className={styles.tableDescCell} title={task.title}>{task.title}</td>
+                  <td className={styles.colCompact}>
+                    <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
+                  </td>
                   {canManage && (
                     <td>
                       <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>

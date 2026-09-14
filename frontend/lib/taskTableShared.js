@@ -103,3 +103,31 @@ export function visibleStatusTabs(showCompleted) {
 export function selectableStatuses(showCompleted) {
   return showCompleted ? TASK_STATUSES : TASK_STATUSES.filter((s) => !COMPLETED_STATUSES.includes(s));
 }
+
+// Task Priority - Program Manager only (TasksService's PRIORITY_MUTATE_ROLES
+// check), a separate, narrower vocabulary from the shared Issue/Dependency
+// Priority enum (Critical/High/Medium/Low). Mirrors backend/src/tasks/
+// task-priority.enum.ts - keep both lists in sync by hand, same as
+// TASK_STATUSES above.
+export const TASK_PRIORITIES = ['Immediate', 'High', 'Medium'];
+
+const PRIORITY_RANK = { Immediate: 0, High: 1, Medium: 2 };
+
+// Sort weight for My Tasks/Team Tasks/Task Backlog - unset ("Not Set")
+// tasks always rank last.
+export function priorityRank(priority) {
+  return priority != null && priority in PRIORITY_RANK ? PRIORITY_RANK[priority] : 3;
+}
+
+// Deliberately not red/amber/teal/plum/moss/slate (the Status row-tint
+// palette above) or the red-tint/red-dark Showstopper badge on Issues, so a
+// Priority tag never reads as either of those at a glance.
+const PRIORITY_TONE = { Immediate: 'error', High: 'warning', Medium: 'info' };
+
+export function priorityTone(priority) {
+  return PRIORITY_TONE[priority] || 'neutral';
+}
+
+export function priorityLabel(priority) {
+  return priority || 'Not Set';
+}
