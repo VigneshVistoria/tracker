@@ -30,6 +30,11 @@ const ROLES_ALLOWED_TO_CREATE_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
 // Admin - Admin stays view-only across Tasks (MUTATE_ROLES comment in
 // TasksService), same restriction as regular task creation above.
 const ROLES_ALLOWED_TO_CREATE_DEFECTS: UserRole[] = [UserRole.QA];
+// Viewing the Defect queue (My Defects) is wider than creating one - QA
+// sees their own (TasksService.findDefectQueue() self-scopes them), Admin
+// and Program Manager see every QA person's defects tenant-wide (same
+// view-only leadership grant the rest of Tasks gives them elsewhere).
+const ROLES_ALLOWED_TO_VIEW_DEFECT_QUEUE: UserRole[] = [UserRole.QA, UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
 // Assigning (single or bulk) is a mutation, not a view - Program Manager
 // only. Admin can still see the Backlog (ROLES_ALLOWED_TO_VIEW_BACKLOG
 // below) but, like Executive, has view-only access to the Task workflow -
@@ -122,15 +127,16 @@ export class TasksController {
     return this.tasksService.findEscalationQueue(req.user.tenantId);
   }
 
-  // Defect queue - defect tickets with a QA review round pending, self-
-  // scoped to the QA user who raised them (unlike qa-queue above, which
-  // is tenant-wide). Declared before ':id' for the same routing reason as
-  // 'backlog'/'qa-queue'/'peer-review-queue'/'mine'.
+  // Defect queue - defect tickets with a QA review round pending. Self-
+  // scoped to the QA user who raised them for QA (unlike qa-queue above,
+  // which is tenant-wide), tenant-wide for Admin/Program Manager (see
+  // TasksService.findDefectQueue()). Declared before ':id' for the same
+  // routing reason as 'backlog'/'qa-queue'/'peer-review-queue'/'mine'.
   @Get('defect-queue')
   async findDefectQueue(@Query('status') status: string | undefined, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    if (currentUser.role !== UserRole.QA) {
-      throw new ForbiddenException('Only QA can view the Defect queue.');
+    if (!ROLES_ALLOWED_TO_VIEW_DEFECT_QUEUE.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA, Admin, or Program Manager can view the Defect queue.');
     }
     return this.tasksService.findDefectQueue(currentUser, req.user.tenantId, status);
   }

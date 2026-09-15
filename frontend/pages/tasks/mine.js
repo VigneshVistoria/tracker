@@ -6,7 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
-const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
+const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 
 // Remembers which stat card (if any) is expanded below the table, the
 // same simple localStorage pattern lib/theme.js already uses for the

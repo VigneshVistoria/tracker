@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
 import RichTextEditor from '../../components/ui/RichTextEditor';
@@ -10,14 +11,25 @@ import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
+// Roles that actually do task work and so can be picked in the Create
+// Task form's optional Assignee field - deliberately narrower than the
+// bulk-assign dropdown below (which reuses the same /users/assignable
+// list unfiltered, matching its pre-existing behavior). QA and Client
+// are both confirmed use cases: QA can be assigned work items (writing
+// test cases, environment setup) separate from their reviewer role in QA
+// Feedback, and Client can be assigned action items they need to
+// complete themselves (e.g. "provide documents").
+const CREATE_TASK_ASSIGNEE_ROLES = [...DEVELOPER_EQUIVALENT_ROLES, 'qa', 'client'];
+
 function userToOption(u) {
-  return { id: u.id, name: u.fullName || u.email };
+  return { id: u.id, name: u.fullName || u.email, role: u.role };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false, priority: '' };
+const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false, priority: '', assignee: null };
 
 export default function TaskBacklogPage() {
   const router = useRouter();
@@ -93,6 +105,8 @@ export default function TaskBacklogPage() {
 
   if (!user) return null;
 
+  const createAssigneeOptions = assignableUsers.filter((u) => CREATE_TASK_ASSIGNEE_ROLES.includes(u.role));
+
   // Admin can view the Backlog (VIEW_ROLES above) but, like Executive, has
   // view-only access to Tasks - creating, editing, and assigning are
   // Program Manager only, matching TasksController's role checks.
@@ -116,6 +130,7 @@ export default function TaskBacklogPage() {
       description: task.description,
       peerReviewEnabled: !!task.peerReviewEnabled,
       priority: task.priority || '',
+      assignee: null,
     });
     setEditingOriginalPeerReview(!!task.peerReviewEnabled);
     setShowForm(true);
@@ -150,8 +165,15 @@ export default function TaskBacklogPage() {
         }
         showToast('Task updated', 'success');
       } else {
-        await apiFetch('/tasks', { method: 'POST', body: JSON.stringify({ ...payload, peerReviewEnabled: form.peerReviewEnabled }) });
-        showToast('Task created', 'success');
+        await apiFetch('/tasks', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...payload,
+            peerReviewEnabled: form.peerReviewEnabled,
+            assigneeUserId: form.assignee ? form.assignee.id : undefined,
+          }),
+        });
+        showToast(form.assignee ? `Task created and assigned to ${form.assignee.name}` : 'Task created', 'success');
       }
       resetForm();
       load();
@@ -196,11 +218,16 @@ export default function TaskBacklogPage() {
             singly or in bulk - to move it into that person&apos;s My Tasks list.
           </p>
         </div>
-        {canManage && (
-          <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={() => (showForm ? resetForm() : setShowForm(true))}>
-            {showForm ? 'Cancel' : 'New Task'}
-          </button>
-        )}
+        <div className={styles.actions}>
+          <Link href="/tasks/backlog-bulk" className={styles.buttonSecondary}>
+            Bulk Import/Export
+          </Link>
+          {canManage && (
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={() => (showForm ? resetForm() : setShowForm(true))}>
+              {showForm ? 'Cancel' : 'New Task'}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
@@ -261,17 +288,36 @@ export default function TaskBacklogPage() {
             />
           </div>
 
+          {!editingId && (
+            <>
+              <SearchSelectField
+                label="Assignee (optional)"
+                id="bkAssignee"
+                value={form.assignee}
+                onChange={(v) => setForm({ ...form, assignee: v, peerReviewEnabled: v?.role === 'qa' ? true : form.peerReviewEnabled })}
+                options={createAssigneeOptions}
+              />
+              <p className={styles.helpText}>
+                Leave blank to create it unassigned in the Task Backlog, same as today. Pick someone to skip the
+                separate assign step and put it straight into their My Tasks list.
+              </p>
+            </>
+          )}
+
           <div className={styles.field}>
             <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <input
                 type="checkbox"
                 checked={form.peerReviewEnabled}
+                disabled={form.assignee?.role === 'qa'}
                 onChange={(e) => setForm({ ...form, peerReviewEnabled: e.target.checked })}
               />
               Peer Review
             </label>
             <p className={styles.helpText}>
-              Skips QA - the assignee will pick another developer to review this task instead.
+              {form.assignee?.role === 'qa'
+                ? 'Required for a QA assignee - a Developer/Designer/DevOps reviews their work instead of QA reviewing itself.'
+                : 'Skips QA - the assignee will pick another developer to review this task instead.'}
             </p>
           </div>
 

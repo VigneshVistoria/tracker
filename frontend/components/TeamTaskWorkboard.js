@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Flag, Activity,
-  ChevronDown, ChevronRight, ChevronLeft, List, LayoutGrid, X, Users,
+  ChevronDown, ChevronRight, ChevronLeft, List, LayoutGrid, X, Users, Layers,
 } from 'lucide-react';
 import Table from './ui/Table';
 import Badge from './ui/Badge';
@@ -156,6 +156,7 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
         {task.title}
       </div>
       <div className={styles.taskTileMeta}>
+        <span><Layers size={12} aria-hidden="true" /> {task.moduleName || '—'}</span>
         <span><User size={12} aria-hidden="true" /> {assigneeLabel}</span>
         <span className={isOverdueTask(task) ? styles.dueDateOverdue : undefined}>
           <CalendarClock size={12} aria-hidden="true" /> {formatDate(task.dueDate)}

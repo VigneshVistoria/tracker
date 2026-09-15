@@ -2,11 +2,10 @@ import { IsString, MinLength, MaxLength, IsInt, IsOptional, IsBoolean, IsEnum } 
 import { TASK_TITLE_MAX_LENGTH } from '../task-title.constants';
 import { TaskPriority } from '../task-priority.enum';
 
-// Stage 1 (Task Backlog creation, Program Manager only) - deliberately
-// just the Project -> Module -> Phase chain plus Title/Description. No
-// Assignee/Estimated Hours/Due Date here anymore - those are entered at
-// later stages (assignment, then the Assignee's own My Tasks entry) via
-// PATCH /tasks/:id/assign and PATCH /tasks/:id.
+// Stage 1 (Task Backlog creation, Program Manager only) - just the
+// Project -> Module -> Phase chain plus Title/Description/Assignee.
+// Estimated Hours/Due Date still aren't here - those are entered at a
+// later stage (the Assignee's own My Tasks entry) via PATCH /tasks/:id.
 export class CreateTaskDto {
   @IsInt()
   projectId: number;
@@ -34,6 +33,17 @@ export class CreateTaskDto {
   @IsOptional()
   @IsBoolean()
   peerReviewEnabled?: boolean;
+
+  // Optional - assign the task directly at creation instead of leaving it
+  // in the Task Backlog for a separate assign step. Omitted/null keeps the
+  // exact current behavior (unassigned). Any tenant user may be picked
+  // (TasksService.create() validates existence only), same as the
+  // existing assign/bulk-assign endpoints - the frontend's Create Task
+  // form is the one that narrows the dropdown to the roles that actually
+  // do task work (Developer, QA, Designer, DevOps, Client).
+  @IsOptional()
+  @IsInt()
+  assigneeUserId?: number;
 
   // Program Manager only - enforced by ROLES_ALLOWED_TO_CREATE_TASKS on
   // this same endpoint, so no separate check is needed here. Left

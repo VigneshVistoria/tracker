@@ -130,6 +130,16 @@ const QA_PENDING_STATUSES = ['Feedback', 'Re-Feedback'];
 // findPeerReviewQueue() and PeerReviewsService.submit().
 const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
 
+// "Open" for a defect (findDefectQueue() below) is wider than
+// QA_PENDING_STATUSES above - QA_PENDING_STATUSES only covers a task
+// while a QA review round is actually pending, but a freshly-raised
+// defect starts at 'Development' (assigned to a Developer, not yet
+// submitted back) and stays open the whole time it's with them, not just
+// once it comes back for QA's decision. Without this, a QA person who
+// just raised a defect would see nothing in My Defects until the
+// Developer submitted it - every non-terminal status counts as open here.
+const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated'];
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -225,6 +235,20 @@ export class TasksService {
       throw new BadRequestException(`Phase #${phaseId} belongs to a different module.`);
     }
     return { project, module, phase };
+  }
+
+  // A task whose Assignee is QA must go through Peer Review (a Developer/
+  // Designer/DevOps reviews it) rather than the normal QA-submit path -
+  // findQaQueue()/approve()/reject() have no self-review guard (any QA
+  // user, including the assignee themselves, can approve/reject a pending
+  // round), so letting a QA assignee's own work land in that shared queue
+  // would let QA review its own work. Applied everywhere a task can gain
+  // a QA assignee (create() above, assignTask()/reassignTeamTask() below,
+  // and TasksBulkService.import()) so it can't be bypassed by using a
+  // different assign path. Public so TasksBulkService can reuse the exact
+  // same rule for bulk-imported rows instead of re-deriving it.
+  requiresPeerReviewForAssignee(assigneeRole: UserRole | undefined): boolean {
+    return assigneeRole === UserRole.QA;
   }
 
   // Precondition for submitting a task to QA - checked against the values
@@ -389,24 +413,34 @@ export class TasksService {
     return { tasks: withComputed, statCounts };
   }
 
-  // Defect queue - the mirror image of findQaQueue() above, but self-
-  // scoped to the QA user who raised the defect (createdByUserId) instead
-  // of tenant-wide, same self-scoping reasoning as findPeerReviewQueue()
-  // (just keyed off createdByUserId instead of TaskQaReview.reviewerUserId,
-  // since a defect's "reviewer" is fixed at creation time, not picked at
-  // submit time). Same shape (QaQueueResult) so the frontend can reuse
-  // QaReviewWorkboard's cards/table/filters unchanged.
-  async findDefectQueue(currentUser: { id: number }, tenantId: number, status?: string): Promise<QaQueueResult> {
-    const baseWhere = { tenantId, isDefect: true, createdByUserId: currentUser.id };
-    const pendingTasks = await this.tasksRepository.find({
-      where: { ...baseWhere, status: In(QA_PENDING_STATUSES) },
+  // Defect queue - the mirror image of findQaQueue() above. For QA it's
+  // self-scoped to the QA user who raised the defect (createdByUserId),
+  // same self-scoping reasoning as findPeerReviewQueue() (just keyed off
+  // createdByUserId instead of TaskQaReview.reviewerUserId, since a
+  // defect's "reviewer" is fixed at creation time, not picked at submit
+  // time). Admin/Program Manager have no "my own defects" concept, so for
+  // them this is tenant-wide instead, mirroring every QA person's defects -
+  // same view-only leadership grant the rest of Tasks gives them. Same
+  // shape (QaQueueResult) so the frontend can reuse QaReviewWorkboard's
+  // cards/table/filters unchanged.
+  async findDefectQueue(currentUser: { id: number; role: UserRole }, tenantId: number, status?: string): Promise<QaQueueResult> {
+    const baseWhere =
+      currentUser.role === UserRole.QA
+        ? { tenantId, isDefect: true, createdByUserId: currentUser.id }
+        : { tenantId, isDefect: true };
+    // "Pending"/open here means OPEN_DEFECT_STATUSES (Development through
+    // Escalated), not QA_PENDING_STATUSES - unlike findQaQueue() above, a
+    // defect needs to stay visible to the QA who raised it the whole time
+    // it's open, not just while a QA review round is actually pending.
+    const openTasks = await this.tasksRepository.find({
+      where: { ...baseWhere, status: In(OPEN_DEFECT_STATUSES) },
       order: { createdAt: 'DESC' },
     });
     const today = new Date().toISOString().slice(0, 10);
     const statCounts = {
-      pending: pendingTasks.length,
-      resubmissions: pendingTasks.filter((t) => t.status === 'Re-Feedback').length,
-      overdue: pendingTasks.filter((t) => t.dueDate && t.dueDate < today).length,
+      pending: openTasks.length,
+      resubmissions: openTasks.filter((t) => t.status === 'Re-Feedback').length,
+      overdue: openTasks.filter((t) => t.dueDate && t.dueDate < today).length,
       approved: await this.tasksRepository.count({ where: { ...baseWhere, status: 'Pass' } }),
       rejected: await this.tasksRepository.count({ where: { ...baseWhere, status: 'Failed' } }),
     };
@@ -414,10 +448,10 @@ export class TasksService {
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
       tasks = await this.tasksRepository.find({ where: { ...baseWhere, status }, order: { createdAt: 'DESC' } });
-    } else if (status === 'Feedback' || status === 'Re-Feedback') {
-      tasks = pendingTasks.filter((t) => t.status === status);
+    } else if (OPEN_DEFECT_STATUSES.includes(status || '')) {
+      tasks = openTasks.filter((t) => t.status === status);
     } else {
-      tasks = pendingTasks;
+      tasks = openTasks;
     }
 
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
@@ -644,12 +678,21 @@ export class TasksService {
   }
 
   // Stage 1: Program Manager creates a Backlog task - Project/Module/Phase/
-  // Description only. No assignee, no E.Hrs, no Due Date yet. Status
+  // Description, optionally with an Assignee set right away (skipping the
+  // separate assign step). No E.Hrs, no Due Date yet either way. Status
   // starts at 'Development' immediately - it's never gated behind other
   // fields being set, since Status is auto-computed, not manually
   // unlocked.
   async create(dto: CreateTaskDto, user: { id: number; email: string }, tenantId: number): Promise<ProjectTask> {
     const { project, module, phase } = await this.resolveChain(dto.projectId, dto.moduleId, dto.phaseId, tenantId);
+
+    let assignee: { id: number; email: string; role: UserRole } | null = null;
+    if (dto.assigneeUserId != null) {
+      assignee = await this.usersService.findByIdAndTenant(dto.assigneeUserId, tenantId);
+      if (!assignee) {
+        throw new NotFoundException(`User #${dto.assigneeUserId} not found`);
+      }
+    }
 
     const task = this.tasksRepository.create({
       projectId: project.id,
@@ -660,12 +703,15 @@ export class TasksService {
       phaseName: phase.name,
       title: dto.title.trim(),
       description: sanitizeRichText(dto.description),
-      assigneeUserId: null,
-      assigneeEmail: null,
+      assigneeUserId: assignee?.id ?? null,
+      assigneeEmail: assignee?.email ?? null,
       estimatedHours: null,
       dueDate: null,
       status: 'Development',
-      peerReviewEnabled: dto.peerReviewEnabled ?? false,
+      // A QA-assigned task always goes through Peer Review, never the
+      // shared QA queue - see the QA_ASSIGNEE_FORCES_PEER_REVIEW comment
+      // on requiresPeerReviewForAssignee() below for why.
+      peerReviewEnabled: this.requiresPeerReviewForAssignee(assignee?.role) || (dto.peerReviewEnabled ?? false),
       // Never auto-assigned - omitted means "Not Set" (null), same as an
       // existing task nobody has reviewed yet. Task creation is already
       // Program Manager only (ROLES_ALLOWED_TO_CREATE_TASKS), so no
@@ -684,7 +730,12 @@ export class TasksService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: saved.id,
-      details: { projectId: saved.projectId, moduleId: saved.moduleId, phaseId: saved.phaseId },
+      details: {
+        projectId: saved.projectId,
+        moduleId: saved.moduleId,
+        phaseId: saved.phaseId,
+        assigneeUserId: saved.assigneeUserId,
+      },
     });
 
     return saved;
@@ -794,6 +845,9 @@ export class TasksService {
 
     task.assigneeUserId = assignee.id;
     task.assigneeEmail = assignee.email;
+    if (this.requiresPeerReviewForAssignee(assignee.role)) {
+      task.peerReviewEnabled = true;
+    }
     const saved = await this.tasksRepository.save(task);
 
     await this.auditLogService.record({
@@ -863,6 +917,9 @@ export class TasksService {
       task.assigneeUserId = assignee.id;
       task.assigneeEmail = assignee.email;
       assigneeFullName = assignee.fullName;
+      if (this.requiresPeerReviewForAssignee(assignee.role)) {
+        task.peerReviewEnabled = true;
+      }
     }
     const saved = await this.tasksRepository.save(task);
 

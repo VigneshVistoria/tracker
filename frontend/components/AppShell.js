@@ -163,9 +163,12 @@ const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon:
 // can be picked as a Peer Reviewer, so unlike QA_REVIEW_NAV_ITEM above
 // this isn't shown to Admin/Executive/Program Manager.
 const PEER_REVIEW_NAV_ITEM = { href: '/tasks/peer-review', label: 'Peer Review', icon: Users };
-// QA only - defects a QA person raised, self-scoped (unlike QA_REVIEW_NAV_ITEM
-// above, which is the shared tenant-wide queue). Also the entry point to
-// Create Defect, linked from that page's header.
+// QA sees their own defects (self-scoped, unlike QA_REVIEW_NAV_ITEM above,
+// which is the shared tenant-wide queue) and is the only role that can
+// reach Create Defect, linked from the page's header. Admin/Program
+// Manager have no "my own" defects concept, so they see every QA person's
+// defects tenant-wide instead (TasksService.findDefectQueue()) - same
+// view-only leadership grant the rest of Tasks gives them.
 const MY_DEFECTS_NAV_ITEM = { href: '/tasks/my-defects', label: 'My Defects', icon: Bug };
 
 // Same visibility as My Tasks (Admin/Executive/Program Manager/QA/
@@ -187,11 +190,16 @@ const KPI_MATRIX_NAV_ITEM = { href: '/kpi/matrix', label: 'KPI Matrix', icon: La
 // being role === 'admin').
 const PLATFORM_TENANTS_NAV_ITEM = { href: '/platform/tenants', label: 'Platform Tenants', icon: Globe };
 
-// Clients only ever see their own tickets - a minimal nav with nothing
-// internal (no Issues list, Projects, Dependency, Test Cases, etc.).
+// Clients only ever see their own tickets and their own assigned tasks -
+// still a minimal nav with nothing internal (no Issues list, Projects,
+// Dependency, Test Cases, etc.). My Tasks added 2026-09 alongside letting
+// a task be assigned directly to a Client (e.g. "provide documents") -
+// reuses the same page/endpoint every other role's My Tasks does, which
+// already self-scopes to tasks assigned to the current user.
 const CLIENT_NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/issues', label: 'My Tickets', icon: Ticket },
+  MY_TASKS_NAV_ITEM,
 ];
 
 // Developer gets the Task-lifecycle-focused Dashboard (see
@@ -259,8 +267,9 @@ export default function AppShell({ children, fullScreen = false }) {
   // Nav sidebar count badges (e.g. "My Tasks 6") - Phase 1 redesign,
   // gated new-design roles only (see lib/newDesignRoles.js). null means
   // "don't render a badge" - SingleNavLink only shows one once a number
-  // has actually loaded.
-  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null });
+  // has actually loaded. myDefects is fetched separately below since it's
+  // also shown to QA, who's outside the Phase 1 gate.
+  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -328,8 +337,31 @@ export default function AppShell({ children, fullScreen = false }) {
       apiFetch('/tasks/qa-queue').catch(() => []),
     ]).then(([mine, qaQueue]) => {
       if (cancelled) return;
-      setNavCounts({ myTasks: mine.length, qaReview: qaQueue.length });
+      // Merge rather than replace - myDefects is fetched by the separate
+      // effect below, on its own role gate, and would otherwise get wiped
+      // back to null every time this one re-resolves.
+      setNavCounts((prev) => ({ ...prev, myTasks: mine.length, qaReview: qaQueue.length }));
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, router.pathname]);
+
+  // My Defects badge - its own effect/role gate since it's shown to QA too
+  // (unlike My Tasks/QA Review above, gated to the Phase 1 new-design
+  // roles only). statCounts.pending from the defect-queue endpoint is the
+  // same "open" definition QaReviewWorkboard's Pending card already uses,
+  // scoped to just this user for QA or tenant-wide for Admin/Program
+  // Manager (see TasksService.findDefectQueue()).
+  useEffect(() => {
+    if (!user || !(user.role === 'qa' || user.role === 'admin' || user.role === 'program_manager')) return;
+    let cancelled = false;
+    apiFetch('/tasks/defect-queue')
+      .then((res) => {
+        if (cancelled) return;
+        setNavCounts((prev) => ({ ...prev, myDefects: res.statCounts.pending }));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -477,6 +509,10 @@ export default function AppShell({ children, fullScreen = false }) {
               <SingleNavLink item={MY_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.myTasks} />
             )}
 
+            {(user.role === 'admin' || user.role === 'program_manager' || user.role === 'qa') && (
+              <SingleNavLink item={MY_DEFECTS_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.myDefects} />
+            )}
+
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={TEAM_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
@@ -494,10 +530,6 @@ export default function AppShell({ children, fullScreen = false }) {
 
             {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
               <SingleNavLink item={PEER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {user.role === 'qa' && (
-              <SingleNavLink item={MY_DEFECTS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'admin' ||

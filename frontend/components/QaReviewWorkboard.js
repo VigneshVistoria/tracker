@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Hash, User, FolderKanban, FileText, Flag,
+  Hash, User, FolderKanban, FileText, Flag, Activity, CalendarDays,
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Table from './ui/Table';
@@ -10,7 +10,9 @@ import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO } from '../lib/developerTaskStats';
-import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel } from '../lib/taskTableShared';
+import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel, statusBadgeStyle } from '../lib/taskTableShared';
+import { formatDate } from '../lib/formatDate';
+import { stripHtmlForPreview } from '../lib/richText';
 import { apiFetch } from '../lib/api';
 
 // QA Review queue - same icon-header/sortable table, row-tint, and
@@ -37,6 +39,15 @@ const QA_LEGEND_ITEMS = LEGEND_ITEMS.filter(
   (item) => item.label.includes('Feedback') || item.label === 'Pass' || item.label.startsWith('Failed'),
 );
 
+// My Defects (showDefectColumns) additionally includes Development and
+// Escalated - unlike QA Review above, a defect stays open (and needs a
+// legend swatch) the whole time it's with the Developer, not just while a
+// QA review round is actually pending. See OPEN_DEFECT_STATUSES on the
+// backend (TasksService.findDefectQueue()).
+const DEFECT_LEGEND_ITEMS = LEGEND_ITEMS.filter(
+  (item) => item.label === 'Development' || item.label.includes('Feedback') || item.label === 'Escalated' || item.label === 'Pass' || item.label.startsWith('Failed'),
+);
+
 const CARD_DEFS = [
   { key: 'pending', label: 'Pending QA Review', statusFilter: 'All' },
   { key: 'resubmissions', label: 'Resubmissions', statusFilter: 'Re-Feedback' },
@@ -45,7 +56,16 @@ const CARD_DEFS = [
   { key: 'rejected', label: 'Rejected', statusFilter: 'Failed' },
 ];
 
-export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue' }) {
+// Same 5 cards as QA Review, just the first one relabeled - "Open" (not
+// "Pending QA Review") since it now also covers a defect still sitting
+// with the Developer in Development, not just ones actually pending a QA
+// decision.
+const DEFECT_CARD_DEFS = [
+  { ...CARD_DEFS[0], label: 'Open' },
+  ...CARD_DEFS.slice(1),
+];
+
+export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue', showDefectColumns = false }) {
   const [activeCard, setActiveCard] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [assigneeFilter, setAssigneeFilter] = useState('All');
@@ -106,8 +126,8 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
   }, [tasks]);
 
   const cards = useMemo(
-    () => CARD_DEFS.map((c) => ({ ...c, count: statCounts[c.key] ?? 0 })),
-    [statCounts],
+    () => (showDefectColumns ? DEFECT_CARD_DEFS : CARD_DEFS).map((c) => ({ ...c, count: statCounts[c.key] ?? 0 })),
+    [statCounts, showDefectColumns],
   );
 
   const handleCardClick = (card) => {
@@ -174,9 +194,28 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
         render: (t) => (
           <span className={styles.descClamp} title={t.title}>
             {t.title}
+            {showDefectColumns && stripHtmlForPreview(t.description) && (
+              <span className={styles.issueMeta}>{stripHtmlForPreview(t.description)}</span>
+            )}
           </span>
         ),
       },
+      ...(showDefectColumns
+        ? [
+            {
+              key: 'status',
+              header: <ColHeader icon={Activity} label="Status" />,
+              sortable: true,
+              render: (t) => <span className={styles.badge} style={statusBadgeStyle(t.status)}>{t.status}</span>,
+            },
+            {
+              key: 'createdAt',
+              header: <ColHeader icon={CalendarDays} label="Date Created" />,
+              sortable: true,
+              render: (t) => formatDate(t.createdAt),
+            },
+          ]
+        : []),
       {
         key: 'priority',
         header: <ColHeader icon={Flag} label="Priority" />,
@@ -185,7 +224,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
         render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
       },
     ],
-    [],
+    [showDefectColumns],
   );
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
@@ -226,7 +265,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
       {activeCard && activeCardDef && (
         <>
           <div className={styles.statusLegend}>
-            {QA_LEGEND_ITEMS.map((item) => (
+            {(showDefectColumns ? DEFECT_LEGEND_ITEMS : QA_LEGEND_ITEMS).map((item) => (
               <span key={item.label} className={styles.statusLegendItem}>
                 <span className={styles.statusLegendDot} style={{ background: item.swatch }} />
                 {item.label}
@@ -258,9 +297,11 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
-                <option value="All">All (Feedback + Re-Feedback)</option>
+                <option value="All">{showDefectColumns ? 'All (Open)' : 'All (Feedback + Re-Feedback)'}</option>
+                {showDefectColumns && <option value="Development">Development</option>}
                 <option value="Feedback">Feedback</option>
                 <option value="Re-Feedback">Re-Feedback</option>
+                {showDefectColumns && <option value="Escalated">Escalated</option>}
                 <option value="Pass">Approved</option>
                 <option value="Failed">Rejected</option>
               </select>

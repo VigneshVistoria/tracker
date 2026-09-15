@@ -17,7 +17,7 @@ import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTabl
 import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
 
-const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', ...DEVELOPER_EQUIVALENT_ROLES];
+const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
 // neither can edit - matches the backend's canEdit()/MUTATE_ROLES, which
 // is Program Manager only (plus the task's own Assignee, handled
@@ -177,6 +177,15 @@ export default function TaskDetailPage() {
   const [editingAssignee, setEditingAssignee] = useState(false);
   const [assigneeSelection, setAssigneeSelection] = useState(null);
   const [savingAssignee, setSavingAssignee] = useState(false);
+  // Task Description edit (Program Manager only, same canManage gate as
+  // Edit Assignee above) - allowed at any status, no stage-based lock,
+  // via the general PATCH /tasks/:id (TasksService.update() already lets
+  // PM through regardless of status; the audit entry it writes already
+  // records the full previous task alongside the submitted payload, so
+  // old vs new description is captured with no extra backend work).
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState('');
+  const [savingDescription, setSavingDescription] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -306,6 +315,7 @@ export default function TaskDetailPage() {
         setDefectPhase({ id: t.phaseId, name: t.phaseName });
         setDefectTitle(t.title);
         setDefectDescription(t.description);
+        setDescriptionDraft(t.description);
         setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeFullName || t.assigneeEmail } : null);
         setTickets(ticketList);
         setQaReviews(reviewList);
@@ -503,6 +513,37 @@ export default function TaskDetailPage() {
   const handleCancelEditAssignee = () => {
     setAssigneeSelection(task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeFullName || task.assigneeEmail } : null);
     setEditingAssignee(false);
+  };
+
+  // PM-only description edit, allowed at any status (no stage-based lock,
+  // unlike Estimated Hours/Due Date) - see the editingDescription state
+  // declaration above for why no dedicated backend endpoint was needed.
+  const handleSaveDescription = async () => {
+    setError('');
+    if (!stripHtmlForPreview(descriptionDraft).trim()) {
+      setError('Description is required.');
+      return;
+    }
+    setSavingDescription(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ description: descriptionDraft }),
+      });
+      setTask(updated);
+      setDescriptionDraft(updated.description);
+      setEditingDescription(false);
+      showToast('Description updated', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleCancelEditDescription = () => {
+    setDescriptionDraft(task.description);
+    setEditingDescription(false);
   };
 
   const handleSavePeerReviewFlag = async () => {
@@ -850,7 +891,32 @@ export default function TaskDetailPage() {
             Defect
           </span>
         )}
-        <RichTextDisplay value={task.description} />
+        {!editingDescription && <RichTextDisplay value={task.description} />}
+        {canManage && !editingDescription && (
+          <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDescription(true)}>
+              Edit Description
+            </button>
+          </div>
+        )}
+        {canManage && editingDescription && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <RichTextEditor
+              id="taskDescriptionEdit"
+              value={descriptionDraft}
+              onChange={setDescriptionDraft}
+              placeholder="Describe the task..."
+            />
+            <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingDescription} onClick={handleSaveDescription}>
+                {savingDescription ? 'Saving...' : 'Save Description'}
+              </button>
+              <button className={styles.buttonSecondary} type="button" disabled={savingDescription} onClick={handleCancelEditDescription}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <p className={styles.issueMeta}>
           Assignee: {task.assigneeFullName || task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
           {task.isDefect && <> &middot; Raised by {task.createdByEmail}</>}
