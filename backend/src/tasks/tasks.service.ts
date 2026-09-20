@@ -140,6 +140,18 @@ const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
 // Developer submitted it - every non-terminal status counts as open here.
 const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated'];
 
+// "Resolved" for a *linked* defect (assertNoOpenLinkedDefects() below) -
+// deliberately not OPEN_DEFECT_STATUSES's complement. That constant
+// answers "does this belong in QA's My Defects open-count", where
+// 'Failed' already counts as not-open because a QA rejection is expected
+// to loop straight back into 'Re-Feedback' via the Assignee's resubmit.
+// A linked defect blocking a parent task needs a stricter bar: if QA
+// rejects the linked defect itself and nobody has resubmitted it yet, it
+// must keep blocking the parent - it is not resolved just because it's
+// momentarily sitting at 'Failed'. Only an actual QA pass, or the PM
+// closing it as Junk, lifts the block.
+const LINKED_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk'];
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -276,6 +288,32 @@ export class TasksService {
     const label = openTickets.length === 1 ? 'ticket' : 'tickets';
     const ids = openTickets.map((t) => `#${t.id}`).join(', ');
     throw new BadRequestException(`Cannot submit for QA - resolve the open dependency ${label} ${ids} first.`);
+  }
+
+  // Same shape as assertNoOpenDependencyTickets() above, and coexists
+  // with it - either an open Dependency Ticket OR an open linked Defect
+  // independently blocks resubmission. Deliberately QA-only for the same
+  // reason: called from TaskQaReviewsService.submit() alone, never from
+  // PeerReviewsService.submit().
+  async assertNoOpenLinkedDefects(taskId: number, tenantId: number): Promise<void> {
+    const openDefects = await this.tasksRepository.find({
+      where: { parentTaskId: taskId, tenantId, isDefect: true, status: Not(In(LINKED_DEFECT_RESOLVED_STATUSES)) },
+    });
+    if (openDefects.length === 0) {
+      return;
+    }
+    const label = openDefects.length === 1 ? 'defect' : 'defects';
+    const ids = openDefects.map((d) => `#${d.id}`).join(', ');
+    throw new BadRequestException(`Cannot submit for QA - resolve the open linked ${label} ${ids} first.`);
+  }
+
+  // Combined task detail view - every defect ever spun off this task via
+  // the QA-rejection "Create linked defect" option, most recent first.
+  // Same visibility rule as the parent task itself, enforced by the
+  // caller (TasksController.findLinkedDefects) via canView(), same
+  // pattern as TaskDependencyTicketsService.findForTask().
+  findLinkedDefectsForTask(parentTaskId: number, tenantId: number): Promise<ProjectTask[]> {
+    return this.tasksRepository.find({ where: { parentTaskId, tenantId }, order: { createdAt: 'DESC' } });
   }
 
   // Stable sort (Array.prototype.sort's guaranteed since ES2019) - tasks
@@ -748,7 +786,18 @@ export class TasksService {
   // through the same chain as every other task - required for the same
   // scoping/KPI/dashboard reasons, not dropped just because this is a
   // shortcut path.
-  async createDefect(dto: CreateDefectTaskDto, user: { id: number; email: string }, tenantId: number): Promise<ProjectTask> {
+  // parentTaskId is deliberately not a CreateDefectTaskDto field - it's
+  // only ever passed by TaskQaReviewsService.reject()'s "Create linked
+  // defect" option, using the parent task it already loaded and
+  // tenant-checked, never accepted from the client directly (so a QA
+  // filing a standalone defect from the Create Defect page has no way to
+  // link it to an arbitrary task).
+  async createDefect(
+    dto: CreateDefectTaskDto,
+    user: { id: number; email: string },
+    tenantId: number,
+    parentTaskId: number | null = null,
+  ): Promise<ProjectTask> {
     const { project, module, phase } = await this.resolveChain(dto.projectId, dto.moduleId, dto.phaseId, tenantId);
 
     const assignee = await this.usersService.findByIdAndTenant(dto.assigneeUserId, tenantId);
@@ -780,6 +829,7 @@ export class TasksService {
         status: 'Development',
         peerReviewEnabled: false,
         isDefect: true,
+        parentTaskId,
         createdByUserId: user.id,
         createdByEmail: user.email,
         tenantId,
@@ -812,6 +862,7 @@ export class TasksService {
         moduleId: saved.moduleId,
         phaseId: saved.phaseId,
         assigneeUserId: assignee.id,
+        parentTaskId,
         artifactTypes: (dto.artifacts || []).map((a) => a.type),
       },
     });

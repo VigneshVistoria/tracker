@@ -198,6 +198,19 @@ export default function TaskDetailPage() {
   const [ticketOwner, setTicketOwner] = useState(null);
   const [filingTicket, setFilingTicket] = useState(false);
 
+  // Defects spun off this task via QA-rejection's "Create linked defect(s)"
+  // option - same shape/reasoning as `tickets` above for Dependency
+  // Tickets. createLinkedDefect/linkedDefectDrafts/linkedDefectArtifacts
+  // only matter while the QA reject form (showRejectForm) is open; reset
+  // alongside rejectComment on a successful reject. linkedDefectDrafts is
+  // an open-ended batch (each entry its own Title/Description/Assignee);
+  // linkedDefectArtifacts is ONE shared set of evidence applied to every
+  // defect in the batch, entered once rather than per defect.
+  const [linkedDefects, setLinkedDefects] = useState([]);
+  const [createLinkedDefect, setCreateLinkedDefect] = useState(false);
+  const [linkedDefectDrafts, setLinkedDefectDrafts] = useState([{ title: '', description: '', assignee: null }]);
+  const [linkedDefectArtifacts, setLinkedDefectArtifacts] = useState([]);
+
   // Defect scope editing (Project/Module/Phase/Description) - only
   // Program Manager or the QA who raised the defect may edit these, own
   // card/save path separate from handleSaveFields (Estimated Hours/Due
@@ -246,6 +259,10 @@ export default function TaskDetailPage() {
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
+  };
+
+  const loadLinkedDefects = () => {
+    apiFetch(`/tasks/${id}/linked-defects`).then(setLinkedDefects).catch(() => {});
   };
 
   const handleResolveTicket = async (ticketId) => {
@@ -303,8 +320,9 @@ export default function TaskDetailPage() {
       apiFetch(`/tasks/${id}`),
       apiFetch(`/task-dependency-tickets?parentTaskId=${id}`),
       apiFetch(`/tasks/${id}/qa-reviews`),
+      apiFetch(`/tasks/${id}/linked-defects`),
     ])
-      .then(([t, ticketList, reviewList]) => {
+      .then(([t, ticketList, reviewList, linkedDefectList]) => {
         setTask(t);
         setEstimatedHours(t.estimatedHours ?? '');
         setDueDate(t.dueDate ?? '');
@@ -319,6 +337,7 @@ export default function TaskDetailPage() {
         setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeFullName || t.assigneeEmail } : null);
         setTickets(ticketList);
         setQaReviews(reviewList);
+        setLinkedDefects(linkedDefectList);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -378,6 +397,11 @@ export default function TaskDetailPage() {
   // called from TaskQaReviewsService.submit()) - deliberately not consulted
   // by the Peer Review submit form below, which stays reachable regardless.
   const openDependencyTickets = tickets.filter((t) => t.status === 'open');
+  // Backend mirror: TasksService.LINKED_DEFECT_RESOLVED_STATUSES /
+  // assertNoOpenLinkedDefects() - coexists with openDependencyTickets
+  // above, either one independently blocks resubmission. 'Failed' is
+  // deliberately still "open" here (see that constant's comment).
+  const openLinkedDefects = linkedDefects.filter((d) => !['Pass', 'Junk'].includes(d.status));
 
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
@@ -599,6 +623,47 @@ export default function TaskDetailPage() {
     return qaArtifacts.filter((row) => row.type && row.url.trim()).map((row) => ({ type: row.type, url: row.url.trim() }));
   };
 
+  const addLinkedDefectArtifactRow = () => {
+    setLinkedDefectArtifacts((prev) => [...prev, { type: '', url: '' }]);
+  };
+
+  const removeLinkedDefectArtifactRow = (index) => {
+    setLinkedDefectArtifacts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateLinkedDefectArtifactRow = (index, field, value) => {
+    setLinkedDefectArtifacts((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  };
+
+  // Same "both filled in or neither" rule as buildQaArtifactsPayload. This
+  // one set of artifacts is shared across every defect in
+  // linkedDefectDrafts below, not picked per defect.
+  const buildLinkedDefectArtifactsPayload = () => {
+    const incomplete = linkedDefectArtifacts.some((row) => (row.type && !row.url.trim()) || (!row.type && row.url.trim()));
+    if (incomplete) {
+      throw new Error('Each linked defect artifact needs both a Type and a URL - remove any unused rows.');
+    }
+    return linkedDefectArtifacts.filter((row) => row.type && row.url.trim()).map((row) => ({ type: row.type, url: row.url.trim() }));
+  };
+
+  const addLinkedDefectDraft = () => {
+    setLinkedDefectDrafts((prev) => [...prev, { title: '', description: '', assignee: null }]);
+  };
+
+  const removeLinkedDefectDraft = (index) => {
+    setLinkedDefectDrafts((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  const updateLinkedDefectDraft = (index, field, value) => {
+    setLinkedDefectDrafts((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+  };
+
+  const resetLinkedDefectForm = () => {
+    setCreateLinkedDefect(false);
+    setLinkedDefectDrafts([{ title: '', description: '', assignee: null }]);
+    setLinkedDefectArtifacts([]);
+  };
+
   const handleSubmitForQa = async (e) => {
     e.preventDefault();
     setError('');
@@ -719,22 +784,56 @@ export default function TaskDetailPage() {
       setError(err.message);
       return;
     }
+    let linkedDefectsPayload;
+    let linkedDefectArtifactsPayload;
+    if (createLinkedDefect) {
+      const incompleteDraft = linkedDefectDrafts.some(
+        (d) => !d.title.trim() || !stripHtmlForPreview(d.description).trim() || !d.assignee,
+      );
+      if (incompleteDraft) {
+        setError('Every linked defect needs a Title, Description, and Assignee.');
+        return;
+      }
+      try {
+        linkedDefectArtifactsPayload = buildLinkedDefectArtifactsPayload();
+      } catch (err) {
+        setError(err.message);
+        return;
+      }
+      linkedDefectsPayload = linkedDefectDrafts.map((d) => ({
+        title: d.title.trim(),
+        description: d.description,
+        assigneeUserId: d.assignee.id,
+      }));
+    }
     setQaActionBusy(true);
     try {
-      await apiFetch(`/tasks/${task.id}/qa-reject`, {
+      const result = await apiFetch(`/tasks/${task.id}/qa-reject`, {
         method: 'PATCH',
-        body: JSON.stringify({ comment: rejectComment, artifacts: payloadArtifacts }),
+        body: JSON.stringify({
+          comment: rejectComment,
+          artifacts: payloadArtifacts,
+          linkedDefects: linkedDefectsPayload,
+          linkedDefectArtifacts: linkedDefectArtifactsPayload,
+        }),
       });
-      showToast('Task rejected', 'success');
+      showToast(
+        result.linkedDefects && result.linkedDefects.length > 0
+          ? `Task rejected - ${result.linkedDefects.length} linked defect${result.linkedDefects.length > 1 ? 's' : ''} created`
+          : 'Task rejected',
+        'success',
+      );
       setRejectComment('');
       setShowRejectForm(false);
       setQaArtifacts([]);
+      resetLinkedDefectForm();
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
         apiFetch(`/tasks/${task.id}/qa-reviews`),
       ]);
       setTask(refreshedTask);
       setQaReviews(refreshedReviews);
+      loadLinkedDefects();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1207,6 +1306,26 @@ export default function TaskDetailPage() {
         ))}
       </div>
 
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          Linked Defects
+        </h2>
+        {linkedDefects.length === 0 && (
+          <div className={styles.empty}>No defects have been filed against this task.</div>
+        )}
+        {linkedDefects.map((defect) => (
+          <div key={defect.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p style={{ margin: 0 }}>
+              <Link href={`/tasks/${defect.id}`}>{defect.title}</Link> <StatusBadge status={defect.status} />
+            </p>
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Assignee: {defect.assigneeEmail} &middot; Filed by {defect.createdByEmail} &middot;{' '}
+              {formatDate(defect.createdAt)}
+            </p>
+          </div>
+        ))}
+      </div>
+
       {isAssignee && isEscalated && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
@@ -1219,19 +1338,27 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length > 0 && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for QA Testing
           </h2>
-          <div className={styles.error}>
-            Cannot submit for QA - resolve the open dependency {openDependencyTickets.length === 1 ? 'ticket' : 'tickets'}{' '}
-            {openDependencyTickets.map((t) => `#${t.id}`).join(', ')} first.
-          </div>
+          {openDependencyTickets.length > 0 && (
+            <div className={styles.error}>
+              Cannot submit for QA - resolve the open dependency {openDependencyTickets.length === 1 ? 'ticket' : 'tickets'}{' '}
+              {openDependencyTickets.map((t) => `#${t.id}`).join(', ')} first.
+            </div>
+          )}
+          {openLinkedDefects.length > 0 && (
+            <div className={styles.error} style={{ marginTop: openDependencyTickets.length > 0 ? 'var(--space-2)' : 0 }}>
+              Cannot submit for QA - resolve the open linked {openLinkedDefects.length === 1 ? 'defect' : 'defects'}{' '}
+              {openLinkedDefects.map((d) => `#${d.id}`).join(', ')} first.
+            </div>
+          )}
         </div>
       )}
 
-      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length === 0 && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length === 0 && openLinkedDefects.length === 0 && (
         <form onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
             Submit for QA Testing
@@ -1504,11 +1631,133 @@ export default function TaskDetailPage() {
                   onChange={setRejectComment}
                 />
               </div>
+
+              <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+                <input
+                  type="checkbox"
+                  checked={createLinkedDefect}
+                  onChange={(e) => setCreateLinkedDefect(e.target.checked)}
+                />
+                Create linked defect(s)
+              </label>
+              <p className={styles.helpText} style={{ marginTop: 0 }}>
+                Optional - for issue(s) serious enough to need their own tracked ticket(s). Files one or more
+                Defects against this task (via Create Defect) and blocks it from being resubmitted for QA until
+                every one of them is resolved. Leave unchecked for a plain reject with just the comment above.
+              </p>
+
+              {createLinkedDefect && (
+                <div style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)' }}>
+                  <label className={styles.label}>Artifacts (optional)</label>
+                  <p className={styles.helpText} style={{ marginTop: 0 }}>
+                    Shared evidence attached to every defect created below - enter it once, not per defect.
+                  </p>
+                  {linkedDefectArtifacts.map((row, index) => (
+                    <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
+                      <div className={styles.field}>
+                        <label className={styles.label} htmlFor={`tdLinkedDefectArtifactType-${index}`}>Artifact Type</label>
+                        <select
+                          className={styles.select}
+                          id={`tdLinkedDefectArtifactType-${index}`}
+                          value={row.type}
+                          onChange={(e) => updateLinkedDefectArtifactRow(index, 'type', e.target.value)}
+                        >
+                          <option value="" disabled>— Select artifact type —</option>
+                          {QA_ARTIFACT_TYPES.filter(
+                            (t) => t === row.type || !linkedDefectArtifacts.some((r) => r.type === t),
+                          ).map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div className={styles.field}>
+                        <label className={styles.label} htmlFor={`tdLinkedDefectArtifactUrl-${index}`}>Artifact URL</label>
+                        <input
+                          className={styles.input}
+                          id={`tdLinkedDefectArtifactUrl-${index}`}
+                          type="url"
+                          placeholder="https://..."
+                          value={row.url}
+                          onChange={(e) => updateLinkedDefectArtifactRow(index, 'url', e.target.value)}
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => removeLinkedDefectArtifactRow(index)}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className={styles.actions} style={{ marginBottom: 'var(--space-3)' }}>
+                    <button className={styles.buttonSecondary} type="button" onClick={addLinkedDefectArtifactRow}>
+                      + Add Artifact
+                    </button>
+                  </div>
+
+                  {linkedDefectDrafts.map((draft, index) => (
+                    <div
+                      key={index}
+                      style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)' }}
+                    >
+                      <div className={styles.actions} style={{ justifyContent: 'space-between', marginTop: 0 }}>
+                        <strong>Defect {index + 1}</strong>
+                        {linkedDefectDrafts.length > 1 && (
+                          <button className={styles.buttonSecondary} type="button" onClick={() => removeLinkedDefectDraft(index)}>
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <div className={styles.field}>
+                        <label className={styles.label} htmlFor={`tdLinkedDefectTitle-${index}`}>Defect Title</label>
+                        <input
+                          className={styles.input}
+                          id={`tdLinkedDefectTitle-${index}`}
+                          maxLength={TASK_TITLE_MAX_LENGTH}
+                          value={draft.title}
+                          onChange={(e) => updateLinkedDefectDraft(index, 'title', e.target.value)}
+                          placeholder="Short, human-readable name for this defect"
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <label className={styles.label} htmlFor={`tdLinkedDefectDescription-${index}`}>Defect Description</label>
+                        <RichTextEditor
+                          id={`tdLinkedDefectDescription-${index}`}
+                          value={draft.description}
+                          onChange={(value) => updateLinkedDefectDraft(index, 'description', value)}
+                          placeholder="Describe the defect..."
+                        />
+                      </div>
+                      <div className={styles.fieldNarrow}>
+                        <SearchSelectField
+                          label="Assignee (Developer)"
+                          id={`tdLinkedDefectAssignee-${index}`}
+                          required
+                          value={draft.assignee}
+                          onChange={(value) => updateLinkedDefectDraft(index, 'assignee', value)}
+                          options={developers}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <div className={styles.actions}>
+                    <button className={styles.buttonSecondary} type="button" onClick={addLinkedDefectDraft}>
+                      + Add another defect
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className={styles.actions}>
                 <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={qaActionBusy}>
                   {qaActionBusy ? 'Working...' : 'Confirm Reject'}
                 </button>
-                <button className={styles.button} type="button" onClick={() => setShowRejectForm(false)} disabled={qaActionBusy}>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => {
+                    setShowRejectForm(false);
+                    resetLinkedDefectForm();
+                  }}
+                  disabled={qaActionBusy}
+                >
                   Cancel
                 </button>
               </div>

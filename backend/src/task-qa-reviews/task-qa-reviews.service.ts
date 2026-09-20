@@ -15,6 +15,7 @@ import { UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
+import { NoteQualityService } from '../note-quality/note-quality.service';
 
 export type TaskQaReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
 export type TaskQaReviewWithQaArtifacts = TaskQaReview & { qaArtifacts: TaskQaReviewQaArtifact[] };
@@ -45,6 +46,7 @@ export class TaskQaReviewsService {
     private usersService: UsersService,
     private auditLogService: AuditLogService,
     private eventEmitter: EventEmitter2,
+    private noteQualityService: NoteQualityService,
   ) {}
 
   // Combined task detail view - every past QA review round for a task,
@@ -127,8 +129,11 @@ export class TaskQaReviewsService {
     }
     this.tasksService.assertReadyForQaSubmission(task.estimatedHours, task.dueDate);
     // QA-only hard block, no role exception - see the method's own comment.
-    // Deliberately not called from PeerReviewsService.submit().
+    // Deliberately not called from PeerReviewsService.submit(). Coexists
+    // with the open-Dependency-Ticket check above - either one
+    // independently blocks resubmission.
     await this.tasksService.assertNoOpenDependencyTickets(taskId, tenantId);
+    await this.tasksService.assertNoOpenLinkedDefects(taskId, tenantId);
 
     const existingPending = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId, status: 'pending' } });
     if (existingPending) {
@@ -166,6 +171,9 @@ export class TaskQaReviewsService {
 
     task.status = priorRounds === 0 ? 'Feedback' : 'Re-Feedback';
     task.actualHours = dto.actualHours;
+    // Reset fresh on every submission (first or a resubmission alike) -
+    // never tied back to an earlier round's date.
+    task.qaReviewDueDate = this.tasksService.computeQaReviewDueDate(new Date());
     await this.tasksRepository.save(task);
 
     await this.auditLogService.record({
@@ -178,6 +186,11 @@ export class TaskQaReviewsService {
       entityId: taskId,
       details: { roundNumber: savedReview.roundNumber, artifactTypes: dto.artifacts.map((a) => a.type) },
     });
+
+    // Fire-and-forget - never awaited, so a slow/failed/rate-limited
+    // Gemini call can't add latency to or fail this submission. See
+    // NoteQualityService.
+    this.noteQualityService.queueCheck(savedReview.id, task.title, savedReview.resolution);
 
     return { ...savedReview, artifacts: savedArtifacts };
   }
@@ -266,13 +279,19 @@ export class TaskQaReviewsService {
   // task returns to the Assignee's own action queue (Failed), not PM's
   // Task Backlog. The Assignee resubmits via submit() above, which opens
   // a new round (status 'Re-Feedback') rather than touching this
-  // rejected one.
+  // rejected one. Optionally also files one or more linked Defects
+  // (dto.linkedDefects) for issues serious enough to need their own
+  // tracked ticket(s) - see TasksService.createDefect()'s parentTaskId
+  // param and assertNoOpenLinkedDefects(), which then blocks this task's
+  // own resubmission until every one of those defects resolves. A plain
+  // reject with just a comment (no linkedDefects) is unaffected either
+  // way.
   async reject(
     taskId: number,
     dto: QaRejectTaskDto,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-  ): Promise<TaskQaReviewWithQaArtifacts> {
+  ): Promise<TaskQaReviewWithQaArtifacts & { linkedDefects: ProjectTask[] }> {
     if (currentUser.role !== UserRole.QA) {
       throw new ForbiddenException('Only QA can reject a task under review.');
     }
@@ -307,6 +326,35 @@ export class TaskQaReviewsService {
     task.status = 'Failed';
     await this.tasksRepository.save(task);
 
+    // "Create linked defect(s)" is a straightforward reuse of
+    // TasksService.createDefect() - same validation (assignee must be
+    // Developer/Designer/DevOps), same Project/Module/Phase resolution,
+    // just with parentTaskId set and Project/Module/Phase copied from the
+    // task being rejected instead of picked again. One call per batch
+    // entry, each one getting a copy of the same shared
+    // dto.linkedDefectArtifacts - there's no schema concept of many
+    // defects referencing one shared artifact row, so "shared" here means
+    // "copied into every defect's own artifact rows", not a single row
+    // referenced N times.
+    const linkedDefects: ProjectTask[] = [];
+    for (const linkedDefect of dto.linkedDefects || []) {
+      const created = await this.tasksService.createDefect(
+        {
+          projectId: task.projectId,
+          moduleId: task.moduleId,
+          phaseId: task.phaseId,
+          title: linkedDefect.title,
+          description: linkedDefect.description,
+          assigneeUserId: linkedDefect.assigneeUserId,
+          artifacts: dto.linkedDefectArtifacts,
+        },
+        currentUser,
+        tenantId,
+        taskId,
+      );
+      linkedDefects.push(created);
+    }
+
     await this.auditLogService.record({
       userId: currentUser.id,
       userEmail: currentUser.email,
@@ -319,10 +367,11 @@ export class TaskQaReviewsService {
         roundNumber: savedReview.roundNumber,
         comment: dto.comment,
         artifactTypes: (dto.artifacts || []).map((a) => a.type),
+        linkedDefectIds: linkedDefects.map((d) => d.id),
       },
     });
 
-    return { ...savedReview, qaArtifacts: savedQaArtifacts };
+    return { ...savedReview, qaArtifacts: savedQaArtifacts, linkedDefects };
   }
 
   // QA Feedback escalation to PM - an alternative to Approve/Reject for

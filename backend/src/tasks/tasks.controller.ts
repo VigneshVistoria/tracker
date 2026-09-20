@@ -207,6 +207,19 @@ export class TasksController {
     return this.tasksService.findDefectArtifacts(id);
   }
 
+  // Defects spun off this task via QA-rejection's "Create linked defect"
+  // option - same view gate as the task itself and the Dependency Ticket
+  // equivalent (TaskDependencyTicketsController.findForTask).
+  @Get(':id/linked-defects')
+  async findLinkedDefects(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    const task = await this.tasksService.findOne(id, req.user.tenantId);
+    if (!(await this.tasksService.canView(task, currentUser))) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    return this.tasksService.findLinkedDefectsForTask(id, req.user.tenantId);
+  }
+
   @Post()
   async create(@Body() dto: CreateTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);

@@ -129,6 +129,19 @@ export class ProjectTask {
   @Column({ default: false })
   isDefect: boolean;
 
+  // Set only when this defect was spun off a QA rejection via the
+  // "Create linked defect" option (TaskQaReviewsService.reject(), which
+  // calls TasksService.createDefect() with this set) - null for every
+  // standalone defect filed from the Create Defect page. While a linked
+  // defect's status isn't in TasksService.LINKED_DEFECT_RESOLVED_STATUSES,
+  // TasksService.assertNoOpenLinkedDefects() blocks the parent task
+  // (parentTaskId) from being resubmitted for QA - same "child ticket
+  // under a parent" shape as TaskDependencyTicket.parentTaskId, kept on
+  // this entity instead (rather than a separate table) since a defect is
+  // already just a ProjectTask row.
+  @Column({ nullable: true })
+  parentTaskId: number | null;
+
   @Column({ nullable: true })
   createdByUserId: number;
 
