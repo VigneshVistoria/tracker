@@ -119,17 +119,23 @@ export function statusBadgeStyle(status) {
   return STATUS_BADGE_STYLE[status] || { background: 'var(--color-slate-tint)', color: 'var(--color-ink-soft)' };
 }
 
-// Team Tasks' status tabs (TeamTaskWorkboard.js) - one tab per LEGEND_ITEMS
-// entry above (same grouping: Feedback/Re-Feedback share a tab, as do
-// Failed/Released - With Showstoppers), plus 'All'. `statuses` is what
-// gets comma-joined and sent to GET /tasks/team's `status` param.
+// Team Tasks' status tabs (TeamTaskWorkboard.js) - mostly one tab per
+// LEGEND_ITEMS entry above, plus 'All', except that Development and
+// Failed/Released - With Showstoppers share one "Development / Failed" tab
+// so PM sees everything a developer is currently expected to work on as
+// one number (confirmed with the user 2026-09), and Feedback/Re-Feedback's
+// tab is labeled just "QA". `statuses` is what gets comma-joined and sent
+// to GET /tasks/team's `status` param.
 export const STATUS_TAB_GROUPS = [
   { key: 'All', label: 'All', statuses: [] },
-  { key: 'Development', label: 'Development', statuses: ['Development'] },
-  { key: 'Feedback', label: 'Feedback / Re-Feedback', statuses: ['Feedback', 'Re-Feedback'] },
+  {
+    key: 'DevelopmentFailed',
+    label: 'Development / Failed',
+    statuses: ['Development', 'Failed', 'Released - With Showstoppers'],
+  },
+  { key: 'Feedback', label: 'QA', statuses: ['Feedback', 'Re-Feedback'] },
   { key: 'Escalated', label: 'Escalated', statuses: ['Escalated'] },
   { key: 'Pass', label: 'Pass', statuses: ['Pass'] },
-  { key: 'Failed', label: 'Failed / Released - With Showstoppers', statuses: ['Failed', 'Released - With Showstoppers'] },
   { key: 'Junk', label: 'Junk', statuses: ['Junk'] },
   { key: 'ReleasedNoShowstoppers', label: 'Released - No Showstoppers', statuses: ['Released - No Showstoppers'] },
   { key: 'Hold', label: 'Hold', statuses: ['Hold'] },
@@ -138,8 +144,8 @@ export const STATUS_TAB_GROUPS = [
 
 // Same "don't dead-end on an empty table" reasoning as selectableStatuses
 // above - a tab is hidden only once every status it represents is a
-// completed one (so 'Failed / Released - With Showstoppers' stays visible
-// even with completed tasks hidden, since Failed itself isn't completed).
+// completed one (so 'Development / Failed' stays visible even with
+// completed tasks hidden, since Development/Failed themselves aren't).
 // `showHoldClosed` does the same for the Hold/Closed tabs, independently -
 // see HOLD_CLOSED_STATUSES.
 export function visibleStatusTabs(showCompleted, showHoldClosed) {
