@@ -58,6 +58,13 @@ const ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE: UserRole[] = DEVELOPER_EQUIVALENT
 // DTO/service method (setPeerReviewFlag) rather than adding Admin to
 // MUTATE_ROLES, so nothing else about Admin's task permissions changes.
 const ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+// Same "narrow exception via its own endpoint/DTO/service method" shape
+// as ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG above - Hold/Closed is a
+// deliberate, confirmed carve-out of Admin's otherwise view-only access
+// to Tasks (MUTATE_ROLES in TasksService), scoped to exactly these four
+// endpoints (hold/release/close/reopen) and nothing else about Admin's
+// task permissions.
+const ROLES_ALLOWED_TO_SET_HOLD_CLOSED: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
 // Team Tasks - view-only for Admin/Executive, same leadership-wide grant
 // findAllForUser() gives them (TasksService.LEADERSHIP_ROLES); edit rights
 // on any task opened from this screen still go through the general
@@ -82,12 +89,12 @@ export class TasksController {
   // Task Backlog - unassigned tasks. Declared before ':id' for the same
   // routing reason as issues/dependencies/received.
   @Get('backlog')
-  async findBacklog(@Req() req: any) {
+  async findBacklog(@Query('showHoldClosed') showHoldClosed: string | undefined, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (!ROLES_ALLOWED_TO_VIEW_BACKLOG.includes(currentUser.role)) {
       throw new ForbiddenException('Only Admin and Program Manager can view the Task Backlog.');
     }
-    return this.tasksService.findBacklog(req.user.tenantId);
+    return this.tasksService.findBacklog(req.user.tenantId, showHoldClosed === 'true');
   }
 
   // QA Review queue - tasks with a QA review round pending by default, or
@@ -163,6 +170,7 @@ export class TasksController {
     @Query('dueFrom') dueFrom: string | undefined,
     @Query('dueTo') dueTo: string | undefined,
     @Query('showCompleted') showCompleted: string | undefined,
+    @Query('showHoldClosed') showHoldClosed: string | undefined,
     @Query('all') all: string | undefined,
     @Req() req: any,
   ) {
@@ -181,6 +189,7 @@ export class TasksController {
       dueFrom,
       dueTo,
       showCompleted: showCompleted === 'true',
+      showHoldClosed: showHoldClosed === 'true',
       all: all === 'true',
     });
   }
@@ -302,6 +311,53 @@ export class TasksController {
       throw new ForbiddenException('Only Program Manager can close an escalated task as Junk.');
     }
     return this.tasksService.closeAsJunk(id, currentUser, req.user.tenantId);
+  }
+
+  // Program Manager or Admin puts any task on Hold, from any current
+  // status, no reason/comment required. Program Manager or Admin only -
+  // see ROLES_ALLOWED_TO_SET_HOLD_CLOSED above.
+  @Patch(':id/hold')
+  async holdTask(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SET_HOLD_CLOSED.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager or Admin can put a task on Hold.');
+    }
+    return this.tasksService.holdTask(id, currentUser, req.user.tenantId);
+  }
+
+  // Releases a task from Hold, resuming it at whatever status it was in
+  // beforehand (TasksService.releaseTask()). Same role gate as hold above.
+  @Patch(':id/release')
+  async releaseTask(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SET_HOLD_CLOSED.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager or Admin can release a task from Hold.');
+    }
+    return this.tasksService.releaseTask(id, currentUser, req.user.tenantId);
+  }
+
+  // Program Manager or Admin force-closes any task, from any current
+  // status, regardless of resolution state - no reason/comment required.
+  // Distinct from escalation-junk above (Program Manager only, and only
+  // from Escalated). Same role gate as hold/release above.
+  @Patch(':id/close')
+  async closeTask(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SET_HOLD_CLOSED.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager or Admin can close a task.');
+    }
+    return this.tasksService.closeTask(id, currentUser, req.user.tenantId);
+  }
+
+  // Reopens a Closed task at the status it had before it was closed
+  // (TasksService.reopenTask()). Same role gate as hold/release/close.
+  @Patch(':id/reopen')
+  async reopenTask(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SET_HOLD_CLOSED.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager or Admin can reopen a task.');
+    }
+    return this.tasksService.reopenTask(id, currentUser, req.user.tenantId);
   }
 
   // Dedicated endpoint for the Peer Review checkbox on an already-existing

@@ -76,6 +76,10 @@ export const AuditActions = {
   TASK_QA_ESCALATED: 'task_qa_escalated',
   TASK_ESCALATION_REASSIGNED: 'task_escalation_reassigned',
   TASK_ESCALATION_CLOSED_JUNK: 'task_escalation_closed_junk',
+  TASK_HELD: 'task_held',
+  TASK_RELEASED_FROM_HOLD: 'task_released_from_hold',
+  TASK_CLOSED: 'task_closed',
+  TASK_REOPENED: 'task_reopened',
   TASK_PEER_REVIEW_FLAG_CHANGED: 'task_peer_review_flag_changed',
   TASK_PEER_REVIEW_SUBMITTED: 'task_peer_review_submitted',
   TASK_PEER_REVIEW_APPROVED: 'task_peer_review_approved',
@@ -124,6 +128,26 @@ export class AuditLogService {
       await this.auditLogRepository.save(entry);
     } catch (err: any) {
       this.logger.error(`Failed to write audit log entry (action=${input.action}): ${err.message}`);
+    }
+  }
+
+  // Parsed `details` of the most recent entry for one action on one
+  // entity, or null if there isn't one (or its details don't parse).
+  async findLatestDetails(
+    tenantId: number,
+    action: string,
+    entityType: string,
+    entityId: number,
+  ): Promise<Record<string, unknown> | null> {
+    const entry = await this.auditLogRepository.findOne({
+      where: { tenantId, action, entityType, entityId },
+      order: { id: 'DESC' },
+    });
+    if (!entry?.details) return null;
+    try {
+      return JSON.parse(entry.details);
+    } catch {
+      return null;
     }
   }
 }

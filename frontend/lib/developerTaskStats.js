@@ -10,12 +10,15 @@ export function yesterdayISO() {
 
 // A task past its own Due Date - excluding 'Pass'/'Junk', a finished task
 // isn't meaningfully overdue even if it finished after its Due Date, and a
-// Junk-closed task was never a real issue in the first place. Mirrors the
-// same rule TasksService.findTeam() computes server-side for Team Tasks'
-// "Overdue" stat card (tasks.service.ts) - kept in sync by hand, same as
-// every other frontend/backend status-list duplication in this codebase.
+// Junk-closed task was never a real issue in the first place. 'Hold'/
+// 'Closed' get the same exclusion (added 2026-09) - a task the PM paused
+// or force-closed should never show as overdue. Mirrors the same rule
+// TasksService.findTeam() computes server-side for Team Tasks' "Overdue"
+// stat card (tasks.service.ts) - kept in sync by hand, same as every
+// other frontend/backend status-list duplication in this codebase.
+const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed'];
 export function isOverdueTask(task, today = todayISO()) {
-  return Boolean(task.dueDate && task.dueDate < today && task.status !== 'Pass' && task.status !== 'Junk');
+  return Boolean(task.dueDate && task.dueDate < today && !NEVER_OVERDUE_STATUSES.includes(task.status));
 }
 
 // Shared by the Developer Dashboard (components/DeveloperDashboard.js) and

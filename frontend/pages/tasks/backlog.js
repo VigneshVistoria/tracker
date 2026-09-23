@@ -10,7 +10,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
-import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
+import { TASK_PRIORITIES, priorityTone, priorityLabel, statusBadgeStyle } from '../../lib/taskTableShared';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
@@ -59,11 +59,15 @@ export default function TaskBacklogPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAssignee, setBulkAssignee] = useState(null);
   const [assigning, setAssigning] = useState(false);
+  // Hidden by default, same "toggle to reveal" shape as Team Tasks' own
+  // Hold/Closed toggle (TeamTaskWorkboard.js) - see HOLD_CLOSED_STATUSES.
+  const [showHoldClosed, setShowHoldClosed] = useState(false);
+  const [actingOnId, setActingOnId] = useState(null);
 
-  const load = () => {
+  const load = (includeHoldClosed = showHoldClosed) => {
     setLoading(true);
     setError('');
-    apiFetch('/tasks/backlog')
+    apiFetch(`/tasks/backlog${includeHoldClosed ? '?showHoldClosed=true' : ''}`)
       .then(setTasks)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -83,9 +87,59 @@ export default function TaskBacklogPage() {
     setUser(parsed);
     apiFetch('/projects').then(setProjects).catch(() => {});
     apiFetch('/users/assignable').then((rows) => setAssignableUsers(rows.map(userToOption))).catch(() => {});
-    load();
+    load(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  const handleShowHoldClosedChange = (checked) => {
+    setShowHoldClosed(checked);
+    load(checked);
+  };
+
+  // No reason/comment required (confirmed with the user) - Program
+  // Manager or Admin only, backend mirror: ROLES_ALLOWED_TO_SET_HOLD_CLOSED.
+  const handleHold = async (task) => {
+    setActingOnId(task.id);
+    setError('');
+    try {
+      await apiFetch(`/tasks/${task.id}/hold`, { method: 'PATCH' });
+      showToast('Task put on Hold', 'success');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActingOnId(null);
+    }
+  };
+
+  const handleRelease = async (task) => {
+    setActingOnId(task.id);
+    setError('');
+    try {
+      await apiFetch(`/tasks/${task.id}/release`, { method: 'PATCH' });
+      showToast('Task released from Hold', 'success');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActingOnId(null);
+    }
+  };
+
+  const handleClose = async (task) => {
+    if (!window.confirm('Close this task? This ends it regardless of resolution state and cannot be undone.')) return;
+    setActingOnId(task.id);
+    setError('');
+    try {
+      await apiFetch(`/tasks/${task.id}/close`, { method: 'PATCH' });
+      showToast('Task Closed', 'success');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActingOnId(null);
+    }
+  };
 
   useEffect(() => {
     if (!form.project) {
@@ -111,6 +165,10 @@ export default function TaskBacklogPage() {
   // view-only access to Tasks - creating, editing, and assigning are
   // Program Manager only, matching TasksController's role checks.
   const canManage = user.role === 'program_manager';
+  // Backend mirror: ROLES_ALLOWED_TO_SET_HOLD_CLOSED (TasksController) -
+  // Program Manager or Admin only, a deliberate carve-out from Admin's
+  // usual view-only access to Tasks.
+  const canManageHoldClosed = canManage || user.role === 'admin';
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -369,6 +427,15 @@ export default function TaskBacklogPage() {
         </div>
       )}
 
+      <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+        <input
+          type="checkbox"
+          checked={showHoldClosed}
+          onChange={(e) => handleShowHoldClosedChange(e.target.checked)}
+        />
+        Show Hold/Closed
+      </label>
+
       {loading && <div className={styles.empty}>Loading...</div>}
 
       {!loading && (
@@ -382,13 +449,19 @@ export default function TaskBacklogPage() {
                 <th className={styles.colCompact}>Phase</th>
                 <th>Title</th>
                 <th className={styles.colCompact}>Priority</th>
-                {canManage && <th></th>}
+                <th className={styles.colCompact}>Status</th>
+                {(canManage || canManageHoldClosed) && <th></th>}
               </tr>
             </thead>
             <tbody>
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={canManage ? 7 : 5} className={styles.empty}>The Task Backlog is empty.</td>
+                  <td
+                    colSpan={(canManage ? 1 : 0) + 6 + (canManage || canManageHoldClosed ? 1 : 0)}
+                    className={styles.empty}
+                  >
+                    The Task Backlog is empty.
+                  </td>
                 </tr>
               )}
               {tasks.map((task) => (
@@ -405,15 +478,62 @@ export default function TaskBacklogPage() {
                   <td className={styles.colCompact} title={task.projectName}>{task.projectName}</td>
                   <td className={styles.colCompact} title={task.moduleName}>{task.moduleName}</td>
                   <td className={styles.colCompact} title={task.phaseName}>{task.phaseName}</td>
-                  <td className={styles.tableDescCell} title={task.title}>{task.title}</td>
+                  <td className={styles.tableDescCell} title={task.title}>
+                    <Link href={`/tasks/${task.id}`} target="_blank" rel="noopener noreferrer">{task.title}</Link>
+                  </td>
                   <td className={styles.colCompact}>
                     <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
                   </td>
-                  {canManage && (
-                    <td>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>
-                        Edit
-                      </button>
+                  <td className={styles.colCompact}>
+                    <span className={styles.badge} style={statusBadgeStyle(task.status)}>{task.status}</span>
+                  </td>
+                  {(canManage || canManageHoldClosed) && (
+                    <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                      {canManage && (
+                        <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>
+                          Edit
+                        </button>
+                      )}
+                      {canManageHoldClosed && task.status === 'Hold' && (
+                        <>
+                          <button
+                            className={styles.buttonSecondary}
+                            type="button"
+                            disabled={actingOnId === task.id}
+                            onClick={() => handleRelease(task)}
+                          >
+                            Release
+                          </button>
+                          <button
+                            className={styles.buttonSecondary}
+                            type="button"
+                            disabled={actingOnId === task.id}
+                            onClick={() => handleClose(task)}
+                          >
+                            Close
+                          </button>
+                        </>
+                      )}
+                      {canManageHoldClosed && task.status !== 'Hold' && task.status !== 'Closed' && (
+                        <>
+                          <button
+                            className={styles.buttonSecondary}
+                            type="button"
+                            disabled={actingOnId === task.id}
+                            onClick={() => handleHold(task)}
+                          >
+                            Hold
+                          </button>
+                          <button
+                            className={styles.buttonSecondary}
+                            type="button"
+                            disabled={actingOnId === task.id}
+                            onClick={() => handleClose(task)}
+                          >
+                            Close
+                          </button>
+                        </>
+                      )}
                     </td>
                   )}
                 </tr>

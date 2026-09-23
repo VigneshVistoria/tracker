@@ -25,8 +25,11 @@ const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...
 const MANAGE_ROLES = ['program_manager'];
 
 // Status is fully auto-computed by task events (create, QA submit/
-// approve/reject) - there is no manual status selection anywhere in this
-// flow, just a read-only badge (see StatusBadge below).
+// approve/reject) for every value except Hold/Closed, which Program
+// Manager or Admin can force from any current status via the dedicated
+// panel below (TasksService.holdTask()/releaseTask()/closeTask()/
+// reopenTask()) - see canManageHoldClosed. Every other value is still
+// just a read-only badge (see StatusBadge below).
 const STATUS_COLOR = {
   Development: { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' },
   Feedback: { bg: 'var(--color-plum-tint)', fg: 'var(--color-plum-dark)' },
@@ -43,6 +46,11 @@ const STATUS_COLOR = {
   // Closed as Junk by PM (TasksService.closeAsJunk()) - neutral slate,
   // deliberately not red/moss since it's neither a pass nor a fail.
   Junk: { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' },
+  // --ds-* tokens directly (not a new legacy --color-* alias) per
+  // STYLE.md - see taskTableShared.js's LEGEND_ITEMS comment. Mirrors
+  // that file's STATUS_BADGE_STYLE - keep both in sync by hand.
+  Hold: { bg: 'var(--ds-color-info-tint)', fg: 'var(--ds-color-info-dark)' },
+  Closed: { bg: 'var(--ds-color-gray-300)', fg: 'var(--ds-text-primary)' },
 };
 
 function StatusBadge({ status }) {
@@ -256,6 +264,8 @@ export default function TaskDetailPage() {
   // task, saved through its own dedicated endpoint (see handleSavePeerReviewFlag).
   const [peerReviewEnabled, setPeerReviewEnabled] = useState(false);
   const [savingPeerReviewFlag, setSavingPeerReviewFlag] = useState(false);
+  // Hold/Close/Release panel - see handleHold/handleRelease/handleClose.
+  const [savingHoldClosed, setSavingHoldClosed] = useState(false);
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
@@ -376,6 +386,10 @@ export default function TaskDetailPage() {
   // may set/edit only the Peer Review checkbox (via its own dedicated
   // endpoint below), nothing else on this page.
   const canManagePeerReviewFlag = canManage || user.role === 'admin';
+  // Backend mirror: ROLES_ALLOWED_TO_SET_HOLD_CLOSED (TasksController) -
+  // Program Manager or Admin only, same narrow exception shape as
+  // canManagePeerReviewFlag above.
+  const canManageHoldClosed = canManage || user.role === 'admin';
   // Backend mirror: TasksService.canEdit()'s isDefect/createdByUserId
   // branch - only Program Manager or the QA who raised this defect may
   // edit its Project/Module/Phase/Description.
@@ -584,6 +598,67 @@ export default function TaskDetailPage() {
       setError(err.message);
     } finally {
       setSavingPeerReviewFlag(false);
+    }
+  };
+
+  // No reason/comment required (confirmed with the user) - a plain PATCH,
+  // same shape as handleSavePeerReviewFlag above, just with a confirm()
+  // guard since these are bigger, less-reversible actions than a checkbox.
+  const handleHold = async () => {
+    setError('');
+    setSavingHoldClosed(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/hold`, { method: 'PATCH' });
+      setTask(updated);
+      showToast('Task put on Hold', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingHoldClosed(false);
+    }
+  };
+
+  const handleRelease = async () => {
+    setError('');
+    setSavingHoldClosed(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/release`, { method: 'PATCH' });
+      setTask(updated);
+      showToast('Task released from Hold', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingHoldClosed(false);
+    }
+  };
+
+  const handleClose = async () => {
+    if (!window.confirm('Close this task? This ends it regardless of resolution state. It can be reopened later.')) return;
+    setError('');
+    setSavingHoldClosed(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/close`, { method: 'PATCH' });
+      setTask(updated);
+      showToast('Task Closed', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingHoldClosed(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!window.confirm('Reopen this task? It returns to the status it had before it was closed.')) return;
+    setError('');
+    setSavingHoldClosed(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/reopen`, { method: 'PATCH' });
+      setTask(updated);
+      showToast(`Task reopened as ${updated.status}`, 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingHoldClosed(false);
     }
   };
 
@@ -1239,6 +1314,81 @@ export default function TaskDetailPage() {
               {savingPeerReviewFlag ? 'Saving...' : 'Save'}
             </button>
           </div>
+        </div>
+      )}
+
+      {canManageHoldClosed && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+            Hold / Close
+          </h2>
+          {task.status === 'Closed' ? (
+            <>
+              <p className={styles.helpText}>
+                This task is Closed. Reopening returns it to the status it had before it was closed.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleReopen}
+                >
+                  {savingHoldClosed ? 'Saving...' : 'Reopen'}
+                </button>
+              </div>
+            </>
+          ) : task.status === 'Hold' ? (
+            <>
+              <p className={styles.helpText}>
+                On Hold{task.priorStatus ? ` - was "${task.priorStatus}" before being paused` : ''}. Releasing
+                resumes it at that status.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleRelease}
+                >
+                  {savingHoldClosed ? 'Saving...' : 'Release from Hold'}
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleClose}
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className={styles.helpText}>
+                Pause or force-end this task from its current status ({task.status}) - no reason or comment
+                required. Either can be undone later - releasing or reopening returns it to this same status.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleHold}
+                >
+                  {savingHoldClosed ? 'Saving...' : 'Put on Hold'}
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleClose}
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

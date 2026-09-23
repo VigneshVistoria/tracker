@@ -681,6 +681,11 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .rowTintTeal { background: var(--color-teal-tint); }
 .rowTintAmber { background: var(--color-amber-tint); }
 .rowTintSlate { background: var(--color-slate-tint); }
+/* Hold/Closed (added 2026-09) - --ds-* tokens directly rather than a new
+   legacy --color-* alias, per STYLE.md; see taskTableShared.js's
+   LEGEND_ITEMS comment. */
+.rowTintHold { background: var(--ds-color-info-tint); }
+.rowTintClosed { background: var(--ds-color-gray-300); }
 
 .statusLegend {
   display: flex;
@@ -811,6 +816,8 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .taskTile.railTeal { border-left-color: var(--color-teal); }
 .taskTile.railAmber { border-left-color: var(--color-amber); }
 .taskTile.railSlate { border-left-color: var(--color-slate); }
+.taskTile.railHold { border-left-color: var(--ds-color-info); }
+.taskTile.railClosed { border-left-color: var(--ds-color-gray-500); }
 
 .taskTileTop {
   display: flex;

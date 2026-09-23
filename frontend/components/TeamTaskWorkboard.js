@@ -13,6 +13,7 @@ import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
 import {
   buildRowTintClass, buildRowRailClass, visibleStatusTabs,
   priorityRank, priorityTone, priorityLabel, priorityStripeColor, statusBadgeStyle,
+  HOLD_CLOSED_STATUSES,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
@@ -235,6 +236,12 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
+  // Completed tasks (Pass/Junk/Released) stay always-hidden here, same as
+  // ever (see this file's top comment - no per-user override, confirmed
+  // with the user 2026-09). Hold/Closed get their own independent
+  // "hidden by default, toggle to reveal" pair instead, since neither is
+  // "completed" work - see HOLD_CLOSED_STATUSES in taskTableShared.js.
+  const [showHoldClosed, setShowHoldClosed] = useState(false);
   const [viewMode, setViewMode] = useState('table');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -260,6 +267,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
 
   const viewModeStorageKey = `${storageKey}ViewMode`;
   const pageSizeStorageKey = `${storageKey}PageSize`;
+  const showHoldClosedStorageKey = `${storageKey}ShowHoldClosed`;
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
@@ -268,9 +276,20 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     if (storedViewMode === 'tile' || storedViewMode === 'table' || storedViewMode === 'workload') setViewMode(storedViewMode);
     const storedPageSize = Number(localStorage.getItem(pageSizeStorageKey));
     if (PAGE_SIZE_OPTIONS.includes(storedPageSize)) setPageSize(storedPageSize);
+    setShowHoldClosed(localStorage.getItem(showHoldClosedStorageKey) === 'true');
     // storageKey is a static prop per page, not expected to change at runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Same "reset statusFilter if it becomes invalid" reasoning as My Tasks'
+  // handleShowCompletedChange (DeveloperTaskWorkboard.js) - turning the
+  // toggle off while filtered to a tab it just hid would otherwise leave
+  // the table stuck empty with no visible way back.
+  const handleShowHoldClosedChange = (checked) => {
+    setShowHoldClosed(checked);
+    localStorage.setItem(showHoldClosedStorageKey, String(checked));
+    if (!checked && HOLD_CLOSED_STATUSES.includes(statusFilter)) setStatusFilter('All');
+  };
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -288,6 +307,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
+    if (showHoldClosed) params.set('showHoldClosed', 'true');
 
     let cancelled = false;
     setLoading(true);
@@ -310,7 +330,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, page, pageSize]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, page, pageSize]);
 
   // Workload view's own fetch - same filters as above, minus page/pageSize
   // (all=true instead, see TasksService.findTeam()) since the weekly grid
@@ -327,6 +347,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
+    if (showHoldClosed) params.set('showHoldClosed', 'true');
 
     let cancelled = false;
     setWorkloadLoading(true);
@@ -345,7 +366,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     return () => {
       cancelled = true;
     };
-  }, [viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo]);
+  }, [viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed]);
 
   // Any filter (or page size) change invalidates the current page -
   // jumping back to page 1 avoids landing on a now out-of-range page
@@ -353,7 +374,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   useEffect(() => {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, pageSize]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, pageSize]);
 
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
@@ -378,7 +399,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   // now - confirmed with the user 2026-09 when the "Show completed tasks"
   // toggle was removed - so the tabs that are entirely completed statuses
   // (Pass, Released - No Showstoppers) never show here.
-  const visibleTabs = visibleStatusTabs(false);
+  const visibleTabs = visibleStatusTabs(false, showHoldClosed);
 
   const cards = useMemo(
     () => CARD_DEFS.map((c) => ({ ...c, count: statCounts[c.key] ?? 0, kind: 'table' })),
@@ -707,6 +728,17 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
                   </button>
                 )}
               </div>
+            </div>
+
+            <div className={styles.filterGroup}>
+              <label className={styles.filterLabel} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <input
+                  type="checkbox"
+                  checked={showHoldClosed}
+                  onChange={(e) => handleShowHoldClosedChange(e.target.checked)}
+                />
+                Show Hold/Closed
+              </label>
             </div>
 
             <div className={styles.filterGroup} style={{ marginLeft: 'auto' }}>

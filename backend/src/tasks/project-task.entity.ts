@@ -99,6 +99,15 @@ export class ProjectTask {
   @Column()
   status: string;
 
+  // Only ever set while status is 'Hold' or 'Closed' - the status to
+  // resume to. Set by TasksService.holdTask() (so releaseTask() can resume
+  // it exactly where it left off, e.g. back in the QA queue if it was in
+  // Feedback) and closeTask() (so reopenTask() can do the same; closing a
+  // Held task keeps its pre-Hold status). Cleared by releaseTask()/
+  // reopenTask() once restored onto `status`.
+  @Column({ nullable: true })
+  priorStatus: string | null;
+
   // Program Manager only (see TasksService.update()'s PRIORITY_MUTATE_ROLES
   // check) - never auto-assigned, including on task creation, so existing
   // and new tasks alike sit at null ("Not Set") until a PM reviews and sets

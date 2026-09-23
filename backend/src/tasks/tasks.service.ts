@@ -58,6 +58,10 @@ export interface TeamTaskFilters {
   dueFrom?: string;
   dueTo?: string;
   showCompleted?: boolean;
+  // Same "hidden by default, toggle to reveal" shape as showCompleted
+  // above, for Hold/Closed instead of Pass/Junk/Released - see
+  // HOLD_CLOSED_STATUSES.
+  showHoldClosed?: boolean;
   // Workload view only (TeamTaskWorkboard.js) - returns every matching
   // task in one response instead of one page, since a weekly assignee×week
   // grid needs the full filtered set to bucket correctly, not just
@@ -88,6 +92,18 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // findTeam() below to hide Pass/Released tasks by default, same as My
 // Tasks.
 const COMPLETED_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+
+// 'Hold' and 'Closed' (see project-task.entity.ts's `status` comment) -
+// neither is "completed" (a Held task is still expected to finish once
+// released; a Closed one was force-ended, not resolved), so they're kept
+// separate from COMPLETED_STATUSES above rather than folded into it: Team
+// Tasks/Task Backlog hide them by default behind their own toggle
+// (TeamTaskFilters.showHoldClosed), independent of "Show completed
+// tasks". Also used to pause every overdue/SLA calculation that keys off
+// these two lists (findTeam()'s stat card below, KpiService.
+// computeMetrics()) - a Held or Closed task should never count as
+// overdue or drag down KPI while nobody's expected to be acting on it.
+export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
 
 // Full tenant-wide *view* access (findAllForUser/canView) - Admin and
 // Executive both get this, but it's read-only: neither is in
@@ -359,10 +375,18 @@ export class TasksService {
 
   // Task Backlog view - unassigned tasks, Admin/Program Manager only
   // (enforced in the controller).
-  async findBacklog(tenantId: number): Promise<ProjectTaskWithComputed[]> {
+  // `showHoldClosed` - same default-hide-then-reveal toggle as Team Tasks
+  // (TeamTaskFilters.showHoldClosed / defaultHiddenStatuses() above),
+  // scoped to just Hold/Closed here since an unassigned Backlog task is
+  // never in a COMPLETED_STATUSES status in practice (it hasn't started).
+  async findBacklog(tenantId: number, showHoldClosed?: boolean): Promise<ProjectTaskWithComputed[]> {
+    const where: Record<string, any> = { tenantId, assigneeUserId: IsNull() };
+    if (!showHoldClosed) {
+      where.status = Not(In(HOLD_CLOSED_STATUSES));
+    }
     const tasks = this.sortByPriority(
       await this.tasksRepository.find({
-        where: { tenantId, assigneeUserId: IsNull() },
+        where,
         order: { createdAt: 'DESC' },
       }),
     );
@@ -555,6 +579,19 @@ export class TasksService {
   //    all (it depends on a join to task_dependency_tickets), so it's
   //    applied in JS against a Set of open-ticket task ids, exactly like
   //    findMine() above already does for its own Dependency column.
+  // Combines the two independent "hidden by default, toggle to reveal"
+  // filters (showCompleted for Pass/Junk/Released, showHoldClosed for
+  // Hold/Closed) into one exclusion list for a `where`/`cardWhere` clause.
+  // Kept as its own method so findTeam()'s two call sites (the paginated
+  // row fetch and the stat-card scope) and findBacklog() below can't drift
+  // apart from each other.
+  private defaultHiddenStatuses(filters: { showCompleted?: boolean; showHoldClosed?: boolean }): string[] {
+    return [
+      ...(filters.showCompleted ? [] : COMPLETED_STATUSES),
+      ...(filters.showHoldClosed ? [] : HOLD_CLOSED_STATUSES),
+    ];
+  }
+
   async findTeam(tenantId: number, filters: TeamTaskFilters): Promise<TeamTasksResult> {
     const page = filters.page && filters.page > 0 ? Math.floor(filters.page) : 1;
     const pageSize = filters.pageSize && filters.pageSize > 0 ? Math.min(Math.floor(filters.pageSize), 200) : 50;
@@ -563,8 +600,9 @@ export class TasksService {
     if (filters.status && filters.status !== 'All') {
       const statusList = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
       where.status = In(statusList);
-    } else if (!filters.showCompleted) {
-      where.status = Not(In(COMPLETED_STATUSES));
+    } else {
+      const hidden = this.defaultHiddenStatuses(filters);
+      if (hidden.length > 0) where.status = Not(In(hidden));
     }
     if (filters.assigneeUserId) {
       where.assigneeUserId = filters.assigneeUserId;
@@ -609,8 +647,9 @@ export class TasksService {
     }));
 
     const cardWhere: Record<string, any> = { tenantId, assigneeUserId: filters.assigneeUserId || Not(IsNull()) };
-    if (!filters.showCompleted) {
-      cardWhere.status = Not(In(COMPLETED_STATUSES));
+    const cardHidden = this.defaultHiddenStatuses(filters);
+    if (cardHidden.length > 0) {
+      cardWhere.status = Not(In(cardHidden));
     }
     const cardScopeTasks = await this.tasksRepository.find({ where: cardWhere });
     const cardOpenDependencyIds = await this.findOpenDependencyTaskIds(cardScopeTasks.map((t) => t.id));
@@ -619,7 +658,13 @@ export class TasksService {
       total: cardScopeTasks.length,
       rejected: cardScopeTasks.filter((t) => t.status === 'Failed').length,
       openDependency: cardScopeTasks.filter((t) => cardOpenDependencyIds.has(t.id)).length,
-      overdue: cardScopeTasks.filter((t) => t.dueDate && t.dueDate < today && t.status !== 'Pass' && t.status !== 'Junk').length,
+      // Pass/Junk were already excluded from "overdue" - Hold/Closed get
+      // the same treatment (see HOLD_CLOSED_STATUSES) so a task the PM
+      // paused or force-closed never counts as overdue, even if
+      // showHoldClosed is on and it's sitting in cardScopeTasks.
+      overdue: cardScopeTasks.filter(
+        (t) => t.dueDate && t.dueDate < today && !COMPLETED_STATUSES.includes(t.status) && !HOLD_CLOSED_STATUSES.includes(t.status),
+      ).length,
       defects: cardScopeTasks.filter((t) => t.isDefect).length,
     };
 
@@ -1066,6 +1111,174 @@ export class TasksService {
       entityType: 'ProjectTask',
       entityId: saved.id,
       details: {},
+    });
+
+    return saved;
+  }
+
+  // Program Manager or Admin can pause any task, from any current status,
+  // no reason/comment required (confirmed with the user 2026-09) - role
+  // gating lives in the controller (ROLES_ALLOWED_TO_SET_HOLD_CLOSED),
+  // same "narrow exception via its own endpoint" shape as
+  // setPeerReviewFlag()/setQaReviewDueDate() above, since Admin is
+  // otherwise view-only across Tasks. Records priorStatus so
+  // releaseTask() below can resume the task exactly where it left off.
+  async holdTask(
+    id: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.status === 'Hold') {
+      throw new BadRequestException('This task is already on Hold.');
+    }
+    if (task.status === 'Closed') {
+      throw new BadRequestException('This task is Closed - it cannot be put on Hold.');
+    }
+
+    const previousStatus = task.status;
+    task.priorStatus = previousStatus;
+    task.status = 'Hold';
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_HELD,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { previousStatus },
+    });
+
+    return saved;
+  }
+
+  // The other half of holdTask() above - resumes the task at whatever
+  // status it was in right before Hold. Falls back to 'Development' only
+  // if priorStatus is somehow missing (defensive - every path that sets
+  // 'Hold' also sets priorStatus in the same save).
+  async releaseTask(
+    id: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.status !== 'Hold') {
+      throw new BadRequestException('Only a task on Hold can be released this way.');
+    }
+
+    const restoredStatus = task.priorStatus || 'Development';
+    task.status = restoredStatus;
+    task.priorStatus = null;
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_RELEASED_FROM_HOLD,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { restoredStatus },
+    });
+
+    return saved;
+  }
+
+  // Program Manager or Admin force-closes any task, from any current
+  // status, regardless of resolution state - distinct from Pass (normally
+  // resolved) and from Junk (closeAsJunk() above, which only applies to an
+  // escalated ticket PM decided was never a real issue). Terminal, same as
+  // Junk except that reopenTask() below can undo it. No reason/comment
+  // required, same as holdTask() above. Keeps priorStatus as the status to
+  // reopen to - for a task closed while on Hold, that's the status it had
+  // before Hold (reopening resumes work rather than re-pausing it).
+  async closeTask(
+    id: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.status === 'Closed') {
+      throw new BadRequestException('This task is already Closed.');
+    }
+
+    const previousStatus = task.status;
+    task.priorStatus = previousStatus === 'Hold' ? task.priorStatus || 'Development' : previousStatus;
+    task.status = 'Closed';
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_CLOSED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { previousStatus },
+    });
+
+    return saved;
+  }
+
+  // Undoes closeTask() above - restores the task to the status it had
+  // before it was closed. Tasks closed before closeTask() started keeping
+  // priorStatus fall back to the TASK_CLOSED audit entry's previousStatus
+  // (resolved past Hold the same way), then 'Development'. Same role gate
+  // as hold/release/close (ROLES_ALLOWED_TO_SET_HOLD_CLOSED).
+  async reopenTask(
+    id: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.status !== 'Closed') {
+      throw new BadRequestException('Only a Closed task can be reopened.');
+    }
+
+    let restoredStatus = task.priorStatus;
+    if (!restoredStatus) {
+      const closedDetails = await this.auditLogService.findLatestDetails(
+        tenantId,
+        AuditActions.TASK_CLOSED,
+        'ProjectTask',
+        task.id,
+      );
+      const closedFrom = closedDetails?.previousStatus;
+      if (typeof closedFrom === 'string' && closedFrom !== 'Hold' && closedFrom !== 'Closed') {
+        restoredStatus = closedFrom;
+      } else if (closedFrom === 'Hold') {
+        const heldDetails = await this.auditLogService.findLatestDetails(
+          tenantId,
+          AuditActions.TASK_HELD,
+          'ProjectTask',
+          task.id,
+        );
+        const heldFrom = heldDetails?.previousStatus;
+        if (typeof heldFrom === 'string' && heldFrom !== 'Hold' && heldFrom !== 'Closed') {
+          restoredStatus = heldFrom;
+        }
+      }
+    }
+    restoredStatus = restoredStatus || 'Development';
+
+    task.status = restoredStatus;
+    task.priorStatus = null;
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_REOPENED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { restoredStatus },
     });
 
     return saved;

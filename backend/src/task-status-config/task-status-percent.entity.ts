@@ -27,6 +27,16 @@ import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeor
 // (TasksService.closeAsJunk()) - terminal, and unlike every other
 // status, fully excluded from KPI (KpiService.computeMetrics()'
 // `Not('Junk')` filters) rather than just scored as incomplete/rejected.
+// 'Hold'/'Closed' (added 2026-09, confirmed with the user) are the one
+// exception to "status is fully auto-computed" above - Program Manager
+// or Admin can force either one from any current status via the
+// dedicated PATCH /tasks/:id/hold|close endpoints (TasksService.
+// holdTask()/closeTask()), no reason/comment required. 'Hold' is a pause,
+// not terminal - ProjectTask.priorStatus remembers what to resume to
+// (TasksService.releaseTask()); 'Closed' is a force-end regardless of
+// resolution state (PM/Admin can reopen it via TasksService.reopenTask()),
+// excluded from KPI/overdue the same way as Junk (KpiService.
+// computeMetrics(), TasksService's HOLD_CLOSED_STATUSES).
 export const TASK_STATUSES = [
   'Development',
   'Feedback',
@@ -37,6 +47,8 @@ export const TASK_STATUSES = [
   'Failed',
   'Pass',
   'Junk',
+  'Hold',
+  'Closed',
   'Released - No Showstoppers',
   'Released - With Showstoppers',
 ] as const;
@@ -55,6 +67,8 @@ export const TASK_STATUS_PERCENT_DEFAULTS: Record<TaskStatus, number> = {
   Failed: 0,
   Pass: 100,
   Junk: 0,
+  Hold: 0,
+  Closed: 0,
   'Released - No Showstoppers': 100,
   'Released - With Showstoppers': 0,
 };

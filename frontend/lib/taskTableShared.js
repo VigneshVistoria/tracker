@@ -15,6 +15,8 @@ export const TASK_STATUSES = [
   'Failed',
   'Pass',
   'Junk',
+  'Hold',
+  'Closed',
   'Released - No Showstoppers',
   'Released - With Showstoppers',
 ];
@@ -28,6 +30,15 @@ export const TASK_STATUSES = [
 // too - Escalated is not, since it's still awaiting a PM decision.
 export const COMPLETED_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'];
 
+// PM/Admin can force any task to Hold or Closed from any status (added
+// 2026-09) - neither is "completed" (Hold is a pause, expected to resume;
+// Closed is a force-end, not a resolution), so they get their own
+// "hidden by default, toggle to reveal" pair, independent of
+// COMPLETED_STATUSES/"Show completed tasks" above. Mirrors
+// HOLD_CLOSED_STATUSES on the backend (TasksService) - keep in sync by
+// hand, same as COMPLETED_STATUSES.
+export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
+
 export const LEGEND_ITEMS = [
   { label: 'Development', swatch: 'var(--color-slate-tint)' },
   { label: 'Feedback / Re-Feedback', swatch: 'var(--color-plum-tint)' },
@@ -36,6 +47,12 @@ export const LEGEND_ITEMS = [
   { label: 'Failed / Released - With Showstoppers', swatch: 'var(--color-red-tint)' },
   { label: 'Junk', swatch: 'var(--color-slate-tint)' },
   { label: 'Released - No Showstoppers', swatch: 'var(--color-teal-tint)' },
+  // Hold/Closed use --ds-* tokens directly rather than adding new legacy
+  // --color-* aliases (STYLE.md: new values target --ds-* tokens, the
+  // existing rowTint*/rail*/STATUS_BADGE_STYLE entries above are already
+  // using every one of the 6 legacy hues this app has).
+  { label: 'Hold', swatch: 'var(--ds-color-info-tint)' },
+  { label: 'Closed', swatch: 'var(--ds-color-gray-300)' },
 ];
 
 // Status is expressed as row background color in every task list except
@@ -54,6 +71,8 @@ export function buildRowTintClass(styles) {
     Junk: styles.rowTintSlate,
     'Released - With Showstoppers': styles.rowTintRed,
     'Released - No Showstoppers': styles.rowTintTeal,
+    Hold: styles.rowTintHold,
+    Closed: styles.rowTintClosed,
   };
 }
 
@@ -70,6 +89,8 @@ export function buildRowRailClass(styles) {
     Junk: styles.railSlate,
     'Released - With Showstoppers': styles.railRed,
     'Released - No Showstoppers': styles.railTeal,
+    Hold: styles.railHold,
+    Closed: styles.railClosed,
   };
 }
 
@@ -88,6 +109,10 @@ const STATUS_BADGE_STYLE = {
   Junk: { background: 'var(--color-slate-tint)', color: 'var(--color-ink-soft)' },
   'Released - With Showstoppers': { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
   'Released - No Showstoppers': { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' },
+  // --ds-* tokens directly (not a new legacy --color-* alias) per
+  // STYLE.md - see the LEGEND_ITEMS comment above.
+  Hold: { background: 'var(--ds-color-info-tint)', color: 'var(--ds-color-info-dark)' },
+  Closed: { background: 'var(--ds-color-gray-300)', color: 'var(--ds-text-primary)' },
 };
 
 export function statusBadgeStyle(status) {
@@ -107,24 +132,32 @@ export const STATUS_TAB_GROUPS = [
   { key: 'Failed', label: 'Failed / Released - With Showstoppers', statuses: ['Failed', 'Released - With Showstoppers'] },
   { key: 'Junk', label: 'Junk', statuses: ['Junk'] },
   { key: 'ReleasedNoShowstoppers', label: 'Released - No Showstoppers', statuses: ['Released - No Showstoppers'] },
+  { key: 'Hold', label: 'Hold', statuses: ['Hold'] },
+  { key: 'Closed', label: 'Closed', statuses: ['Closed'] },
 ];
 
 // Same "don't dead-end on an empty table" reasoning as selectableStatuses
 // above - a tab is hidden only once every status it represents is a
 // completed one (so 'Failed / Released - With Showstoppers' stays visible
 // even with completed tasks hidden, since Failed itself isn't completed).
-export function visibleStatusTabs(showCompleted) {
-  if (showCompleted) return STATUS_TAB_GROUPS;
-  return STATUS_TAB_GROUPS.filter(
-    (g) => g.key === 'All' || g.statuses.some((s) => !COMPLETED_STATUSES.includes(s)),
-  );
+// `showHoldClosed` does the same for the Hold/Closed tabs, independently -
+// see HOLD_CLOSED_STATUSES.
+export function visibleStatusTabs(showCompleted, showHoldClosed) {
+  return STATUS_TAB_GROUPS.filter((g) => {
+    if (g.key === 'All') return true;
+    if (!showCompleted && g.statuses.every((s) => COMPLETED_STATUSES.includes(s))) return false;
+    if (!showHoldClosed && g.statuses.every((s) => HOLD_CLOSED_STATUSES.includes(s))) return false;
+    return true;
+  });
 }
 
-// Only offer statuses that can actually appear once completed tasks are
-// hidden - picking "Pass" from the dropdown would otherwise always
-// dead-end on an empty table.
-export function selectableStatuses(showCompleted) {
-  return showCompleted ? TASK_STATUSES : TASK_STATUSES.filter((s) => !COMPLETED_STATUSES.includes(s));
+// Only offer statuses that can actually appear once completed/Hold/Closed
+// tasks are hidden - picking "Pass" from the dropdown would otherwise
+// always dead-end on an empty table.
+export function selectableStatuses(showCompleted, showHoldClosed) {
+  return TASK_STATUSES.filter(
+    (s) => (showCompleted || !COMPLETED_STATUSES.includes(s)) && (showHoldClosed || !HOLD_CLOSED_STATUSES.includes(s)),
+  );
 }
 
 // Task Priority - Program Manager only (TasksService's PRIORITY_MUTATE_ROLES
