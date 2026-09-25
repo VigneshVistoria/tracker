@@ -22,7 +22,7 @@ const SECTIONS = [
   { id: 'roles', label: '2. Who does what' },
   { id: 'navigation', label: '3. Getting around' },
   { id: 'statuses', label: '4. Task statuses' },
-  { id: 'daily', label: '5. Your day' },
+  { id: 'daily', label: '5. Start of day' },
   { id: 'new-task', label: '6. Picking up a task' },
   { id: 'dependencies', label: '7. Dependency tickets' },
   { id: 'submit', label: '8. Submitting work' },
@@ -55,8 +55,6 @@ const PAGES = [
   ['My Tasks', '/tasks/mine', 'See all your tasks in one list'],
   ['Peer Review queue', '/tasks/peer-review', 'See peer reviews assigned to you'],
   ['Dependency Clearance', '/dependency-clearance', 'Resolve dependency tickets routed to you'],
-  ['Time Sheets', '/time-sheets', 'Log hours'],
-  ['Daily Update', '/daily-update', 'Post completed / pending / blockers'],
   ['KPI Dashboard', '/kpi', 'See your own KPI scores'],
 ];
 
@@ -116,7 +114,6 @@ const CHECKLIST = [
   'Resolution states cause, change and verification',
   'At least one artifact, each link opens correctly',
   'Actual Hours entered truthfully',
-  'Time logged in Time Sheets',
 ];
 
 function Table({ headers, rows, emphasizeFirstColumn = true }) {
@@ -235,8 +232,8 @@ export default function TrackerSopPage() {
               “developer”, it means all three.
             </p>
             <p>
-              It covers tasks, defects, dependency tickets, QA submission, peer review, time sheets and daily
-              updates. It does not cover the Issues module or the older Dependencies page.
+              It covers tasks, defects, dependency tickets, QA submission and peer review. It does not cover the
+              Issues module or the older Dependencies page.
             </p>
           </Section>
 
@@ -272,8 +269,7 @@ export default function TrackerSopPage() {
             <p>Older tasks may show legacy statuses such as “Released - No Showstoppers”. You cannot trigger these.</p>
           </Section>
 
-          <Section id="daily" number={5} title="Your day">
-            <h3 className={g.subTitle}>Start of day</h3>
+          <Section id="daily" number={5} title="Start of day">
             <ol className={g.steps}>
               <li>
                 Open the Dashboard. Clear <strong>Rejected</strong> and <strong>Overdue</strong> first, then{' '}
@@ -282,17 +278,6 @@ export default function TrackerSopPage() {
               <li>
                 Open <Path>/tasks/peer-review</Path> and complete any peer reviews assigned to you.
               </li>
-              <li>
-                Post your <strong>Daily Update</strong> (<Path>/daily-update</Path>): what you completed, what is
-                pending, and any blockers.
-              </li>
-            </ol>
-            <h3 className={g.subTitle}>End of day</h3>
-            <ol className={g.steps}>
-              <li>
-                Log time at <Path>/time-sheets</Path> against the task or project (0.25 to 24 hours per entry).
-              </li>
-              <li>Update your Daily Update if your pending items or blockers changed.</li>
             </ol>
           </Section>
 
