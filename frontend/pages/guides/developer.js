@@ -9,13 +9,13 @@ import g from '../../styles/userGuide.module.css';
 // (SOP-Developer-Workflow.docx at the repo root). Keep the two in sync
 // when the task workflow changes.
 //
-// Admin/Program Manager only for now, as a review preview (confirmed with
-// the user 2026-09-25). To release it to developers, add
+// Admin/Executive/Program Manager only for now, as a review preview
+// (confirmed with the user 2026-09-25; Executive added the same day). To release it to developers, add
 // ...DEVELOPER_EQUIVALENT_ROLES here and to the matching nav entry in
 // AppShell.js, and drop the preview banner below. Developers have no
 // sidebar (AppShell hideSidebar), so they'll also need a link from their
 // Dashboard.
-const VIEW_ROLES = ['admin', 'program_manager'];
+const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 
 const SECTIONS = [
   { id: 'purpose', label: '1. Purpose and scope' },
@@ -205,7 +205,7 @@ export default function DeveloperGuidePage() {
       <div className={g.previewBanner} role="note">
         <Eye size={16} className={g.calloutIcon} aria-hidden="true" />
         <div>
-          <strong>Preview.</strong> Only Admins and Program Managers can see this page right now. Developers
+          <strong>Preview.</strong> Only Admins, Executives and Program Managers can see this page right now. Developers
           will get access once it has been reviewed.
         </div>
       </div>
