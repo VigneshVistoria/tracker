@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { AlertTriangle, Info, Eye, XCircle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Info, Eye, XCircle, CheckCircle2, Maximize2, Minimize2 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import styles from '../styles/issues.module.css';
 import g from '../styles/sop.module.css';
@@ -171,6 +171,10 @@ function Path({ children }) {
 export default function TrackerSopPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  // Opens full screen (no sidebar/top nav) by default for easier reading,
+  // same pattern as Team Tasks (pages/tasks/team.js) - confirmed with the
+  // user 2026-09-25. Not persisted; every visit starts full screen.
+  const [fullScreen, setFullScreen] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -189,7 +193,8 @@ export default function TrackerSopPage() {
   if (!user) return null;
 
   return (
-    <AppShell>
+    <AppShell fullScreen={fullScreen}>
+      <div className={g.page}>
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>Tracker SOP</h1>
@@ -197,6 +202,14 @@ export default function TrackerSopPage() {
             How to use Tracker as a Developer, Designer or DevOps user. Based on SOP-DEV-001.
           </p>
         </div>
+        <button
+          type="button"
+          className={styles.buttonSecondary}
+          onClick={() => setFullScreen((v) => !v)}
+        >
+          {fullScreen ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
+          {fullScreen ? 'Exit Full Screen' : 'Full Screen'}
+        </button>
       </div>
 
       <div className={g.previewBanner} role="note">
@@ -523,6 +536,7 @@ export default function TrackerSopPage() {
             </ul>
           </Section>
         </div>
+      </div>
       </div>
     </AppShell>
   );

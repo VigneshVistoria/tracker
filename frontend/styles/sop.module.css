@@ -2,6 +2,13 @@
    (see STYLE.md) - page header/card chrome is shared with every other
    page via issues.module.css. */
 
+.page {
+  /* Full screen removes AppShell's own width cap - keep line length
+     readable for a text-heavy page. */
+  max-width: var(--ds-max-content-width);
+  margin-inline: auto;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
