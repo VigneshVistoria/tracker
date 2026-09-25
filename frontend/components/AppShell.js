@@ -188,9 +188,9 @@ const KPI_NAV_ITEM = { href: '/kpi', label: 'KPI Dashboard', icon: Gauge };
 const KPI_MATRIX_NAV_ITEM = { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid };
 const NON_COMPLIANCE_REPORT_NAV_ITEM = { href: '/reports/non-compliance', label: 'Non-Compliance Report', icon: AlertOctagon };
 // Admin/Executive/Program Manager only while it's being reviewed (confirmed
-// with the user 2026-09-25) - same VIEW_ROLES as pages/guides/developer.js. Widen
+// with the user 2026-09-25) - same VIEW_ROLES as pages/sop.js. Widen
 // both together when it's released to developers.
-const DEVELOPER_GUIDE_NAV_ITEM = { href: '/guides/developer', label: 'Tracker SOP', icon: BookOpen };
+const TRACKER_SOP_NAV_ITEM = { href: '/sop', label: 'Tracker SOP', icon: BookOpen };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -556,7 +556,7 @@ export default function AppShell({ children, fullScreen = false }) {
             )}
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={DEVELOPER_GUIDE_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+              <SingleNavLink item={TRACKER_SOP_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (

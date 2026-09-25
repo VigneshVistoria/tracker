@@ -8,6 +8,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  // The Tracker SOP page briefly lived at /guides/developer (2026-09-25) -
+  // keep old bookmarks working.
+  async redirects() {
+    return [{ source: '/guides/developer', destination: '/sop', permanent: true }];
+  },
 };
 
 module.exports = nextConfig;

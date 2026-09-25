@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { AlertTriangle, Info, Eye, XCircle, CheckCircle2 } from 'lucide-react';
-import AppShell from '../../components/AppShell';
-import styles from '../../styles/issues.module.css';
-import g from '../../styles/userGuide.module.css';
+import AppShell from '../components/AppShell';
+import styles from '../styles/issues.module.css';
+import g from '../styles/sop.module.css';
 
 // Developer user guide - the in-app version of SOP-DEV-001
 // (SOP-Developer-Workflow.docx at the repo root). Keep the two in sync
@@ -171,7 +171,7 @@ function Path({ children }) {
   return <code className={g.path}>{children}</code>;
 }
 
-export default function DeveloperGuidePage() {
+export default function TrackerSopPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
 
