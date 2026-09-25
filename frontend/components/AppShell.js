@@ -190,7 +190,7 @@ const NON_COMPLIANCE_REPORT_NAV_ITEM = { href: '/reports/non-compliance', label:
 // Admin/Executive/Program Manager only while it's being reviewed (confirmed
 // with the user 2026-09-25) - same VIEW_ROLES as pages/guides/developer.js. Widen
 // both together when it's released to developers.
-const DEVELOPER_GUIDE_NAV_ITEM = { href: '/guides/developer', label: 'Developer Guide', icon: BookOpen };
+const DEVELOPER_GUIDE_NAV_ITEM = { href: '/guides/developer', label: 'Tracker SOP', icon: BookOpen };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by

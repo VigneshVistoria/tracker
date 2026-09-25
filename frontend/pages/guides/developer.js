@@ -195,7 +195,7 @@ export default function DeveloperGuidePage() {
     <AppShell>
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>Developer Guide</h1>
+          <h1 className={styles.pageTitle}>Tracker SOP</h1>
           <p className={styles.pageSubtitle}>
             How to use Tracker as a Developer, Designer or DevOps user. Based on SOP-DEV-001.
           </p>
