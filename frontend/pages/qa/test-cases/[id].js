@@ -95,9 +95,12 @@ export default function TestCaseDetail() {
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>
-            <span className={styles.issueId}>#{testCase.id}</span> {testCase.title}
+            <span className={styles.issueId}>{testCase.caseNumber || `#${testCase.id}`}</span> {testCase.title}
           </h1>
-          <p className={styles.pageSubtitle}>{testCase.projectName || 'No project'} &middot; {testCase.status}</p>
+          <p className={styles.pageSubtitle}>
+            {[testCase.projectName, testCase.moduleName, testCase.phaseName].filter(Boolean).join(' / ') || 'No project'}
+            {' '}&middot; {testCase.status}
+          </p>
         </div>
         <ResultBadge result={testCase.lastResult} />
       </div>

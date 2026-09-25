@@ -1,0 +1,239 @@
+/* Developer Non-Compliance dashboard - bespoke pieces not already covered
+   by issues.module.css (cards/filters/tables/buttons come from there).
+   Status colors are the app's own existing tokens (globals.css), not new
+   hex values - critical/good/neutral read the same way every other
+   status badge in the app does. */
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.kpiTile {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.kpiLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--color-ink-soft);
+}
+
+.kpiValue {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: var(--space-2);
+}
+
+.kpiValue.critical {
+  color: var(--color-red-dark);
+}
+
+.kpiSub {
+  font-size: 11px;
+  color: var(--color-ink-soft);
+  margin-top: var(--space-1);
+}
+
+/* ---- bar chart ---- */
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+
+.chartTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--color-ink-soft);
+  margin: 0 0 var(--space-2);
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 92px 1fr 74px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 0;
+}
+
+.barName {
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barTrack {
+  position: relative;
+  height: 20px;
+  background: var(--color-slate-tint);
+  border-radius: 4px;
+}
+
+.barFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 20px;
+  border-radius: 4px;
+  min-width: 3px;
+}
+
+.barFill.critical {
+  background: var(--color-red-dark);
+}
+
+.barFill.good {
+  background: var(--color-teal-dark);
+}
+
+.thresholdLine {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--color-ink);
+  opacity: 0.4;
+}
+
+.barValue {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.barValueNa {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--color-ink-soft);
+  text-align: right;
+}
+
+.chartLegend {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-ink-soft);
+}
+
+.legendDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.legendLine {
+  display: inline-block;
+  width: 12px;
+  height: 0;
+  border-top: 2px dashed var(--color-ink);
+  opacity: 0.5;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ---- flagged detail table ---- */
+
+.metricValue {
+  font-weight: 800;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricValue.flag {
+  color: var(--color-red-dark);
+}
+
+.metricFrac {
+  display: block;
+  font-size: 10.5px;
+  color: var(--color-ink-soft);
+  font-weight: 400;
+  margin-top: 1px;
+}
+
+.metricNa {
+  color: var(--color-ink-soft);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+.taskList {
+  margin-top: 4px;
+}
+
+.taskList summary {
+  font-size: 11px;
+  color: var(--color-amber);
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.taskList summary::-webkit-details-marker {
+  display: none;
+}
+
+.taskList ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: var(--color-ink-soft);
+  line-height: 1.6;
+  text-align: left;
+}
+
+.taskList .tag {
+  color: var(--color-red-dark);
+  font-weight: 600;
+}
+
+/* ---- compliant chips ---- */
+
+.compliantStrip {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.compliantChip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-slate-tint);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.compliantWho {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compliantWho span {
+  display: block;
+  font-size: 10px;
+  color: var(--color-ink-soft);
+  font-weight: 400;
+}

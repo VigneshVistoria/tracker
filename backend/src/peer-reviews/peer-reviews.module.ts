@@ -10,6 +10,7 @@ import { TasksModule } from '../tasks/tasks.module';
 import { UsersModule } from '../users/users.module';
 import { AuditModule } from '../audit/audit.module';
 import { GuardsModule } from '../common/guards.module';
+import { NoteQualityModule } from '../note-quality/note-quality.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { GuardsModule } from '../common/guards.module';
     UsersModule,
     AuditModule,
     GuardsModule,
+    NoteQualityModule,
   ],
   controllers: [PeerReviewsController],
   providers: [PeerReviewsService],

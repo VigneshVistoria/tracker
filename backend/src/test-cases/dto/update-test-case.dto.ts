@@ -40,6 +40,14 @@ export class UpdateTestCaseDto {
   projectId?: number;
 
   @IsOptional()
+  @IsInt()
+  moduleId?: number;
+
+  @IsOptional()
+  @IsInt()
+  phaseId?: number;
+
+  @IsOptional()
   @IsEnum(TestCaseStatus)
   status?: TestCaseStatus;
 }

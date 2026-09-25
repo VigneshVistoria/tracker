@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Hash, User, FolderKanban, FileText, Flag, Activity, CalendarDays,
+  Hash, User, FolderKanban, FileText, Flag, Activity, CalendarDays, CalendarClock,
   ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Table from './ui/Table';
@@ -9,7 +9,7 @@ import Badge from './ui/Badge';
 import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { yesterdayISO } from '../lib/developerTaskStats';
+import { isQaReviewOverdue } from '../lib/developerTaskStats';
 import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel, statusBadgeStyle } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
@@ -71,6 +71,11 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
+  // Overdue card - separate from the Due from/to filters above, which
+  // filter on the Assignee's own dueDate. This one filters on
+  // qaReviewDueDate via isQaReviewOverdue() instead, matching what the
+  // backend's 'overdue' stat count actually counts now.
+  const [onlyReviewOverdue, setOnlyReviewOverdue] = useState(false);
 
   const [tasks, setTasks] = useState([]);
   const [statCounts, setStatCounts] = useState({ pending: 0, resubmissions: 0, overdue: 0, approved: 0, rejected: 0 });
@@ -137,7 +142,8 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
       return next;
     });
     setStatusFilter(card.statusFilter);
-    setDueTo(card.overdue ? yesterdayISO() : '');
+    setOnlyReviewOverdue(Boolean(card.overdue));
+    setDueTo('');
     setDueFrom('');
   };
 
@@ -154,9 +160,10 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
       if (assigneeFilter !== 'All' && task.assigneeEmail !== assigneeFilter) return false;
       if (dueFrom && (!task.dueDate || task.dueDate < dueFrom)) return false;
       if (dueTo && (!task.dueDate || task.dueDate > dueTo)) return false;
+      if (onlyReviewOverdue && !isQaReviewOverdue(task)) return false;
       return true;
     });
-  }, [tasks, assigneeFilter, dueFrom, dueTo]);
+  }, [tasks, assigneeFilter, dueFrom, dueTo, onlyReviewOverdue]);
 
   const columns = useMemo(
     () => [
@@ -197,6 +204,16 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             {showDefectColumns && stripHtmlForPreview(t.description) && (
               <span className={styles.issueMeta}>{stripHtmlForPreview(t.description)}</span>
             )}
+          </span>
+        ),
+      },
+      {
+        key: 'qaReviewDueDate',
+        header: <ColHeader icon={CalendarClock} label="QA Review Due" />,
+        sortable: true,
+        render: (t) => (
+          <span className={isQaReviewOverdue(t) ? styles.dueDateOverdue : undefined}>
+            {t.qaReviewDueDate ? formatDate(t.qaReviewDueDate) : '—'}
           </span>
         ),
       },
@@ -308,7 +325,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="qaDueFrom">Due from</label>
+              <label className={styles.filterLabel} htmlFor="qaDueFrom">Assignee Due (from)</label>
               <input
                 id="qaDueFrom"
                 type="date"
@@ -319,7 +336,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="qaDueTo">Due to</label>
+              <label className={styles.filterLabel} htmlFor="qaDueTo">Assignee Due (to)</label>
               <input
                 id="qaDueTo"
                 type="date"

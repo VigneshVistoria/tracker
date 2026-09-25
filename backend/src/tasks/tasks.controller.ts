@@ -20,6 +20,7 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { BulkAssignTasksDto } from './dto/bulk-assign-tasks.dto';
 import { SetPeerReviewFlagDto } from './dto/set-peer-review-flag.dto';
+import { SetQaReviewDueDateDto } from './dto/set-qa-review-due-date.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
@@ -58,6 +59,11 @@ const ROLES_ALLOWED_TO_VIEW_PEER_REVIEW_QUEUE: UserRole[] = DEVELOPER_EQUIVALENT
 // DTO/service method (setPeerReviewFlag) rather than adding Admin to
 // MUTATE_ROLES, so nothing else about Admin's task permissions changes.
 const ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+// Same "narrow exception via its own endpoint/DTO/service method" shape
+// as ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG above, for qaReviewDueDate -
+// QA otherwise has no edit rights on a task it doesn't own/didn't raise
+// as a defect, and Admin is view-only everywhere else on Tasks.
+const ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE: UserRole[] = [UserRole.QA, UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
 // Same "narrow exception via its own endpoint/DTO/service method" shape
 // as ROLES_ALLOWED_TO_SET_PEER_REVIEW_FLAG above - Hold/Closed is a
 // deliberate, confirmed carve-out of Admin's otherwise view-only access
@@ -372,6 +378,19 @@ export class TasksController {
       throw new ForbiddenException('Only Program Manager or Admin can change the Peer Review setting.');
     }
     return this.tasksService.setPeerReviewFlag(id, dto.peerReviewEnabled, currentUser, req.user.tenantId);
+  }
+
+  // Dedicated endpoint for manually adjusting qaReviewDueDate after it was
+  // auto-set on submission - QA, Program Manager, or Admin only. Kept
+  // separate from the general PATCH ':id'/UpdateTaskDto below, same
+  // reasoning as peer-review-flag above.
+  @Patch(':id/qa-review-due-date')
+  async setQaReviewDueDate(@Param('id', ParseIntPipe) id: number, @Body() dto: SetQaReviewDueDateDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA, Program Manager, or Admin can change the QA Review Due Date.');
+    }
+    return this.tasksService.setQaReviewDueDate(id, dto.qaReviewDueDate, currentUser, req.user.tenantId);
   }
 
   @Patch(':id')

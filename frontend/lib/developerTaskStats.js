@@ -21,6 +21,19 @@ export function isOverdueTask(task, today = todayISO()) {
   return Boolean(task.dueDate && task.dueDate < today && !NEVER_OVERDUE_STATUSES.includes(task.status));
 }
 
+// A task past its own QA Review Due Date (separate field from dueDate
+// above, auto-set by TasksService.computeQaReviewDueDate() on every QA/
+// Peer Review submission) while still actually pending a review decision -
+// once QA/the reviewer has acted (Pass/Failed/Escalated/etc.) it's no
+// longer meaningfully overdue for review. Mirrors TasksService.
+// findQaQueue()/findDefectQueue()'s 'overdue' stat count server-side.
+const QA_REVIEW_PENDING_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
+export function isQaReviewOverdue(task, today = todayISO()) {
+  return Boolean(
+    task.qaReviewDueDate && task.qaReviewDueDate < today && QA_REVIEW_PENDING_STATUSES.includes(task.status),
+  );
+}
+
 // Shared by the Developer Dashboard (components/DeveloperDashboard.js) and
 // the My Tasks page's stat cards (pages/tasks/mine.js) - same underlying
 // "Rejected"/"Overdue" rules computed once so the two views can never

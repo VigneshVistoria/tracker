@@ -34,4 +34,12 @@ export class CreateTestCaseDto {
   @IsOptional()
   @IsInt()
   projectId?: number;
+
+  @IsOptional()
+  @IsInt()
+  moduleId?: number;
+
+  @IsOptional()
+  @IsInt()
+  phaseId?: number;
 }

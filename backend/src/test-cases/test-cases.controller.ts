@@ -9,8 +9,10 @@ import {
   ParseIntPipe,
   UseGuards,
   Req,
+  Res,
   ForbiddenException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { TestCasesService } from './test-cases.service';
 import { CreateTestCaseDto } from './dto/create-test-case.dto';
 import { UpdateTestCaseDto } from './dto/update-test-case.dto';
@@ -56,6 +58,33 @@ export class TestCasesController {
   async findAll(@Query('projectId') projectId: string | undefined, @Req() req: any) {
     await this.requireViewer(req);
     return this.testCasesService.findAll(req.user.tenantId, projectId ? Number(projectId) : undefined);
+  }
+
+  // Read-only downloads, same "viewer" gate as the list/detail endpoints
+  // above rather than requireEditor - downloading a CSV of what you can
+  // already see on screen isn't a mutation. Routes are registered ahead
+  // of GET ':id' below so 'bulk-export'/'bulk-import-template' are never
+  // swallowed by the ':id' param route.
+  @Get('bulk-export')
+  async bulkExport(@Query('projectId') projectId: string | undefined, @Req() req: any, @Res() res: Response) {
+    await this.requireViewer(req);
+    const csv = await this.testCasesService.bulkExport(req.user.tenantId, projectId ? Number(projectId) : undefined);
+    res.set({
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename="test-cases.csv"',
+    });
+    res.send(csv);
+  }
+
+  @Get('bulk-import-template')
+  async bulkImportTemplate(@Req() req: any, @Res() res: Response) {
+    await this.requireViewer(req);
+    const csv = this.testCasesService.buildCsvTemplate();
+    res.set({
+      'Content-Type': 'text/csv',
+      'Content-Disposition': 'attachment; filename="test-cases-template.csv"',
+    });
+    res.send(csv);
   }
 
   @Get(':id')

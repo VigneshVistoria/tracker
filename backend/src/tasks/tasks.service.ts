@@ -19,6 +19,7 @@ import { TaskPriority } from './task-priority.enum';
 import { TaskStatusConfigService } from '../task-status-config/task-status-config.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
+import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
@@ -168,6 +169,13 @@ const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalat
 // closing it as Junk, lifts the block.
 const LINKED_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk'];
 
+// How far out ProjectTask.qaReviewDueDate is set on every QA/Peer Review
+// submission (TasksService.computeQaReviewDueDate() below) - a fixed
+// constant, not an admin-configurable setting, per the confirmed spec for
+// this feature. Business days only (Mon-Fri), no company holiday
+// calendar - see business-days.ts.
+const QA_REVIEW_DUE_DATE_BUSINESS_DAYS = 5;
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -287,6 +295,16 @@ export class TasksService {
     if (estimatedHours == null || dueDate == null) {
       throw new BadRequestException('Set Estimated Hours and Due Date before submitting for QA testing.');
     }
+  }
+
+  // ProjectTask.qaReviewDueDate - called from both TaskQaReviewsService.
+  // submit() and PeerReviewsService.submit() at the exact moment each sets
+  // task.status to Feedback/Re-Feedback or Peer Review/Re-Peer-Review, so
+  // "reset fresh on every resubmission" falls out for free (both a first
+  // submission and every later resubmission go through this same call
+  // site in each service, with no separate branch needed).
+  computeQaReviewDueDate(from: Date): string {
+    return toDateOnlyString(addBusinessDays(from, QA_REVIEW_DUE_DATE_BUSINESS_DAYS));
   }
 
   // Hard block, no role exception: a task with an open Dependency Ticket
@@ -453,7 +471,11 @@ export class TasksService {
     const statCounts = {
       pending: pendingTasks.length,
       resubmissions: pendingTasks.filter((t) => t.status === 'Re-Feedback').length,
-      overdue: pendingTasks.filter((t) => t.dueDate && t.dueDate < today).length,
+      // qaReviewDueDate, not the Assignee's own dueDate - pendingTasks is
+      // already scoped to Feedback/Re-Feedback, so no extra status check
+      // is needed here (contrast with the frontend's isQaReviewOverdue()
+      // helper, which isn't scoped to a single status list up front).
+      overdue: pendingTasks.filter((t) => t.qaReviewDueDate && t.qaReviewDueDate < today).length,
       approved: await this.tasksRepository.count({ where: { tenantId, isDefect: false, status: 'Pass' } }),
       rejected: await this.tasksRepository.count({ where: { tenantId, isDefect: false, status: 'Failed' } }),
     };
@@ -502,7 +524,11 @@ export class TasksService {
     const statCounts = {
       pending: openTasks.length,
       resubmissions: openTasks.filter((t) => t.status === 'Re-Feedback').length,
-      overdue: openTasks.filter((t) => t.dueDate && t.dueDate < today).length,
+      // Same qaReviewDueDate switch as findQaQueue() above - a defect
+      // still sitting at 'Development' (not yet submitted) has no
+      // qaReviewDueDate yet, so it's naturally excluded here rather than
+      // needing its own status check.
+      overdue: openTasks.filter((t) => t.qaReviewDueDate && t.qaReviewDueDate < today).length,
       approved: await this.tasksRepository.count({ where: { ...baseWhere, status: 'Pass' } }),
       rejected: await this.tasksRepository.count({ where: { ...baseWhere, status: 'Failed' } }),
     };
@@ -1424,6 +1450,43 @@ export class TasksService {
       entityType: 'ProjectTask',
       entityId: saved.id,
       details: { previous, updated: peerReviewEnabled, taskStatusAtChange: task.status },
+    });
+
+    return saved;
+  }
+
+  // Dedicated setter for manually adjusting qaReviewDueDate after it was
+  // auto-set (computeQaReviewDueDate() above) - same "separate from
+  // update()/UpdateTaskDto/canEdit()" shape as setPeerReviewFlag() above,
+  // so this one endpoint can grant QA and Admin a narrow write exception
+  // (QA otherwise has no edit rights on a task it doesn't own; Admin is
+  // view-only everywhere else on Tasks) without touching the general edit
+  // path's authorization at all. Role gating itself lives in
+  // TasksController (ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE).
+  async setQaReviewDueDate(
+    id: number,
+    qaReviewDueDate: string,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.qaReviewDueDate === qaReviewDueDate) {
+      return task;
+    }
+
+    const previous = task.qaReviewDueDate;
+    task.qaReviewDueDate = qaReviewDueDate;
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_QA_REVIEW_DUE_DATE_EDITED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { previousQaReviewDueDate: previous, newQaReviewDueDate: saved.qaReviewDueDate },
     });
 
     return saved;

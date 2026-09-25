@@ -11,11 +11,12 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
+import { isQaReviewOverdue } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
 import { formatDate } from '../../lib/formatDate';
-import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -167,6 +168,55 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
 
+// Soft duplicate-title nudge for the batch-reject "Create linked
+// defect(s)" panel - deliberately approximate (word-overlap, not an
+// external search/fuzzy-match library) since this is a heads-up for QA to
+// glance at, not a hard block: worded-differently duplicates will still
+// slip through, and unrelated defects that happen to share common words
+// can still trigger it. Titles under 2 distinct words are skipped
+// entirely - too short to compare meaningfully without just matching on
+// one common word.
+function titleWords(title) {
+  return new Set((title || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean));
+}
+
+function titlesLookSimilar(a, b) {
+  const wordsA = titleWords(a);
+  const wordsB = titleWords(b);
+  const smaller = Math.min(wordsA.size, wordsB.size);
+  if (smaller < 2) return false;
+  const overlap = [...wordsA].filter((w) => wordsB.has(w)).length;
+  return overlap / smaller >= 0.7;
+}
+
+// Recently-used artifact URLs for the batch-reject "Create linked
+// defect(s)" panel - QA frequently points several defects (or several
+// separate rejections in a day) at the same staging link/build/test
+// report, so this saves retyping/copy-paste. Deliberately localStorage,
+// not the per-task sessionStorage draft above - this is a cross-task,
+// cross-session convenience list, not in-progress work. A plain
+// <datalist> (native browser autocomplete) rather than a custom dropdown,
+// to keep this a small addition rather than a new UI component.
+const ARTIFACT_URL_HISTORY_KEY = 'qaArtifactUrlHistory';
+const ARTIFACT_URL_HISTORY_LIMIT = 8;
+const ARTIFACT_URL_HISTORY_DATALIST_ID = 'qaArtifactUrlHistoryOptions';
+
+function loadArtifactUrlHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ARTIFACT_URL_HISTORY_KEY) || '[]');
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordArtifactUrlHistory(urls) {
+  const existing = loadArtifactUrlHistory();
+  const merged = [...urls, ...existing].filter((url, index, all) => url && all.indexOf(url) === index);
+  localStorage.setItem(ARTIFACT_URL_HISTORY_KEY, JSON.stringify(merged.slice(0, ARTIFACT_URL_HISTORY_LIMIT)));
+  return merged.slice(0, ARTIFACT_URL_HISTORY_LIMIT);
+}
+
 export default function TaskDetailPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -194,6 +244,10 @@ export default function TaskDetailPage() {
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [savingDescription, setSavingDescription] = useState(false);
+  // Task Title edit - same PM-only, any-status rules as Description above.
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [savingTitle, setSavingTitle] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -201,6 +255,13 @@ export default function TaskDetailPage() {
   const [estimatedHours, setEstimatedHours] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState('');
+
+  // QA Review Due Date - separate field/endpoint from Estimated Hours/Due
+  // Date above (PATCH /tasks/:id/qa-review-due-date, not UpdateTaskDto),
+  // auto-set on QA/Peer Review submission, manually adjustable by QA/PM/
+  // Admin only.
+  const [qaReviewDueDateDraft, setQaReviewDueDateDraft] = useState('');
+  const [savingQaReviewDueDate, setSavingQaReviewDueDate] = useState(false);
 
   const [ticketDescription, setTicketDescription] = useState('');
   const [ticketOwner, setTicketOwner] = useState(null);
@@ -218,6 +279,9 @@ export default function TaskDetailPage() {
   const [createLinkedDefect, setCreateLinkedDefect] = useState(false);
   const [linkedDefectDrafts, setLinkedDefectDrafts] = useState([{ title: '', description: '', assignee: null }]);
   const [linkedDefectArtifacts, setLinkedDefectArtifacts] = useState([]);
+  // Loaded once on mount (not per-task) - see loadArtifactUrlHistory/
+  // recordArtifactUrlHistory above.
+  const [artifactUrlHistory, setArtifactUrlHistory] = useState([]);
 
   // Defect scope editing (Project/Module/Phase/Description) - only
   // Program Manager or the QA who raised the defect may edit these, own
@@ -298,6 +362,7 @@ export default function TaskDetailPage() {
       return;
     }
     setUser(parsed);
+    setArtifactUrlHistory(loadArtifactUrlHistory());
     apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map(userToOption))).catch(() => {});
     apiFetch('/projects').then(setProjects).catch(() => {});
     if (MANAGE_ROLES.includes(parsed.role)) {
@@ -336,6 +401,7 @@ export default function TaskDetailPage() {
         setTask(t);
         setEstimatedHours(t.estimatedHours ?? '');
         setDueDate(t.dueDate ?? '');
+        setQaReviewDueDateDraft(t.qaReviewDueDate ?? '');
         setPriority(t.priority ?? '');
         setPeerReviewEnabled(!!t.peerReviewEnabled);
         setDefectProject({ id: t.projectId, name: t.projectName });
@@ -344,6 +410,7 @@ export default function TaskDetailPage() {
         setDefectTitle(t.title);
         setDefectDescription(t.description);
         setDescriptionDraft(t.description);
+        setTitleDraft(t.title);
         setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeFullName || t.assigneeEmail } : null);
         setTickets(ticketList);
         setQaReviews(reviewList);
@@ -358,6 +425,61 @@ export default function TaskDetailPage() {
     if (!task?.isDefect) return;
     apiFetch(`/tasks/${task.id}/defect-artifacts`).then(setDefectArtifacts).catch(() => setDefectArtifacts([]));
   }, [task?.id, task?.isDefect]);
+
+  // QA-rejection draft (comment + linked-defect batch) - mirrored into
+  // sessionStorage, not just component state, so an accidental reload or
+  // back-navigation mid-batch doesn't silently lose it before Confirm
+  // Reject has actually run. Deliberately sessionStorage, not
+  // localStorage - nothing here is a real record until submitted, so it
+  // only needs to survive normal in-tab use, not a browser restart.
+  // Scoped per task id so switching to review a different task's
+  // rejection never shows another task's stale draft. qaArtifacts (QA's
+  // own evidence, shared with Approve/Escalate) is deliberately excluded.
+  const rejectDraftKey = id ? `qaRejectDraft:${id}` : null;
+  const [rejectDraftHydrated, setRejectDraftHydrated] = useState(false);
+
+  useEffect(() => {
+    setRejectDraftHydrated(false);
+    if (!rejectDraftKey) return;
+    const saved = sessionStorage.getItem(rejectDraftKey);
+    if (saved) {
+      try {
+        const draft = JSON.parse(saved);
+        setRejectComment(draft.rejectComment || '');
+        setCreateLinkedDefect(!!draft.createLinkedDefect);
+        setLinkedDefectDrafts(
+          Array.isArray(draft.linkedDefectDrafts) && draft.linkedDefectDrafts.length > 0
+            ? draft.linkedDefectDrafts
+            : [{ title: '', description: '', assignee: null }],
+        );
+        setLinkedDefectArtifacts(Array.isArray(draft.linkedDefectArtifacts) ? draft.linkedDefectArtifacts : []);
+        setShowRejectForm(true);
+      } catch {
+        sessionStorage.removeItem(rejectDraftKey);
+      }
+    }
+    setRejectDraftHydrated(true);
+  }, [rejectDraftKey]);
+
+  useEffect(() => {
+    if (!rejectDraftKey || !rejectDraftHydrated) return;
+    const isEmpty =
+      !stripHtmlForPreview(rejectComment).trim() &&
+      !createLinkedDefect &&
+      linkedDefectArtifacts.length === 0 &&
+      linkedDefectDrafts.length === 1 &&
+      !linkedDefectDrafts[0].title.trim() &&
+      !stripHtmlForPreview(linkedDefectDrafts[0].description).trim() &&
+      !linkedDefectDrafts[0].assignee;
+    if (isEmpty) {
+      sessionStorage.removeItem(rejectDraftKey);
+      return;
+    }
+    sessionStorage.setItem(
+      rejectDraftKey,
+      JSON.stringify({ rejectComment, createLinkedDefect, linkedDefectDrafts, linkedDefectArtifacts }),
+    );
+  }, [rejectDraftKey, rejectDraftHydrated, rejectComment, createLinkedDefect, linkedDefectDrafts, linkedDefectArtifacts]);
 
   if (!user || loading) {
     return (
@@ -390,6 +512,9 @@ export default function TaskDetailPage() {
   // Program Manager or Admin only, same narrow exception shape as
   // canManagePeerReviewFlag above.
   const canManageHoldClosed = canManage || user.role === 'admin';
+  // Backend mirror: ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE
+  // (TasksController) - QA, Program Manager, or Admin only.
+  const canEditQaReviewDueDate = user.role === 'qa' || canManage || user.role === 'admin';
   // Backend mirror: TasksService.canEdit()'s isDefect/createdByUserId
   // branch - only Program Manager or the QA who raised this defect may
   // edit its Project/Module/Phase/Description.
@@ -584,6 +709,34 @@ export default function TaskDetailPage() {
     setEditingDescription(false);
   };
 
+  const handleSaveTitle = async () => {
+    setError('');
+    if (!titleDraft.trim()) {
+      setError('Title is required.');
+      return;
+    }
+    setSavingTitle(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: titleDraft.trim() }),
+      });
+      setTask(updated);
+      setTitleDraft(updated.title);
+      setEditingTitle(false);
+      showToast('Title updated', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingTitle(false);
+    }
+  };
+
+  const handleCancelEditTitle = () => {
+    setTitleDraft(task.title);
+    setEditingTitle(false);
+  };
+
   const handleSavePeerReviewFlag = async () => {
     setError('');
     setSavingPeerReviewFlag(true);
@@ -662,6 +815,23 @@ export default function TaskDetailPage() {
     }
   };
 
+  const handleSaveQaReviewDueDate = async () => {
+    setError('');
+    setSavingQaReviewDueDate(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/qa-review-due-date`, {
+        method: 'PATCH',
+        body: JSON.stringify({ qaReviewDueDate: qaReviewDueDateDraft }),
+      });
+      setTask(updated);
+      showToast('QA Review Due Date updated', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingQaReviewDueDate(false);
+    }
+  };
+
   const addArtifactRow = () => {
     setArtifacts((prev) => [...prev, { type: '', url: '' }]);
   };
@@ -727,6 +897,42 @@ export default function TaskDetailPage() {
 
   const removeLinkedDefectDraft = (index) => {
     setLinkedDefectDrafts((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  };
+
+  // Clones title/description/assignee into a new row right after the
+  // source one - for variations of the same underlying issue (e.g. same
+  // bug on a different screen) where retyping the whole thing per defect
+  // would be pure repetition.
+  const duplicateLinkedDefectDraft = (index) => {
+    setLinkedDefectDrafts((prev) => [
+      ...prev.slice(0, index + 1),
+      { ...prev[index] },
+      ...prev.slice(index + 1),
+    ]);
+  };
+
+  // Checks a batch row's title against this task's existing open defects
+  // (openLinkedDefects, already loaded for the "cannot submit for QA"
+  // gate above) and against every other row already in this same batch -
+  // the two places a QA-rejection session could accidentally spin up a
+  // redundant ticket for the same underlying issue.
+  const findPossibleDuplicateDefectWarning = (index) => {
+    const title = linkedDefectDrafts[index].title.trim();
+    if (!title) return null;
+
+    const existingMatch = openLinkedDefects.find((d) => titlesLookSimilar(title, d.title));
+    if (existingMatch) {
+      return `Possible duplicate of existing open defect #${existingMatch.id} ("${existingMatch.title}")`;
+    }
+
+    const batchMatchIndex = linkedDefectDrafts.findIndex(
+      (other, i) => i !== index && other.title.trim() && titlesLookSimilar(title, other.title),
+    );
+    if (batchMatchIndex !== -1) {
+      return `Possible duplicate of Defect ${batchMatchIndex + 1} in this same batch`;
+    }
+
+    return null;
   };
 
   const updateLinkedDefectDraft = (index, field, value) => {
@@ -898,6 +1104,9 @@ export default function TaskDetailPage() {
           : 'Task rejected',
         'success',
       );
+      if (linkedDefectArtifactsPayload && linkedDefectArtifactsPayload.length > 0) {
+        setArtifactUrlHistory(recordArtifactUrlHistory(linkedDefectArtifactsPayload.map((a) => a.url)));
+      }
       setRejectComment('');
       setShowRejectForm(false);
       setQaArtifacts([]);
@@ -1051,7 +1260,40 @@ export default function TaskDetailPage() {
     <AppShell>
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>#{task.id} - {task.title}</h1>
+          {!editingTitle && <h1 className={styles.pageTitle}>#{task.id} - {task.title}</h1>}
+          {canManage && !editingTitle && (
+            <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
+              <button className={styles.buttonSecondary} type="button" onClick={() => setEditingTitle(true)}>
+                Edit Title
+              </button>
+            </div>
+          )}
+          {canManage && editingTitle && (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="taskTitleEdit">Title</label>
+              <input
+                className={styles.input}
+                id="taskTitleEdit"
+                required
+                maxLength={TASK_TITLE_MAX_LENGTH}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTitle();
+                  if (e.key === 'Escape') handleCancelEditTitle();
+                }}
+                autoFocus
+              />
+              <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingTitle} onClick={handleSaveTitle}>
+                  {savingTitle ? 'Saving...' : 'Save Title'}
+                </button>
+                <button className={styles.buttonSecondary} type="button" disabled={savingTitle} onClick={handleCancelEditTitle}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
         </div>
         <Link href="/tasks/mine" className={styles.backLink}>&larr; Back to My Tasks</Link>
@@ -1391,6 +1633,43 @@ export default function TaskDetailPage() {
           )}
         </div>
       )}
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          QA Review Due Date
+        </h2>
+        <p style={{ margin: 0 }} className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
+          {task.qaReviewDueDate ? formatDate(task.qaReviewDueDate) : 'Not yet submitted for QA or Peer Review.'}
+        </p>
+        <p className={styles.helpText}>
+          Auto-set to 5 business days from whenever this task is submitted for QA or Peer Review, and reset fresh on
+          every resubmission - separate from the task's own Due Date above.
+        </p>
+        {canEditQaReviewDueDate && (
+          <>
+            <div className={styles.fieldNarrow}>
+              <label className={styles.label} htmlFor="tdQaReviewDueDate">Adjust QA Review Due Date</label>
+              <input
+                className={styles.input}
+                id="tdQaReviewDueDate"
+                type="date"
+                value={qaReviewDueDateDraft}
+                onChange={(e) => setQaReviewDueDateDraft(e.target.value)}
+              />
+            </div>
+            <div className={styles.actions}>
+              <button
+                className={`${styles.button} ${styles.buttonAccent}`}
+                type="button"
+                disabled={savingQaReviewDueDate || !qaReviewDueDateDraft || qaReviewDueDateDraft === (task.qaReviewDueDate || '')}
+                onClick={handleSaveQaReviewDueDate}
+              >
+                {savingQaReviewDueDate ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       {isAssignee && (
         <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
@@ -1798,9 +2077,15 @@ export default function TaskDetailPage() {
 
               {createLinkedDefect && (
                 <div style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)' }}>
+                  {artifactUrlHistory.length > 0 && (
+                    <datalist id={ARTIFACT_URL_HISTORY_DATALIST_ID}>
+                      {artifactUrlHistory.map((url) => <option key={url} value={url} />)}
+                    </datalist>
+                  )}
                   <label className={styles.label}>Artifacts (optional)</label>
                   <p className={styles.helpText} style={{ marginTop: 0 }}>
-                    Shared evidence attached to every defect created below - enter it once, not per defect.
+                    Shared evidence attached to every defect created below - enter it once, not per defect. Start
+                    typing in the URL field to see recently-used links.
                   </p>
                   {linkedDefectArtifacts.map((row, index) => (
                     <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
@@ -1827,6 +2112,7 @@ export default function TaskDetailPage() {
                           placeholder="https://..."
                           value={row.url}
                           onChange={(e) => updateLinkedDefectArtifactRow(index, 'url', e.target.value)}
+                          list={artifactUrlHistory.length > 0 ? ARTIFACT_URL_HISTORY_DATALIST_ID : undefined}
                         />
                       </div>
                       <div className={styles.field}>
@@ -1848,12 +2134,27 @@ export default function TaskDetailPage() {
                       style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)' }}
                     >
                       <div className={styles.actions} style={{ justifyContent: 'space-between', marginTop: 0 }}>
-                        <strong>Defect {index + 1}</strong>
-                        {linkedDefectDrafts.length > 1 && (
-                          <button className={styles.buttonSecondary} type="button" onClick={() => removeLinkedDefectDraft(index)}>
-                            Remove
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                          <strong>Defect {index + 1}</strong>
+                          {rejectDraftHydrated &&
+                            (draft.title.trim() || stripHtmlForPreview(draft.description).trim() || draft.assignee) && (
+                              <span
+                                style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', color: 'var(--color-teal-dark)', fontSize: 12 }}
+                              >
+                                <CheckCircle2 size={14} /> Saved
+                              </span>
+                            )}
+                        </span>
+                        <span style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          <button className={styles.buttonSecondary} type="button" onClick={() => duplicateLinkedDefectDraft(index)}>
+                            Duplicate
                           </button>
-                        )}
+                          {linkedDefectDrafts.length > 1 && (
+                            <button className={styles.buttonSecondary} type="button" onClick={() => removeLinkedDefectDraft(index)}>
+                              Remove
+                            </button>
+                          )}
+                        </span>
                       </div>
                       <div className={styles.field}>
                         <label className={styles.label} htmlFor={`tdLinkedDefectTitle-${index}`}>Defect Title</label>
@@ -1865,6 +2166,13 @@ export default function TaskDetailPage() {
                           onChange={(e) => updateLinkedDefectDraft(index, 'title', e.target.value)}
                           placeholder="Short, human-readable name for this defect"
                         />
+                        {findPossibleDuplicateDefectWarning(index) && (
+                          <p
+                            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', color: 'var(--color-amber-dark)', fontSize: 12, margin: 'var(--space-1) 0 0' }}
+                          >
+                            <AlertTriangle size={14} /> {findPossibleDuplicateDefectWarning(index)} - check before creating.
+                          </p>
+                        )}
                       </div>
                       <div className={styles.field}>
                         <label className={styles.label} htmlFor={`tdLinkedDefectDescription-${index}`}>Defect Description</label>

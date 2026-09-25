@@ -105,11 +105,24 @@ function ProgressBar({ percent }) {
     return <span className={styles.issueMeta}>—</span>;
   }
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-      <div style={{ width: 80, height: 8, borderRadius: 4, background: 'var(--color-slate-tint)', overflow: 'hidden' }}>
-        <div style={{ width: `${percent}%`, height: '100%', background: 'var(--color-teal)' }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)' }}>
+      <div
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label="Percent complete"
+        style={{
+          width: 80,
+          height: 8,
+          borderRadius: 'var(--ds-radius-full)',
+          background: 'var(--ds-bg-surface-sunken)',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ width: `${percent}%`, height: '100%', background: 'var(--ds-color-success)' }} />
       </div>
-      <span style={{ fontSize: '0.85rem', color: 'var(--color-ink-soft)' }}>{percent}%</span>
+      <span style={{ fontSize: 'var(--ds-text-sm)', color: 'var(--ds-text-secondary)' }}>{percent}%</span>
     </div>
   );
 }
@@ -136,18 +149,40 @@ function DependencyTree({ tickets }) {
 
 function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, onOpen }) {
   const depCount = task.dependencyTickets?.length || 0;
+  const depOpenCount = task.dependencyTickets?.filter((tk) => tk.status === 'open').length || 0;
+  const depResolvedCount = depCount - depOpenCount;
   return (
-    <div className={`${styles.taskTile} ${railClass || ''}`} onClick={onOpen}>
+    <div
+      className={`${styles.taskTile} ${railClass || ''}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open task #${task.id}: ${task.title}`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        // Only the tile itself, not a nested link/button (which already
+        // handle their own Enter/Space), should trigger onOpen.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <div className={styles.taskTileTop}>
-        <Link
-          href={`/tasks/${task.id}`}
-          className={styles.issueId}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-        >
-          #{task.id}
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Link
+            href={`/tasks/${task.id}`}
+            className={styles.issueId}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            #{task.id}
+          </Link>
+          <span className={`${styles.typeTag} ${task.isDefect ? styles.typeTagDefect : styles.typeTagTask}`}>
+            {task.isDefect ? 'Defect' : 'Task'}
+          </span>
+        </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
           <span className={styles.badge} style={statusBadgeStyle(task.status)}>{task.status}</span>
@@ -175,6 +210,8 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
         >
           {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
           Dependencies ({depCount})
+          <span className={styles.depCountOpen}>{depOpenCount}</span>
+          <span className={styles.depCountResolved}>{depResolvedCount}</span>
         </button>
       )}
       {expanded && depCount > 0 && (
@@ -196,7 +233,7 @@ function WorkloadChip({ task }) {
       type="button"
       className={styles.workloadChip}
       style={{ ...statusBadgeStyle(task.status), borderLeftColor: priorityStripeColor(task.priority) }}
-      title={`#${task.id} ${task.title}`}
+      title={`#${task.id} (${task.isDefect ? 'Defect' : 'Task'}) ${task.title}`}
       onClick={() => window.open(`/tasks/${task.id}`, '_blank', 'noopener,noreferrer')}
     >
       #{task.id}

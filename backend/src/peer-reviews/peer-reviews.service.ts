@@ -13,6 +13,7 @@ import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
+import { NoteQualityService } from '../note-quality/note-quality.service';
 
 export type PeerReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
 export type PeerReviewWithQaArtifacts = TaskQaReview & { qaArtifacts: TaskQaReviewQaArtifact[] };
@@ -39,6 +40,7 @@ export class PeerReviewsService {
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
+    private noteQualityService: NoteQualityService,
   ) {}
 
   private async findPendingPeerRound(taskId: number, tenantId: number): Promise<TaskQaReview> {
@@ -119,6 +121,10 @@ export class PeerReviewsService {
 
     task.status = priorRounds === 0 ? 'Peer Review' : 'Re-Peer-Review';
     task.actualHours = dto.actualHours;
+    // Same qaReviewDueDate field the QA path uses (TaskQaReviewsService.
+    // submit()) - reset fresh on every submission, first or resubmission
+    // alike.
+    task.qaReviewDueDate = this.tasksService.computeQaReviewDueDate(new Date());
     await this.tasksRepository.save(task);
 
     await this.auditLogService.record({
@@ -136,6 +142,11 @@ export class PeerReviewsService {
         artifactTypes: dto.artifacts.map((a) => a.type),
       },
     });
+
+    // Fire-and-forget - never awaited, so a slow/failed/rate-limited
+    // Gemini call can't add latency to or fail this submission. See
+    // NoteQualityService.
+    this.noteQualityService.queueCheck(savedReview.id, task.title, savedReview.resolution);
 
     return { ...savedReview, artifacts: savedArtifacts };
   }

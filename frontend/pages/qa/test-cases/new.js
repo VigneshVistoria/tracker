@@ -13,6 +13,8 @@ export default function NewTestCase() {
   const router = useRouter();
   const { showToast } = useToast();
   const [projects, setProjects] = useState([]);
+  const [modules, setModules] = useState([]);
+  const [phases, setPhases] = useState([]);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -22,6 +24,8 @@ export default function NewTestCase() {
     priority: '',
     category: '',
     projectId: '',
+    moduleId: '',
+    phaseId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -30,8 +34,39 @@ export default function NewTestCase() {
     apiFetch('/projects').then(setProjects).catch(() => {});
   }, []);
 
+  // Cascading Module/Phase, same pattern as Task Backlog/Create Defect
+  // (pages/tasks/new-defect.js) - Project/Module/Phase stay optional here
+  // (unlike those forms), so picking a Project only narrows the Module
+  // dropdown, it doesn't require going any further.
+  useEffect(() => {
+    if (!form.projectId) {
+      setModules([]);
+      return;
+    }
+    apiFetch(`/modules?projectId=${form.projectId}`).then(setModules).catch(() => setModules([]));
+  }, [form.projectId]);
+
+  useEffect(() => {
+    if (!form.moduleId) {
+      setPhases([]);
+      return;
+    }
+    apiFetch(`/phases?moduleId=${form.moduleId}`).then(setPhases).catch(() => setPhases([]));
+  }, [form.moduleId]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
+    // Changing Project clears whatever Module/Phase was picked under the
+    // old Project (a Module belongs to exactly one Project); changing
+    // Module likewise clears Phase.
+    if (name === 'projectId') {
+      setForm({ ...form, projectId: value, moduleId: '', phaseId: '' });
+      return;
+    }
+    if (name === 'moduleId') {
+      setForm({ ...form, moduleId: value, phaseId: '' });
+      return;
+    }
     setForm({ ...form, [name]: value });
   };
 
@@ -51,6 +86,8 @@ export default function NewTestCase() {
           priority: form.priority || undefined,
           category: form.category || undefined,
           projectId: form.projectId ? Number(form.projectId) : undefined,
+          moduleId: form.moduleId ? Number(form.moduleId) : undefined,
+          phaseId: form.phaseId ? Number(form.phaseId) : undefined,
         }),
       });
       showToast(`Test case #${testCase.id} created`, 'success');
@@ -139,6 +176,36 @@ export default function NewTestCase() {
             <select className={styles.select} id="projectId" name="projectId" value={form.projectId} onChange={handleChange}>
               <option value="">No project</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="moduleId">Module</label>
+            <select
+              className={styles.select}
+              id="moduleId"
+              name="moduleId"
+              value={form.moduleId}
+              onChange={handleChange}
+              disabled={!form.projectId}
+            >
+              <option value="">{form.projectId ? 'No module' : 'Pick a Project first'}</option>
+              {modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="phaseId">Phase</label>
+            <select
+              className={styles.select}
+              id="phaseId"
+              name="phaseId"
+              value={form.phaseId}
+              onChange={handleChange}
+              disabled={!form.moduleId}
+            >
+              <option value="">{form.moduleId ? 'No phase' : 'Pick a Module first'}</option>
+              {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
 

@@ -78,6 +78,19 @@ export class ProjectTask {
   @Column({ type: 'date', nullable: true })
   dueDate: string;
 
+  // Separate from dueDate above (the Assignee's own field) - auto-set to
+  // TasksService.QA_REVIEW_DUE_DATE_BUSINESS_DAYS business days from
+  // whenever the task is submitted for QA or Peer Review
+  // (TaskQaReviewsService.submit()/PeerReviewsService.submit(), both via
+  // TasksService.computeQaReviewDueDate()), and reset fresh on every
+  // resubmission - never tied back to the original first submission.
+  // QA/Program Manager/Admin can also adjust it by hand afterward via the
+  // dedicated PATCH /tasks/:id/qa-review-due-date endpoint (see
+  // TasksService.setQaReviewDueDate()), same "narrow dedicated
+  // setter, not the general update() path" shape as peerReviewEnabled.
+  @Column({ type: 'date', nullable: true })
+  qaReviewDueDate: string;
+
   // Required input on the QA-submit action (TaskQaReviewsService.submit())
   // - the KPI module's Hours Exceed % needs a real logged figure to
   // compare against estimatedHours, and QA-submit is the one

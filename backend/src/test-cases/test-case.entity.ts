@@ -25,6 +25,15 @@ export class TestCase {
   @Column({ nullable: true })
   tenantId: number;
 
+  // Human-readable ID ("TC-0001"), derived from `id` right after insert
+  // (TestCasesService.assignCaseNumber()) rather than a separate counter
+  // table - simplest option since it only needs to be unique, not
+  // sequential-without-gaps. Nullable at the DB level only because it
+  // can't be known before the row's `id` exists; every row created
+  // through TestCasesService ends up with one.
+  @Column({ nullable: true, unique: true })
+  caseNumber: string;
+
   @Column()
   title: string;
 
@@ -54,6 +63,23 @@ export class TestCase {
 
   @Column({ nullable: true })
   projectName: string;
+
+  // Same plain-FK-plus-denormalized-name convention ProjectTask uses for
+  // Project/Module/Phase (see TestCasesService.resolveProjectModulePhase())
+  // - both stay optional (a Module requires a Project, a Phase requires a
+  // Module, but neither is mandatory on a test case the way they are on
+  // ProjectTask).
+  @Column({ nullable: true })
+  moduleId: number;
+
+  @Column({ nullable: true })
+  moduleName: string;
+
+  @Column({ nullable: true })
+  phaseId: number;
+
+  @Column({ nullable: true })
+  phaseName: string;
 
   @Column({ type: 'enum', enum: TestCaseStatus, default: TestCaseStatus.ACTIVE })
   status: TestCaseStatus;

@@ -2,12 +2,8 @@ import { useRef, useState } from 'react';
 import Link from 'next/link';
 import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, apiDownload } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
-
-const CSV_TEMPLATE =
-  'title,description,preconditions,steps,expectedResult,priority,category,projectName\n' +
-  '"Login with valid credentials","Verify a user can log in","User has an active account","1. Go to login\n2. Enter valid email/password\n3. Submit","User is redirected to the dashboard","High","New Feature",""\n';
 
 export default function BulkImportTestCases() {
   const { showToast } = useToast();
@@ -15,6 +11,7 @@ export default function BulkImportTestCases() {
   const [fileName, setFileName] = useState('');
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
@@ -59,16 +56,19 @@ export default function BulkImportTestCases() {
     }
   };
 
-  const downloadTemplate = () => {
-    const blob = new Blob([CSV_TEMPLATE], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'test-cases-template.csv';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+  // Server-generated (TestCasesService.buildCsvTemplate()), not a
+  // hardcoded client-side string, so the template can never drift out of
+  // sync with the columns bulkImport() actually reads.
+  const downloadTemplate = async () => {
+    setError('');
+    setDownloadingTemplate(true);
+    try {
+      await apiDownload('/test-cases/bulk-import-template', 'test-cases-template.csv');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloadingTemplate(false);
+    }
   };
 
   return (
@@ -78,7 +78,8 @@ export default function BulkImportTestCases() {
           <h1 className={styles.pageTitle}>Bulk Import Test Cases</h1>
           <p className={styles.pageSubtitle}>
             Upload a CSV with columns: title, description, preconditions, steps, expectedResult, priority, category,
-            projectName. Title, steps, and expectedResult are required.
+            projectName, moduleName, phaseName. Title, steps, and expectedResult are required - moduleName requires a
+            projectName on the same row, phaseName requires a moduleName.
           </p>
         </div>
       </div>
@@ -104,8 +105,8 @@ export default function BulkImportTestCases() {
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={importing || !csvText}>
               {importing ? 'Importing...' : 'Import'}
             </button>
-            <button className={styles.buttonSecondary} type="button" onClick={downloadTemplate}>
-              Download CSV Template
+            <button className={styles.buttonSecondary} type="button" onClick={downloadTemplate} disabled={downloadingTemplate}>
+              {downloadingTemplate ? 'Downloading...' : 'Download CSV Template'}
             </button>
             <Link href="/qa/test-cases" className={styles.buttonSecondary}>Cancel</Link>
           </div>
@@ -145,7 +146,7 @@ export default function BulkImportTestCases() {
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Ticket #</th>
+                    <th>Case #</th>
                     <th>Title</th>
                   </tr>
                 </thead>
@@ -153,7 +154,7 @@ export default function BulkImportTestCases() {
                   {result.created.map((tc) => (
                     <tr key={tc.id}>
                       <td className={styles.issueId}>
-                        <Link href={`/qa/test-cases/${tc.id}`}>#{tc.id}</Link>
+                        <Link href={`/qa/test-cases/${tc.id}`}>{tc.caseNumber || `#${tc.id}`}</Link>
                       </td>
                       <td>{tc.title}</td>
                     </tr>

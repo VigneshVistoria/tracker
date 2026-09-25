@@ -5,6 +5,8 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
+import { formatDate } from '../../lib/formatDate';
+import { isQaReviewOverdue } from '../../lib/developerTaskStats';
 
 // Self-scoped to the current user as reviewer (TasksService.
 // findPeerReviewQueue()) - only Developer/Designer/DevOps can be picked
@@ -70,6 +72,15 @@ export default function PeerReviewQueuePage() {
           </p>
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
             Assignee: {task.assigneeEmail || 'Unassigned'}
+          </p>
+          <p
+            className={styles.issueMeta}
+            style={{ margin: 'var(--space-1) 0 0' }}
+          >
+            QA Review Due:{' '}
+            <span className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
+              {task.qaReviewDueDate ? formatDate(task.qaReviewDueDate) : '—'}
+            </span>
           </p>
           <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
             <Link href={`/tasks/${task.id}`} className={styles.backLink} target="_blank" rel="noopener noreferrer">

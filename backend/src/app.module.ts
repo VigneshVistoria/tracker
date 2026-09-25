@@ -73,6 +73,7 @@ import { TaskQaReviewsModule } from './task-qa-reviews/task-qa-reviews.module';
 import { PeerReviewsModule } from './peer-reviews/peer-reviews.module';
 import { OpsModule } from './ops/ops.module';
 import { KpiModule } from './kpi/kpi.module';
+import { NonComplianceReportModule } from './non-compliance-report/non-compliance-report.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
@@ -170,6 +171,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     PeerReviewsModule,
     OpsModule,
     KpiModule,
+    NonComplianceReportModule,
     PermissionsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],

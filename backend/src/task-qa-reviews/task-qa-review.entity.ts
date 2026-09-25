@@ -96,4 +96,18 @@ export class TaskQaReview {
 
   @Column({ type: 'text', nullable: true })
   qaComment: string;
+
+  // Set asynchronously, after the row is created, by NoteQualityService's
+  // free-tier Gemini call (fire-and-forget from
+  // TaskQaReviewsService.submit()/PeerReviewsService.submit() - never
+  // awaited, so a slow/failed/rate-limited check can't add latency to or
+  // block a submission). NULL means "not checked yet" (feature disabled,
+  // rate-limited, or the call failed) - deliberately distinct from `false`
+  // ("checked, not vague") so NonComplianceReportService can tell "clean"
+  // apart from "unchecked".
+  @Column({ nullable: true })
+  noteQualityFlagged: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  noteQualityReason: string;
 }

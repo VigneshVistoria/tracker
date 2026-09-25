@@ -44,6 +44,8 @@ import {
   LayoutGrid,
   Bug,
   AlertTriangle,
+  AlertOctagon,
+  BookOpen,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -184,6 +186,11 @@ const KPI_NAV_ITEM = { href: '/kpi', label: 'KPI Dashboard', icon: Gauge };
 // immutable KpiPeriodScore rows, not a separate data source. QA/Developer
 // keep only the per-person KPI_NAV_ITEM above, unchanged.
 const KPI_MATRIX_NAV_ITEM = { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid };
+const NON_COMPLIANCE_REPORT_NAV_ITEM = { href: '/reports/non-compliance', label: 'Non-Compliance Report', icon: AlertOctagon };
+// Admin/Program Manager only while it's being reviewed (confirmed with the
+// user 2026-09-25) - same VIEW_ROLES as pages/guides/developer.js. Widen
+// both together when it's released to developers.
+const DEVELOPER_GUIDE_NAV_ITEM = { href: '/guides/developer', label: 'Developer Guide', icon: BookOpen };
 
 // Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
 // is orthogonal to `role` (a tenant's own admin doesn't get this just by
@@ -542,6 +549,14 @@ export default function AppShell({ children, fullScreen = false }) {
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={KPI_MATRIX_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
+              <SingleNavLink item={NON_COMPLIANCE_REPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {(user.role === 'admin' || user.role === 'program_manager') && (
+              <SingleNavLink item={DEVELOPER_GUIDE_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'qa' || user.role === 'program_manager') && (

@@ -147,6 +147,24 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .badgeRatingPoor { background: var(--color-red-tint); color: var(--color-red-dark); }
 .badgeTopPerformer { background: var(--color-plum-tint); color: var(--color-plum-dark); }
 
+/* Task/Defect identification tag on task tiles (TeamTaskWorkboard's
+   TaskTile) - sits next to the ticket ID, smaller/lighter than the
+   Priority/Status .badge pills next to it so it reads as an identifier,
+   not another status. Defect tint matches the Defect badge already shown
+   on the task detail page (pages/tasks/[id].js). */
+.typeTag {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.typeTagDefect { background: var(--color-red-tint); color: var(--color-red-dark); }
+.typeTagTask { background: var(--color-slate-tint); color: var(--color-slate); }
+
 .field {
   margin-bottom: var(--space-4);
 }
@@ -641,6 +659,13 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .workloadChip:hover {
   filter: brightness(0.95);
 }
+/* `all: unset` above strips the button's native focus ring along with
+   everything else - restore one explicitly (same pattern as
+   dashboard.module.css's .statStripSegment, which has the same reset). */
+.workloadChip:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 1px;
+}
 
 @media (max-width: 700px) {
   .filterBar {
@@ -810,6 +835,13 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
+/* Same focus-visible pattern as dashboard.module.css's .statStripSegment -
+   the tile is a div with role="button"/tabIndex (TeamTaskWorkboard's
+   TaskTile), so it gets no native focus ring of its own. */
+.taskTile:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
 .taskTile.railPlum { border-left-color: var(--color-plum); }
 .taskTile.railMoss { border-left-color: var(--color-moss); }
 .taskTile.railRed { border-left-color: var(--color-red); }
@@ -875,4 +907,17 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   color: var(--color-slate);
   white-space: nowrap;
 }
+
+/* Open/Resolved breakdown shown next to the tile's "Dependencies (N)"
+   total (TeamTaskWorkboard's TaskTile) - small bold counts, not full
+   badge pills, so they stay subordinate to the toggle text next to them. */
+.depCountOpen, .depCountResolved {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-left: var(--space-1);
+}
+.depCountOpen { color: var(--color-red-dark); }
+.depCountResolved { color: var(--color-teal-dark); }
+.depCountOpen::before { content: '\25cf '; font-size: 0.6rem; color: var(--color-red); }
+.depCountResolved::before { content: '\25cf '; font-size: 0.6rem; color: var(--color-teal); }
 

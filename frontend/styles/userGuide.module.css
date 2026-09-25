@@ -1,0 +1,341 @@
+/* In-app user guide (pages/guides/*). Built on the --ds-* tokens only
+   (see STYLE.md) - page header/card chrome is shared with every other
+   page via issues.module.css. */
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--ds-space-6);
+  align-items: start;
+}
+
+/* ---- table of contents ---- */
+
+.toc {
+  position: sticky;
+  top: var(--ds-space-4);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-4);
+}
+
+.tocTitle {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--ds-text-secondary);
+  margin: 0 0 var(--ds-space-2);
+}
+
+.tocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+}
+
+.tocLink {
+  display: block;
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-text-secondary);
+  text-decoration: none;
+  transition: background var(--ds-transition-fast), color var(--ds-transition-fast);
+}
+
+.tocLink:hover {
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-primary);
+}
+
+.tocLink:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+  color: var(--ds-text-primary);
+}
+
+/* ---- preview banner ---- */
+
+.previewBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  margin-bottom: var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border);
+  border-inline-start: 4px solid var(--ds-color-info);
+  background: var(--ds-color-info-tint);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-normal);
+}
+
+/* ---- sections ---- */
+
+.section {
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-xs);
+  padding: var(--ds-space-6);
+  margin-bottom: var(--ds-space-4);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-leading-relaxed);
+  /* Anchor jumps from the TOC land with a little breathing room. */
+  scroll-margin-top: var(--ds-space-4);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-xl);
+  font-weight: var(--ds-weight-bold);
+  line-height: var(--ds-leading-tight);
+  margin: 0 0 var(--ds-space-3);
+}
+
+.sectionNumber {
+  color: var(--ds-text-secondary);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.subTitle {
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  margin: var(--ds-space-5) 0 var(--ds-space-2);
+  scroll-margin-top: var(--ds-space-4);
+}
+
+.section p {
+  margin: 0 0 var(--ds-space-3);
+}
+
+.section p:last-child {
+  margin-bottom: 0;
+}
+
+.steps,
+.bullets {
+  margin: 0 0 var(--ds-space-3);
+  padding-inline-start: var(--ds-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+}
+
+.path {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-sm);
+  background: var(--ds-bg-surface-sunken);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  padding: 0 var(--ds-space-1);
+  white-space: nowrap;
+}
+
+/* ---- callouts: icon + visible label, never color alone ---- */
+
+.callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  margin: 0 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border);
+  border-inline-start-width: 4px;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-normal);
+}
+
+.callout:last-child {
+  margin-bottom: 0;
+}
+
+.calloutIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.calloutLabel {
+  font-weight: var(--ds-weight-bold);
+}
+
+.calloutImportant {
+  background: var(--ds-color-warning-tint);
+  border-inline-start-color: var(--ds-color-warning);
+}
+
+.calloutImportant .calloutIcon {
+  color: var(--ds-color-warning-dark);
+}
+
+.calloutNote {
+  background: var(--ds-color-info-tint);
+  border-inline-start-color: var(--ds-color-info);
+}
+
+.calloutNote .calloutIcon {
+  color: var(--ds-color-info-dark);
+}
+
+/* ---- tables ---- */
+
+.tableWrap {
+  overflow-x: auto;
+  margin: 0 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-normal);
+}
+
+.table th,
+.table td {
+  text-align: start;
+  vertical-align: top;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.table th {
+  background: var(--ds-bg-surface-sunken);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.tableKeyed td:first-child {
+  font-weight: var(--ds-weight-semibold);
+  min-width: 140px;
+}
+
+/* ---- examples: vague vs specific ---- */
+
+.exampleGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-3);
+}
+
+.exampleCard {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-normal);
+}
+
+.exampleHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  font-weight: var(--ds-weight-bold);
+  margin: 0 0 var(--ds-space-2);
+}
+
+.exampleBad {
+  background: var(--ds-color-error-tint);
+}
+
+.exampleBad .exampleHeading {
+  color: var(--ds-color-error-dark);
+}
+
+.exampleGood {
+  background: var(--ds-color-success-tint);
+}
+
+.exampleGood .exampleHeading {
+  color: var(--ds-color-success-dark);
+}
+
+.exampleList {
+  margin: 0;
+  padding-inline-start: var(--ds-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  color: var(--ds-text-primary);
+}
+
+/* ---- checklist ---- */
+
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-space-2);
+}
+
+.checkItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-normal);
+  cursor: pointer;
+}
+
+.checkItem input {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--ds-color-primary-600);
+}
+
+.checkItem input:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+/* Tablet and below (shared scale, STYLE.md §4): TOC moves above the
+   content instead of a sticky side column. */
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .toc {
+    position: static;
+  }
+
+  .tocList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .section {
+    padding: var(--ds-space-4);
+  }
+
+  .exampleGrid,
+  .checklist {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
