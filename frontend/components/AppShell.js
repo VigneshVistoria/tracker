@@ -46,6 +46,7 @@ import {
   AlertTriangle,
   AlertOctagon,
   BookOpen,
+  PackageCheck,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import { getSocket, disconnectSocket } from '../lib/socket';
@@ -187,6 +188,10 @@ const KPI_NAV_ITEM = { href: '/kpi', label: 'KPI Dashboard', icon: Gauge };
 // keep only the per-person KPI_NAV_ITEM above, unchanged.
 const KPI_MATRIX_NAV_ITEM = { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid };
 const NON_COMPLIANCE_REPORT_NAV_ITEM = { href: '/reports/non-compliance', label: 'Non-Compliance Report', icon: AlertOctagon };
+// Program Manager only for now (built PM-first for review, 2026-09-26) -
+// same check as pages/release-log's VIEW_ROLES and
+// ReleaseLogsController.assertIsPm; widen all three together.
+const RELEASE_LOG_NAV_ITEM = { href: '/release-log', label: 'Release Log', icon: PackageCheck };
 // Admin/Executive/Program Manager only while it's being reviewed (confirmed
 // with the user 2026-09-25) - same VIEW_ROLES as pages/sop.js. Widen
 // both together when it's released to developers.
@@ -553,6 +558,10 @@ export default function AppShell({ children, fullScreen = false }) {
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
               <SingleNavLink item={NON_COMPLIANCE_REPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
+            )}
+
+            {user.role === 'program_manager' && (
+              <SingleNavLink item={RELEASE_LOG_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
             )}
 
             {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (

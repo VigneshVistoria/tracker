@@ -75,6 +75,9 @@ import { OpsModule } from './ops/ops.module';
 import { KpiModule } from './kpi/kpi.module';
 import { NonComplianceReportModule } from './non-compliance-report/non-compliance-report.module';
 import { PermissionsModule } from './permissions/permissions.module';
+import { Release } from './release-logs/release.entity';
+import { ReleaseItem } from './release-logs/release-item.entity';
+import { ReleaseLogsModule } from './release-logs/release-logs.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -128,6 +131,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
           KpiPeriodScore,
           Role,
           RolePermission,
+          Release,
+          ReleaseItem,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -173,6 +178,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     KpiModule,
     NonComplianceReportModule,
     PermissionsModule,
+    ReleaseLogsModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
