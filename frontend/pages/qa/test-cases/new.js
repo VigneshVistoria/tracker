@@ -7,6 +7,8 @@ import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { CATEGORY_OPTIONS } from '../../../lib/status';
 import { REVIEW_STATUS } from '../../../lib/testCaseReview';
+import { FIELD_TYPE } from '../../../lib/testCaseFields';
+import TestCaseExtraFields from '../../../components/TestCaseExtraFields';
 
 const PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
 
@@ -35,11 +37,18 @@ export default function NewTestCase() {
     moduleId: '',
     phaseId: '',
   });
+  const [labels, setLabels] = useState([]);
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
+  const [labelIds, setLabelIds] = useState([]);
+  // { [fieldId]: string } while editing - converted per field type on submit.
+  const [customValues, setCustomValues] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     apiFetch('/projects').then(setProjects).catch(() => {});
+    apiFetch('/labels').then(setLabels).catch(() => {});
+    apiFetch('/test-case-custom-fields').then(setCustomFieldDefs).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -59,6 +68,10 @@ export default function NewTestCase() {
           moduleId: tc.moduleId ? String(tc.moduleId) : '',
           phaseId: tc.phaseId ? String(tc.phaseId) : '',
         });
+        setLabelIds(tc.labelIds || []);
+        setCustomValues(
+          Object.fromEntries(Object.entries(tc.customFields || {}).map(([fieldId, value]) => [fieldId, String(value)])),
+        );
       })
       .catch((err) => setError(err.message));
   }, [editId]);
@@ -99,6 +112,22 @@ export default function NewTestCase() {
     setForm({ ...form, [name]: value });
   };
 
+  // Only active fields are sent - inactive ones are shown read-only and
+  // keep whatever value they already had. On edit, an emptied field is
+  // sent as null so the backend clears it; on create it's just omitted.
+  const buildCustomFieldsPayload = () => {
+    const payload = {};
+    for (const field of customFieldDefs.filter((f) => f.isActive)) {
+      const raw = (customValues[field.id] ?? '').trim();
+      if (raw === '') {
+        if (editId) payload[field.id] = null;
+        continue;
+      }
+      payload[field.id] = field.fieldType === FIELD_TYPE.NUMBER ? Number(raw) : raw;
+    }
+    return payload;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -118,6 +147,8 @@ export default function NewTestCase() {
             projectId: form.projectId ? Number(form.projectId) : undefined,
             moduleId: form.moduleId ? Number(form.moduleId) : undefined,
             phaseId: form.phaseId ? Number(form.phaseId) : undefined,
+            labelIds,
+            customFields: buildCustomFieldsPayload(),
           }),
         });
         const sentBackToDraft =
@@ -139,6 +170,8 @@ export default function NewTestCase() {
           projectId: form.projectId ? Number(form.projectId) : undefined,
           moduleId: form.moduleId ? Number(form.moduleId) : undefined,
           phaseId: form.phaseId ? Number(form.phaseId) : undefined,
+          labelIds,
+          customFields: buildCustomFieldsPayload(),
         }),
       });
       showToast(`Test case #${testCase.id} created`, 'success');
@@ -282,6 +315,17 @@ export default function NewTestCase() {
               {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+
+          <TestCaseExtraFields
+            labels={labels}
+            fields={customFieldDefs}
+            labelIds={labelIds}
+            values={customValues}
+            originalLabelIds={original?.labelIds || []}
+            originalValues={original?.customFields || {}}
+            onLabelsChange={setLabelIds}
+            onValueChange={(fieldId, value) => setCustomValues((v) => ({ ...v, [fieldId]: value }))}
+          />
 
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submitting || (editId && !original)}>

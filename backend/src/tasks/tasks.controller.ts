@@ -25,7 +25,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 
-const ROLES_ALLOWED_TO_CREATE_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER];
+// Developer/Designer/DevOps may create a task too, but only for
+// themselves - see TasksService.applySelfCreateRules().
+const ROLES_ALLOWED_TO_CREATE_TASKS: UserRole[] = [UserRole.PROGRAM_MANAGER, ...DEVELOPER_EQUIVALENT_ROLES];
+const ROLES_LIMITED_TO_SELF_CREATED_TASKS: UserRole[] = DEVELOPER_EQUIVALENT_ROLES;
 // Create Defect skips the Task Backlog entirely and assigns a Developer
 // up front - QA only, matching who raises/owns a defect. Deliberately not
 // Admin - Admin stays view-only across Tasks (MUTATE_ROLES comment in
@@ -239,7 +242,10 @@ export class TasksController {
   async create(@Body() dto: CreateTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (!ROLES_ALLOWED_TO_CREATE_TASKS.includes(currentUser.role)) {
-      throw new ForbiddenException('Only Program Manager can create tasks.');
+      throw new ForbiddenException('Only Program Manager, Developer, Designer, and DevOps can create tasks.');
+    }
+    if (ROLES_LIMITED_TO_SELF_CREATED_TASKS.includes(currentUser.role)) {
+      dto = TasksService.applySelfCreateRules(dto, currentUser);
     }
     return this.tasksService.create(dto, currentUser, req.user.tenantId);
   }

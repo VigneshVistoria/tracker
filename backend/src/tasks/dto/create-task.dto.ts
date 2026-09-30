@@ -2,7 +2,8 @@ import { IsString, MinLength, MaxLength, IsInt, IsOptional, IsBoolean, IsEnum } 
 import { TASK_TITLE_MAX_LENGTH } from '../task-title.constants';
 import { TaskPriority } from '../task-priority.enum';
 
-// Stage 1 (Task Backlog creation, Program Manager only) - just the
+// Stage 1 (Task Backlog creation by a Program Manager, or a Developer/
+// Designer/DevOps creating a task for themselves) - just the
 // Project -> Module -> Phase chain plus Title/Description/Assignee.
 // Estimated Hours/Due Date still aren't here - those are entered at a
 // later stage (the Assignee's own My Tasks entry) via PATCH /tasks/:id.
@@ -45,8 +46,8 @@ export class CreateTaskDto {
   @IsInt()
   assigneeUserId?: number;
 
-  // Program Manager only - enforced by ROLES_ALLOWED_TO_CREATE_TASKS on
-  // this same endpoint, so no separate check is needed here. Left
+  // Settable by whoever may create the task (ROLES_ALLOWED_TO_CREATE_TASKS
+  // on this same endpoint), so no separate check is needed here. Left
   // undefined/omitted means "Not Set", never auto-assigned - see
   // ProjectTask.priority.
   @IsOptional()

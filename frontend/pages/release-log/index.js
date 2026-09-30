@@ -5,7 +5,7 @@ import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
 import RichTextDisplay from '../../components/ui/RichTextDisplay';
 import styles from '../../styles/issues.module.css';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
 
@@ -38,6 +38,9 @@ export default function ReleaseLogPage() {
   const [removingId, setRemovingId] = useState(null);
   const [artifactsDraft, setArtifactsDraft] = useState('');
   const [savingArtifacts, setSavingArtifacts] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [emailing, setEmailing] = useState(false);
 
   const selectedId = router.query.id ? Number(router.query.id) : null;
 
@@ -74,6 +77,7 @@ export default function ReleaseLogPage() {
       return;
     }
     setUser(parsed);
+    setEmailTo(parsed.email || '');
     apiFetch('/projects').then(setProjects).catch(() => {});
     loadReleases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -187,6 +191,44 @@ export default function ReleaseLogPage() {
       setDetailError(err.message);
     } finally {
       setSavingArtifacts(false);
+    }
+  };
+
+  const pdfFilename = (release) =>
+    `release-${`${release.appName}-${release.version}`.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'log'}.pdf`;
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    setDetailError('');
+    try {
+      await apiDownload(`/releases/${selected.id}/pdf`, pdfFilename(selected));
+      showToast('PDF downloaded', 'success');
+    } catch (err) {
+      setDetailError(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleEmailPdf = async (e) => {
+    e.preventDefault();
+    const recipients = emailTo.split(/[,;\s]+/).map((r) => r.trim()).filter(Boolean);
+    if (recipients.length === 0) {
+      setDetailError('Add at least one recipient email.');
+      return;
+    }
+    setEmailing(true);
+    setDetailError('');
+    try {
+      await apiFetch(`/releases/${selected.id}/email`, {
+        method: 'POST',
+        body: JSON.stringify({ recipients }),
+      });
+      showToast(`PDF emailed to ${recipients.join(', ')}`, 'success');
+    } catch (err) {
+      setDetailError(err.message);
+    } finally {
+      setEmailing(false);
     }
   };
 
@@ -342,6 +384,27 @@ export default function ReleaseLogPage() {
               <p className={styles.helpText} style={{ marginTop: 0 }}>
                 {selected.projectName} · Released {formatDate(selected.releaseDate)}
               </p>
+
+              <form onSubmit={handleEmailPdf} className={styles.actions} style={{ justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 'var(--space-4)' }}>
+                <button className={styles.buttonSecondary} type="button" disabled={downloading} onClick={handleDownloadPdf}>
+                  {downloading ? 'Preparing PDF...' : 'Download PDF'}
+                </button>
+                <div className={styles.field} style={{ flex: '1 1 280px', marginBottom: 0 }}>
+                  <label className={styles.label} htmlFor="relEmailTo">Email PDF to</label>
+                  <input
+                    className={styles.input}
+                    id="relEmailTo"
+                    value={emailTo}
+                    onChange={(e) => setEmailTo(e.target.value)}
+                    placeholder="name@example.com, another@example.com"
+                    aria-describedby="relEmailToHelp"
+                  />
+                  <span id="relEmailToHelp" className={styles.helpText}>Separate multiple addresses with commas.</span>
+                </div>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={emailing}>
+                  {emailing ? 'Sending...' : 'Email PDF'}
+                </button>
+              </form>
 
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="relDetailArtifacts">Artifacts</label>

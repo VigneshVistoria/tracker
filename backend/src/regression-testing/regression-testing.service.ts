@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +13,7 @@ import { Issue, IssueMode, IssueStatus } from '../issues/issue.entity';
 import { Priority } from '../common/priority.enum';
 import { DailyUpdate } from '../daily-updates/daily-update.entity';
 import { AuthService } from '../auth/auth.service';
+import { TasksService } from '../tasks/tasks.service';
 import { IssuesService } from '../issues/issues.service';
 import { ProjectsService } from '../projects/projects.service';
 import { DailyUpdatesService } from '../daily-updates/daily-updates.service';
@@ -218,6 +219,29 @@ export class RegressionTestingService {
             throw new Error('Expected Developer to be blocked from creating tickets, but it was allowed.');
           }
           return 'Admin, Program Manager, QA, and Executive are allowed; Developer is correctly blocked.';
+        }),
+      );
+
+      results.push(
+        await this.check('feature', 'Developer self-created task is locked to the creator and their own projects', async () => {
+          const developer = { id: 1001, projects: [{ id: 501 }] };
+          const base = { projectId: 501, moduleId: 1, phaseId: 1, title: 'x', description: 'x' } as any;
+          const defaulted = TasksService.applySelfCreateRules(base, developer);
+          if (defaulted.assigneeUserId !== developer.id) {
+            throw new Error(`Expected an omitted assignee to default to the creator, got ${defaulted.assigneeUserId}.`);
+          }
+          const expectForbidden = (dto: any, what: string) => {
+            try {
+              TasksService.applySelfCreateRules(dto, developer);
+            } catch (err) {
+              if (err instanceof ForbiddenException) return;
+              throw err;
+            }
+            throw new Error(`Expected ${what} to be rejected, but it was allowed.`);
+          };
+          expectForbidden({ ...base, assigneeUserId: 1002 }, 'assigning another user');
+          expectForbidden({ ...base, projectId: 502 }, 'a project the creator is not assigned to');
+          return 'Omitted assignee defaults to the creator; other assignees and unassigned projects are rejected.';
         }),
       );
 

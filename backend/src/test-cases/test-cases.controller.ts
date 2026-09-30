@@ -11,17 +11,38 @@ import {
   Req,
   Res,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { TestCasesService } from './test-cases.service';
 import { CreateTestCaseDto } from './dto/create-test-case.dto';
 import { UpdateTestCaseDto } from './dto/update-test-case.dto';
 import { CreateTestExecutionDto } from './dto/create-test-execution.dto';
-import { BulkImportTestCasesDto } from './dto/bulk-import-test-cases.dto';
+import { BulkImportTestCasesDto, TestCaseSpreadsheetFormat } from './dto/bulk-import-test-cases.dto';
 import { ApproveTestCasesDto, RejectTestCasesDto, SubmitTestCasesForReviewDto } from './dto/review-test-cases.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
+
+const CONTENT_TYPES: Record<TestCaseSpreadsheetFormat, string> = {
+  csv: 'text/csv',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+// Defaults to CSV so existing links/callers without ?format keep working.
+function parseFormat(format: string | undefined): TestCaseSpreadsheetFormat {
+  if (format === undefined || format === 'csv') return 'csv';
+  if (format === 'xlsx') return 'xlsx';
+  throw new BadRequestException('format query parameter must be "csv" or "xlsx".');
+}
+
+function sendSpreadsheet(res: Response, buffer: Buffer, format: TestCaseSpreadsheetFormat, filenameStem: string) {
+  res.set({
+    'Content-Type': CONTENT_TYPES[format],
+    'Content-Disposition': `attachment; filename="${filenameStem}.${format}"`,
+  });
+  res.send(buffer);
+}
 
 // Viewing the catalog (and run history) is QA + Program Manager + Admin.
 // Creating, editing, bulk-importing, submitting for review and recording
@@ -81,25 +102,24 @@ export class TestCasesController {
   // of GET ':id' below so 'bulk-export'/'bulk-import-template' are never
   // swallowed by the ':id' param route.
   @Get('bulk-export')
-  async bulkExport(@Query('projectId') projectId: string | undefined, @Req() req: any, @Res() res: Response) {
+  async bulkExport(
+    @Query('projectId') projectId: string | undefined,
+    @Query('format') format: string | undefined,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
     await this.requireViewer(req);
-    const csv = await this.testCasesService.bulkExport(req.user.tenantId, projectId ? Number(projectId) : undefined);
-    res.set({
-      'Content-Type': 'text/csv',
-      'Content-Disposition': 'attachment; filename="test-cases.csv"',
-    });
-    res.send(csv);
+    const fileFormat = parseFormat(format);
+    const buffer = await this.testCasesService.bulkExport(req.user.tenantId, projectId ? Number(projectId) : undefined, fileFormat);
+    sendSpreadsheet(res, buffer, fileFormat, `test-cases-${new Date().toISOString().slice(0, 10)}`);
   }
 
   @Get('bulk-import-template')
-  async bulkImportTemplate(@Req() req: any, @Res() res: Response) {
+  async bulkImportTemplate(@Query('format') format: string | undefined, @Req() req: any, @Res() res: Response) {
     await this.requireViewer(req);
-    const csv = this.testCasesService.buildCsvTemplate();
-    res.set({
-      'Content-Type': 'text/csv',
-      'Content-Disposition': 'attachment; filename="test-cases-template.csv"',
-    });
-    res.send(csv);
+    const fileFormat = parseFormat(format);
+    const buffer = await this.testCasesService.buildTemplate(req.user.tenantId, fileFormat);
+    sendSpreadsheet(res, buffer, fileFormat, 'test-cases-template');
   }
 
   @Get(':id')
@@ -123,7 +143,7 @@ export class TestCasesController {
   @Post('bulk-import')
   async bulkImport(@Body() dto: BulkImportTestCasesDto, @Req() req: any) {
     const currentUser = await this.requireEditor(req);
-    return this.testCasesService.bulkImport(dto.csvText, currentUser.id, currentUser.email, req.user.tenantId);
+    return this.testCasesService.bulkImport(dto, currentUser, req.user.tenantId);
   }
 
   @Post('submit-for-review')

@@ -786,6 +786,22 @@ export class TasksService {
     return this.tasksRepository.find({ where: { id: In(ids), tenantId } });
   }
 
+  // Developer/Designer/DevOps creating their own task (the top-bar "+"
+  // shortcut): the assignee is always the creator - omitted defaults to
+  // them, anyone else is rejected rather than silently overridden - and
+  // the project must be one they're assigned to, same scoping GET
+  // /projects already applies to them. Static so the regression suite can
+  // exercise it without a full request.
+  static applySelfCreateRules(dto: CreateTaskDto, user: { id: number; projects?: { id: number }[] }): CreateTaskDto {
+    if (dto.assigneeUserId != null && dto.assigneeUserId !== user.id) {
+      throw new ForbiddenException('You can only create tasks assigned to yourself. Ask a Program Manager to assign it to someone else.');
+    }
+    if (!(user.projects || []).some((p) => p.id === dto.projectId)) {
+      throw new ForbiddenException("You can only create tasks in projects you're assigned to.");
+    }
+    return { ...dto, assigneeUserId: user.id };
+  }
+
   // Stage 1: Program Manager creates a Backlog task - Project/Module/Phase/
   // Description, optionally with an Assignee set right away (skipping the
   // separate assign step). No E.Hrs, no Due Date yet either way. Status
@@ -822,9 +838,8 @@ export class TasksService {
       // on requiresPeerReviewForAssignee() below for why.
       peerReviewEnabled: this.requiresPeerReviewForAssignee(assignee?.role) || (dto.peerReviewEnabled ?? false),
       // Never auto-assigned - omitted means "Not Set" (null), same as an
-      // existing task nobody has reviewed yet. Task creation is already
-      // Program Manager only (ROLES_ALLOWED_TO_CREATE_TASKS), so no
-      // separate priority permission check is needed here.
+      // existing task nobody has reviewed yet. A Developer/Designer/DevOps
+      // creating their own task may set it too (confirmed with the user).
       priority: dto.priority ?? null,
       createdByUserId: user.id,
       createdByEmail: user.email,

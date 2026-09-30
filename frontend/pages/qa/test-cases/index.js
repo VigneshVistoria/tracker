@@ -40,11 +40,15 @@ export default function TestCasesList() {
   const [canManage, setCanManage] = useState(false);
   // Program Manager only - approve/reject (backend requireReviewer()).
   const [canReview, setCanReview] = useState(false);
+  // Admin/Program Manager define custom fields and labels.
+  const [canConfigure, setCanConfigure] = useState(false);
+  const [labels, setLabels] = useState([]);
 
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [reviewFilter, setReviewFilter] = useState('');
+  const [labelFilter, setLabelFilter] = useState('');
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [rejecting, setRejecting] = useState(false);
@@ -63,8 +67,10 @@ export default function TestCasesList() {
       const role = JSON.parse(storedUser).role;
       setCanManage(role === 'admin' || role === 'qa' || role === 'program_manager');
       setCanReview(role === 'program_manager');
+      setCanConfigure(role === 'admin' || role === 'program_manager');
     }
     apiFetch('/projects').then(setProjects).catch(() => {});
+    apiFetch('/labels').then(setLabels).catch(() => {});
     load();
   }, []);
 
@@ -84,9 +90,12 @@ export default function TestCasesList() {
       if (projectFilter && String(tc.projectId) !== projectFilter) return false;
       if (statusFilter && tc.status !== statusFilter) return false;
       if (reviewFilter && tc.reviewStatus !== reviewFilter) return false;
+      if (labelFilter && !(tc.labelIds || []).includes(Number(labelFilter))) return false;
       return true;
     });
-  }, [testCases, search, projectFilter, statusFilter, reviewFilter]);
+  }, [testCases, search, projectFilter, statusFilter, reviewFilter, labelFilter]);
+
+  const labelById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
 
   const pendingCount = testCases.filter((tc) => tc.reviewStatus === REVIEW_STATUS.PENDING).length;
 
@@ -145,12 +154,12 @@ export default function TestCasesList() {
       `${selectedPending.length} test case(s) rejected`,
     );
 
-  const handleExport = async () => {
+  const handleExport = async (format) => {
     setError('');
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ format });
       if (projectFilter) params.set('projectId', projectFilter);
-      await apiDownload(`/test-cases/bulk-export?${params.toString()}`, 'test-cases.csv');
+      await apiDownload(`/test-cases/bulk-export?${params.toString()}`, `test-cases.${format}`);
     } catch (err) {
       setError(err.message);
     }
@@ -164,9 +173,17 @@ export default function TestCasesList() {
           <p className={styles.pageSubtitle}>The QA test case catalog and its run history.</p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <button className={styles.buttonSecondary} type="button" onClick={handleExport}>
+          <button className={styles.buttonSecondary} type="button" onClick={() => handleExport('xlsx')}>
+            Export Excel
+          </button>
+          <button className={styles.buttonSecondary} type="button" onClick={() => handleExport('csv')}>
             Export CSV
           </button>
+          {canConfigure && (
+            <Link href="/qa/test-cases/fields" className={styles.buttonSecondary}>
+              Test Case Fields
+            </Link>
+          )}
           {canManage && (
             <>
               <Link href="/qa/test-cases/bulk-import" className={styles.buttonSecondary}>
@@ -221,6 +238,15 @@ export default function TestCasesList() {
             {REVIEW_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {labels.length > 0 && (
+          <div className={styles.field} style={{ margin: 0, minWidth: 160 }}>
+            <label className={styles.label} htmlFor="tcLabelFilter">Label</label>
+            <select className={styles.select} id="tcLabelFilter" value={labelFilter} onChange={(e) => setLabelFilter(e.target.value)}>
+              <option value="">All labels</option>
+              {labels.map((l) => <option key={l.id} value={l.id}>{l.name}{l.isActive ? '' : ' (inactive)'}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {selectedIds.length > 0 && (
@@ -312,6 +338,7 @@ export default function TestCasesList() {
                 <th>Phase</th>
                 <th>Priority</th>
                 <th>Category</th>
+                <th>Labels</th>
                 <th>Status</th>
                 <th>Review</th>
                 <th>Last Result</th>
@@ -340,6 +367,11 @@ export default function TestCasesList() {
                   <td>{tc.phaseName || '—'}</td>
                   <td>{tc.priority || '—'}</td>
                   <td>{tc.category || '—'}</td>
+                  <td>
+                    {(tc.labelIds || []).length === 0
+                      ? '—'
+                      : tc.labelIds.map((id) => labelById.get(id)?.name).filter(Boolean).join(', ')}
+                  </td>
                   <td>{tc.status}</td>
                   <td><ReviewBadge status={tc.reviewStatus} /></td>
                   <td><ResultBadge result={tc.lastResult} /></td>

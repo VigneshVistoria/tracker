@@ -33,6 +33,8 @@ Open a task from your Dashboard to reach the Task Detail page — this is where 
 
 **Filing a Dependency Ticket** — if you're blocked on another developer's work, use "Create Dependency Ticket" on your task: describe what you're blocked on and pick the developer who owns it. It shows up as an "Outbound" ticket for them and an "Inbound" ticket for you until they resolve it. You can only file tickets against tasks assigned to you, and only route them to another Developer.
 
+**Creating your own task** — click the **+** icon in the top bar to open the same Create Task form Program Managers use (Project/Module/Phase, Title, Description, Priority, Peer Review). The Assignee is always you, and you can only pick projects you're assigned to. The task goes straight into your My Tasks list.
+
 **Resolving a ticket routed to you** — if you own a dependency ticket someone filed against you, you'll see a "Mark Resolved" button on the ticket wherever it's listed (including via your Dashboard's Outbound tile, or the dedicated **Dependency Clearance** page at `/dependency-clearance` — bookmark that URL, since it isn't in your sidebar).
 
 ## 4. Submitting work for QA

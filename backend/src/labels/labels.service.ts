@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Label } from './label.entity';
+import { TestCase } from '../test-cases/test-case.entity';
 import { CreateLabelDto } from './dto/create-label.dto';
 import { UpdateLabelDto } from './dto/update-label.dto';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
@@ -11,6 +12,8 @@ export class LabelsService {
   constructor(
     @InjectRepository(Label)
     private labelsRepository: Repository<Label>,
+    @InjectRepository(TestCase)
+    private testCasesRepository: Repository<TestCase>,
     private auditLogService: AuditLogService,
   ) {}
 
@@ -95,9 +98,19 @@ export class LabelsService {
 
   async remove(id: number, user: { id: number; email: string }, tenantId: number): Promise<void> {
     const label = await this.findOneOrFail(id, tenantId);
-    // Nothing references labels yet - this table is standalone for now
-    // (see plan). Once Issues gain a real label link, add a reference
-    // check here and throw ConflictException instead of deleting.
+    // Test cases reference labels (TestCase.labelIds) - refuse rather than
+    // leave dangling ids behind. Issues aren't wired to labels yet; add
+    // their check here too once they are.
+    const usageCount = await this.testCasesRepository
+      .createQueryBuilder('tc')
+      .where('tc.tenantId = :tenantId', { tenantId })
+      .andWhere(':id = ANY(tc."labelIds")', { id })
+      .getCount();
+    if (usageCount > 0) {
+      throw new ConflictException(
+        `"${label.name}" is used on ${usageCount} test case(s) and can't be deleted - deactivate it instead.`,
+      );
+    }
     await this.labelsRepository.delete(id);
 
     await this.auditLogService.record({

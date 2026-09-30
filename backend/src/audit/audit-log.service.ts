@@ -63,6 +63,7 @@ export const AuditActions = {
   RELEASE_UPDATED: 'release_updated',
   RELEASE_ITEM_ADDED: 'release_item_added',
   RELEASE_ITEM_REMOVED: 'release_item_removed',
+  RELEASE_EMAILED: 'release_emailed',
   TASK_CREATED: 'task_created',
   TASK_DEFECT_CREATED: 'task_defect_created',
   TASK_UPDATED: 'task_updated',
@@ -96,6 +97,12 @@ export const AuditActions = {
   TEST_CASE_SUBMITTED_FOR_REVIEW: 'test_case_submitted_for_review',
   TEST_CASE_APPROVED: 'test_case_approved',
   TEST_CASE_REJECTED: 'test_case_rejected',
+  TEST_CASES_BULK_IMPORTED: 'test_cases_bulk_imported',
+  TEST_CASE_CUSTOM_FIELD_CREATED: 'test_case_custom_field_created',
+  TEST_CASE_CUSTOM_FIELD_UPDATED: 'test_case_custom_field_updated',
+  TEST_CASE_CUSTOM_FIELD_ACTIVATED: 'test_case_custom_field_activated',
+  TEST_CASE_CUSTOM_FIELD_DEACTIVATED: 'test_case_custom_field_deactivated',
+  TEST_CASE_CUSTOM_FIELD_DELETED: 'test_case_custom_field_deleted',
 } as const;
 
 export interface RecordAuditEntryInput {

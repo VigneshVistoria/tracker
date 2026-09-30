@@ -144,6 +144,23 @@ export class TestCase {
   @Column({ nullable: true })
   lastExecutedByEmail: string;
 
+  // Values for Admin/PM-defined custom fields (TestCaseCustomField),
+  // keyed by the field's id as a string - e.g. { "3": "Chrome", "5": 2 }.
+  // Keyed by id rather than name so renaming a field never orphans its
+  // values. Text/Dropdown/Date values are strings (Date as YYYY-MM-DD),
+  // Number values are numbers; validated by TestCaseCustomFieldsService.
+  // resolveValues(). Metadata only, like priority/category - changing
+  // these never resets reviewStatus.
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  customFields: Record<string, string | number>;
+
+  // labels.id values from the shared tenant-wide Labels catalog. Plain
+  // integer[] rather than a join table - no other code needs to join
+  // through it, and label names are resolved client-side from GET /labels
+  // so a rename shows up everywhere immediately.
+  @Column({ type: 'int', array: true, default: () => "'{}'" })
+  labelIds: number[];
+
   @CreateDateColumn()
   createdAt: Date;
 }

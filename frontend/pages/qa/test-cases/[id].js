@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { formatDateTime } from '../../../lib/formatDate';
 import { useToast } from '../../../lib/toast';
 import { REVIEW_STATUS, REVIEW_BADGE_STYLE, SUBMITTABLE_REVIEW_STATUSES } from '../../../lib/testCaseReview';
+import { formatCustomFieldValue } from '../../../lib/testCaseFields';
 
 const RESULT_OPTIONS = ['Passed', 'Failed', 'Blocked'];
 
@@ -28,6 +29,8 @@ export default function TestCaseDetail() {
 
   const [testCase, setTestCase] = useState(null);
   const [executions, setExecutions] = useState([]);
+  const [labels, setLabels] = useState([]);
+  const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [canManage, setCanManage] = useState(false);
   const [canReview, setCanReview] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -59,6 +62,8 @@ export default function TestCaseDetail() {
       setCanManage(role === 'admin' || role === 'qa' || role === 'program_manager');
       setCanReview(role === 'program_manager');
     }
+    apiFetch('/labels').then(setLabels).catch(() => {});
+    apiFetch('/test-case-custom-fields').then(setCustomFieldDefs).catch(() => {});
   }, []);
 
   useEffect(load, [id]);
@@ -110,6 +115,8 @@ export default function TestCaseDetail() {
       </AppShell>
     );
   }
+
+  const testCaseLabels = labels.filter((l) => (testCase.labelIds || []).includes(l.id));
 
   return (
     <AppShell>
@@ -217,10 +224,25 @@ export default function TestCaseDetail() {
         <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{testCase.steps}</p>
         <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Expected Result</p>
         <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{testCase.expectedResult}</p>
-        <div style={{ display: 'flex', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
           <span className={styles.issueMeta}>Priority: {testCase.priority || '—'}</span>
           <span className={styles.issueMeta}>Category: {testCase.category || '—'}</span>
+          {/* Custom fields with a value, plus active ones that are still empty. */}
+          {customFieldDefs
+            .filter((f) => f.isActive || (testCase.customFields?.[f.id] ?? '') !== '')
+            .map((f) => (
+              <span key={f.id} className={styles.issueMeta}>
+                {f.name}: {formatCustomFieldValue(f, testCase.customFields?.[f.id])}
+              </span>
+            ))}
         </div>
+        {testCaseLabels.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }} aria-label="Labels">
+            {testCaseLabels.map((l) => (
+              <span key={l.id} className={`${styles.badge} ${styles.badgeOpen}`}>{l.name}</span>
+            ))}
+          </div>
+        )}
       </div>
 
       {canManage && testCase.reviewStatus === REVIEW_STATUS.READY && (

@@ -1,4 +1,4 @@
-import { IsString, MinLength, IsOptional, IsInt, IsEnum } from 'class-validator';
+import { IsString, MinLength, IsOptional, IsInt, IsEnum, IsArray, IsObject } from 'class-validator';
 import { Priority } from '../../common/priority.enum';
 import { IssueCategory } from '../../issues/issue.entity';
 import { TestCaseStatus } from '../test-case.entity';
@@ -50,4 +50,16 @@ export class UpdateTestCaseDto {
   @IsOptional()
   @IsEnum(TestCaseStatus)
   status?: TestCaseStatus;
+
+  // Label ids from GET /labels. Replaces the whole set when sent.
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  labelIds?: number[];
+
+  // Custom field values keyed by field id - see TestCase.customFields. On
+  // update, only the keys sent are changed; null or '' clears a value.
+  @IsOptional()
+  @IsObject()
+  customFields?: Record<string, unknown>;
 }

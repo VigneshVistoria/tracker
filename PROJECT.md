@@ -396,6 +396,28 @@ on Ready for Execution; editing preconditions/steps/expected result on an
 approved case resets it to Draft. Migration:
 `2026-09-test-case-review.sql` (backfills existing rows to Ready).
 
+**Test case custom fields & labels** — `test_case_custom_fields` table
+(`/test-case-custom-fields`: read = any authenticated user, create/edit/
+deactivate/delete = Admin + Program Manager only). Types: Text, Number,
+Date, Dropdown; type is fixed after creation; delete refused while any
+test case has a value (deactivate instead). Values live on
+`test_cases."customFields"` (jsonb keyed by field id); labels on
+`test_cases."labelIds"` (integer[] into the shared `labels` catalog —
+label delete is now refused while a test case uses it). Migration:
+`2026-09-test-case-custom-fields-labels.sql` (+ `.down.sql`).
+
+**Bulk import** (`POST /test-cases/bulk-import`, `{ format: csv|xlsx,
+fileBase64, dryRun }`): headers matched loosely (`test-case-columns.ts`
+— case/space/underscore-insensitive, a few synonyms), custom field
+columns matched by field name, unmatched columns reported as warnings.
+Duplicates are skipped, not created: existing `caseNumber`, or same title
++ same project as an existing case / earlier row in the file. `dryRun`
+powers the page's Preview step; the real import re-validates and saves
+all valid rows in one transaction. Template/export
+(`GET /test-cases/bulk-import-template|bulk-export?format=csv|xlsx`)
+include custom field + labels columns; the .xlsx template adds in-cell
+dropdowns and Instructions/Projects reference sheets.
+
 **`regression-testing`** — `regression_test_runs` table; admin-only run
 history.
 
@@ -484,7 +506,7 @@ UX convenience, not the real enforcement.
 | Dependencies | `/dependencies`, `/dependencies/[id]`, `/dependency-clearance` |
 | Tasks | `/tasks`, `/tasks/[id]`, `/tasks/backlog`, `/tasks/mine`, `/tasks/qa-review` |
 | Project planning | `/project-modules`, `/project-phases`, `/project-planning`, `/project-teams` |
-| QA | `/qa/test-cases`, `/qa/test-cases/new`, `/qa/test-cases/[id]`, `/qa/test-cases/bulk-import` |
+| QA | `/qa/test-cases`, `/qa/test-cases/new`, `/qa/test-cases/[id]`, `/qa/test-cases/bulk-import`, `/qa/test-cases/fields` (Admin/PM only) |
 | Time / updates | `/time-sheets`, `/daily-update` |
 | Performance | `/performance-dashboard`, `/kpi` (Admin/Executive/PM see all assignees; everyone else sees only their own scores, server-enforced) |
 | Admin — people & projects | `/admin/users`, `/admin/users/new`, `/admin/users/[id]`, `/admin/projects`, `/admin/projects/[id]`, `/admin/sprints`, `/admin/sprints/[id]` |

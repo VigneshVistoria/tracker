@@ -10,12 +10,18 @@ import {
   ParseIntPipe,
   UseGuards,
   Req,
+  Res,
   ForbiddenException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ReleaseLogsService } from './release-logs.service';
 import { CreateReleaseDto } from './dto/create-release.dto';
 import { UpdateReleaseDto } from './dto/update-release.dto';
 import { AddReleaseItemDto } from './dto/add-release-item.dto';
+import { EmailReleaseDto } from './dto/email-release.dto';
+import { PdfReleaseService } from './pdf-release.service';
+import { MailService } from '../mail/mail.service';
+import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
@@ -30,6 +36,9 @@ export class ReleaseLogsController {
   constructor(
     private releaseLogsService: ReleaseLogsService,
     private usersService: UsersService,
+    private pdfReleaseService: PdfReleaseService,
+    private mailService: MailService,
+    private auditLogService: AuditLogService,
   ) {}
 
   private async assertIsPm(userId: number): Promise<{ id: number; email: string }> {
@@ -57,6 +66,54 @@ export class ReleaseLogsController {
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     await this.assertIsPm(req.user.sub);
     return this.releaseLogsService.findOneWithItems(id, req.user.tenantId);
+  }
+
+  private pdfFilename(release: { appName: string; version: string }): string {
+    const slug = `${release.appName}-${release.version}`.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    return `release-${slug || 'log'}.pdf`;
+  }
+
+  @Get(':id/pdf')
+  async downloadPdf(@Param('id', ParseIntPipe) id: number, @Res() res: Response, @Req() req: any) {
+    await this.assertIsPm(req.user.sub);
+    const release = await this.releaseLogsService.findOneWithItems(id, req.user.tenantId);
+    const buffer = await this.pdfReleaseService.buildRelease(release);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${this.pdfFilename(release)}"`,
+    });
+    res.send(buffer);
+  }
+
+  // Same PDF as the download, sent as an attachment to the addresses the
+  // PM typed in. Uses sendOrThrow so a missing SMTP config or mail
+  // server error shows up in the UI instead of silently "succeeding".
+  @Post(':id/email')
+  async emailPdf(@Param('id', ParseIntPipe) id: number, @Body() dto: EmailReleaseDto, @Req() req: any) {
+    const user = await this.assertIsPm(req.user.sub);
+    const release = await this.releaseLogsService.findOneWithItems(id, req.user.tenantId);
+    const recipients = [...new Set(dto.recipients.map((r) => r.trim().toLowerCase()))];
+    const buffer = await this.pdfReleaseService.buildRelease(release);
+    const title = `${release.appName} ${release.version}`;
+    const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    await this.mailService.sendOrThrow(
+      recipients,
+      `Release Log: ${title}`,
+      `<p>Release Log for <strong>${escape(title)}</strong> (${escape(release.projectName)}), released ${escape(release.releaseDate)} - ${release.items.length} ticket(s).</p><p>The full log is attached as a PDF.</p><p>Sent by ${escape(user.email)} from Tracker.</p>`,
+      [{ filename: this.pdfFilename(release), content: buffer, contentType: 'application/pdf' }],
+    );
+
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: AuditActions.RELEASE_EMAILED,
+      tenantId: req.user.tenantId,
+      entityType: 'Release',
+      entityId: release.id,
+      details: { recipients },
+    });
+
+    return { sent: true, recipients };
   }
 
   @Post()

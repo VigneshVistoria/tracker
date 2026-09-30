@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import {
@@ -47,8 +47,10 @@ import {
   AlertOctagon,
   BookOpen,
   PackageCheck,
+  SquarePlus,
 } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
+import SelfCreateTaskModal from './SelfCreateTaskModal';
 import { getSocket, disconnectSocket } from '../lib/socket';
 import { apiFetch } from '../lib/api';
 import { roleLabel, DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
@@ -276,6 +278,10 @@ export default function AppShell({ children, fullScreen = false }) {
   const [connected, setConnected] = useState(false);
   const [impersonator, setImpersonator] = useState(null);
   const [exiting, setExiting] = useState(false);
+  const [selfTaskOpen, setSelfTaskOpen] = useState(false);
+  // Stable so Modal's focus-trap effect (keyed on onClose) doesn't re-run
+  // and steal focus on every AppShell re-render.
+  const closeSelfTask = useCallback(() => setSelfTaskOpen(false), []);
   // Nav sidebar count badges (e.g. "My Tasks 6") - Phase 1 redesign,
   // gated new-design roles only (see lib/newDesignRoles.js). null means
   // "don't render a badge" - SingleNavLink only shows one once a number
@@ -417,6 +423,21 @@ export default function AppShell({ children, fullScreen = false }) {
           <Link href="/dashboard" className={styles.iconButton} aria-label="Dashboard">
             <LayoutDashboard size={18} aria-hidden="true" />
           </Link>
+          {/* Developer/Designer/DevOps shortcut to create a task for
+              themselves - opens the same Create Task form as Task Backlog,
+              assignee locked to them (SelfCreateTaskModal). */}
+          {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
+            <button
+              type="button"
+              className={styles.iconButton}
+              onClick={() => setSelfTaskOpen(true)}
+              aria-label="New task"
+              aria-haspopup="dialog"
+              title="New task"
+            >
+              <SquarePlus size={18} aria-hidden="true" />
+            </button>
+          )}
         </div>
 
         {!hideSidebar && (
@@ -646,6 +667,9 @@ export default function AppShell({ children, fullScreen = false }) {
           <div className={`${styles.contentInner} ${fullScreen ? styles.contentInnerFullScreen : ''}`}>{children}</div>
         </main>
       </div>
+      {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
+        <SelfCreateTaskModal open={selfTaskOpen} onClose={closeSelfTask} user={user} />
+      )}
     </div>
   );
 }

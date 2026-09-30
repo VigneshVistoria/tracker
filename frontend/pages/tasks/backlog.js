@@ -3,14 +3,13 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
-import RichTextEditor from '../../components/ui/RichTextEditor';
+import CreateTaskForm, { EMPTY_TASK_FORM } from '../../components/CreateTaskForm';
 import Badge from '../../components/ui/Badge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
-import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
-import { TASK_PRIORITIES, priorityTone, priorityLabel, statusBadgeStyle } from '../../lib/taskTableShared';
+import { priorityTone, priorityLabel, statusBadgeStyle } from '../../lib/taskTableShared';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
@@ -29,7 +28,7 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email, role: u.role };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false, priority: '', assignee: null };
+const EMPTY_FORM = EMPTY_TASK_FORM;
 
 export default function TaskBacklogPage() {
   const router = useRouter();
@@ -41,9 +40,6 @@ export default function TaskBacklogPage() {
   const [assignableUsers, setAssignableUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  const [modules, setModules] = useState([]);
-  const [phases, setPhases] = useState([]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -141,22 +137,6 @@ export default function TaskBacklogPage() {
     }
   };
 
-  useEffect(() => {
-    if (!form.project) {
-      setModules([]);
-      return;
-    }
-    apiFetch(`/modules?projectId=${form.project.id}`).then(setModules).catch(() => setModules([]));
-  }, [form.project]);
-
-  useEffect(() => {
-    if (!form.module) {
-      setPhases([]);
-      return;
-    }
-    apiFetch(`/phases?moduleId=${form.module.id}`).then(setPhases).catch(() => setPhases([]));
-  }, [form.module]);
-
   if (!user) return null;
 
   const createAssigneeOptions = assignableUsers.filter((u) => CREATE_TASK_ASSIGNEE_ROLES.includes(u.role));
@@ -172,8 +152,6 @@ export default function TaskBacklogPage() {
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
-    setModules([]);
-    setPhases([]);
     setShowForm(false);
     setEditingId(null);
   };
@@ -291,115 +269,17 @@ export default function TaskBacklogPage() {
       {error && <div className={styles.error}>{error}</div>}
 
       {canManage && showForm && (
-        <form onSubmit={handleSubmit} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <div className={styles.fieldGrid3}>
-            <SearchSelectField
-              label="Project"
-              id="bkProject"
-              required
-              value={form.project}
-              onChange={(v) => setForm({ ...form, project: v, module: null, phase: null })}
-              options={projects}
-            />
-            <SearchSelectField
-              label="Module"
-              id="bkModule"
-              required
-              value={form.module}
-              onChange={(v) => setForm({ ...form, module: v, phase: null })}
-              options={modules}
-              disabled={!form.project}
-              placeholder="Select a Project first"
-            />
-            <SearchSelectField
-              label="Phase"
-              id="bkPhase"
-              required
-              value={form.phase}
-              onChange={(v) => setForm({ ...form, phase: v })}
-              options={phases}
-              disabled={!form.module}
-              placeholder="Select a Module first"
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="bkTitle">Title</label>
-            <input
-              className={styles.input}
-              id="bkTitle"
-              required
-              maxLength={TASK_TITLE_MAX_LENGTH}
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              placeholder="Short, human-readable name for this task"
-            />
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="bkDescription">Task Description</label>
-            <RichTextEditor
-              id="bkDescription"
-              value={form.description}
-              onChange={(html) => setForm({ ...form, description: html })}
-              placeholder="Describe the task..."
-            />
-          </div>
-
-          {!editingId && (
-            <>
-              <SearchSelectField
-                label="Assignee (optional)"
-                id="bkAssignee"
-                value={form.assignee}
-                onChange={(v) => setForm({ ...form, assignee: v, peerReviewEnabled: v?.role === 'qa' ? true : form.peerReviewEnabled })}
-                options={createAssigneeOptions}
-              />
-              <p className={styles.helpText}>
-                Leave blank to create it unassigned in the Task Backlog, same as today. Pick someone to skip the
-                separate assign step and put it straight into their My Tasks list.
-              </p>
-            </>
-          )}
-
-          <div className={styles.field}>
-            <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <input
-                type="checkbox"
-                checked={form.peerReviewEnabled}
-                disabled={form.assignee?.role === 'qa'}
-                onChange={(e) => setForm({ ...form, peerReviewEnabled: e.target.checked })}
-              />
-              Peer Review
-            </label>
-            <p className={styles.helpText}>
-              {form.assignee?.role === 'qa'
-                ? 'Required for a QA assignee - a Developer/Designer/DevOps reviews their work instead of QA reviewing itself.'
-                : 'Skips QA - the assignee will pick another developer to review this task instead.'}
-            </p>
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="bkPriority">Priority</label>
-            <select
-              className={styles.input}
-              id="bkPriority"
-              value={form.priority}
-              onChange={(e) => setForm({ ...form, priority: e.target.value })}
-            >
-              <option value="">Not Set</option>
-              {TASK_PRIORITIES.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.actions}>
-            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
-              {saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Task'}
-            </button>
-          </div>
-        </form>
+        <CreateTaskForm
+          form={form}
+          setForm={setForm}
+          projects={projects}
+          assigneeOptions={createAssigneeOptions}
+          editing={!!editingId}
+          saving={saving}
+          onSubmit={handleSubmit}
+          className={styles.card}
+          style={{ marginBottom: 'var(--space-4)' }}
+        />
       )}
 
       {canManage && !loading && selectedIds.length > 0 && (

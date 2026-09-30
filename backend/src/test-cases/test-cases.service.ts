@@ -2,8 +2,6 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { parse } from 'csv-parse/sync';
-import { stringify } from 'csv-stringify/sync';
 import { TestCase, TestCaseReviewStatus, TestCaseStatus } from './test-case.entity';
 import { TestExecution, TestResult } from './test-execution.entity';
 import { CreateTestCaseDto } from './dto/create-test-case.dto';
@@ -16,25 +14,56 @@ import { ModulesService } from '../modules/modules.service';
 import { PhasesService } from '../phases/phases.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { UserRole } from '../users/user.entity';
+import { LabelsService } from '../labels/labels.service';
+import { TestCaseCustomFieldsService, CustomFieldValues } from './test-case-custom-fields.service';
+import { TestCaseCustomField, CustomFieldType } from './test-case-custom-field.entity';
+import { BulkImportTestCasesDto, TestCaseSpreadsheetFormat } from './dto/bulk-import-test-cases.dto';
+import {
+  BUILT_IN_COLUMNS,
+  BuiltInColumn,
+  REQUIRED_COLUMNS,
+  builtInColumnFor,
+  isExportOnlyHeader,
+  normalizeHeader,
+} from './test-case-columns';
+import { parseSpreadsheet, writeSpreadsheet, SpreadsheetSpec } from './test-case-spreadsheet';
 
-export interface BulkImportError {
+export interface BulkImportRowProblem {
   row: number;
+  title?: string;
   message: string;
 }
 
-const REQUIRED_CSV_COLUMNS = ['title', 'steps', 'expectedResult'];
-const CSV_COLUMNS = [
-  'title',
-  'description',
-  'preconditions',
-  'steps',
-  'expectedResult',
-  'priority',
-  'category',
-  'projectName',
-  'moduleName',
-  'phaseName',
-];
+export interface BulkImportPreviewRow {
+  row: number;
+  title: string;
+  projectName: string | null;
+  moduleName: string | null;
+  phaseName: string | null;
+  priority: string | null;
+  labels: string[];
+  customFieldCount: number;
+}
+
+export interface BulkImportResult {
+  dryRun: boolean;
+  totalRows: number;
+  // Rows that will be (dry run) / were (real import) created.
+  toImport: BulkImportPreviewRow[];
+  created: { id: number; caseNumber: string; title: string }[];
+  // Valid rows deliberately not imported because the test case already
+  // exists - not errors, nothing for the user to fix.
+  skipped: BulkImportRowProblem[];
+  errors: BulkImportRowProblem[];
+  // File-level notes, e.g. a column that didn't match any field.
+  warnings: string[];
+}
+
+// Duplicate key for "is this the same test case": same project (or both
+// without one) and the same title, ignoring case and repeated spaces.
+function duplicateKey(projectId: number | null | undefined, title: string): string {
+  return `${projectId ?? 'none'}::${title.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+}
 
 // The fields a PM actually signs off on - changing any of these on a Ready
 // for Execution case sends it back to Draft (see update()). Title,
@@ -61,7 +90,28 @@ export class TestCasesService {
     private phasesService: PhasesService,
     private auditLogService: AuditLogService,
     private eventEmitter: EventEmitter2,
+    private labelsService: LabelsService,
+    private customFieldsService: TestCaseCustomFieldsService,
   ) {}
+
+  // Every id must be a label in this tenant; newly-added ones must also
+  // be active. Labels already on the case stay allowed even if they've
+  // since been deactivated, so editing an old case doesn't force
+  // stripping them.
+  private async resolveLabelIds(labelIds: number[], existing: number[], tenantId: number): Promise<number[]> {
+    const unique = [...new Set(labelIds)];
+    if (unique.length === 0) return [];
+    const labels = await this.labelsService.findAll(tenantId);
+    const byId = new Map(labels.map((l) => [l.id, l]));
+    for (const id of unique) {
+      const label = byId.get(id);
+      if (!label) throw new BadRequestException(`Label #${id} not found.`);
+      if (!label.isActive && !existing.includes(id)) {
+        throw new BadRequestException(`Label "${label.name}" is inactive and can't be added.`);
+      }
+    }
+    return unique;
+  }
 
   findAll(tenantId: number, projectId?: number): Promise<TestCase[]> {
     return this.testCasesRepository.find({
@@ -133,6 +183,9 @@ export class TestCasesService {
       { projectId: dto.projectId, moduleId: dto.moduleId, phaseId: dto.phaseId },
       tenantId,
     );
+    const fields = await this.customFieldsService.findAll(tenantId);
+    const customFields = this.customFieldsService.resolveValues(fields, dto.customFields, {}, true);
+    const labelIds = await this.resolveLabelIds(dto.labelIds || [], [], tenantId);
     const testCase = this.testCasesRepository.create({
       title: dto.title,
       description: dto.description,
@@ -147,6 +200,8 @@ export class TestCasesService {
       moduleName: module?.name,
       phaseId: phase?.id,
       phaseName: phase?.name,
+      customFields,
+      labelIds,
       createdByUserId: userId,
       createdByEmail: userEmail,
       tenantId,
@@ -182,6 +237,13 @@ export class TestCasesService {
     if (dto.priority !== undefined) testCase.priority = dto.priority;
     if (dto.category !== undefined) testCase.category = dto.category;
     if (dto.status !== undefined) testCase.status = dto.status;
+    if (dto.labelIds !== undefined) {
+      testCase.labelIds = await this.resolveLabelIds(dto.labelIds, testCase.labelIds || [], tenantId);
+    }
+    if (dto.customFields !== undefined) {
+      const fields = await this.customFieldsService.findAll(tenantId);
+      testCase.customFields = this.customFieldsService.resolveValues(fields, dto.customFields, testCase.customFields || {}, true);
+    }
 
     // Only re-resolve the chain if this request actually touches one of
     // Project/Module/Phase - untouched fields keep their current value
@@ -355,189 +417,400 @@ export class TestCasesService {
     return saved;
   }
 
-  // Parses the uploaded CSV and creates one test case per valid row.
-  // Nothing fails silently: every row is validated independently and a
-  // bad row is skipped with a specific reason rather than aborting the
-  // whole batch or being dropped without explanation - same "report what
-  // succeeded/what didn't" shape Sprint.addIssues already uses for
-  // issues that can't be added.
+
+  // Bulk import from a .csv or .xlsx. Designed so importing a team's
+  // existing spreadsheet can't create a mess:
+  //   - Headers are matched loosely (test-case-columns.ts), and any
+  //     column whose header matches an active custom field's name is
+  //     imported into that field. Unmatched columns are reported as
+  //     warnings, never silently dropped.
+  //   - Every row is validated independently and a bad row is reported
+  //     with every problem it has, rather than aborting the batch.
+  //   - Rows that already exist are skipped, not duplicated: a caseNumber
+  //     matching an existing case (re-importing our own export), or the
+  //     same title in the same project as an existing case or an earlier
+  //     row in the same file.
+  //   - dryRun validates and reports without saving (the Preview step).
+  //     The real import re-validates the file from scratch and saves every
+  //     valid row in one transaction, so it's all-or-nothing at the DB
+  //     level - an unexpected failure never leaves half a file imported.
   async bulkImport(
-    csvText: string,
-    userId: number,
-    userEmail: string,
+    dto: BulkImportTestCasesDto,
+    actor: { id: number; email: string; role: UserRole },
     tenantId: number,
-  ): Promise<{ created: TestCase[]; errors: BulkImportError[] }> {
-    let records: Record<string, string>[];
-    try {
-      records = parse(csvText, { columns: true, skip_empty_lines: true, trim: true });
-    } catch (err: any) {
-      return { created: [], errors: [{ row: 0, message: `Could not parse CSV: ${err.message}` }] };
+  ): Promise<BulkImportResult> {
+    const dryRun = dto.dryRun === true;
+    const result: BulkImportResult = { dryRun, totalRows: 0, toImport: [], created: [], skipped: [], errors: [], warnings: [] };
+    const fileError = (message: string) => {
+      result.errors.push({ row: 0, message });
+      return result;
+    };
+
+    const sheet = await parseSpreadsheet(dto.fileBase64, dto.format);
+    result.totalRows = sheet.rows.length;
+    if (sheet.rows.length === 0) {
+      return fileError('No data rows found - the first row must be the column headers, with one test case per row below it.');
     }
 
-    if (records.length === 0) {
-      return { created: [], errors: [{ row: 0, message: 'No rows found in the uploaded CSV' }] };
-    }
+    const [allProjects, allModules, allPhases, allLabels, allFields, existingCases] = await Promise.all([
+      this.projectsService.findAll(tenantId),
+      this.modulesService.findAllWithCompletion(tenantId),
+      this.phasesService.findAllWithCompletion(tenantId),
+      this.labelsService.findAll(tenantId),
+      this.customFieldsService.findAll(tenantId),
+      this.testCasesRepository.find({ where: { tenantId }, select: ['id', 'caseNumber', 'title', 'projectId'] }),
+    ]);
 
-    const header = Object.keys(records[0]);
-    const missingColumns = REQUIRED_CSV_COLUMNS.filter((col) => !header.includes(col));
+    // Map each spreadsheet column to a built-in column or custom field.
+    const builtInIndex = new Map<BuiltInColumn, number>();
+    const customFieldIndex = new Map<TestCaseCustomField, number>();
+    const fieldByHeader = new Map(allFields.map((f) => [normalizeHeader(f.name), f]));
+    sheet.headers.forEach((header, index) => {
+      if (!normalizeHeader(header)) {
+        if (sheet.rows.some((r) => r.cells[index] !== '')) {
+          result.warnings.push(`Column ${index + 1} has no header, so its values were ignored.`);
+        }
+        return;
+      }
+      const builtIn = builtInColumnFor(header);
+      if (builtIn) {
+        if (builtInIndex.has(builtIn)) {
+          fileError(`Columns "${sheet.headers[builtInIndex.get(builtIn)!]}" and "${header}" both map to "${builtIn}" - keep only one.`);
+        } else {
+          builtInIndex.set(builtIn, index);
+        }
+        return;
+      }
+      if (isExportOnlyHeader(header)) {
+        result.warnings.push(`Column "${header}" is ignored - status and review status are set by the portal, not by import.`);
+        return;
+      }
+      const field = fieldByHeader.get(normalizeHeader(header));
+      if (field && field.isActive) {
+        if (customFieldIndex.has(field)) {
+          fileError(`More than one column maps to custom field "${field.name}" - keep only one.`);
+        } else {
+          customFieldIndex.set(field, index);
+        }
+        return;
+      }
+      result.warnings.push(
+        field
+          ? `Column "${header}" is ignored - custom field "${field.name}" is inactive.`
+          : `Column "${header}" doesn't match any test case field and was ignored. To import it, ask an Admin or Program Manager to add a custom field named "${header}" under Test Case Fields.`,
+      );
+    });
+    const missingColumns = REQUIRED_COLUMNS.filter((col) => !builtInIndex.has(col));
     if (missingColumns.length > 0) {
-      return {
-        created: [],
-        errors: [{ row: 0, message: `CSV is missing required column(s): ${missingColumns.join(', ')}` }],
+      fileError(`Missing required column(s): ${missingColumns.join(', ')}.`);
+    }
+    const unmappedRequiredFields = allFields.filter((f) => f.isActive && f.isRequired && !customFieldIndex.has(f));
+    if (unmappedRequiredFields.length > 0) {
+      fileError(`Missing column(s) for required custom field(s): ${unmappedRequiredFields.map((f) => f.name).join(', ')}.`);
+    }
+    if (result.errors.length > 0) return result;
+
+    // Same "one lookup pass, then a map" shape as IssuesBulkService.
+    // validateRows() - modules/phases are fetched tenant-wide since a
+    // batch can span multiple projects.
+    const projectByName = new Map(allProjects.map((p) => [p.name.trim().toLowerCase(), p]));
+    const moduleByProjectAndName = new Map(
+      allModules.filter((m) => m.isActive).map((m) => [`${m.projectId}::${m.name.trim().toLowerCase()}`, m]),
+    );
+    const phaseByModuleAndName = new Map(
+      allPhases.filter((p) => p.isActive).map((p) => [`${p.moduleId}::${p.name.trim().toLowerCase()}`, p]),
+    );
+    const labelByName = new Map(allLabels.map((l) => [l.name.trim().toLowerCase(), l]));
+    const existingByCaseNumber = new Map(existingCases.filter((tc) => tc.caseNumber).map((tc) => [tc.caseNumber.toLowerCase(), tc]));
+    const existingByKey = new Map(existingCases.map((tc) => [duplicateKey(tc.projectId, tc.title), tc]));
+    const fileRowByKey = new Map<string, number>();
+
+    const entities: TestCase[] = [];
+    for (const { rowNumber, cells } of sheet.rows) {
+      const get = (col: BuiltInColumn) => (builtInIndex.has(col) ? cells[builtInIndex.get(col)!] : '');
+      const title = get('title');
+      const problems: string[] = [];
+
+      const missingFields = REQUIRED_COLUMNS.filter((col) => !get(col));
+      if (missingFields.length > 0) problems.push(`Missing ${missingFields.join(', ')}`);
+
+      const matchEnum = <T extends string>(col: BuiltInColumn, values: T[]): T | undefined => {
+        const raw = get(col);
+        if (!raw) return undefined;
+        const match = values.find((v) => v.toLowerCase() === raw.toLowerCase());
+        if (!match) problems.push(`Invalid ${col} "${raw}" - must be one of: ${values.join(', ')}`);
+        return match;
       };
+      const priority = matchEnum('priority', Object.values(Priority));
+      const category = matchEnum('category', Object.values(IssueCategory));
+
+      let project: { id: number; name: string } | undefined;
+      let module: { id: number; name: string } | undefined;
+      let phase: { id: number; name: string } | undefined;
+      const projectName = get('projectName');
+      const moduleName = get('moduleName');
+      const phaseName = get('phaseName');
+      if (projectName) {
+        project = projectByName.get(projectName.toLowerCase());
+        if (!project) problems.push(`Unknown project "${projectName}"`);
+      }
+      if (moduleName) {
+        if (!projectName) {
+          problems.push(`Module "${moduleName}" needs a project on the same row`);
+        } else if (project) {
+          module = moduleByProjectAndName.get(`${project.id}::${moduleName.toLowerCase()}`);
+          if (!module) problems.push(`Unknown module "${moduleName}" in project "${project.name}"`);
+        }
+      }
+      if (phaseName) {
+        if (!moduleName) {
+          problems.push(`Phase "${phaseName}" needs a module on the same row`);
+        } else if (module) {
+          phase = phaseByModuleAndName.get(`${module.id}::${phaseName.toLowerCase()}`);
+          if (!phase) problems.push(`Unknown phase "${phaseName}" in module "${module.name}"`);
+        }
+      }
+
+      const labelNames = [...new Set(get('labels').split(/[,;]/).map((l) => l.trim()).filter(Boolean))];
+      const labels = labelNames.map((name) => labelByName.get(name.toLowerCase()));
+      const unknownLabels = labelNames.filter((_, i) => !labels[i]);
+      const inactiveLabels = labels.filter((l) => l && !l.isActive).map((l) => l!.name);
+      if (unknownLabels.length > 0) {
+        problems.push(`Unknown label(s): ${unknownLabels.join(', ')} - add them under Labels first`);
+      }
+      if (inactiveLabels.length > 0) problems.push(`Inactive label(s): ${inactiveLabels.join(', ')}`);
+
+      const customFields: CustomFieldValues = {};
+      for (const [field, index] of customFieldIndex) {
+        const raw = cells[index];
+        if (!raw) {
+          if (field.isRequired) problems.push(`Missing required field "${field.name}"`);
+          continue;
+        }
+        const coerced = this.customFieldsService.coerceValue(field, raw);
+        if (coerced.ok) customFields[String(field.id)] = coerced.value;
+        else problems.push(coerced.message);
+      }
+
+      if (problems.length > 0) {
+        result.errors.push({ row: rowNumber, title: title || undefined, message: problems.join('; ') });
+        continue;
+      }
+
+      const caseNumber = get('caseNumber');
+      const existingByNumber = caseNumber ? existingByCaseNumber.get(caseNumber.toLowerCase()) : undefined;
+      const key = duplicateKey(project?.id, title);
+      const existingSame = existingByNumber || existingByKey.get(key);
+      if (existingSame) {
+        result.skipped.push({
+          row: rowNumber,
+          title,
+          message: `Already exists as ${existingSame.caseNumber || `#${existingSame.id}`}${existingByNumber ? '' : ' (same title and project)'}`,
+        });
+        continue;
+      }
+      if (fileRowByKey.has(key)) {
+        result.skipped.push({ row: rowNumber, title, message: `Same title and project as row ${fileRowByKey.get(key)} in this file` });
+        continue;
+      }
+      fileRowByKey.set(key, rowNumber);
+
+      entities.push(
+        this.testCasesRepository.create({
+          title,
+          description: get('description') || undefined,
+          preconditions: get('preconditions') || undefined,
+          steps: get('steps'),
+          expectedResult: get('expectedResult'),
+          priority,
+          category,
+          projectId: project?.id,
+          projectName: project?.name,
+          moduleId: module?.id,
+          moduleName: module?.name,
+          phaseId: phase?.id,
+          phaseName: phase?.name,
+          customFields,
+          labelIds: labels.map((l) => l!.id),
+          createdByUserId: actor.id,
+          createdByEmail: actor.email,
+          tenantId,
+        }),
+      );
+      result.toImport.push({
+        row: rowNumber,
+        title,
+        projectName: project?.name ?? null,
+        moduleName: module?.name ?? null,
+        phaseName: phase?.name ?? null,
+        priority: priority ?? null,
+        labels: labels.map((l) => l!.name),
+        customFieldCount: Object.keys(customFields).length,
+      });
     }
 
-    // Cache project/module/phase name -> row lookups across rows instead
-    // of hitting the DB once per row. Modules/phases are fetched
-    // tenant-wide (not per-project) since a batch can span multiple
-    // projects - same "one lookup pass, then a map" shape as
-    // IssuesBulkService.validateRows().
-    const [allProjects, allModules, allPhases] = await Promise.all([
+    if (dryRun || entities.length === 0) return result;
+
+    const saved = await this.testCasesRepository.manager.transaction(async (em) => {
+      const rows = await em.save(TestCase, entities, { chunk: 200 });
+      // Same "TC-" + id padded to 4 digits as assignCaseNumber(), in one
+      // UPDATE instead of a save per row. lpad() would truncate ids longer
+      // than 4 digits, hence the CASE.
+      await em
+        .createQueryBuilder()
+        .update(TestCase)
+        .set({ caseNumber: () => `'TC-' || CASE WHEN length(id::text) >= 4 THEN id::text ELSE lpad(id::text, 4, '0') END` })
+        .where('id IN (:...ids)', { ids: rows.map((r) => r.id) })
+        .execute();
+      return rows;
+    });
+    result.created = saved.map((tc) => ({ id: tc.id, caseNumber: `TC-${String(tc.id).padStart(4, '0')}`, title: tc.title }));
+
+    await this.auditLogService.record({
+      userId: actor.id,
+      userEmail: actor.email,
+      userRole: actor.role,
+      action: AuditActions.TEST_CASES_BULK_IMPORTED,
+      tenantId,
+      entityType: 'TestCase',
+      details: {
+        format: dto.format,
+        totalRows: result.totalRows,
+        created: result.created.length,
+        skipped: result.skipped.length,
+        errors: result.errors.length,
+        caseNumbers: result.created.map((c) => c.caseNumber),
+      },
+    });
+    return result;
+  }
+
+  // Column headers for template/export: built-ins, then every active
+  // custom field by name - exactly what bulkImport() reads, so an export
+  // re-imports cleanly (its caseNumber column makes those rows skip as
+  // "already exists").
+  private columnsFor(fields: TestCaseCustomField[]): string[] {
+    return [...BUILT_IN_COLUMNS, ...fields.filter((f) => f.isActive).map((f) => f.name)];
+  }
+
+  private dropdownsFor(fields: TestCaseCustomField[]): Record<string, string[]> {
+    const dropdowns: Record<string, string[]> = {
+      priority: Object.values(Priority),
+      category: Object.values(IssueCategory),
+    };
+    for (const f of fields) {
+      if (f.isActive && f.fieldType === CustomFieldType.DROPDOWN) dropdowns[f.name] = f.options;
+    }
+    return dropdowns;
+  }
+
+  // Server-generated, not a hardcoded client-side file, so the template
+  // always matches the tenant's current custom fields and whatever
+  // bulkImport() reads. The .xlsx version adds in-cell dropdowns and an
+  // Instructions sheet listing every column's rules and the valid
+  // project/module/phase and label names, so a file filled in from it
+  // imports without surprises.
+  async buildTemplate(tenantId: number, format: TestCaseSpreadsheetFormat): Promise<Buffer> {
+    const [fields, labels, projects, modules, phases] = await Promise.all([
+      this.customFieldsService.findAll(tenantId),
+      this.labelsService.findAll(tenantId),
       this.projectsService.findAll(tenantId),
       this.modulesService.findAllWithCompletion(tenantId),
       this.phasesService.findAllWithCompletion(tenantId),
     ]);
-    const projectByName = new Map(allProjects.map((p) => [p.name.toLowerCase(), p]));
-    const moduleByProjectAndName = new Map(
-      allModules.filter((m) => m.isActive).map((m) => [`${m.projectId}::${m.name.toLowerCase()}`, m]),
-    );
-    const phaseByModuleAndName = new Map(
-      allPhases.filter((p) => p.isActive).map((p) => [`${p.moduleId}::${p.name.toLowerCase()}`, p]),
-    );
+    const activeFields = fields.filter((f) => f.isActive);
+    const activeLabels = labels.filter((l) => l.isActive);
 
-    const created: TestCase[] = [];
-    const errors: BulkImportError[] = [];
-
-    for (let i = 0; i < records.length; i++) {
-      const row = records[i];
-      const rowNumber = i + 2; // +1 for 0-index, +1 for the header row itself
-
-      const missingFields = REQUIRED_CSV_COLUMNS.filter((col) => !row[col]?.trim());
-      if (missingFields.length > 0) {
-        errors.push({ row: rowNumber, message: `Missing required field(s): ${missingFields.join(', ')}` });
-        continue;
-      }
-
-      let priority: Priority | undefined;
-      if (row.priority?.trim()) {
-        if (!Object.values(Priority).includes(row.priority.trim() as Priority)) {
-          errors.push({
-            row: rowNumber,
-            message: `Invalid priority "${row.priority}" - must be one of: ${Object.values(Priority).join(', ')}`,
-          });
-          continue;
-        }
-        priority = row.priority.trim() as Priority;
-      }
-
-      let category: IssueCategory | undefined;
-      if (row.category?.trim()) {
-        if (!Object.values(IssueCategory).includes(row.category.trim() as IssueCategory)) {
-          errors.push({
-            row: rowNumber,
-            message: `Invalid category "${row.category}" - must be one of: ${Object.values(IssueCategory).join(', ')}`,
-          });
-          continue;
-        }
-        category = row.category.trim() as IssueCategory;
-      }
-
-      let project: { id: number; name: string } | undefined;
-      if (row.projectName?.trim()) {
-        const match = projectByName.get(row.projectName.trim().toLowerCase());
-        if (!match) {
-          errors.push({ row: rowNumber, message: `Unknown project "${row.projectName}"` });
-          continue;
-        }
-        project = { id: match.id, name: match.name };
-      }
-
-      let module: { id: number; name: string } | undefined;
-      if (row.moduleName?.trim()) {
-        if (!project) {
-          errors.push({ row: rowNumber, message: `Module "${row.moduleName}" requires a projectName on the same row` });
-          continue;
-        }
-        const match = moduleByProjectAndName.get(`${project.id}::${row.moduleName.trim().toLowerCase()}`);
-        if (!match) {
-          errors.push({ row: rowNumber, message: `Unknown module "${row.moduleName}" for project "${project.name}"` });
-          continue;
-        }
-        module = { id: match.id, name: match.name };
-      }
-
-      let phase: { id: number; name: string } | undefined;
-      if (row.phaseName?.trim()) {
-        if (!module) {
-          errors.push({ row: rowNumber, message: `Phase "${row.phaseName}" requires a moduleName on the same row` });
-          continue;
-        }
-        const match = phaseByModuleAndName.get(`${module.id}::${row.phaseName.trim().toLowerCase()}`);
-        if (!match) {
-          errors.push({ row: rowNumber, message: `Unknown phase "${row.phaseName}" for module "${module.name}"` });
-          continue;
-        }
-        phase = { id: match.id, name: match.name };
-      }
-
-      const testCase = this.testCasesRepository.create({
-        title: row.title.trim(),
-        description: row.description?.trim() || undefined,
-        preconditions: row.preconditions?.trim() || undefined,
-        steps: row.steps.trim(),
-        expectedResult: row.expectedResult.trim(),
-        priority,
-        category,
-        projectId: project?.id,
-        projectName: project?.name,
-        moduleId: module?.id,
-        moduleName: module?.name,
-        phaseId: phase?.id,
-        phaseName: phase?.name,
-        createdByUserId: userId,
-        createdByEmail: userEmail,
-        tenantId,
-      });
-      const saved = await this.testCasesRepository.save(testCase);
-      created.push(await this.assignCaseNumber(saved));
+    const example: Record<string, string | number> = {
+      title: 'Login with valid credentials',
+      description: 'Verify a user can log in',
+      preconditions: 'User has an active account',
+      steps: '1. Go to login\n2. Enter valid email/password\n3. Submit',
+      expectedResult: 'User is redirected to the dashboard',
+      priority: 'High',
+      category: 'New Feature',
+      projectName: '',
+      moduleName: '',
+      phaseName: '',
+      labels: activeLabels.slice(0, 2).map((l) => l.name).join(', '),
+    };
+    // Required fields get a sample value so the example row itself
+    // passes validation; optional ones stay blank.
+    const sampleValue: Record<CustomFieldType, string | number> = {
+      [CustomFieldType.TEXT]: 'Example',
+      [CustomFieldType.NUMBER]: 1,
+      [CustomFieldType.DATE]: new Date().toISOString().slice(0, 10),
+      [CustomFieldType.DROPDOWN]: '',
+    };
+    for (const f of activeFields) {
+      example[f.name] = f.fieldType === CustomFieldType.DROPDOWN ? f.options[0] : f.isRequired ? sampleValue[f.fieldType] : '';
     }
 
-    return { created, errors };
-  }
+    const describeField = (f: TestCaseCustomField): string => {
+      switch (f.fieldType) {
+        case CustomFieldType.DROPDOWN:
+          return `One of: ${f.options.join(', ')}`;
+        case CustomFieldType.DATE:
+          return 'Date, YYYY-MM-DD (or an Excel date cell)';
+        case CustomFieldType.NUMBER:
+          return 'Number';
+        default:
+          return 'Free text';
+      }
+    };
+    const instructions: string[][] = [
+      ['title', 'Yes', 'Free text. A row with the same title in the same project as an existing test case is skipped, not duplicated.'],
+      ['description', 'No', 'Free text'],
+      ['preconditions', 'No', 'Free text'],
+      ['steps', 'Yes', 'Free text - line breaks inside the cell are kept'],
+      ['expectedResult', 'Yes', 'Free text'],
+      ['priority', 'No', `One of: ${Object.values(Priority).join(', ')}`],
+      ['category', 'No', `One of: ${Object.values(IssueCategory).join(', ')}`],
+      ['projectName', 'No', 'Exact project name - see the Projects sheet'],
+      ['moduleName', 'No', 'Needs projectName on the same row - see the Projects sheet'],
+      ['phaseName', 'No', 'Needs moduleName on the same row - see the Projects sheet'],
+      ['labels', 'No', `Comma-separated. Existing labels: ${activeLabels.map((l) => l.name).join(', ') || '(none yet)'}`],
+      ...activeFields.map((f) => [f.name, f.isRequired ? 'Yes' : 'No', `Custom field - ${describeField(f)}`]),
+    ];
+    const moduleNamesByProject = new Map<number, typeof modules>();
+    modules.filter((m) => m.isActive).forEach((m) => moduleNamesByProject.set(m.projectId, [...(moduleNamesByProject.get(m.projectId) || []), m]));
+    const projectRows: string[][] = [];
+    for (const p of projects) {
+      const projectModules = moduleNamesByProject.get(p.id) || [];
+      if (projectModules.length === 0) projectRows.push([p.name, '', '']);
+      for (const m of projectModules) {
+        const modulePhases = phases.filter((ph) => ph.isActive && ph.moduleId === m.id);
+        if (modulePhases.length === 0) projectRows.push([p.name, m.name, '']);
+        modulePhases.forEach((ph) => projectRows.push([p.name, m.name, ph.name]));
+      }
+    }
 
-  // Server-generated template, same shape as
-  // IssueSpreadsheetService.buildTemplate() - one header row plus one
-  // worked example, so a fresh download always matches whatever columns
-  // bulkImport() actually reads (unlike the old hardcoded client-side
-  // string, which could silently drift out of sync with this file).
-  buildCsvTemplate(): string {
-    return stringify(
-      [
-        {
-          title: 'Login with valid credentials',
-          description: 'Verify a user can log in',
-          preconditions: 'User has an active account',
-          steps: '1. Go to login\n2. Enter valid email/password\n3. Submit',
-          expectedResult: 'User is redirected to the dashboard',
-          priority: 'High',
-          category: 'New Feature',
-          projectName: '',
-          moduleName: '',
-          phaseName: '',
-        },
+    const spec: SpreadsheetSpec = {
+      columns: this.columnsFor(fields),
+      rows: [example],
+      dropdowns: this.dropdownsFor(fields),
+      referenceSheets: [
+        { name: 'Instructions', columns: ['Column', 'Required', 'Allowed values'], rows: instructions },
+        { name: 'Projects', columns: ['projectName', 'moduleName', 'phaseName'], rows: projectRows },
       ],
-      { header: true, columns: CSV_COLUMNS },
-    );
+    };
+    return writeSpreadsheet(spec, format);
   }
 
   // Exports the same rows findAll() would return for these filters -
   // there is deliberately no bulk-export equivalent for run history
   // (TestExecution), only the test case catalog itself, mirroring what
   // Issues' bulk-export exports (Issues, not their comments/audit trail).
-  async bulkExport(tenantId: number, projectId?: number): Promise<string> {
-    const testCases = await this.findAll(tenantId, projectId);
-    return stringify(
-      testCases.map((tc) => ({
+  async bulkExport(tenantId: number, projectId: number | undefined, format: TestCaseSpreadsheetFormat): Promise<Buffer> {
+    const [testCases, fields, labels] = await Promise.all([
+      this.findAll(tenantId, projectId),
+      this.customFieldsService.findAll(tenantId),
+      this.labelsService.findAll(tenantId),
+    ]);
+    const labelNameById = new Map(labels.map((l) => [l.id, l.name]));
+    const activeFields = fields.filter((f) => f.isActive);
+    const rows = testCases.map((tc) => {
+      const row: Record<string, string | number> = {
         caseNumber: tc.caseNumber || '',
         title: tc.title,
         description: tc.description || '',
@@ -549,10 +822,20 @@ export class TestCasesService {
         projectName: tc.projectName || '',
         moduleName: tc.moduleName || '',
         phaseName: tc.phaseName || '',
+        labels: (tc.labelIds || []).map((id) => labelNameById.get(id)).filter(Boolean).join(', '),
         status: tc.status,
         reviewStatus: tc.reviewStatus,
-      })),
-      { header: true, columns: ['caseNumber', ...CSV_COLUMNS, 'status', 'reviewStatus'] },
+      };
+      for (const f of activeFields) row[f.name] = tc.customFields?.[String(f.id)] ?? '';
+      return row;
+    });
+    return writeSpreadsheet(
+      {
+        columns: ['caseNumber', ...this.columnsFor(fields), 'status', 'reviewStatus'],
+        rows,
+        dropdowns: this.dropdownsFor(fields),
+      },
+      format,
     );
   }
 }
