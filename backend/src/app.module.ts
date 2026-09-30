@@ -17,6 +17,7 @@ import { AuditLog } from './audit/audit-log.entity';
 import { ProjectModule } from './modules/project-module.entity';
 import { TestCase } from './test-cases/test-case.entity';
 import { TestCaseCustomField } from './test-cases/test-case-custom-field.entity';
+import { TestCaseTemplateSettings } from './test-cases/test-case-template-settings.entity';
 import { TestExecution } from './test-cases/test-execution.entity';
 import { SlaConfig } from './sla/sla-config.entity';
 import { PerformanceScoringConfig } from './performance-scoring/performance-scoring-config.entity';
@@ -110,6 +111,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           ProjectModule,
           TestCase,
           TestCaseCustomField,
+          TestCaseTemplateSettings,
           TestExecution,
           SlaConfig,
           PerformanceScoringConfig,

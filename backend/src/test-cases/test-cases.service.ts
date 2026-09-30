@@ -17,9 +17,9 @@ import { UserRole } from '../users/user.entity';
 import { LabelsService } from '../labels/labels.service';
 import { TestCaseCustomFieldsService, CustomFieldValues } from './test-case-custom-fields.service';
 import { TestCaseCustomField, CustomFieldType } from './test-case-custom-field.entity';
+import { TestCaseTemplateSettingsService } from './test-case-template-settings.service';
 import { BulkImportTestCasesDto, TestCaseSpreadsheetFormat } from './dto/bulk-import-test-cases.dto';
 import {
-  BUILT_IN_COLUMNS,
   BuiltInColumn,
   REQUIRED_COLUMNS,
   builtInColumnFor,
@@ -92,6 +92,7 @@ export class TestCasesService {
     private eventEmitter: EventEmitter2,
     private labelsService: LabelsService,
     private customFieldsService: TestCaseCustomFieldsService,
+    private templateSettingsService: TestCaseTemplateSettingsService,
   ) {}
 
   // Every id must be a label in this tenant; newly-added ones must also
@@ -685,12 +686,15 @@ export class TestCasesService {
     return result;
   }
 
-  // Column headers for template/export: built-ins, then every active
-  // custom field by name - exactly what bulkImport() reads, so an export
-  // re-imports cleanly (its caseNumber column makes those rows skip as
-  // "already exists").
-  private columnsFor(fields: TestCaseCustomField[]): string[] {
-    return [...BUILT_IN_COLUMNS, ...fields.filter((f) => f.isActive).map((f) => f.name)];
+  // Column headers for template/export: built-ins plus every active
+  // custom field by name, in the tenant's saved column order
+  // (TestCaseTemplateSettingsService) - exactly what bulkImport() reads,
+  // and import matches by header not position, so an export re-imports
+  // cleanly (its caseNumber column makes those rows skip as "already
+  // exists").
+  private async columnsFor(tenantId: number, fields: TestCaseCustomField[]): Promise<string[]> {
+    const columns = await this.templateSettingsService.orderedColumns(tenantId, fields);
+    return columns.map((c) => c.header);
   }
 
   private dropdownsFor(fields: TestCaseCustomField[]): Record<string, string[]> {
@@ -758,7 +762,7 @@ export class TestCasesService {
           return 'Free text';
       }
     };
-    const instructions: string[][] = [
+    const builtInInstructions: string[][] = [
       ['title', 'Yes', 'Free text. A row with the same title in the same project as an existing test case is skipped, not duplicated.'],
       ['description', 'No', 'Free text'],
       ['preconditions', 'No', 'Free text'],
@@ -770,8 +774,14 @@ export class TestCasesService {
       ['moduleName', 'No', 'Needs projectName on the same row - see the Projects sheet'],
       ['phaseName', 'No', 'Needs moduleName on the same row - see the Projects sheet'],
       ['labels', 'No', `Comma-separated. Existing labels: ${activeLabels.map((l) => l.name).join(', ') || '(none yet)'}`],
-      ...activeFields.map((f) => [f.name, f.isRequired ? 'Yes' : 'No', `Custom field - ${describeField(f)}`]),
     ];
+    // Listed in the same order as the template's columns.
+    const orderedColumns = await this.templateSettingsService.orderedColumns(tenantId, fields);
+    const instructions: string[][] = orderedColumns.map((c) =>
+      c.field
+        ? [c.header, c.field.isRequired ? 'Yes' : 'No', `Custom field - ${describeField(c.field)}`]
+        : builtInInstructions.find((row) => row[0] === c.key),
+    );
     const moduleNamesByProject = new Map<number, typeof modules>();
     modules.filter((m) => m.isActive).forEach((m) => moduleNamesByProject.set(m.projectId, [...(moduleNamesByProject.get(m.projectId) || []), m]));
     const projectRows: string[][] = [];
@@ -786,7 +796,7 @@ export class TestCasesService {
     }
 
     const spec: SpreadsheetSpec = {
-      columns: this.columnsFor(fields),
+      columns: orderedColumns.map((c) => c.header),
       rows: [example],
       dropdowns: this.dropdownsFor(fields),
       referenceSheets: [
@@ -831,7 +841,7 @@ export class TestCasesService {
     });
     return writeSpreadsheet(
       {
-        columns: ['caseNumber', ...this.columnsFor(fields), 'status', 'reviewStatus'],
+        columns: ['caseNumber', ...(await this.columnsFor(tenantId, fields)), 'status', 'reviewStatus'],
         rows,
         dropdowns: this.dropdownsFor(fields),
       },

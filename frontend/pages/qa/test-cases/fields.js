@@ -22,13 +22,27 @@ export default function TestCaseFieldsPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [fields, setFields] = useState([]);
+  const [columns, setColumns] = useState([]);
+  const [columnsDirty, setColumnsDirty] = useState(false);
+  const [columnsCustomized, setColumnsCustomized] = useState(false);
   const [newField, setNewField] = useState(EMPTY_FIELD);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const applyColumnOrder = (data) => {
+    setColumns(data.columns);
+    setColumnsCustomized(data.isCustomized);
+    setColumnsDirty(false);
+  };
+
+  // Column order depends on the fields (new/reactivated ones show up in
+  // it), so both reload together.
   const load = () =>
-    apiFetch('/test-case-custom-fields')
-      .then(setFields)
+    Promise.all([apiFetch('/test-case-custom-fields'), apiFetch('/test-case-template/column-order')])
+      .then(([fieldList, columnOrder]) => {
+        setFields(fieldList);
+        applyColumnOrder(columnOrder);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
 
@@ -97,6 +111,29 @@ export default function TestCaseFieldsPage() {
       await apiFetch(`/test-case-custom-fields/${field.id}`, { method: 'DELETE' });
       showToast('Field deleted', 'info');
       load();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const moveColumn = (index, delta) => {
+    const next = [...columns];
+    const [moved] = next.splice(index, 1);
+    next.splice(index + delta, 0, moved);
+    setColumns(next);
+    setColumnsDirty(true);
+  };
+
+  // An empty list resets the backend to the default order.
+  const saveColumnOrder = async (columnOrder) => {
+    setError('');
+    try {
+      const data = await apiFetch('/test-case-template/column-order', {
+        method: 'PUT',
+        body: JSON.stringify({ columnOrder }),
+      });
+      applyColumnOrder(data);
+      showToast(columnOrder.length ? 'Column order saved' : 'Column order reset to default', 'success');
     } catch (err) {
       setError(err.message);
     }
@@ -211,6 +248,75 @@ export default function TestCaseFieldsPage() {
             Making a field required applies to new test cases and imports. Existing test cases without a value are asked for one
             the next time they're edited.
           </p>
+
+          <h2 style={{ fontSize: '1rem', marginTop: 'var(--space-5)' }}>Template column order</h2>
+          <p className={styles.helpText}>
+            Order of the columns in the bulk import template and the export. Import matches columns by header name, so files
+            in any column order still import. Inactive fields aren't listed; new fields are added at the end.
+          </p>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Column header</th>
+                  <th>Type</th>
+                  <th>Required</th>
+                  <th>Move</th>
+                </tr>
+              </thead>
+              <tbody>
+                {columns.map((column, index) => (
+                  <tr key={column.key}>
+                    <td style={{ width: 48 }}>{index + 1}</td>
+                    <td>{column.header}</td>
+                    <td>{column.isCustom ? 'Custom field' : 'Built-in'}</td>
+                    <td>{column.isRequired ? 'Yes' : 'No'}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          aria-label={`Move ${column.header} up`}
+                          disabled={index === 0}
+                          onClick={() => moveColumn(index, -1)}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          aria-label={`Move ${column.header} down`}
+                          disabled={index === columns.length - 1}
+                          onClick={() => moveColumn(index, 1)}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className={styles.actions}>
+            <button
+              className={`${styles.button} ${styles.buttonAccent}`}
+              type="button"
+              disabled={!columnsDirty}
+              onClick={() => saveColumnOrder(columns.map((c) => c.key))}
+            >
+              Save Order
+            </button>
+            <button
+              className={styles.buttonSecondary}
+              type="button"
+              disabled={!columnsCustomized && !columnsDirty}
+              onClick={() => (columnsCustomized ? saveColumnOrder([]) : load())}
+            >
+              Reset to Default
+            </button>
+          </div>
 
           <h2 style={{ fontSize: '1rem', marginTop: 'var(--space-5)' }}>Add a field</h2>
           <form onSubmit={handleAdd}>

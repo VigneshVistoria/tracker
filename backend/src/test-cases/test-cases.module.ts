@@ -7,6 +7,9 @@ import { TestCasesService } from './test-cases.service';
 import { TestCasesController } from './test-cases.controller';
 import { TestCaseCustomFieldsService } from './test-case-custom-fields.service';
 import { TestCaseCustomFieldsController } from './test-case-custom-fields.controller';
+import { TestCaseTemplateSettings } from './test-case-template-settings.entity';
+import { TestCaseTemplateSettingsService } from './test-case-template-settings.service';
+import { TestCaseTemplateSettingsController } from './test-case-template-settings.controller';
 import { GuardsModule } from '../common/guards.module';
 import { UsersModule } from '../users/users.module';
 import { ProjectsModule } from '../projects/projects.module';
@@ -17,7 +20,7 @@ import { LabelsModule } from '../labels/labels.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TestCase, TestExecution, TestCaseCustomField]),
+    TypeOrmModule.forFeature([TestCase, TestExecution, TestCaseCustomField, TestCaseTemplateSettings]),
     GuardsModule,
     UsersModule,
     ProjectsModule,
@@ -26,8 +29,8 @@ import { LabelsModule } from '../labels/labels.module';
     AuditModule,
     LabelsModule,
   ],
-  controllers: [TestCasesController, TestCaseCustomFieldsController],
-  providers: [TestCasesService, TestCaseCustomFieldsService],
+  controllers: [TestCasesController, TestCaseCustomFieldsController, TestCaseTemplateSettingsController],
+  providers: [TestCasesService, TestCaseCustomFieldsService, TestCaseTemplateSettingsService],
   exports: [TestCasesService],
 })
 export class TestCasesModule {}

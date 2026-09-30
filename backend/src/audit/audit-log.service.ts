@@ -103,6 +103,7 @@ export const AuditActions = {
   TEST_CASE_CUSTOM_FIELD_ACTIVATED: 'test_case_custom_field_activated',
   TEST_CASE_CUSTOM_FIELD_DEACTIVATED: 'test_case_custom_field_deactivated',
   TEST_CASE_CUSTOM_FIELD_DELETED: 'test_case_custom_field_deleted',
+  TEST_CASE_TEMPLATE_COLUMN_ORDER_UPDATED: 'test_case_template_column_order_updated',
 } as const;
 
 export interface RecordAuditEntryInput {
