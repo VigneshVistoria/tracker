@@ -388,7 +388,13 @@ Executive/Program-Manager-only — same manual-role-check pattern as
 ### QA / testing
 
 **`test-cases`** — `test_cases`/`test_executions` tables;
-`POST /test-cases/bulk-import`.
+`POST /test-cases/bulk-import`. PM review gate (`reviewStatus`): Draft →
+Pending Review (`POST /test-cases/submit-for-review`, QA/PM/Admin) →
+Ready for Execution / Rejected (`POST /test-cases/approve|reject`,
+Program Manager only, reject needs a comment). Runs can only be recorded
+on Ready for Execution; editing preconditions/steps/expected result on an
+approved case resets it to Draft. Migration:
+`2026-09-test-case-review.sql` (backfills existing rows to Ready).
 
 **`regression-testing`** — `regression_test_runs` table; admin-only run
 history.

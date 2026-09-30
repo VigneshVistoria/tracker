@@ -6,6 +6,7 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { formatDateTime } from '../../../lib/formatDate';
 import { useToast } from '../../../lib/toast';
+import { REVIEW_STATUS, REVIEW_BADGE_STYLE, SUBMITTABLE_REVIEW_STATUSES } from '../../../lib/testCaseReview';
 
 const RESULT_OPTIONS = ['Passed', 'Failed', 'Blocked'];
 
@@ -28,11 +29,15 @@ export default function TestCaseDetail() {
   const [testCase, setTestCase] = useState(null);
   const [executions, setExecutions] = useState([]);
   const [canManage, setCanManage] = useState(false);
+  const [canReview, setCanReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const [runForm, setRunForm] = useState({ result: 'Passed', notes: '', defectIssueId: '' });
   const [recording, setRecording] = useState(false);
+
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const load = () => {
     if (!id) return;
@@ -51,7 +56,8 @@ export default function TestCaseDetail() {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       const role = JSON.parse(storedUser).role;
-      setCanManage(role === 'admin' || role === 'qa');
+      setCanManage(role === 'admin' || role === 'qa' || role === 'program_manager');
+      setCanReview(role === 'program_manager');
     }
   }, []);
 
@@ -80,6 +86,21 @@ export default function TestCaseDetail() {
     }
   };
 
+  const runReviewAction = async (path, body, successMessage) => {
+    setError('');
+    setReviewBusy(true);
+    try {
+      await apiFetch(`/test-cases/${path}`, { method: 'POST', body: JSON.stringify({ ids: [Number(id)], ...body }) });
+      showToast(successMessage, 'success');
+      setReviewComment('');
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setReviewBusy(false);
+    }
+  };
+
   if (loading) return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
   if (!testCase) {
     return (
@@ -102,10 +123,82 @@ export default function TestCaseDetail() {
             {' '}&middot; {testCase.status}
           </p>
         </div>
-        <ResultBadge result={testCase.lastResult} />
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+          <span className={styles.badge} style={REVIEW_BADGE_STYLE[testCase.reviewStatus]}>{testCase.reviewStatus}</span>
+          <ResultBadge result={testCase.lastResult} />
+          {canManage && testCase.reviewStatus !== REVIEW_STATUS.PENDING && (
+            <Link href={`/qa/test-cases/new?id=${testCase.id}`} className={styles.buttonSecondary}>
+              Edit
+            </Link>
+          )}
+        </div>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      <div className={styles.card}>
+        <h3 style={{ marginTop: 0, fontSize: '1rem' }}>PM Review</h3>
+        <p className={styles.issueMeta}>
+          {testCase.reviewStatus === REVIEW_STATUS.DRAFT && 'Not yet submitted. Submit it to the Program Manager - runs can be recorded once it is approved.'}
+          {testCase.reviewStatus === REVIEW_STATUS.PENDING &&
+            `Waiting for PM review - submitted by ${testCase.submittedForReviewByEmail || 'QA'} on ${formatDateTime(testCase.submittedForReviewAt)}.`}
+          {testCase.reviewStatus === REVIEW_STATUS.READY &&
+            (testCase.reviewedByEmail
+              ? `Approved by ${testCase.reviewedByEmail} on ${formatDateTime(testCase.reviewedAt)} - ready for execution.`
+              : 'Ready for execution.')}
+          {testCase.reviewStatus === REVIEW_STATUS.REJECTED &&
+            `Rejected by ${testCase.reviewedByEmail} on ${formatDateTime(testCase.reviewedAt)}. Update it and submit again.`}
+        </p>
+        {testCase.reviewComment && (
+          <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>
+            <strong>PM comment:</strong> {testCase.reviewComment}
+          </p>
+        )}
+
+        {canManage && SUBMITTABLE_REVIEW_STATUSES.includes(testCase.reviewStatus) && testCase.status !== 'Deprecated' && (
+          <button
+            className={`${styles.button} ${styles.buttonAccent}`}
+            type="button"
+            disabled={reviewBusy}
+            onClick={() => runReviewAction('submit-for-review', {}, 'Sent to PM for review')}
+          >
+            {reviewBusy ? 'Submitting...' : testCase.reviewStatus === REVIEW_STATUS.REJECTED ? 'Resubmit for PM Review' : 'Submit for PM Review'}
+          </button>
+        )}
+
+        {canReview && testCase.reviewStatus === REVIEW_STATUS.PENDING && (
+          <>
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="reviewComment">Comment (required to reject)</label>
+              <textarea
+                className={styles.textarea}
+                id="reviewComment"
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                placeholder="Feedback for QA..."
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button
+                className={`${styles.button} ${styles.buttonAccent}`}
+                type="button"
+                disabled={reviewBusy}
+                onClick={() => runReviewAction('approve', { comment: reviewComment || undefined }, 'Approved - Ready for Execution')}
+              >
+                Approve
+              </button>
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                disabled={reviewBusy || !reviewComment.trim()}
+                onClick={() => runReviewAction('reject', { comment: reviewComment }, 'Test case rejected')}
+              >
+                Reject
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       <div className={styles.card}>
         {testCase.description && (
@@ -130,7 +223,7 @@ export default function TestCaseDetail() {
         </div>
       </div>
 
-      {canManage && (
+      {canManage && testCase.reviewStatus === REVIEW_STATUS.READY && (
         <div className={styles.card}>
           <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Record a Run</h3>
           <form onSubmit={handleRecordRun}>

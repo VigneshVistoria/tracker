@@ -14,6 +14,24 @@ export enum TestCaseStatus {
   DEPRECATED = 'Deprecated',
 }
 
+// PM sign-off gate, separate from TestCaseStatus above (Active/Deprecated
+// is "retired or not", this is "has a PM approved the content"). QA
+// submits a Draft/Rejected case for review, Program Manager approves
+// (-> Ready for Execution) or rejects it with a required comment. Runs
+// can only be recorded on a Ready for Execution case (TestCasesService.
+// recordExecution()). Editing preconditions/steps/expected result on an
+// approved case sends it back to Draft (TestCasesService.update()), so a
+// run always executes exactly what the PM approved. Rows that existed
+// before this gate was added were backfilled to Ready for Execution
+// (confirmed with the user 2026-09-30) - see
+// migrations/2026-09-test-case-review.sql.
+export enum TestCaseReviewStatus {
+  DRAFT = 'Draft',
+  PENDING_REVIEW = 'Pending Review',
+  READY_FOR_EXECUTION = 'Ready for Execution',
+  REJECTED = 'Rejected',
+}
+
 @Entity('test_cases')
 export class TestCase {
   @PrimaryGeneratedColumn()
@@ -83,6 +101,31 @@ export class TestCase {
 
   @Column({ type: 'enum', enum: TestCaseStatus, default: TestCaseStatus.ACTIVE })
   status: TestCaseStatus;
+
+  @Column({ type: 'enum', enum: TestCaseReviewStatus, default: TestCaseReviewStatus.DRAFT })
+  reviewStatus: TestCaseReviewStatus;
+
+  // Who sent it for review most recently - the decision notification goes
+  // back to this user (not necessarily the creator).
+  @Column({ nullable: true })
+  submittedForReviewByUserId: number | null;
+
+  @Column({ nullable: true })
+  submittedForReviewByEmail: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  submittedForReviewAt: Date | null;
+
+  // The PM's latest decision. Kept (not cleared) when the case is edited
+  // or resubmitted, so QA can still see why it was last rejected.
+  @Column({ type: 'text', nullable: true })
+  reviewComment: string | null;
+
+  @Column({ nullable: true })
+  reviewedByEmail: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  reviewedAt: Date | null;
 
   @Column({ nullable: true })
   createdByUserId: number;

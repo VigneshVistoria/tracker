@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
-import { TestCase, TestCaseStatus } from './test-case.entity';
+import { TestCase, TestCaseReviewStatus, TestCaseStatus } from './test-case.entity';
 import { TestExecution, TestResult } from './test-execution.entity';
 import { CreateTestCaseDto } from './dto/create-test-case.dto';
 import { UpdateTestCaseDto } from './dto/update-test-case.dto';
@@ -13,6 +14,8 @@ import { IssueCategory } from '../issues/issue.entity';
 import { ProjectsService } from '../projects/projects.service';
 import { ModulesService } from '../modules/modules.service';
 import { PhasesService } from '../phases/phases.service';
+import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { UserRole } from '../users/user.entity';
 
 export interface BulkImportError {
   row: number;
@@ -33,6 +36,13 @@ const CSV_COLUMNS = [
   'phaseName',
 ];
 
+// The fields a PM actually signs off on - changing any of these on a Ready
+// for Execution case sends it back to Draft (see update()). Title,
+// priority, category, project/module/phase are metadata and don't.
+const REVIEWED_CONTENT_FIELDS = ['preconditions', 'steps', 'expectedResult'] as const;
+
+type ReviewActor = { id: number; email: string; role: UserRole };
+
 type ResolvedChain = {
   project: { id: number; name: string } | null;
   module: { id: number; name: string } | null;
@@ -49,6 +59,8 @@ export class TestCasesService {
     private projectsService: ProjectsService,
     private modulesService: ModulesService,
     private phasesService: PhasesService,
+    private auditLogService: AuditLogService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   findAll(tenantId: number, projectId?: number): Promise<TestCase[]> {
@@ -145,6 +157,23 @@ export class TestCasesService {
 
   async update(id: number, dto: UpdateTestCaseDto, tenantId: number): Promise<TestCase> {
     const testCase = await this.findOne(id, tenantId);
+
+    const changedContentFields = REVIEWED_CONTENT_FIELDS.filter(
+      // ?? '' so an empty textarea ('') vs a never-set column (null)
+      // doesn't count as a content change.
+      (field) => dto[field] !== undefined && (dto[field] ?? '') !== (testCase[field] ?? ''),
+    );
+    if (changedContentFields.length > 0) {
+      if (testCase.reviewStatus === TestCaseReviewStatus.PENDING_REVIEW) {
+        throw new BadRequestException(
+          'This test case is waiting for PM review - its preconditions, steps and expected result cannot be edited until the PM approves or rejects it.',
+        );
+      }
+      if (testCase.reviewStatus === TestCaseReviewStatus.READY_FOR_EXECUTION) {
+        testCase.reviewStatus = TestCaseReviewStatus.DRAFT;
+      }
+    }
+
     if (dto.title !== undefined) testCase.title = dto.title;
     if (dto.description !== undefined) testCase.description = dto.description;
     if (dto.preconditions !== undefined) testCase.preconditions = dto.preconditions;
@@ -176,6 +205,116 @@ export class TestCasesService {
     return this.testCasesRepository.save(testCase);
   }
 
+  // Loads every id in the request (tenant-scoped) or fails the whole
+  // request - review actions are all-or-nothing, so a selection that
+  // includes a bad row never half-applies.
+  private async findManyForReview(ids: number[], tenantId: number): Promise<TestCase[]> {
+    const uniqueIds = [...new Set(ids)];
+    const testCases = await this.testCasesRepository.find({ where: { id: In(uniqueIds), tenantId } });
+    if (testCases.length !== uniqueIds.length) {
+      const found = new Set(testCases.map((tc) => tc.id));
+      const missing = uniqueIds.filter((id) => !found.has(id));
+      throw new NotFoundException(`Test case(s) not found: ${missing.map((id) => `#${id}`).join(', ')}`);
+    }
+    return testCases;
+  }
+
+  private assertReviewStatus(testCases: TestCase[], allowed: TestCaseReviewStatus[], action: string): void {
+    const invalid = testCases.filter((tc) => !allowed.includes(tc.reviewStatus));
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `Only ${allowed.join(' or ')} test cases can be ${action} - ` +
+          invalid.map((tc) => `${tc.caseNumber || `#${tc.id}`} is ${tc.reviewStatus}`).join(', '),
+      );
+    }
+  }
+
+  private async recordReviewAudit(
+    testCases: TestCase[],
+    action: string,
+    actor: ReviewActor,
+    tenantId: number,
+    comment?: string | null,
+  ): Promise<void> {
+    await Promise.all(
+      testCases.map((tc) =>
+        this.auditLogService.record({
+          userId: actor.id,
+          userEmail: actor.email,
+          userRole: actor.role,
+          action,
+          tenantId,
+          entityType: 'TestCase',
+          entityId: tc.id,
+          details: comment ? { comment } : {},
+        }),
+      ),
+    );
+  }
+
+  // QA sends Draft/Rejected test cases to the Program Manager. Deprecated
+  // cases are refused - there's nothing to execute.
+  async submitForReview(ids: number[], actor: ReviewActor, tenantId: number): Promise<TestCase[]> {
+    const testCases = await this.findManyForReview(ids, tenantId);
+    this.assertReviewStatus(testCases, [TestCaseReviewStatus.DRAFT, TestCaseReviewStatus.REJECTED], 'submitted for review');
+    const deprecated = testCases.filter((tc) => tc.status === TestCaseStatus.DEPRECATED);
+    if (deprecated.length > 0) {
+      throw new BadRequestException(
+        `Deprecated test cases cannot be submitted for review: ${deprecated.map((tc) => tc.caseNumber || `#${tc.id}`).join(', ')}`,
+      );
+    }
+
+    const now = new Date();
+    for (const tc of testCases) {
+      tc.reviewStatus = TestCaseReviewStatus.PENDING_REVIEW;
+      tc.submittedForReviewByUserId = actor.id;
+      tc.submittedForReviewByEmail = actor.email;
+      tc.submittedForReviewAt = now;
+    }
+    const saved = await this.testCasesRepository.save(testCases);
+
+    await this.recordReviewAudit(saved, AuditActions.TEST_CASE_SUBMITTED_FOR_REVIEW, actor, tenantId);
+    this.eventEmitter.emit('testCases.submittedForReview', { testCases: saved, submittedByEmail: actor.email, tenantId });
+    return saved;
+  }
+
+  // Program Manager only (role gate in the controller). Approve ->
+  // Ready for Execution, comment optional; Reject -> Rejected, comment
+  // required so QA knows what to fix.
+  async decideReview(
+    ids: number[],
+    decision: 'approve' | 'reject',
+    comment: string | undefined,
+    actor: ReviewActor,
+    tenantId: number,
+  ): Promise<TestCase[]> {
+    const trimmedComment = comment?.trim() || null;
+    if (decision === 'reject' && !trimmedComment) {
+      throw new BadRequestException('A comment is required to reject a test case.');
+    }
+    const testCases = await this.findManyForReview(ids, tenantId);
+    this.assertReviewStatus(testCases, [TestCaseReviewStatus.PENDING_REVIEW], decision === 'approve' ? 'approved' : 'rejected');
+
+    const now = new Date();
+    for (const tc of testCases) {
+      tc.reviewStatus = decision === 'approve' ? TestCaseReviewStatus.READY_FOR_EXECUTION : TestCaseReviewStatus.REJECTED;
+      tc.reviewComment = trimmedComment;
+      tc.reviewedByEmail = actor.email;
+      tc.reviewedAt = now;
+    }
+    const saved = await this.testCasesRepository.save(testCases);
+
+    await this.recordReviewAudit(
+      saved,
+      decision === 'approve' ? AuditActions.TEST_CASE_APPROVED : AuditActions.TEST_CASE_REJECTED,
+      actor,
+      tenantId,
+      trimmedComment,
+    );
+    this.eventEmitter.emit('testCases.reviewed', { testCases: saved, decision, comment: trimmedComment, reviewedByEmail: actor.email });
+    return saved;
+  }
+
   findExecutions(testCaseId: number, tenantId: number): Promise<TestExecution[]> {
     return this.executionsRepository.find({ where: { testCaseId, tenantId }, order: { executedAt: 'DESC' } });
   }
@@ -188,6 +327,11 @@ export class TestCasesService {
     tenantId: number,
   ): Promise<TestExecution> {
     const testCase = await this.findOne(testCaseId, tenantId);
+    if (testCase.reviewStatus !== TestCaseReviewStatus.READY_FOR_EXECUTION) {
+      throw new BadRequestException(
+        `A run can only be recorded on a test case that is Ready for Execution - this one is ${testCase.reviewStatus}.`,
+      );
+    }
 
     const execution = this.executionsRepository.create({
       testCaseId: testCase.id,
@@ -406,8 +550,9 @@ export class TestCasesService {
         moduleName: tc.moduleName || '',
         phaseName: tc.phaseName || '',
         status: tc.status,
+        reviewStatus: tc.reviewStatus,
       })),
-      { header: true, columns: ['caseNumber', ...CSV_COLUMNS, 'status'] },
+      { header: true, columns: ['caseNumber', ...CSV_COLUMNS, 'status', 'reviewStatus'] },
     );
   }
 }

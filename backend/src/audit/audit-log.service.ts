@@ -93,6 +93,9 @@ export const AuditActions = {
   EVIDENCE_SUBMITTED: 'evidence_submitted',
   IMPERSONATION_STARTED: 'impersonation_started',
   IMPERSONATION_ENDED: 'impersonation_ended',
+  TEST_CASE_SUBMITTED_FOR_REVIEW: 'test_case_submitted_for_review',
+  TEST_CASE_APPROVED: 'test_case_approved',
+  TEST_CASE_REJECTED: 'test_case_rejected',
 } as const;
 
 export interface RecordAuditEntryInput {

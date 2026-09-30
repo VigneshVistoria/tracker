@@ -18,14 +18,17 @@ import { CreateTestCaseDto } from './dto/create-test-case.dto';
 import { UpdateTestCaseDto } from './dto/update-test-case.dto';
 import { CreateTestExecutionDto } from './dto/create-test-execution.dto';
 import { BulkImportTestCasesDto } from './dto/bulk-import-test-cases.dto';
+import { ApproveTestCasesDto, RejectTestCasesDto, SubmitTestCasesForReviewDto } from './dto/review-test-cases.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 
-// Viewing the catalog (and run history) is QA + Program Manager + Admin -
-// Program Manager gets read-only visibility, same relationship it has to
-// QA's other gated actions (qa-approve/qa-reject) elsewhere in this app.
-// Creating, bulk-importing, and recording a run are QA + Admin only.
+// Viewing the catalog (and run history) is QA + Program Manager + Admin.
+// Creating, editing, bulk-importing, submitting for review and recording
+// a run are also QA + Program Manager + Admin. Approving/rejecting a
+// submitted test case is Program Manager only (confirmed with the user
+// 2026-09-30) - Admin stays view-only on the review decision, same split
+// as Tasks.
 @Controller('test-cases')
 @UseGuards(JwtAuthGuard)
 export class TestCasesController {
@@ -48,8 +51,20 @@ export class TestCasesController {
 
   private async requireEditor(req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.QA) {
-      throw new ForbiddenException('Only QA and Admins can manage test cases.');
+    if (
+      currentUser.role !== UserRole.ADMIN &&
+      currentUser.role !== UserRole.QA &&
+      currentUser.role !== UserRole.PROGRAM_MANAGER
+    ) {
+      throw new ForbiddenException('Only QA, Program Managers, and Admins can manage test cases.');
+    }
+    return currentUser;
+  }
+
+  private async requireReviewer(req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (currentUser.role !== UserRole.PROGRAM_MANAGER) {
+      throw new ForbiddenException('Only Program Managers can approve or reject test cases.');
     }
     return currentUser;
   }
@@ -109,6 +124,24 @@ export class TestCasesController {
   async bulkImport(@Body() dto: BulkImportTestCasesDto, @Req() req: any) {
     const currentUser = await this.requireEditor(req);
     return this.testCasesService.bulkImport(dto.csvText, currentUser.id, currentUser.email, req.user.tenantId);
+  }
+
+  @Post('submit-for-review')
+  async submitForReview(@Body() dto: SubmitTestCasesForReviewDto, @Req() req: any) {
+    const currentUser = await this.requireEditor(req);
+    return this.testCasesService.submitForReview(dto.ids, currentUser, req.user.tenantId);
+  }
+
+  @Post('approve')
+  async approve(@Body() dto: ApproveTestCasesDto, @Req() req: any) {
+    const currentUser = await this.requireReviewer(req);
+    return this.testCasesService.decideReview(dto.ids, 'approve', dto.comment, currentUser, req.user.tenantId);
+  }
+
+  @Post('reject')
+  async reject(@Body() dto: RejectTestCasesDto, @Req() req: any) {
+    const currentUser = await this.requireReviewer(req);
+    return this.testCasesService.decideReview(dto.ids, 'reject', dto.comment, currentUser, req.user.tenantId);
   }
 
   @Patch(':id')

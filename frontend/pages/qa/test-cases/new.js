@@ -6,12 +6,20 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { CATEGORY_OPTIONS } from '../../../lib/status';
+import { REVIEW_STATUS } from '../../../lib/testCaseReview';
 
 const PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low'];
 
+// Doubles as the edit form when opened with ?id=<testCaseId> (linked from
+// the detail page's Edit button).
 export default function NewTestCase() {
   const router = useRouter();
   const { showToast } = useToast();
+  const editId = router.query.id ? Number(router.query.id) : null;
+  // The test case as loaded - PATCH can't clear Project/Module/Phase/
+  // Priority/Category back to empty, so once one of those is set the
+  // form's empty option is disabled rather than silently ignored.
+  const [original, setOriginal] = useState(null);
   const [projects, setProjects] = useState([]);
   const [modules, setModules] = useState([]);
   const [phases, setPhases] = useState([]);
@@ -33,6 +41,27 @@ export default function NewTestCase() {
   useEffect(() => {
     apiFetch('/projects').then(setProjects).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!editId) return;
+    apiFetch(`/test-cases/${editId}`)
+      .then((tc) => {
+        setOriginal(tc);
+        setForm({
+          title: tc.title || '',
+          description: tc.description || '',
+          preconditions: tc.preconditions || '',
+          steps: tc.steps || '',
+          expectedResult: tc.expectedResult || '',
+          priority: tc.priority || '',
+          category: tc.category || '',
+          projectId: tc.projectId ? String(tc.projectId) : '',
+          moduleId: tc.moduleId ? String(tc.moduleId) : '',
+          phaseId: tc.phaseId ? String(tc.phaseId) : '',
+        });
+      })
+      .catch((err) => setError(err.message));
+  }, [editId]);
 
   // Cascading Module/Phase, same pattern as Task Backlog/Create Defect
   // (pages/tasks/new-defect.js) - Project/Module/Phase stay optional here
@@ -75,6 +104,28 @@ export default function NewTestCase() {
     setError('');
     setSubmitting(true);
     try {
+      if (editId) {
+        const updated = await apiFetch(`/test-cases/${editId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: form.title,
+            description: form.description,
+            preconditions: form.preconditions,
+            steps: form.steps,
+            expectedResult: form.expectedResult,
+            priority: form.priority || undefined,
+            category: form.category || undefined,
+            projectId: form.projectId ? Number(form.projectId) : undefined,
+            moduleId: form.moduleId ? Number(form.moduleId) : undefined,
+            phaseId: form.phaseId ? Number(form.phaseId) : undefined,
+          }),
+        });
+        const sentBackToDraft =
+          original?.reviewStatus === REVIEW_STATUS.READY && updated.reviewStatus === REVIEW_STATUS.DRAFT;
+        showToast(sentBackToDraft ? 'Test case updated - back to Draft, submit it for PM review again' : 'Test case updated', 'success');
+        router.push(`/qa/test-cases/${editId}`);
+        return;
+      }
       const testCase = await apiFetch('/test-cases', {
         method: 'POST',
         body: JSON.stringify({
@@ -102,7 +153,14 @@ export default function NewTestCase() {
     <AppShell>
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>New Test Case</h1>
+          <h1 className={styles.pageTitle}>{editId ? `Edit ${original?.caseNumber || `#${editId}`}` : 'New Test Case'}</h1>
+          <p className={styles.pageSubtitle}>
+            {editId
+              ? original?.reviewStatus === REVIEW_STATUS.READY
+                ? 'This test case is approved. Changing its preconditions, steps or expected result sends it back to Draft for PM re-approval.'
+                : null
+              : 'New test cases start as Draft - submit them for PM review before they can be executed.'}
+          </p>
         </div>
       </div>
 
@@ -174,7 +232,7 @@ export default function NewTestCase() {
           <div className={styles.field}>
             <label className={styles.label} htmlFor="projectId">Project</label>
             <select className={styles.select} id="projectId" name="projectId" value={form.projectId} onChange={handleChange}>
-              <option value="">No project</option>
+              <option value="" disabled={!!original?.projectId}>No project</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
@@ -189,7 +247,7 @@ export default function NewTestCase() {
               onChange={handleChange}
               disabled={!form.projectId}
             >
-              <option value="">{form.projectId ? 'No module' : 'Pick a Project first'}</option>
+              <option value="" disabled={!!original?.moduleId}>{form.projectId ? 'No module' : 'Pick a Project first'}</option>
               {modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
@@ -204,7 +262,7 @@ export default function NewTestCase() {
               onChange={handleChange}
               disabled={!form.moduleId}
             >
-              <option value="">{form.moduleId ? 'No phase' : 'Pick a Module first'}</option>
+              <option value="" disabled={!!original?.phaseId}>{form.moduleId ? 'No phase' : 'Pick a Module first'}</option>
               {phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
@@ -212,7 +270,7 @@ export default function NewTestCase() {
           <div className={styles.field}>
             <label className={styles.label} htmlFor="priority">Priority</label>
             <select className={styles.select} id="priority" name="priority" value={form.priority} onChange={handleChange}>
-              <option value="">No priority</option>
+              <option value="" disabled={!!original?.priority}>No priority</option>
               {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
@@ -220,16 +278,16 @@ export default function NewTestCase() {
           <div className={styles.field}>
             <label className={styles.label} htmlFor="category">Category</label>
             <select className={styles.select} id="category" name="category" value={form.category} onChange={handleChange}>
-              <option value="">No category</option>
+              <option value="" disabled={!!original?.category}>No category</option>
               {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
           <div className={styles.actions}>
-            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submitting}>
-              {submitting ? 'Creating...' : 'Create Test Case'}
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submitting || (editId && !original)}>
+              {editId ? (submitting ? 'Saving...' : 'Save Changes') : submitting ? 'Creating...' : 'Create Test Case'}
             </button>
-            <Link href="/qa/test-cases" className={styles.buttonSecondary}>Cancel</Link>
+            <Link href={editId ? `/qa/test-cases/${editId}` : '/qa/test-cases'} className={styles.buttonSecondary}>Cancel</Link>
           </div>
         </form>
       </div>

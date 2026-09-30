@@ -5,6 +5,13 @@ import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch, apiDownload } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatDate';
+import { useToast } from '../../../lib/toast';
+import {
+  REVIEW_STATUS,
+  REVIEW_STATUS_OPTIONS,
+  REVIEW_BADGE_STYLE,
+  SUBMITTABLE_REVIEW_STATUSES,
+} from '../../../lib/testCaseReview';
 
 const STATUS_OPTIONS = ['Active', 'Deprecated'];
 
@@ -19,30 +26,54 @@ function ResultBadge({ result }) {
   return <span className={styles.badge} style={RESULT_BADGE_STYLE[result]}>{result}</span>;
 }
 
+function ReviewBadge({ status }) {
+  return <span className={styles.badge} style={REVIEW_BADGE_STYLE[status]}>{status}</span>;
+}
+
 export default function TestCasesList() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [testCases, setTestCases] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [canManage, setCanManage] = useState(false);
+  // Program Manager only - approve/reject (backend requireReviewer()).
+  const [canReview, setCanReview] = useState(false);
 
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [reviewFilter, setReviewFilter] = useState('');
+
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectComment, setRejectComment] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = () =>
+    apiFetch('/test-cases')
+      .then(setTestCases)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
       const role = JSON.parse(storedUser).role;
-      setCanManage(role === 'admin' || role === 'qa');
+      setCanManage(role === 'admin' || role === 'qa' || role === 'program_manager');
+      setCanReview(role === 'program_manager');
     }
     apiFetch('/projects').then(setProjects).catch(() => {});
-    apiFetch('/test-cases')
-      .then(setTestCases)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+    load();
   }, []);
+
+  // ?review=Pending%20Review deep-links straight to the PM's queue.
+  useEffect(() => {
+    if (router.isReady && REVIEW_STATUS_OPTIONS.includes(router.query.review)) {
+      setReviewFilter(router.query.review);
+    }
+  }, [router.isReady, router.query.review]);
 
   const filteredTestCases = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -52,9 +83,67 @@ export default function TestCasesList() {
       }
       if (projectFilter && String(tc.projectId) !== projectFilter) return false;
       if (statusFilter && tc.status !== statusFilter) return false;
+      if (reviewFilter && tc.reviewStatus !== reviewFilter) return false;
       return true;
     });
-  }, [testCases, search, projectFilter, statusFilter]);
+  }, [testCases, search, projectFilter, statusFilter, reviewFilter]);
+
+  const pendingCount = testCases.filter((tc) => tc.reviewStatus === REVIEW_STATUS.PENDING).length;
+
+  // Only rows the current user can actually act on are selectable: Draft/
+  // Rejected (submit) for editors, Pending Review (approve/reject) for PM.
+  const isSelectable = (tc) =>
+    (canManage && SUBMITTABLE_REVIEW_STATUSES.includes(tc.reviewStatus) && tc.status !== 'Deprecated') ||
+    (canReview && tc.reviewStatus === REVIEW_STATUS.PENDING);
+  const selectableVisible = filteredTestCases.filter(isSelectable);
+  const selectedCases = testCases.filter((tc) => selectedIds.includes(tc.id));
+  const selectedSubmittable = selectedCases.filter((tc) => SUBMITTABLE_REVIEW_STATUSES.includes(tc.reviewStatus));
+  const selectedPending = selectedCases.filter((tc) => tc.reviewStatus === REVIEW_STATUS.PENDING);
+  const allVisibleSelected = selectableVisible.length > 0 && selectableVisible.every((tc) => selectedIds.includes(tc.id));
+
+  const toggleSelected = (id) =>
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const toggleAllVisible = () =>
+    setSelectedIds(allVisibleSelected ? [] : selectableVisible.map((tc) => tc.id));
+
+  const runReviewAction = async (path, ids, body, successMessage) => {
+    setBusy(true);
+    setError('');
+    try {
+      await apiFetch(`/test-cases/${path}`, { method: 'POST', body: JSON.stringify({ ids, ...body }) });
+      showToast(successMessage, 'success');
+      setSelectedIds([]);
+      setRejecting(false);
+      setRejectComment('');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSubmitForReview = () =>
+    runReviewAction(
+      'submit-for-review',
+      selectedSubmittable.map((tc) => tc.id),
+      {},
+      `${selectedSubmittable.length} test case(s) sent to PM for review`,
+    );
+  const handleApprove = () =>
+    runReviewAction(
+      'approve',
+      selectedPending.map((tc) => tc.id),
+      {},
+      `${selectedPending.length} test case(s) approved - Ready for Execution`,
+    );
+  const handleReject = () =>
+    runReviewAction(
+      'reject',
+      selectedPending.map((tc) => tc.id),
+      { comment: rejectComment },
+      `${selectedPending.length} test case(s) rejected`,
+    );
 
   const handleExport = async () => {
     setError('');
@@ -91,6 +180,15 @@ export default function TestCasesList() {
         </div>
       </div>
 
+      {canReview && pendingCount > 0 && reviewFilter !== REVIEW_STATUS.PENDING && (
+        <div className={styles.card} role="status" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <span>{pendingCount} test case(s) waiting for your review.</span>
+          <button className={styles.buttonSecondary} type="button" onClick={() => setReviewFilter(REVIEW_STATUS.PENDING)}>
+            Show Pending Review
+          </button>
+        </div>
+      )}
+
       <div className={styles.card} style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div className={styles.field} style={{ margin: 0, minWidth: 220 }}>
           <label className={styles.label} htmlFor="tcSearch">Search</label>
@@ -116,7 +214,62 @@ export default function TestCasesList() {
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        <div className={styles.field} style={{ margin: 0, minWidth: 180 }}>
+          <label className={styles.label} htmlFor="tcReviewFilter">Review Status</label>
+          <select className={styles.select} id="tcReviewFilter" value={reviewFilter} onChange={(e) => setReviewFilter(e.target.value)}>
+            <option value="">All review statuses</option>
+            {REVIEW_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
       </div>
+
+      {selectedIds.length > 0 && (
+        <div className={styles.card} role="region" aria-label="Actions for selected test cases">
+          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>{selectedIds.length} selected</span>
+            {canManage && selectedSubmittable.length > 0 && (
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={busy} onClick={handleSubmitForReview}>
+                Submit {selectedSubmittable.length} for PM Review
+              </button>
+            )}
+            {canReview && selectedPending.length > 0 && !rejecting && (
+              <>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={busy} onClick={handleApprove}>
+                  Approve {selectedPending.length}
+                </button>
+                <button className={styles.buttonSecondary} type="button" disabled={busy} onClick={() => setRejecting(true)}>
+                  Reject {selectedPending.length}
+                </button>
+              </>
+            )}
+            <button className={styles.buttonSecondary} type="button" disabled={busy} onClick={() => { setSelectedIds([]); setRejecting(false); }}>
+              Clear selection
+            </button>
+          </div>
+          {rejecting && (
+            <div style={{ marginTop: 'var(--space-3)' }}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="bulkRejectComment">Reason for rejection (required)</label>
+                <textarea
+                  className={styles.textarea}
+                  id="bulkRejectComment"
+                  value={rejectComment}
+                  onChange={(e) => setRejectComment(e.target.value)}
+                  placeholder="What should QA fix before resubmitting?"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <button className={styles.button} type="button" disabled={busy || !rejectComment.trim()} onClick={handleReject}>
+                  {busy ? 'Working...' : `Confirm Reject (${selectedPending.length})`}
+                </button>
+                <button className={styles.buttonSecondary} type="button" disabled={busy} onClick={() => setRejecting(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <div className={styles.error}>{error}</div>}
       {loading && <div className={styles.empty}>Loading...</div>}
@@ -141,6 +294,17 @@ export default function TestCasesList() {
           <table className={styles.table}>
             <thead>
               <tr>
+                {(canManage || canReview) && (
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all actionable test cases shown"
+                      checked={allVisibleSelected}
+                      disabled={selectableVisible.length === 0}
+                      onChange={toggleAllVisible}
+                    />
+                  </th>
+                )}
                 <th>Case #</th>
                 <th>Title</th>
                 <th>Project</th>
@@ -149,6 +313,7 @@ export default function TestCasesList() {
                 <th>Priority</th>
                 <th>Category</th>
                 <th>Status</th>
+                <th>Review</th>
                 <th>Last Result</th>
                 <th>Last Run</th>
               </tr>
@@ -156,6 +321,18 @@ export default function TestCasesList() {
             <tbody>
               {filteredTestCases.map((tc) => (
                 <tr key={tc.id} onClick={() => router.push(`/qa/test-cases/${tc.id}`)} style={{ cursor: 'pointer' }}>
+                  {(canManage || canReview) && (
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {isSelectable(tc) && (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${tc.caseNumber || `#${tc.id}`}`}
+                          checked={selectedIds.includes(tc.id)}
+                          onChange={() => toggleSelected(tc.id)}
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className={styles.issueId}>{tc.caseNumber || `#${tc.id}`}</td>
                   <td className={styles.tableTitleCell}>{tc.title}</td>
                   <td>{tc.projectName || '—'}</td>
@@ -164,6 +341,7 @@ export default function TestCasesList() {
                   <td>{tc.priority || '—'}</td>
                   <td>{tc.category || '—'}</td>
                   <td>{tc.status}</td>
+                  <td><ReviewBadge status={tc.reviewStatus} /></td>
                   <td><ResultBadge result={tc.lastResult} /></td>
                   <td>{formatDate(tc.lastExecutedAt)}</td>
                 </tr>

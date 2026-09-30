@@ -1,0 +1,10 @@
+BEGIN;
+ALTER TABLE "test_cases" DROP COLUMN "reviewedAt";
+ALTER TABLE "test_cases" DROP COLUMN "reviewedByEmail";
+ALTER TABLE "test_cases" DROP COLUMN "reviewComment";
+ALTER TABLE "test_cases" DROP COLUMN "submittedForReviewAt";
+ALTER TABLE "test_cases" DROP COLUMN "submittedForReviewByEmail";
+ALTER TABLE "test_cases" DROP COLUMN "submittedForReviewByUserId";
+ALTER TABLE "test_cases" DROP COLUMN "reviewStatus";
+DROP TYPE "public"."test_cases_reviewstatus_enum";
+COMMIT;
