@@ -75,6 +75,8 @@ export const AuditActions = {
   TASK_REASSIGNED: 'task_reassigned',
   TASK_DEPENDENCY_TICKET_CREATED: 'task_dependency_ticket_created',
   TASK_DEPENDENCY_TICKET_RESOLVED: 'task_dependency_ticket_resolved',
+  TASK_BLOCKING_DEFECT_LINKED: 'task_blocking_defect_linked',
+  TASK_BLOCKING_DEFECT_UNLINKED: 'task_blocking_defect_unlinked',
   KPI_CONFIG_UPDATED: 'kpi_config_updated',
   TASK_QA_SUBMITTED: 'task_qa_submitted',
   TASK_QA_APPROVED: 'task_qa_approved',

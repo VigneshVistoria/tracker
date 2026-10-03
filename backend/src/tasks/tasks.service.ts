@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
+import { TaskBlockingDefect } from './task-blocking-defect.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -165,9 +166,20 @@ const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalat
 // A linked defect blocking a parent task needs a stricter bar: if QA
 // rejects the linked defect itself and nobody has resubmitted it yet, it
 // must keep blocking the parent - it is not resolved just because it's
-// momentarily sitting at 'Failed'. Only an actual QA pass, or the PM
-// closing it as Junk, lifts the block.
-const LINKED_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk'];
+// momentarily sitting at 'Failed'. Only an actual QA pass, the PM
+// closing it as Junk, or PM/Admin force-Closing it (closeTask() - added
+// 2026-10, confirmed with the user, so a Closed defect can't block
+// forever) lifts the block. Hold still blocks. Applies to both
+// spun-off (parentTaskId) and manually linked (TaskBlockingDefect)
+// defects.
+const LINKED_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk', 'Closed'];
+
+// Who can add/remove a TaskBlockingDefect link (confirmed with the user
+// 2026-10) - QA scoped to their assigned projects, Program Manager
+// tenant-wide. Admin stays view-only, same as the rest of Tasks.
+export const ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS: UserRole[] = [UserRole.QA, UserRole.PROGRAM_MANAGER];
+
+type UserWithProjects = { id: number; email?: string; role: UserRole; projects?: { id: number }[] };
 
 // How far out ProjectTask.qaReviewDueDate is set on every QA/Peer Review
 // submission (TasksService.computeQaReviewDueDate() below) - a fixed
@@ -187,6 +199,8 @@ export class TasksService {
     private qaReviewsRepository: Repository<TaskQaReview>,
     @InjectRepository(TaskDefectArtifact)
     private defectArtifactsRepository: Repository<TaskDefectArtifact>,
+    @InjectRepository(TaskBlockingDefect)
+    private blockingDefectsRepository: Repository<TaskBlockingDefect>,
     private projectsService: ProjectsService,
     private modulesService: ModulesService,
     private phasesService: PhasesService,
@@ -200,8 +214,11 @@ export class TasksService {
   // the combined task+ticket detail page) and to any QA user once the
   // task has at least one QA review round (Stage 4/5/6, so QA can open
   // the task from the qa-queue even though they're neither the assignee
-  // nor its creator).
-  async canView(task: ProjectTask, user: { id: number; role: UserRole }): Promise<boolean> {
+  // nor its creator). QA can also open any task in a project they're
+  // assigned to (added 2026-10 for Link Blocking Defect - confirmed with
+  // the user), which requires the caller to pass a user loaded with
+  // `projects` (UsersService.findById does).
+  async canView(task: ProjectTask, user: UserWithProjects): Promise<boolean> {
     if (LEADERSHIP_ROLES.includes(user.role)) {
       return true;
     }
@@ -212,6 +229,9 @@ export class TasksService {
       where: { parentTaskId: task.id, ownerUserId: user.id },
     });
     if (ownedTicket) {
+      return true;
+    }
+    if (user.role === UserRole.QA && this.isInAssignedProject(task, user)) {
       return true;
     }
     if (user.role === UserRole.QA) {
@@ -326,19 +346,33 @@ export class TasksService {
 
   // Same shape as assertNoOpenDependencyTickets() above, and coexists
   // with it - either an open Dependency Ticket OR an open linked Defect
-  // independently blocks resubmission. Deliberately QA-only for the same
-  // reason: called from TaskQaReviewsService.submit() alone, never from
-  // PeerReviewsService.submit().
+  // independently blocks resubmission. "Linked" covers both defects spun
+  // off this task's QA rejection (parentTaskId) and existing defects QA/PM
+  // linked as blocking (TaskBlockingDefect). Deliberately QA-only for the
+  // same reason: called from TaskQaReviewsService.submit() alone, never
+  // from PeerReviewsService.submit() (confirmed with the user 2026-10).
   async assertNoOpenLinkedDefects(taskId: number, tenantId: number): Promise<void> {
-    const openDefects = await this.tasksRepository.find({
-      where: { parentTaskId: taskId, tenantId, isDefect: true, status: Not(In(LINKED_DEFECT_RESOLVED_STATUSES)) },
-    });
+    const openDefects = await this.findOpenBlockingDefects(taskId, tenantId);
     if (openDefects.length === 0) {
       return;
     }
-    const label = openDefects.length === 1 ? 'defect' : 'defects';
+    const label = openDefects.length === 1 ? 'Defect' : 'Defects';
     const ids = openDefects.map((d) => `#${d.id}`).join(', ');
-    throw new BadRequestException(`Cannot submit for QA - resolve the open linked ${label} ${ids} first.`);
+    throw new BadRequestException(`Cannot submit for QA - blocked by unresolved ${label} ${ids}. Resolve it first.`);
+  }
+
+  private async findOpenBlockingDefects(taskId: number, tenantId: number): Promise<ProjectTask[]> {
+    const links = await this.blockingDefectsRepository.find({ where: { taskId, tenantId } });
+    const linkedIds = links.map((l) => l.defectId);
+    const where: Record<string, any>[] = [{ parentTaskId: taskId }];
+    if (linkedIds.length > 0) {
+      where.push({ id: In(linkedIds) });
+    }
+    const defects = await this.tasksRepository.find({
+      where: where.map((w) => ({ ...w, tenantId, isDefect: true, status: Not(In(LINKED_DEFECT_RESOLVED_STATUSES)) })),
+      order: { id: 'ASC' },
+    });
+    return defects;
   }
 
   // Combined task detail view - every defect ever spun off this task via
@@ -348,6 +382,137 @@ export class TasksService {
   // pattern as TaskDependencyTicketsService.findForTask().
   findLinkedDefectsForTask(parentTaskId: number, tenantId: number): Promise<ProjectTask[]> {
     return this.tasksRepository.find({ where: { parentTaskId, tenantId }, order: { createdAt: 'DESC' } });
+  }
+
+  private isInAssignedProject(task: ProjectTask, user: UserWithProjects): boolean {
+    return (user.projects || []).some((p) => p.id === task.projectId);
+  }
+
+  // QA is scoped to their assigned projects; Program Manager is
+  // tenant-wide. Caller has already checked ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS.
+  private assertCanLinkWithin(task: ProjectTask, user: UserWithProjects): void {
+    if (user.role === UserRole.QA && !this.isInAssignedProject(task, user)) {
+      throw new ForbiddenException(`Task #${task.id} is not in a project you're assigned to.`);
+    }
+  }
+
+  // Defects QA/PM manually linked as blocking this task (not the
+  // parentTaskId spun-off ones - those come from findLinkedDefectsForTask()).
+  async findBlockingDefectsForTask(taskId: number, tenantId: number) {
+    const links = await this.blockingDefectsRepository.find({ where: { taskId, tenantId }, order: { createdAt: 'DESC' } });
+    const defects = await this.findManyByIds(links.map((l) => l.defectId), tenantId);
+    const defectById = new Map(defects.map((d) => [d.id, d]));
+    return links
+      .filter((l) => defectById.has(l.defectId))
+      .map((l) => {
+        const d = defectById.get(l.defectId);
+        return {
+          id: d.id,
+          title: d.title,
+          status: d.status,
+          assigneeEmail: d.assigneeEmail,
+          linkedByEmail: l.linkedByEmail,
+          linkedAt: l.createdAt,
+        };
+      });
+  }
+
+  // Reverse view for a defect's own page ("Blocks Task #70") - the task it
+  // was spun off (parentTaskId, if any) plus every task it's been
+  // manually linked to.
+  async findTasksBlockedByDefect(defect: ProjectTask, tenantId: number) {
+    const links = await this.blockingDefectsRepository.find({ where: { defectId: defect.id, tenantId } });
+    const taskIds = links.map((l) => l.taskId);
+    if (defect.parentTaskId) {
+      taskIds.push(defect.parentTaskId);
+    }
+    const tasks = await this.findManyByIds([...new Set(taskIds)], tenantId);
+    return tasks
+      .sort((a, b) => a.id - b.id)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status,
+        linkType: t.id === defect.parentTaskId ? 'spun-off' : 'manual',
+      }));
+  }
+
+  // Options for the link pickers - unresolved defects (task page) or
+  // open, non-defect tasks (defect page), within the user's scope.
+  async findBlockingLinkCandidates(kind: 'defects' | 'tasks', user: UserWithProjects, tenantId: number) {
+    const where: Record<string, any> =
+      kind === 'defects'
+        ? { tenantId, isDefect: true, status: Not(In(LINKED_DEFECT_RESOLVED_STATUSES)) }
+        : { tenantId, isDefect: false, status: Not(In([...COMPLETED_STATUSES, 'Closed'])) };
+    if (user.role === UserRole.QA) {
+      const projectIds = (user.projects || []).map((p) => p.id);
+      if (projectIds.length === 0) return [];
+      where.projectId = In(projectIds);
+    }
+    const rows = await this.tasksRepository.find({ where, order: { id: 'DESC' } });
+    return rows.map((t) => ({ id: t.id, title: t.title, status: t.status, projectName: t.projectName }));
+  }
+
+  async linkBlockingDefect(taskId: number, defectId: number, user: UserWithProjects, tenantId: number): Promise<TaskBlockingDefect> {
+    const task = await this.findOne(taskId, tenantId);
+    const defect = await this.findOne(defectId, tenantId);
+    if (task.isDefect) {
+      throw new BadRequestException('A blocking defect can only be linked to a regular task, not to another defect.');
+    }
+    if (!defect.isDefect) {
+      throw new BadRequestException(`#${defect.id} is not a Defect.`);
+    }
+    this.assertCanLinkWithin(task, user);
+    this.assertCanLinkWithin(defect, user);
+    if (LINKED_DEFECT_RESOLVED_STATUSES.includes(defect.status)) {
+      throw new BadRequestException(`Defect #${defect.id} is already resolved (${defect.status}) - it can't block a task.`);
+    }
+    if (defect.parentTaskId === task.id) {
+      throw new BadRequestException(`Defect #${defect.id} was raised from this task and already blocks it.`);
+    }
+    const existing = await this.blockingDefectsRepository.findOne({ where: { taskId, defectId, tenantId } });
+    if (existing) {
+      throw new BadRequestException(`Defect #${defect.id} is already linked to this task.`);
+    }
+
+    const saved = await this.blockingDefectsRepository.save(
+      this.blockingDefectsRepository.create({
+        tenantId,
+        taskId,
+        defectId,
+        linkedByUserId: user.id,
+        linkedByEmail: user.email,
+      }),
+    );
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: AuditActions.TASK_BLOCKING_DEFECT_LINKED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: taskId,
+      details: { defectId },
+    });
+    return saved;
+  }
+
+  async unlinkBlockingDefect(taskId: number, defectId: number, user: UserWithProjects, tenantId: number): Promise<void> {
+    const task = await this.findOne(taskId, tenantId);
+    this.assertCanLinkWithin(task, user);
+    const existing = await this.blockingDefectsRepository.findOne({ where: { taskId, defectId, tenantId } });
+    if (!existing) {
+      throw new NotFoundException(`Defect #${defectId} is not linked to this task.`);
+    }
+    await this.blockingDefectsRepository.remove(existing);
+    await this.auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      action: AuditActions.TASK_BLOCKING_DEFECT_UNLINKED,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: taskId,
+      details: { defectId },
+    });
   }
 
   // Stable sort (Array.prototype.sort's guaranteed since ES2019) - tasks
@@ -1344,8 +1509,14 @@ export class TasksService {
     // locks below (which wouldn't catch a QA raiser setting either field
     // for the *first* time, before the Assignee gets to it).
     const isDefectRaiser = task.isDefect && task.createdByUserId === currentUser.id;
+    // A Developer/Designer/DevOps assigned to the task may edit its
+    // Description (only - Project/Module/Phase/Title stay PM-only).
+    const isDeveloperAssignee =
+      DEVELOPER_EQUIVALENT_ROLES.includes(currentUser.role) && task.assigneeUserId === currentUser.id;
     if (!canMutate) {
-      const attemptedBacklogField = BACKLOG_FIELDS.find((field) => dto[field] !== undefined);
+      const attemptedBacklogField = BACKLOG_FIELDS.find(
+        (field) => dto[field] !== undefined && !(field === 'description' && isDeveloperAssignee),
+      );
       if (attemptedBacklogField && !isDefectRaiser) {
         throw new ForbiddenException('Only Program Manager can edit Project, Module, Phase, or Description.');
       }

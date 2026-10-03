@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   ParseIntPipe,
@@ -10,8 +11,9 @@ import {
   UseGuards,
   Req,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
-import { TasksService } from './tasks.service';
+import { TasksService, ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS } from './tasks.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { CreateDefectTaskDto } from './dto/create-defect-task.dto';
 import { ReassignEscalatedTaskDto } from './dto/reassign-escalated-task.dto';
@@ -21,6 +23,7 @@ import { AssignTaskDto } from './dto/assign-task.dto';
 import { BulkAssignTasksDto } from './dto/bulk-assign-tasks.dto';
 import { SetPeerReviewFlagDto } from './dto/set-peer-review-flag.dto';
 import { SetQaReviewDueDateDto } from './dto/set-qa-review-due-date.dto';
+import { LinkBlockingDefectDto } from './dto/link-blocking-defect.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
@@ -203,6 +206,20 @@ export class TasksController {
     });
   }
 
+  // Picker options for Link Blocking Defect - `kind=defects` (task page)
+  // or `kind=tasks` (defect page). Declared before ':id' for routing.
+  @Get('blocking-link-candidates')
+  async findBlockingLinkCandidates(@Query('kind') kind: string, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA and Program Manager can link blocking defects.');
+    }
+    if (kind !== 'defects' && kind !== 'tasks') {
+      throw new BadRequestException("kind must be 'defects' or 'tasks'.");
+    }
+    return this.tasksService.findBlockingLinkCandidates(kind, currentUser, req.user.tenantId);
+  }
+
   @Get(':id')
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -236,6 +253,55 @@ export class TasksController {
       throw new ForbiddenException('You do not have access to this task.');
     }
     return this.tasksService.findLinkedDefectsForTask(id, req.user.tenantId);
+  }
+
+  // Existing defects QA/PM linked as blocking this task - same view gate
+  // as linked-defects above.
+  @Get(':id/blocking-defects')
+  async findBlockingDefects(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    const task = await this.tasksService.findOne(id, req.user.tenantId);
+    if (!(await this.tasksService.canView(task, currentUser))) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    return this.tasksService.findBlockingDefectsForTask(id, req.user.tenantId);
+  }
+
+  // Reverse of the above, for a defect's own page ("Blocks Task #70").
+  @Get(':id/blocked-tasks')
+  async findBlockedTasks(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    const defect = await this.tasksService.findOne(id, req.user.tenantId);
+    if (!(await this.tasksService.canView(defect, currentUser))) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    if (!defect.isDefect) {
+      return [];
+    }
+    return this.tasksService.findTasksBlockedByDefect(defect, req.user.tenantId);
+  }
+
+  @Post(':id/blocking-defects')
+  async linkBlockingDefect(@Param('id', ParseIntPipe) id: number, @Body() dto: LinkBlockingDefectDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA and Program Manager can link blocking defects.');
+    }
+    return this.tasksService.linkBlockingDefect(id, dto.defectId, currentUser, req.user.tenantId);
+  }
+
+  @Delete(':id/blocking-defects/:defectId')
+  async unlinkBlockingDefect(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('defectId', ParseIntPipe) defectId: number,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA and Program Manager can unlink blocking defects.');
+    }
+    await this.tasksService.unlinkBlockingDefect(id, defectId, currentUser, req.user.tenantId);
+    return { ok: true };
   }
 
   @Post()

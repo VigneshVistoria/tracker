@@ -342,7 +342,17 @@ table: full chain, description, assignee, `estimatedHours` (locked after
 first entry), `actualHours` (set on QA submit, feeds the KPI module),
 dueDate, `completedAt` (set the moment QA approves - status → `Pass`),
 status (locked until estimatedHours+dueDate set). No soft-delete.
-Leadership sees all tasks; others see only their own.
+Leadership sees all tasks; others see only their own (QA can also open
+any task in a project they're assigned to).
+
+**Blocking defects** — `task_blocking_defects` table: QA (own projects)
+or Program Manager (tenant-wide) links an existing Defect as blocking a
+Task (`POST/DELETE /tasks/:id/blocking-defects[/:defectId]`, pickers via
+`GET /tasks/blocking-link-candidates?kind=defects|tasks`, reverse view
+`GET /tasks/:id/blocked-tasks`). Feeds the same QA-submit gate as
+spun-off defects (`parentTaskId`): `assertNoOpenLinkedDefects()` blocks
+QA submission while any is not Pass/Junk/Closed. Peer Review submission
+is not gated. Migration: `2026-10-task-blocking-defects.sql` (+ `.down.sql`).
 
 **`task-dependency-tickets`** / **`task-qa-reviews`** — task-lifecycle
 extensions: cross-task dependency tickets (`status`: open/resolved,

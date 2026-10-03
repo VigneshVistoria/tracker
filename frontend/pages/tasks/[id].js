@@ -235,8 +235,8 @@ export default function TaskDetailPage() {
   const [editingAssignee, setEditingAssignee] = useState(false);
   const [assigneeSelection, setAssigneeSelection] = useState(null);
   const [savingAssignee, setSavingAssignee] = useState(false);
-  // Task Description edit (Program Manager only, same canManage gate as
-  // Edit Assignee above) - allowed at any status, no stage-based lock,
+  // Task Description edit (Program Manager, or the task's Developer/
+  // Designer/DevOps Assignee - see canEditDescription) - allowed at any status, no stage-based lock,
   // via the general PATCH /tasks/:id (TasksService.update() already lets
   // PM through regardless of status; the audit entry it writes already
   // records the full previous task alongside the submitted payload, so
@@ -276,6 +276,15 @@ export default function TaskDetailPage() {
   // linkedDefectArtifacts is ONE shared set of evidence applied to every
   // defect in the batch, entered once rather than per defect.
   const [linkedDefects, setLinkedDefects] = useState([]);
+  // Existing defects QA/PM linked as blocking this task (TaskBlockingDefect),
+  // and - on a defect's own page - the tasks it blocks. Separate from
+  // linkedDefects above (spun off a QA rejection), but both feed the same
+  // submit gate.
+  const [blockingDefects, setBlockingDefects] = useState([]);
+  const [blockedTasks, setBlockedTasks] = useState([]);
+  const [blockingCandidates, setBlockingCandidates] = useState([]);
+  const [blockingSelection, setBlockingSelection] = useState(null);
+  const [savingBlockingLink, setSavingBlockingLink] = useState(false);
   const [createLinkedDefect, setCreateLinkedDefect] = useState(false);
   const [linkedDefectDrafts, setLinkedDefectDrafts] = useState([{ title: '', description: '', assignee: null }]);
   const [linkedDefectArtifacts, setLinkedDefectArtifacts] = useState([]);
@@ -339,6 +348,40 @@ export default function TaskDetailPage() {
     apiFetch(`/tasks/${id}/linked-defects`).then(setLinkedDefects).catch(() => {});
   };
 
+  const loadBlockingLinks = () => {
+    apiFetch(`/tasks/${id}/blocking-defects`).then(setBlockingDefects).catch(() => {});
+    apiFetch(`/tasks/${id}/blocked-tasks`).then(setBlockedTasks).catch(() => {});
+  };
+
+  // On a regular task, pick a Defect to link; on a defect, pick a Task it
+  // blocks. Either way the link is stored task -> defect.
+  const handleLinkBlocking = async () => {
+    if (!blockingSelection) return;
+    setSavingBlockingLink(true);
+    const taskId = task.isDefect ? blockingSelection.id : task.id;
+    const defectId = task.isDefect ? task.id : blockingSelection.id;
+    try {
+      await apiFetch(`/tasks/${taskId}/blocking-defects`, { method: 'POST', body: JSON.stringify({ defectId }) });
+      showToast(task.isDefect ? `Now blocks Task #${taskId}` : `Blocked by Defect #${defectId}`, 'success');
+      setBlockingSelection(null);
+      loadBlockingLinks();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSavingBlockingLink(false);
+    }
+  };
+
+  const handleUnlinkBlocking = async (taskId, defectId) => {
+    try {
+      await apiFetch(`/tasks/${taskId}/blocking-defects/${defectId}`, { method: 'DELETE' });
+      showToast(`Unlinked Defect #${defectId} from Task #${taskId}`, 'success');
+      loadBlockingLinks();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const handleResolveTicket = async (ticketId) => {
     setError('');
     try {
@@ -396,8 +439,10 @@ export default function TaskDetailPage() {
       apiFetch(`/task-dependency-tickets?parentTaskId=${id}`),
       apiFetch(`/tasks/${id}/qa-reviews`),
       apiFetch(`/tasks/${id}/linked-defects`),
+      apiFetch(`/tasks/${id}/blocking-defects`),
+      apiFetch(`/tasks/${id}/blocked-tasks`),
     ])
-      .then(([t, ticketList, reviewList, linkedDefectList]) => {
+      .then(([t, ticketList, reviewList, linkedDefectList, blockingDefectList, blockedTaskList]) => {
         setTask(t);
         setEstimatedHours(t.estimatedHours ?? '');
         setDueDate(t.dueDate ?? '');
@@ -415,6 +460,8 @@ export default function TaskDetailPage() {
         setTickets(ticketList);
         setQaReviews(reviewList);
         setLinkedDefects(linkedDefectList);
+        setBlockingDefects(blockingDefectList);
+        setBlockedTasks(blockedTaskList);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -425,6 +472,15 @@ export default function TaskDetailPage() {
     if (!task?.isDefect) return;
     apiFetch(`/tasks/${task.id}/defect-artifacts`).then(setDefectArtifacts).catch(() => setDefectArtifacts([]));
   }, [task?.id, task?.isDefect]);
+
+  // Backend mirror: ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS (TasksService).
+  const canLinkBlocking = !!user && ['qa', 'program_manager'].includes(user.role);
+  useEffect(() => {
+    if (!task || !canLinkBlocking) return;
+    apiFetch(`/tasks/blocking-link-candidates?kind=${task.isDefect ? 'tasks' : 'defects'}`)
+      .then((rows) => setBlockingCandidates(rows.map((r) => ({ id: r.id, name: `#${r.id} - ${r.title} (${r.status})` }))))
+      .catch(() => setBlockingCandidates([]));
+  }, [task?.id, task?.isDefect, canLinkBlocking]);
 
   // QA-rejection draft (comment + linked-defect batch) - mirrored into
   // sessionStorage, not just component state, so an accidental reload or
@@ -518,6 +574,9 @@ export default function TaskDetailPage() {
   // Backend mirror: TasksService.canEdit()'s isDefect/createdByUserId
   // branch - only Program Manager or the QA who raised this defect may
   // edit its Project/Module/Phase/Description.
+  // Description: PM, or a Developer/Designer/DevOps assigned to the task
+  // (mirrors the isDeveloperAssignee exception in TasksService.update()).
+  const canEditDescription = canManage || (isAssignee && DEVELOPER_EQUIVALENT_ROLES.includes(user.role));
   const canEditDefectScope = task.isDefect && (canManage || task.createdByUserId === user.id);
 
   const latestQaReview = qaReviews[0];
@@ -539,8 +598,17 @@ export default function TaskDetailPage() {
   // Backend mirror: TasksService.LINKED_DEFECT_RESOLVED_STATUSES /
   // assertNoOpenLinkedDefects() - coexists with openDependencyTickets
   // above, either one independently blocks resubmission. 'Failed' is
-  // deliberately still "open" here (see that constant's comment).
-  const openLinkedDefects = linkedDefects.filter((d) => !['Pass', 'Junk'].includes(d.status));
+  // deliberately still "open" here (see that constant's comment). Covers
+  // both spun-off (linkedDefects) and manually linked (blockingDefects)
+  // defects, de-duplicated by id.
+  const LINKED_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk', 'Closed'];
+  const openLinkedDefects = [...linkedDefects.filter((d) => d.isDefect !== false), ...blockingDefects]
+    .filter((d, i, all) => all.findIndex((x) => x.id === d.id) === i)
+    .filter((d) => !LINKED_DEFECT_RESOLVED_STATUSES.includes(d.status))
+    .sort((a, b) => a.id - b.id);
+  const blockingCandidateOptions = blockingCandidates.filter((c) =>
+    task.isDefect ? !blockedTasks.some((t) => t.id === c.id) : !openLinkedDefects.some((d) => d.id === c.id) && !blockingDefects.some((d) => d.id === c.id),
+  );
 
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
@@ -678,7 +746,7 @@ export default function TaskDetailPage() {
     setEditingAssignee(false);
   };
 
-  // PM-only description edit, allowed at any status (no stage-based lock,
+  // Description edit (PM or developer Assignee), allowed at any status (no stage-based lock,
   // unlike Estimated Hours/Due Date) - see the editingDescription state
   // declaration above for why no dedicated backend endpoint was needed.
   const handleSaveDescription = async () => {
@@ -1295,6 +1363,24 @@ export default function TaskDetailPage() {
             </div>
           )}
           <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
+          {(openLinkedDefects.length > 0 || (task.isDefect && blockedTasks.length > 0)) && (
+            <ul className={styles.blockingBadges} aria-label="Blocking links">
+              {openLinkedDefects.map((d) => (
+                <li key={`by-${d.id}`}>
+                  <Link href={`/tasks/${d.id}`}>
+                    <Badge tone="error" dot>Blocked by Defect #{d.id}</Badge>
+                  </Link>
+                </li>
+              ))}
+              {task.isDefect && blockedTasks.map((t) => (
+                <li key={`blocks-${t.id}`}>
+                  <Link href={`/tasks/${t.id}`}>
+                    <Badge tone="warning" dot>Blocks Task #{t.id}</Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <Link href="/tasks/mine" className={styles.backLink}>&larr; Back to My Tasks</Link>
       </div>
@@ -1308,14 +1394,14 @@ export default function TaskDetailPage() {
           </span>
         )}
         {!editingDescription && <RichTextDisplay value={task.description} />}
-        {canManage && !editingDescription && (
+        {canEditDescription && !editingDescription && (
           <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
             <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDescription(true)}>
               Edit Description
             </button>
           </div>
         )}
-        {canManage && editingDescription && (
+        {canEditDescription && editingDescription && (
           <div style={{ marginTop: 'var(--space-3)' }}>
             <RichTextEditor
               id="taskDescriptionEdit"
@@ -1755,6 +1841,82 @@ export default function TaskDetailPage() {
         ))}
       </div>
 
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          {task.isDefect ? 'Blocked Tasks' : 'Blocking Defects'}
+        </h2>
+        <p className={styles.helpText} style={{ marginTop: 0 }}>
+          {task.isDefect
+            ? 'Tasks this defect blocks. While it is unresolved (not Pass, Junk, or Closed), they cannot be submitted for QA.'
+            : 'Existing defects linked as blocking this task. While any is unresolved (not Pass, Junk, or Closed), this task cannot be submitted for QA.'}
+        </p>
+        {task.isDefect && blockedTasks.length === 0 && <div className={styles.empty}>This defect is not blocking any task.</div>}
+        {!task.isDefect && blockingDefects.length === 0 && <div className={styles.empty}>No defects linked as blocking.</div>}
+        {task.isDefect && blockedTasks.map((t) => (
+          <div key={t.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p style={{ margin: 0 }}>
+              <Link href={`/tasks/${t.id}`}>#{t.id} - {t.title}</Link> <StatusBadge status={t.status} />
+            </p>
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              {t.linkType === 'spun-off' ? 'Raised from this task\'s QA rejection' : 'Linked as blocking'}
+            </p>
+            {canLinkBlocking && t.linkType === 'manual' && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)' }}
+                aria-label={`Unlink Task #${t.id}`}
+                onClick={() => handleUnlinkBlocking(t.id, task.id)}
+              >
+                Unlink
+              </button>
+            )}
+          </div>
+        ))}
+        {!task.isDefect && blockingDefects.map((d) => (
+          <div key={d.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p style={{ margin: 0 }}>
+              <Link href={`/tasks/${d.id}`}>#{d.id} - {d.title}</Link> <StatusBadge status={d.status} />
+            </p>
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Assignee: {d.assigneeEmail} &middot; Linked by {d.linkedByEmail} &middot; {formatDate(d.linkedAt)}
+            </p>
+            {canLinkBlocking && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)' }}
+                aria-label={`Unlink Defect #${d.id}`}
+                onClick={() => handleUnlinkBlocking(task.id, d.id)}
+              >
+                Unlink
+              </button>
+            )}
+          </div>
+        ))}
+        {canLinkBlocking && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <SearchSelectField
+              label={task.isDefect ? 'Link Blocked Task' : 'Link Blocking Defect'}
+              id="blockingLinkSelect"
+              value={blockingSelection}
+              onChange={setBlockingSelection}
+              options={blockingCandidateOptions}
+            />
+            <div className={styles.actions}>
+              <button
+                className={`${styles.button} ${styles.buttonAccent}`}
+                type="button"
+                disabled={!blockingSelection || savingBlockingLink}
+                onClick={handleLinkBlocking}
+              >
+                {savingBlockingLink ? 'Linking...' : 'Link'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {isAssignee && isEscalated && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
@@ -1780,8 +1942,8 @@ export default function TaskDetailPage() {
           )}
           {openLinkedDefects.length > 0 && (
             <div className={styles.error} style={{ marginTop: openDependencyTickets.length > 0 ? 'var(--space-2)' : 0 }}>
-              Cannot submit for QA - resolve the open linked {openLinkedDefects.length === 1 ? 'defect' : 'defects'}{' '}
-              {openLinkedDefects.map((d) => `#${d.id}`).join(', ')} first.
+              Cannot submit for QA - blocked by unresolved {openLinkedDefects.length === 1 ? 'Defect' : 'Defects'}{' '}
+              {openLinkedDefects.map((d) => `#${d.id}`).join(', ')}. Resolve it first.
             </div>
           )}
         </div>

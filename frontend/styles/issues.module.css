@@ -921,3 +921,25 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .depCountOpen::before { content: '\25cf '; font-size: 0.6rem; color: var(--color-red); }
 .depCountResolved::before { content: '\25cf '; font-size: 0.6rem; color: var(--color-teal); }
 
+
+/* "Blocked by Defect #126" / "Blocks Task #70" chips under the task
+   detail page title - each is a link, so it gets the same visible focus
+   ring as .workloadChip. Text label carries the meaning, not color. */
+.blockingBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  list-style: none;
+  margin: var(--ds-space-2) 0 0;
+  padding: 0;
+}
+
+.blockingBadges a {
+  text-decoration: none;
+  border-radius: var(--ds-radius-full);
+}
+
+.blockingBadges a:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 1px;
+}

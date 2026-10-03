@@ -38,6 +38,7 @@ import { TaskQaReview } from './task-qa-reviews/task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-reviews/task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-reviews/task-qa-review-qa-artifact.entity';
 import { TaskDefectArtifact } from './tasks/task-defect-artifact.entity';
+import { TaskBlockingDefect } from './tasks/task-blocking-defect.entity';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -131,6 +132,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
           TaskQaReviewArtifact,
           TaskQaReviewQaArtifact,
           TaskDefectArtifact,
+          TaskBlockingDefect,
           KpiConfig,
           KpiPeriodScore,
           Role,
