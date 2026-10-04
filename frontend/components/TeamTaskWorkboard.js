@@ -13,7 +13,7 @@ import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
 import {
   buildRowTintClass, buildRowRailClass, visibleStatusTabs,
   priorityRank, priorityTone, priorityLabel, priorityStripeColor, statusBadgeStyle,
-  HOLD_CLOSED_STATUSES,
+  HOLD_CLOSED_STATUSES, STATUS_TAB_GROUPS,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
@@ -90,12 +90,17 @@ function buildWorkloadWeeks(weekOffset) {
 // Keys match TeamTasksResult.statCounts exactly (TasksService.findTeam) -
 // 'total' rather than 'all', since it's a count field there, not a filter
 // preset key. `accent` is only set for the two that indicate a problem
-// (Rejected/Overdue) - Team Tasks/Open Dependency are neutral counts, no
-// accent color.
+// (Rejected/Overdue) - Team Tasks/Waiting on Dependency are neutral
+// counts, no accent color. 'openDependency' is labeled "Waiting on
+// Dependency" (renamed 2026-10, confirmed with the user) so it reads as
+// the opposite direction from the Development / Failed tab's "N to
+// clear" count - this card counts the selected person's own *tasks* that
+// are blocked on someone else, that tab counts open *tickets* the
+// selected person owns and is blocking others with.
 const CARD_DEFS = [
   { key: 'total', label: 'Team Tasks' },
   { key: 'rejected', label: 'Rejected', accent: 'danger' },
-  { key: 'openDependency', label: 'Open Dependency' },
+  { key: 'openDependency', label: 'Waiting on Dependency' },
   { key: 'overdue', label: 'Overdue', accent: 'warning' },
   { key: 'defects', label: 'Defects' },
 ];
@@ -144,6 +149,44 @@ function DependencyTree({ tickets }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// The Development / Failed tab's "Dependencies to clear" block - open
+// dependency tickets the selected assignee owns (TasksService.
+// findTeamDependenciesToClear), including ones raised from other people's
+// tasks. Rendered as its own list above the task table/tiles rather than
+// merged into the paginated task rows - a ticket has no Status/Priority/
+// Progress/Due Date of its own, and mixing it into server-side pagination
+// would break the page counts. Each row opens its parent task, where the
+// ticket itself lives and gets resolved.
+function DependenciesToClear({ tickets, labelForEmail, showOwner }) {
+  return (
+    <section className={styles.depsToClear} aria-labelledby="teamDepsToClearHeading">
+      <h2 id="teamDepsToClearHeading" className={styles.depsToClearHeading}>
+        Dependencies to clear ({tickets.length})
+      </h2>
+      <ul className={styles.depsToClearList}>
+        {tickets.map((tk) => (
+          <li key={tk.id}>
+            <a
+              href={`/tasks/${tk.parentTaskId}`}
+              className={styles.depsToClearItem}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
+              <span className={styles.depsToClearDesc} title={tk.description}>{tk.description}</span>
+              <span className={styles.depsToClearMeta}>
+                {showOwner && <>Owner: {labelForEmail(tk.ownerEmail)} · </>}
+                Raised by {labelForEmail(tk.createdByEmail)} on #{tk.parentTaskId}
+                {tk.parentTaskTitle ? ` ${tk.parentTaskTitle}` : ''} · {formatDate(tk.createdAt)}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -293,6 +336,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0, defects: 0 });
   const [assignees, setAssignees] = useState([]);
   const [phases, setPhases] = useState([]);
+  const [dependenciesToClear, setDependenciesToClear] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // Workload view's own data - every matching task (all=true, no
@@ -356,6 +400,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         setStatCounts(res.statCounts);
         setAssignees(res.assignees);
         setPhases(res.phases || []);
+        setDependenciesToClear(res.dependenciesToClear || []);
         setError('');
       })
       .catch((err) => {
@@ -447,6 +492,24 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   // here so the table/tile Assignee display shows the same name instead of
   // the raw email, falling back to email for anyone with no Full Name set.
   const assigneeLabelById = useMemo(() => new Map(assignees.map((a) => [a.id, a.fullName || a.email])), [assignees]);
+
+  // Same Full Name preference, keyed by email instead - dependency
+  // tickets only carry owner/creator emails, not user ids.
+  const labelForEmail = useMemo(() => {
+    const byEmail = new Map(assignees.map((a) => [a.email, a.fullName || a.email]));
+    return (email) => byEmail.get(email) || email || '—';
+  }, [assignees]);
+
+  // The Dependencies to clear block only shows on the Development /
+  // Failed tab. Tickets carry no phase/due date/defect flag of their own,
+  // so while any of those (or the task-side Dependency filter) is active
+  // the block is hidden behind a one-line note instead - confirmed with
+  // the user 2026-10 - rather than silently ignoring the filter.
+  const devFailedTab = STATUS_TAB_GROUPS.find((g) => g.key === 'DevelopmentFailed');
+  const devFailedTabValue = devFailedTab.statuses.join(',');
+  const onDevFailedTab = statusFilter === devFailedTabValue;
+  const taskOnlyFiltersActive =
+    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
 
   const workloadWeeks = useMemo(() => buildWorkloadWeeks(weekOffset), [weekOffset]);
 
@@ -663,6 +726,9 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
                   onClick={() => setStatusFilter(tabValue)}
                 >
                   {tab.label}
+                  {tab.key === 'DevelopmentFailed' && dependenciesToClear.length > 0 && (
+                    <> · {dependenciesToClear.length} to clear</>
+                  )}
                 </button>
               );
             })}
@@ -805,6 +871,20 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
               </div>
             </div>
           </div>
+
+          {onDevFailedTab && viewMode !== 'workload' && dependenciesToClear.length > 0 && (
+            taskOnlyFiltersActive ? (
+              <p className={styles.issueMeta}>
+                {dependenciesToClear.length === 1 ? '1 dependency to clear is' : `${dependenciesToClear.length} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, or Due date filters are active.
+              </p>
+            ) : (
+              <DependenciesToClear
+                tickets={dependenciesToClear}
+                labelForEmail={labelForEmail}
+                showOwner={assigneeFilter === 'All'}
+              />
+            )
+          )}
 
           {viewMode === 'workload' ? (
             <>

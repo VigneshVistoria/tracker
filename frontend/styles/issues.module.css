@@ -164,6 +164,9 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 }
 .typeTagDefect { background: var(--color-red-tint); color: var(--color-red-dark); }
 .typeTagTask { background: var(--color-slate-tint); color: var(--color-slate); }
+/* Team Tasks' "Dependencies to clear" rows - warning tone, matching the
+   "Open" Badge on the same tickets in the dependency tree. */
+.typeTagDependency { background: var(--ds-color-warning-tint); color: var(--ds-color-warning-dark); }
 
 .field {
   margin-bottom: var(--space-4);
@@ -942,4 +945,66 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .blockingBadges a:focus-visible {
   outline: 2px solid var(--ds-border-focus);
   outline-offset: 1px;
+}
+
+/* Team Tasks' Development / Failed tab - open dependency tickets the
+   selected assignee owns (TeamTaskWorkboard's DependenciesToClear),
+   shown above the task table/tiles. Each row is one link to the parent
+   task, with the same visible focus ring as .workloadChip. */
+.depsToClear {
+  margin-bottom: var(--ds-space-4);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+}
+
+.depsToClearHeading {
+  margin: 0 0 var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+  font-weight: 700;
+}
+
+.depsToClearList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+}
+
+.depsToClearItem {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.depsToClearItem:hover {
+  background: var(--ds-bg-surface-sunken);
+}
+
+.depsToClearItem:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+.depsToClearDesc {
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.depsToClearMeta {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
 }

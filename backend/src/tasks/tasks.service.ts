@@ -78,6 +78,28 @@ export interface TeamTasksResult {
   statCounts: { total: number; rejected: number; openDependency: number; overdue: number; defects: number };
   assignees: Array<{ id: number; email: string; fullName: string | null }>;
   phases: Array<{ id: number; name: string }>;
+  // Open dependency tickets the selected assignee (or, with no assignee
+  // filter, anyone) owns and needs to clear - including ones raised from
+  // other people's tasks. The opposite direction from
+  // statCounts.openDependency (the selected person's own tasks waiting on
+  // someone else). Shown on the Development / Failed tab, separately from
+  // the paginated task rows, so it never affects `total`/pagination. Only
+  // scoped by assigneeUserId - tickets have no status/phase/due/defect of
+  // their own to filter on.
+  dependenciesToClear: TeamDependencyToClear[];
+}
+
+export interface TeamDependencyToClear {
+  id: number;
+  description: string;
+  ownerUserId: number;
+  ownerEmail: string;
+  createdByEmail: string;
+  createdAt: Date;
+  parentTaskId: number;
+  parentTaskTitle: string | null;
+  parentTaskDueDate: string | null;
+  parentTaskAssigneeEmail: string | null;
 }
 
 export interface QaQueueResult {
@@ -861,8 +883,39 @@ export class TasksService {
 
     const assignees = await this.findTeamAssignees(tenantId);
     const phases = await this.findTeamPhases(tenantId);
+    const dependenciesToClear = await this.findTeamDependenciesToClear(tenantId, filters.assigneeUserId);
 
-    return { tasks, total, statCounts, assignees, phases };
+    return { tasks, total, statCounts, assignees, phases, dependenciesToClear };
+  }
+
+  // See TeamTasksResult.dependenciesToClear. Every open ticket counts,
+  // regardless of its parent task's status (a ticket on a Hold/Closed task
+  // is still open and still on the owner's plate - confirmed with the
+  // user 2026-10). Keyed on the ticket's owner, never the parent task's
+  // assignee - the owner is who TaskDependencyTicketsService.resolve()
+  // expects to clear it.
+  private async findTeamDependenciesToClear(tenantId: number, ownerUserId?: number): Promise<TeamDependencyToClear[]> {
+    const where: Record<string, any> = { tenantId, status: 'open' };
+    if (ownerUserId) where.ownerUserId = ownerUserId;
+    const tickets = await this.dependencyTicketsRepository.find({ where, order: { createdAt: 'ASC' } });
+    if (tickets.length === 0) return [];
+    const parentTasks = await this.findManyByIds([...new Set(tickets.map((t) => t.parentTaskId))], tenantId);
+    const parentById = new Map(parentTasks.map((t) => [t.id, t]));
+    return tickets.map((t) => {
+      const parent = parentById.get(t.parentTaskId);
+      return {
+        id: t.id,
+        description: t.description,
+        ownerUserId: t.ownerUserId,
+        ownerEmail: t.ownerEmail,
+        createdByEmail: t.createdByEmail,
+        createdAt: t.createdAt,
+        parentTaskId: t.parentTaskId,
+        parentTaskTitle: parent?.title ?? null,
+        parentTaskDueDate: parent?.dueDate ?? null,
+        parentTaskAssigneeEmail: parent?.assigneeEmail ?? null,
+      };
+    });
   }
 
   // The Team Tasks expandable dependency tree's data - every dependency
