@@ -25,6 +25,12 @@ export default function Table({
   // that caller's own column render(), not here, so Table doesn't need to
   // know anything about expand/collapse state).
   expandedContent,
+  // Optional, additive - undefined for every existing caller except Team
+  // Tasks. Called per row with the row before it; a non-null return value
+  // renders as a full-width row directly above (Team Tasks' "Filed by X"
+  // dependency groups). Skipped while a column sort is active, since
+  // sorting scatters the group's rows.
+  groupHeader,
   // Optional, additive - merged onto the outer wrap div's className.
   // undefined for every existing caller except Team Tasks' full screen
   // mode, which uses it to flex-grow the table to fill leftover vertical
@@ -37,6 +43,12 @@ export default function Table({
 
   const handleSort = (col) => {
     if (!col.sortable) return;
+    // With groupHeader, a third click (asc -> desc -> off) clears the sort
+    // so the group headers can come back. Other callers keep asc <-> desc.
+    if (groupHeader && !onSortChange && sortKey === col.key && sortDir === 'desc') {
+      setInternalSort({ key: null, dir: 'asc' });
+      return;
+    }
     const nextDir = sortKey === col.key && sortDir === 'asc' ? 'desc' : 'asc';
     if (onSortChange) {
       onSortChange(col.key, nextDir);
@@ -97,10 +109,18 @@ export default function Table({
               </td>
             </tr>
           )}
-          {sortedRows.map((row) => {
+          {sortedRows.map((row, i) => {
             const expanded = expandedContent ? expandedContent(row) : null;
+            const header = groupHeader && !sortKey ? groupHeader(row, i > 0 ? sortedRows[i - 1] : null) : null;
             return (
               <Fragment key={getRowId(row)}>
+                {header && (
+                  <tr className={styles.groupRow}>
+                    <td colSpan={columns.length} className={styles.groupCell}>
+                      {header}
+                    </td>
+                  </tr>
+                )}
                 <tr
                   className={[onRowClick ? styles.clickableRow : '', rowClassName ? rowClassName(row) : '']
                     .filter(Boolean)

@@ -855,12 +855,36 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .taskTile.railClosed { border-left-color: var(--ds-color-gray-500); }
 .taskTile.railDependency { border-left-color: var(--ds-color-warning); }
 
-/* "Raised by Salman on #98 ..." under a dependency's tile/table Title
+/* "Filed by Salman on #98 ..." under a dependency's tile/table Title
    (TeamTaskWorkboard's DependencyTile + Title column) - who is waiting. */
 .dependencyRaisedBy {
   margin-top: var(--ds-space-1);
   font-size: var(--ds-text-xs);
   color: var(--ds-text-secondary);
+}
+
+/* Team Tasks' "Filed by X (n)" header above each group of dependency
+   cards/rows - same warning tint/dark pair as .typeTagDependency, so it
+   reads as belonging to those cards. */
+.filedByGroup {
+  margin-bottom: var(--ds-space-2);
+}
+
+.filedByHeader {
+  display: flex;
+  align-items: center;
+  margin: 0 0 var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  background: var(--ds-color-warning-tint);
+  color: var(--ds-color-warning-dark);
+  border-left: 4px solid var(--ds-color-warning);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+}
+
+.filedByHeaderInTable {
+  margin: 0;
 }
 
 .taskTileTop {

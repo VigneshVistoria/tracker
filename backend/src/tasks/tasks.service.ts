@@ -97,6 +97,11 @@ export interface TeamTasksResult {
   // How many of `total` (and of the rows in `tasks`, across all pages)
   // are TeamDependencyRows - 0 unless filters.includeDependencies.
   includedDependencyCount: number;
+  // Included TeamDependencyRows per filer (createdByEmail), across all
+  // pages - for the "Filed by X (n)" group headers, so a group split over
+  // two pages still shows its full count. Empty unless
+  // filters.includeDependencies.
+  includedDependencyCountsByFiler: Record<string, number>;
 }
 
 // An open dependency ticket shown as a row/card in Team Tasks' own grid,
@@ -116,6 +121,8 @@ export interface TeamDependencyRow {
   assigneeUserId: number;
   assigneeEmail: string;
   createdByEmail: string;
+  // Filer's Full Name (email if none) - the "Filed by" group label.
+  createdByName: string;
   createdAt: Date;
   ageingDays: number;
   dueDate: string | null;
@@ -875,6 +882,10 @@ export class TasksService {
 
     const dependencyRows = await this.findTeamDependencyRows(tenantId, filters.assigneeUserId);
     const includedDependencyRows = filters.includeDependencies ? dependencyRows : [];
+    const includedDependencyCountsByFiler: Record<string, number> = {};
+    for (const r of includedDependencyRows) {
+      includedDependencyCountsByFiler[r.createdByEmail] = (includedDependencyCountsByFiler[r.createdByEmail] || 0) + 1;
+    }
 
     // Dependencies first, then tasks in their usual priority order -
     // paginated as one list so page counts stay honest.
@@ -934,6 +945,7 @@ export class TasksService {
       phases,
       dependenciesToClearCount: dependencyRows.length,
       includedDependencyCount: includedDependencyRows.length,
+      includedDependencyCountsByFiler,
     };
   }
 
@@ -944,6 +956,10 @@ export class TasksService {
   // user 2026-10). Keyed on the ticket's owner, never the parent task's
   // assignee - the owner is who TaskDependencyTicketsService.resolve()
   // expects to clear it.
+  //
+  // Ordered by filer so Team Tasks' "Filed by X (n)" groups stay
+  // contiguous across pages: biggest group first, then filer name, then
+  // oldest ticket first within a group (confirmed with the user 2026-10).
   private async findTeamDependencyRows(tenantId: number, ownerUserId?: number): Promise<TeamDependencyRow[]> {
     const where: Record<string, any> = { tenantId, status: 'open' };
     if (ownerUserId) where.ownerUserId = ownerUserId;
@@ -951,8 +967,12 @@ export class TasksService {
     if (tickets.length === 0) return [];
     const parentTasks = await this.findManyByIds([...new Set(tickets.map((t) => t.parentTaskId))], tenantId);
     const parentById = new Map(parentTasks.map((t) => [t.id, t]));
+    const filers = await this.usersService.findByIds([...new Set(tickets.map((t) => t.createdByUserId))], tenantId);
+    const filerNameById = new Map(filers.map((u) => [u.id, u.fullName]));
+    const filerCounts = new Map<string, number>();
+    for (const t of tickets) filerCounts.set(t.createdByEmail, (filerCounts.get(t.createdByEmail) || 0) + 1);
     const now = Date.now();
-    return tickets.map((t) => {
+    const rows = tickets.map((t) => {
       const parent = parentById.get(t.parentTaskId);
       return {
         kind: 'dependency' as const,
@@ -962,6 +982,7 @@ export class TasksService {
         assigneeUserId: t.ownerUserId,
         assigneeEmail: t.ownerEmail,
         createdByEmail: t.createdByEmail,
+        createdByName: filerNameById.get(t.createdByUserId) || t.createdByEmail,
         createdAt: t.createdAt,
         ageingDays: Math.max(0, Math.floor((now - new Date(t.createdAt).getTime()) / MS_PER_DAY)),
         dueDate: parent?.dueDate ?? null,
@@ -975,6 +996,13 @@ export class TasksService {
         hasOpenDependency: false as const,
       };
     });
+    // Stable sort - tickets arrive oldest first, which is kept within a group.
+    return rows.sort(
+      (a, b) =>
+        (filerCounts.get(b.createdByEmail) || 0) - (filerCounts.get(a.createdByEmail) || 0) ||
+        a.createdByName.localeCompare(b.createdByName) ||
+        a.createdByEmail.localeCompare(b.createdByEmail),
+    );
   }
 
   // The Team Tasks expandable dependency tree's data - every dependency

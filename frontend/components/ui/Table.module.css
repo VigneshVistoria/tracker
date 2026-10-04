@@ -85,6 +85,11 @@
 /* Only ever rendered when a caller passes Table's optional
    expandedContent prop (currently just Team Tasks) - no effect on any
    other consumer. */
+.groupRow td.groupCell {
+  padding: var(--ds-space-2) var(--ds-space-3) var(--ds-space-1);
+  border-bottom: none;
+}
+
 .expandedRow td.expandedCell {
   padding: var(--ds-space-3) var(--ds-space-4);
   background: var(--ds-bg-surface-sunken);

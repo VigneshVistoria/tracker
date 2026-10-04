@@ -162,12 +162,27 @@ const isDependencyRow = (row) => row.kind === 'dependency';
 const dependencyHref = (row) => `/tasks/${row.parentTaskId}#dependency-${row.id}`;
 const rowHref = (row) => (isDependencyRow(row) ? dependencyHref(row) : `/tasks/${row.id}`);
 
-function RaisedByLine({ row, labelForEmail }) {
+// Backend-resolved filer name first (TeamDependencyRow.createdByName), so
+// the card line and its "Filed by X" group header always agree.
+const filerLabel = (row, labelForEmail) => row.createdByName || labelForEmail(row.createdByEmail);
+
+function FiledByLine({ row, labelForEmail }) {
   return (
     <>
-      Raised by {labelForEmail(row.createdByEmail)} on #{row.parentTaskId}
+      Filed by {filerLabel(row, labelForEmail)} on #{row.parentTaskId}
       {row.parentTaskTitle ? ` ${row.parentTaskTitle}` : ''}
     </>
+  );
+}
+
+// "Filed by X (n)" band above each group of dependency cards (Tiles) or
+// rows (Table). `count` is the filer's total across all pages, from the
+// API, so a group split over two pages still shows its full size.
+function FiledByGroupHeader({ label, count, inTable }) {
+  return (
+    <div role="heading" aria-level={3} className={`${styles.filedByHeader} ${inTable ? styles.filedByHeaderInTable : ''}`}>
+      Filed by {label} ({count})
+    </div>
   );
 }
 
@@ -175,7 +190,7 @@ function RaisedByLine({ row, labelForEmail }) {
 // Title headline, module/assignee/due meta line), with the dependency's
 // own differences: DEPENDENCY tag instead of TASK/DEFECT, no priority (a
 // ticket has none), the parent task's due date labeled "Task due", and a
-// "Raised by ... on #id Task" line so it's clear who is waiting. The long
+// "Filed by ... on #id Task" line so it's clear who is waiting. The long
 // description is deliberately left off the card.
 function DependencyTile({ row, assigneeLabel, labelForEmail }) {
   const href = dependencyHref(row);
@@ -219,7 +234,7 @@ function DependencyTile({ row, assigneeLabel, labelForEmail }) {
         <span><CalendarClock size={12} aria-hidden="true" /> Task due {formatDate(row.dueDate)}</span>
       </div>
       <div className={styles.dependencyRaisedBy}>
-        <RaisedByLine row={row} labelForEmail={labelForEmail} />
+        <FiledByLine row={row} labelForEmail={labelForEmail} />
       </div>
     </div>
   );
@@ -377,6 +392,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   // How many of `total` are dependency rows (0 unless they're included -
   // see includeDependencies below), for the pagination footer.
   const [includedDependencyCount, setIncludedDependencyCount] = useState(0);
+  const [dependencyCountsByFiler, setDependencyCountsByFiler] = useState({});
   // Bumped whenever this browser tab regains focus, to re-fetch - a
   // ticket is usually resolved from its parent task page in another tab,
   // and its card should disappear (and the count drop) on return.
@@ -467,6 +483,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         setPhases(res.phases || []);
         setDependenciesToClearCount(res.dependenciesToClearCount || 0);
         setIncludedDependencyCount(res.includedDependencyCount || 0);
+        setDependencyCountsByFiler(res.includedDependencyCountsByFiler || {});
         setError('');
       })
       .catch((err) => {
@@ -565,6 +582,27 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     const byEmail = new Map(assignees.map((a) => [a.email, a.fullName || a.email]));
     return (email) => byEmail.get(email) || email || '—';
   }, [assignees]);
+
+  // Tiles view: this page's dependency cards split into "Filed by" groups
+  // (the API already orders them group by group - see
+  // findTeamDependencyRows), plus the task/defect cards, which stay
+  // ungrouped below them.
+  const { dependencyGroups, taskTiles } = useMemo(() => {
+    const groups = [];
+    const rest = [];
+    for (const t of tasks) {
+      if (!isDependencyRow(t)) {
+        rest.push(t);
+      } else if (groups.length > 0 && groups[groups.length - 1].email === t.createdByEmail) {
+        groups[groups.length - 1].rows.push(t);
+      } else {
+        groups.push({ email: t.createdByEmail, rows: [t] });
+      }
+    }
+    return { dependencyGroups: groups, taskTiles: rest };
+  }, [tasks]);
+
+  const filerCount = (row) => dependencyCountsByFiler[row.createdByEmail] || 0;
 
   const workloadWeeks = useMemo(() => buildWorkloadWeeks(weekOffset), [weekOffset]);
 
@@ -668,7 +706,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
                 <span className={styles.descClamp} title={t.title}>{t.title}</span>
               </div>
               <div className={styles.dependencyRaisedBy}>
-                <RaisedByLine row={t} labelForEmail={labelForEmail} />
+                <FiledByLine row={t} labelForEmail={labelForEmail} />
               </div>
             </div>
           ) : (
@@ -1020,32 +1058,47 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
               </div>
             </>
           ) : viewMode === 'tile' ? (
-            <div className={`${styles.taskTileGrid} ${fullScreen ? styles.fullScreenTableWrap : ''}`}>
-              {tasks.length === 0 && (
-                <div className={styles.card}>{loading ? 'Loading...' : 'No tasks match these filters.'}</div>
-              )}
-              {tasks.map((t) => isDependencyRow(t) ? (
-                <DependencyTile
-                  key={`dep-${t.id}`}
-                  row={t}
-                  assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
-                  labelForEmail={labelForEmail}
-                />
-              ) : (
-                <TaskTile
-                  key={t.id}
-                  task={t}
-                  assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
-                  railClass={ROW_RAIL_CLASS[t.status]}
-                  expanded={expandedTaskIds.has(t.id)}
-                  onToggleExpand={toggleExpanded}
-                  onOpen={() => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
-                />
+            <div className={fullScreen ? styles.fullScreenTableWrap : undefined}>
+              {dependencyGroups.map((g) => (
+                <section key={`filer-${g.email}`} className={styles.filedByGroup}>
+                  <FiledByGroupHeader label={filerLabel(g.rows[0], labelForEmail)} count={filerCount(g.rows[0])} />
+                  <div className={styles.taskTileGrid}>
+                    {g.rows.map((t) => (
+                      <DependencyTile
+                        key={`dep-${t.id}`}
+                        row={t}
+                        assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
+                        labelForEmail={labelForEmail}
+                      />
+                    ))}
+                  </div>
+                </section>
               ))}
+              <div className={styles.taskTileGrid}>
+                {tasks.length === 0 && (
+                  <div className={styles.card}>{loading ? 'Loading...' : 'No tasks match these filters.'}</div>
+                )}
+                {taskTiles.map((t) => (
+                  <TaskTile
+                    key={t.id}
+                    task={t}
+                    assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
+                    railClass={ROW_RAIL_CLASS[t.status]}
+                    expanded={expandedTaskIds.has(t.id)}
+                    onToggleExpand={toggleExpanded}
+                    onOpen={() => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
+                  />
+                ))}
+              </div>
             </div>
           ) : (
             <Table
               columns={columns}
+              groupHeader={(t, prev) =>
+                isDependencyRow(t) && !(prev && isDependencyRow(prev) && prev.createdByEmail === t.createdByEmail) ? (
+                  <FiledByGroupHeader label={filerLabel(t, labelForEmail)} count={filerCount(t)} inTable />
+                ) : null
+              }
               rows={tasks}
               getRowId={(t) => (isDependencyRow(t) ? `dep-${t.id}` : t.id)}
               onRowClick={(t) => window.open(rowHref(t), '_blank', 'noopener,noreferrer')}
