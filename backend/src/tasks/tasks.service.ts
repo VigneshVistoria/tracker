@@ -1027,17 +1027,28 @@ export class TasksService {
   // showCompleted/status/etc (a stable list, not one that shrinks as the
   // user filters, the same reasoning selectableStatuses documents for why
   // it prunes but the Assignee list here should not).
+  //
+  // The SMOKE_TEST_EMAIL account (same identifier NonComplianceReportService
+  // uses) is always listed, last, whether or not it has assigned tasks - it
+  // mostly owns dependency tickets, which don't qualify it above, and the
+  // user wanted its chip pinned after everyone else (2026-10).
   private async findTeamAssignees(tenantId: number): Promise<Array<{ id: number; email: string; fullName: string | null }>> {
+    const smokeTestEmail = process.env.SMOKE_TEST_EMAIL;
     const rows = await this.tasksRepository.find({
       where: { tenantId, assigneeUserId: Not(IsNull()) },
       select: ['assigneeUserId'],
     });
     const uniqueIds = Array.from(new Set(rows.map((r) => r.assigneeUserId)));
-    if (uniqueIds.length === 0) return [];
-    const users = await this.usersService.findByIds(uniqueIds, tenantId);
-    return users
+    const users = uniqueIds.length > 0 ? await this.usersService.findByIds(uniqueIds, tenantId) : [];
+    const assignees = users
+      .filter((u) => !smokeTestEmail || u.email !== smokeTestEmail)
       .map((u) => ({ id: u.id, email: u.email, fullName: u.fullName }))
       .sort((a, b) => (a.fullName || a.email).localeCompare(b.fullName || b.email));
+    const smokeTestUser = smokeTestEmail ? await this.usersService.findByEmailAndTenant(smokeTestEmail, tenantId) : null;
+    if (smokeTestUser) {
+      assignees.push({ id: smokeTestUser.id, email: smokeTestUser.email, fullName: smokeTestUser.fullName });
+    }
+    return assignees;
   }
 
   async findOne(id: number, tenantId: number): Promise<ProjectTask> {
