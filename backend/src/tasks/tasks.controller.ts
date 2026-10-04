@@ -184,6 +184,7 @@ export class TasksController {
     @Query('showCompleted') showCompleted: string | undefined,
     @Query('showHoldClosed') showHoldClosed: string | undefined,
     @Query('all') all: string | undefined,
+    @Query('includeDependencies') includeDependencies: string | undefined,
     @Req() req: any,
   ) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -203,6 +204,7 @@ export class TasksController {
       showCompleted: showCompleted === 'true',
       showHoldClosed: showHoldClosed === 'true',
       all: all === 'true',
+      includeDependencies: includeDependencies === 'true',
     });
   }
 

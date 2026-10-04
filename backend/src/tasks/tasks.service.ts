@@ -70,10 +70,19 @@ export interface TeamTaskFilters {
   // whatever page happens to be current. Table/Tiles never set this, so
   // their normal pagination is unaffected.
   all?: boolean;
+  // Team Tasks' Development / Failed tab only - merges the open dependency
+  // tickets the selected assignee owns (TeamDependencyRow) into the same
+  // paginated list as the tasks, ahead of them, so `total`/pagination
+  // count both. The frontend only sets this while no task-only filter
+  // (phase/dependency/defect/due) is active - tickets have none of those
+  // fields to filter on.
+  includeDependencies?: boolean;
 }
 
 export interface TeamTasksResult {
-  tasks: ProjectTaskWithComputed[];
+  // ProjectTaskWithComputed rows, plus TeamDependencyRows (ahead of them)
+  // when filters.includeDependencies - tell them apart by `kind`.
+  tasks: Array<ProjectTaskWithComputed | TeamDependencyRow>;
   total: number;
   statCounts: { total: number; rejected: number; openDependency: number; overdue: number; defects: number };
   assignees: Array<{ id: number; email: string; fullName: string | null }>;
@@ -82,25 +91,42 @@ export interface TeamTasksResult {
   // filter, anyone) owns and needs to clear - including ones raised from
   // other people's tasks. The opposite direction from
   // statCounts.openDependency (the selected person's own tasks waiting on
-  // someone else). Shown on the Development / Failed tab, separately from
-  // the paginated task rows, so it never affects `total`/pagination. Only
-  // scoped by assigneeUserId - tickets have no status/phase/due/defect of
-  // their own to filter on.
-  dependenciesToClear: TeamDependencyToClear[];
+  // someone else). Always returned, for the Development / Failed tab's
+  // "N to clear" label, regardless of which tab is active.
+  dependenciesToClearCount: number;
+  // How many of `total` (and of the rows in `tasks`, across all pages)
+  // are TeamDependencyRows - 0 unless filters.includeDependencies.
+  includedDependencyCount: number;
 }
 
-export interface TeamDependencyToClear {
+// An open dependency ticket shown as a row/card in Team Tasks' own grid,
+// alongside tasks (Development / Failed tab only - see
+// TeamTaskFilters.includeDependencies). Field names deliberately mirror
+// ProjectTaskWithComputed wherever the meaning lines up, so the table's
+// client-side column sorting works across both kinds without special
+// cases: assignee = the ticket's owner (who must clear it), dueDate = the
+// parent task's due date (a ticket has none of its own - shown labeled
+// "Task due", confirmed with the user 2026-10), project/module = the
+// parent task's. Columns a ticket has no equivalent for are null.
+export interface TeamDependencyRow {
+  kind: 'dependency';
   id: number;
   title: string;
-  description: string;
-  ownerUserId: number;
-  ownerEmail: string;
+  status: 'Open';
+  assigneeUserId: number;
+  assigneeEmail: string;
   createdByEmail: string;
   createdAt: Date;
+  ageingDays: number;
+  dueDate: string | null;
+  projectName: string | null;
+  moduleName: string | null;
   parentTaskId: number;
   parentTaskTitle: string | null;
-  parentTaskDueDate: string | null;
-  parentTaskAssigneeEmail: string | null;
+  priority: null;
+  estimatedHours: null;
+  percentComplete: null;
+  hasOpenDependency: false;
 }
 
 export interface QaQueueResult {
@@ -847,18 +873,33 @@ export class TasksService {
       filtered = filtered.filter((t) => !openDependencyIds.has(t.id));
     }
 
-    const total = filtered.length;
+    const dependencyRows = await this.findTeamDependencyRows(tenantId, filters.assigneeUserId);
+    const includedDependencyRows = filters.includeDependencies ? dependencyRows : [];
+
+    // Dependencies first, then tasks in their usual priority order -
+    // paginated as one list so page counts stay honest.
+    const combined: Array<TeamDependencyRow | ProjectTask> = [...includedDependencyRows, ...filtered];
+    const total = combined.length;
     const start = (page - 1) * pageSize;
-    const pageTasks = filters.all ? filtered : filtered.slice(start, start + pageSize);
+    const pageItems = filters.all ? combined : combined.slice(start, start + pageSize);
+    const isDependencyRow = (item: TeamDependencyRow | ProjectTask): item is TeamDependencyRow =>
+      (item as TeamDependencyRow).kind === 'dependency';
+    const pageTasks = pageItems.filter((item): item is ProjectTask => !isDependencyRow(item));
 
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     const withComputed = await Promise.all(pageTasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
     const dependencyTicketsByTaskId = await this.findDependencyTicketsForTasks(pageTasks.map((t) => t.id));
-    const tasks = withComputed.map((t) => ({
-      ...t,
-      hasOpenDependency: openDependencyIds.has(t.id),
-      dependencyTickets: dependencyTicketsByTaskId.get(t.id) || [],
-    }));
+    const computedById = new Map(
+      withComputed.map((t) => [
+        t.id,
+        {
+          ...t,
+          hasOpenDependency: openDependencyIds.has(t.id),
+          dependencyTickets: dependencyTicketsByTaskId.get(t.id) || [],
+        },
+      ]),
+    );
+    const tasks = pageItems.map((item) => (isDependencyRow(item) ? item : computedById.get(item.id)));
 
     const cardWhere: Record<string, any> = { tenantId, assigneeUserId: filters.assigneeUserId || Not(IsNull()) };
     const cardHidden = this.defaultHiddenStatuses(filters);
@@ -884,38 +925,54 @@ export class TasksService {
 
     const assignees = await this.findTeamAssignees(tenantId);
     const phases = await this.findTeamPhases(tenantId);
-    const dependenciesToClear = await this.findTeamDependenciesToClear(tenantId, filters.assigneeUserId);
 
-    return { tasks, total, statCounts, assignees, phases, dependenciesToClear };
+    return {
+      tasks,
+      total,
+      statCounts,
+      assignees,
+      phases,
+      dependenciesToClearCount: dependencyRows.length,
+      includedDependencyCount: includedDependencyRows.length,
+    };
   }
 
-  // See TeamTasksResult.dependenciesToClear. Every open ticket counts,
+  // See TeamDependencyRow. Only open tickets - a resolved ticket drops
+  // out of the grid and the "N to clear" count. Every open ticket counts
   // regardless of its parent task's status (a ticket on a Hold/Closed task
   // is still open and still on the owner's plate - confirmed with the
   // user 2026-10). Keyed on the ticket's owner, never the parent task's
   // assignee - the owner is who TaskDependencyTicketsService.resolve()
   // expects to clear it.
-  private async findTeamDependenciesToClear(tenantId: number, ownerUserId?: number): Promise<TeamDependencyToClear[]> {
+  private async findTeamDependencyRows(tenantId: number, ownerUserId?: number): Promise<TeamDependencyRow[]> {
     const where: Record<string, any> = { tenantId, status: 'open' };
     if (ownerUserId) where.ownerUserId = ownerUserId;
     const tickets = await this.dependencyTicketsRepository.find({ where, order: { createdAt: 'ASC' } });
     if (tickets.length === 0) return [];
     const parentTasks = await this.findManyByIds([...new Set(tickets.map((t) => t.parentTaskId))], tenantId);
     const parentById = new Map(parentTasks.map((t) => [t.id, t]));
+    const now = Date.now();
     return tickets.map((t) => {
       const parent = parentById.get(t.parentTaskId);
       return {
+        kind: 'dependency' as const,
         id: t.id,
         title: t.title,
-        description: t.description,
-        ownerUserId: t.ownerUserId,
-        ownerEmail: t.ownerEmail,
+        status: 'Open' as const,
+        assigneeUserId: t.ownerUserId,
+        assigneeEmail: t.ownerEmail,
         createdByEmail: t.createdByEmail,
         createdAt: t.createdAt,
+        ageingDays: Math.max(0, Math.floor((now - new Date(t.createdAt).getTime()) / MS_PER_DAY)),
+        dueDate: parent?.dueDate ?? null,
+        projectName: parent?.projectName ?? null,
+        moduleName: parent?.moduleName ?? null,
         parentTaskId: t.parentTaskId,
         parentTaskTitle: parent?.title ?? null,
-        parentTaskDueDate: parent?.dueDate ?? null,
-        parentTaskAssigneeEmail: parent?.assigneeEmail ?? null,
+        priority: null,
+        estimatedHours: null,
+        percentComplete: null,
+        hasOpenDependency: false as const,
       };
     });
   }

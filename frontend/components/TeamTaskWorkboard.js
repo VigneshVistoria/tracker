@@ -152,66 +152,76 @@ function DependencyTree({ tickets }) {
   );
 }
 
-// The Development / Failed tab's "Dependencies to clear" block - open
-// dependency tickets the selected assignee owns (TasksService.
-// findTeamDependenciesToClear), including ones raised from other people's
-// tasks. Rendered as its own list above the task table/tiles rather than
-// merged into the paginated task rows - a ticket has no Status/Priority/
-// Progress/Due Date of its own, and mixing it into server-side pagination
-// would break the page counts.
-//
-// Each item is a one-line Title (the full description is behind a
-// disclosure button, plus a hover tooltip, so the list stays scannable -
-// confirmed with the user 2026-10) and a "Raised by ... on #id Task" line
-// linking to the parent task, where the ticket itself gets resolved.
-function DependenciesToClear({ tickets, labelForEmail, showOwner }) {
-  const [expandedIds, setExpandedIds] = useState(() => new Set());
-  const toggle = (id) =>
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+// Open dependency tickets shown as rows/cards in the same grid as tasks
+// on the Development / Failed tab (TasksService.findTeamDependencyRows -
+// see TeamDependencyRow for which task fields they mirror). A ticket has
+// no page of its own - it lives on its parent task's page - so opening
+// one goes there, scrolled to and highlighting that ticket (confirmed
+// with the user 2026-10).
+const isDependencyRow = (row) => row.kind === 'dependency';
+const dependencyHref = (row) => `/tasks/${row.parentTaskId}#dependency-${row.id}`;
+const rowHref = (row) => (isDependencyRow(row) ? dependencyHref(row) : `/tasks/${row.id}`);
+
+function RaisedByLine({ row, labelForEmail }) {
   return (
-    <section className={styles.depsToClear} aria-labelledby="teamDepsToClearHeading">
-      <h2 id="teamDepsToClearHeading" className={styles.depsToClearHeading}>
-        Dependencies to clear ({tickets.length})
-      </h2>
-      <ul className={styles.depsToClearList}>
-        {tickets.map((tk) => {
-          const expanded = expandedIds.has(tk.id);
-          const descId = `teamDepToClearDesc-${tk.id}`;
-          return (
-            <li key={tk.id} className={styles.depsToClearItem}>
-              <button
-                type="button"
-                className={styles.depsToClearToggle}
-                aria-expanded={expanded}
-                aria-controls={descId}
-                title={tk.description}
-                onClick={() => toggle(tk.id)}
-              >
-                {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-                <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
-                <span className={styles.depsToClearTitle}>{tk.title}</span>
-              </button>
-              <div className={styles.depsToClearMeta}>
-                {showOwner && <>Owner: {labelForEmail(tk.ownerEmail)} · </>}
-                Raised by {labelForEmail(tk.createdByEmail)} on{' '}
-                <Link href={`/tasks/${tk.parentTaskId}`} target="_blank" rel="noopener noreferrer">
-                  #{tk.parentTaskId}{tk.parentTaskTitle ? ` ${tk.parentTaskTitle}` : ''}
-                </Link>
-                {' · '}{formatDate(tk.createdAt)}
-              </div>
-              {expanded && (
-                <p id={descId} className={styles.depsToClearDesc}>{tk.description}</p>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <>
+      Raised by {labelForEmail(row.createdByEmail)} on #{row.parentTaskId}
+      {row.parentTaskTitle ? ` ${row.parentTaskTitle}` : ''}
+    </>
+  );
+}
+
+// Same layout as TaskTile below (ticket number + type tag + status tag,
+// Title headline, module/assignee/due meta line), with the dependency's
+// own differences: DEPENDENCY tag instead of TASK/DEFECT, no priority (a
+// ticket has none), the parent task's due date labeled "Task due", and a
+// "Raised by ... on #id Task" line so it's clear who is waiting. The long
+// description is deliberately left off the card.
+function DependencyTile({ row, assigneeLabel, labelForEmail }) {
+  const href = dependencyHref(row);
+  const open = () => window.open(href, '_blank', 'noopener,noreferrer');
+  return (
+    <div
+      className={`${styles.taskTile} ${styles.railDependency}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open dependency #${row.id}: ${row.title}`}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
+      <div className={styles.taskTileTop}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <Link
+            href={href}
+            className={styles.issueId}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            #{row.id}
+          </Link>
+          <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
+        </div>
+        <Badge tone="warning">{row.status}</Badge>
+      </div>
+      <div className={styles.taskTileDesc} title={row.title}>
+        {row.title}
+      </div>
+      <div className={styles.taskTileMeta}>
+        <span title={row.projectName || undefined}><Layers size={12} aria-hidden="true" /> {row.moduleName || '—'}</span>
+        <span><User size={12} aria-hidden="true" /> {assigneeLabel}</span>
+        <span><CalendarClock size={12} aria-hidden="true" /> Task due {formatDate(row.dueDate)}</span>
+      </div>
+      <div className={styles.dependencyRaisedBy}>
+        <RaisedByLine row={row} labelForEmail={labelForEmail} />
+      </div>
+    </div>
   );
 }
 
@@ -361,7 +371,16 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0, defects: 0 });
   const [assignees, setAssignees] = useState([]);
   const [phases, setPhases] = useState([]);
-  const [dependenciesToClear, setDependenciesToClear] = useState([]);
+  // Open dependency tickets the selected assignee owns - the Development /
+  // Failed tab's "N to clear" label, always fetched regardless of tab.
+  const [dependenciesToClearCount, setDependenciesToClearCount] = useState(0);
+  // How many of `total` are dependency rows (0 unless they're included -
+  // see includeDependencies below), for the pagination footer.
+  const [includedDependencyCount, setIncludedDependencyCount] = useState(0);
+  // Bumped whenever this browser tab regains focus, to re-fetch - a
+  // ticket is usually resolved from its parent task page in another tab,
+  // and its card should disappear (and the count drop) on return.
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // Workload view's own data - every matching task (all=true, no
@@ -397,6 +416,26 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     if (!checked && HOLD_CLOSED_STATUSES.includes(statusFilter)) setStatusFilter('All');
   };
 
+  // Dependency rows only join the grid on the Development / Failed tab.
+  // Tickets carry no phase/due date/defect flag of their own, so while
+  // any of those (or the task-side Dependency filter) is active they're
+  // left out, with a one-line note instead - confirmed with the user
+  // 2026-10 - rather than silently ignoring the filter.
+  const devFailedTab = STATUS_TAB_GROUPS.find((g) => g.key === 'DevelopmentFailed');
+  const devFailedTabValue = devFailedTab.statuses.join(',');
+  const onDevFailedTab = statusFilter === devFailedTabValue;
+  const taskOnlyFiltersActive =
+    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
+  const includeDependencies = onDevFailedTab && !taskOnlyFiltersActive;
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') setRefreshKey((k) => k + 1);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams();
     params.set('page', String(page));
@@ -414,6 +453,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
     if (showHoldClosed) params.set('showHoldClosed', 'true');
+    if (includeDependencies) params.set('includeDependencies', 'true');
 
     let cancelled = false;
     setLoading(true);
@@ -425,7 +465,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         setStatCounts(res.statCounts);
         setAssignees(res.assignees);
         setPhases(res.phases || []);
-        setDependenciesToClear(res.dependenciesToClear || []);
+        setDependenciesToClearCount(res.dependenciesToClearCount || 0);
+        setIncludedDependencyCount(res.includedDependencyCount || 0);
         setError('');
       })
       .catch((err) => {
@@ -437,7 +478,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, page, pageSize]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, page, pageSize, includeDependencies, refreshKey]);
 
   // Workload view's own fetch - same filters as above, minus page/pageSize
   // (all=true instead, see TasksService.findTeam()) since the weekly grid
@@ -525,17 +566,6 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     return (email) => byEmail.get(email) || email || '—';
   }, [assignees]);
 
-  // The Dependencies to clear block only shows on the Development /
-  // Failed tab. Tickets carry no phase/due date/defect flag of their own,
-  // so while any of those (or the task-side Dependency filter) is active
-  // the block is hidden behind a one-line note instead - confirmed with
-  // the user 2026-10 - rather than silently ignoring the filter.
-  const devFailedTab = STATUS_TAB_GROUPS.find((g) => g.key === 'DevelopmentFailed');
-  const devFailedTabValue = devFailedTab.statuses.join(',');
-  const onDevFailedTab = statusFilter === devFailedTabValue;
-  const taskOnlyFiltersActive =
-    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
-
   const workloadWeeks = useMemo(() => buildWorkloadWeeks(weekOffset), [weekOffset]);
 
   // Groups workloadTasks by assignee, then buckets each assignee's tasks
@@ -604,7 +634,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         sortable: true,
         render: (t) => (
           <Link
-            href={`/tasks/${t.id}`}
+            href={rowHref(t)}
             className={styles.issueId}
             target="_blank"
             rel="noopener noreferrer"
@@ -630,32 +660,51 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         key: 'title',
         header: <ColHeader icon={FileText} label="Title" />,
         sortable: true,
-        render: (t) => (
-          <span className={styles.descClamp} title={t.title}>
-            {t.title}
-          </span>
-        ),
+        render: (t) =>
+          isDependencyRow(t) ? (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
+                <span className={styles.descClamp} title={t.title}>{t.title}</span>
+              </div>
+              <div className={styles.dependencyRaisedBy}>
+                <RaisedByLine row={t} labelForEmail={labelForEmail} />
+              </div>
+            </div>
+          ) : (
+            <span className={styles.descClamp} title={t.title}>
+              {t.title}
+            </span>
+          ),
       },
       {
         key: 'status',
         header: <ColHeader icon={Activity} label="Status" />,
         sortable: true,
-        render: (t) => <span className={styles.badge} style={statusBadgeStyle(t.status)}>{t.status}</span>,
+        render: (t) =>
+          isDependencyRow(t) ? (
+            <Badge tone="warning">{t.status}</Badge>
+          ) : (
+            <span className={styles.badge} style={statusBadgeStyle(t.status)}>{t.status}</span>
+          ),
       },
       {
         key: 'priority',
         header: <ColHeader icon={Flag} label="Priority" />,
         sortable: true,
         sortAccessor: (t) => priorityRank(t.priority),
-        render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
+        render: (t) => (isDependencyRow(t) ? '—' : <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>),
       },
       {
         key: 'dueDate',
         header: <ColHeader icon={CalendarClock} label="Due Date" />,
         sortable: true,
-        render: (t) => (
-          <span className={isOverdueTask(t) ? styles.dueDateOverdue : undefined}>{formatDate(t.dueDate)}</span>
-        ),
+        render: (t) =>
+          isDependencyRow(t) ? (
+            `Task due ${formatDate(t.dueDate)}`
+          ) : (
+            <span className={isOverdueTask(t) ? styles.dueDateOverdue : undefined}>{formatDate(t.dueDate)}</span>
+          ),
       },
       {
         key: 'estimatedHours',
@@ -670,6 +719,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         header: <ColHeader icon={Link2} label="Dependency" />,
         sortable: true,
         render: (t) => {
+          if (isDependencyRow(t)) return '—';
           const depCount = t.dependencyTickets?.length || 0;
           const label = t.hasOpenDependency ? 'Yes' : 'No';
           if (depCount === 0) return label;
@@ -703,7 +753,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         render: (t) => `${t.ageingDays}d`,
       },
     ],
-    [expandedTaskIds, assigneeLabelById],
+    [expandedTaskIds, assigneeLabelById, labelForEmail],
   );
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
@@ -751,8 +801,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
                   onClick={() => setStatusFilter(tabValue)}
                 >
                   {tab.label}
-                  {tab.key === 'DevelopmentFailed' && dependenciesToClear.length > 0 && (
-                    <> · {dependenciesToClear.length} to clear</>
+                  {tab.key === 'DevelopmentFailed' && dependenciesToClearCount > 0 && (
+                    <> · {dependenciesToClearCount} to clear</>
                   )}
                 </button>
               );
@@ -897,18 +947,10 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
             </div>
           </div>
 
-          {onDevFailedTab && viewMode !== 'workload' && dependenciesToClear.length > 0 && (
-            taskOnlyFiltersActive ? (
-              <p className={styles.issueMeta}>
-                {dependenciesToClear.length === 1 ? '1 dependency to clear is' : `${dependenciesToClear.length} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, or Due date filters are active.
-              </p>
-            ) : (
-              <DependenciesToClear
-                tickets={dependenciesToClear}
-                labelForEmail={labelForEmail}
-                showOwner={assigneeFilter === 'All'}
-              />
-            )
+          {onDevFailedTab && viewMode !== 'workload' && taskOnlyFiltersActive && dependenciesToClearCount > 0 && (
+            <p className={styles.issueMeta}>
+              {dependenciesToClearCount === 1 ? '1 dependency to clear is' : `${dependenciesToClearCount} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, or Due date filters are active.
+            </p>
           )}
 
           {viewMode === 'workload' ? (
@@ -982,7 +1024,14 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
               {tasks.length === 0 && (
                 <div className={styles.card}>{loading ? 'Loading...' : 'No tasks match these filters.'}</div>
               )}
-              {tasks.map((t) => (
+              {tasks.map((t) => isDependencyRow(t) ? (
+                <DependencyTile
+                  key={`dep-${t.id}`}
+                  row={t}
+                  assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
+                  labelForEmail={labelForEmail}
+                />
+              ) : (
                 <TaskTile
                   key={t.id}
                   task={t}
@@ -998,13 +1047,13 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
             <Table
               columns={columns}
               rows={tasks}
-              getRowId={(t) => t.id}
-              onRowClick={(t) => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
-              rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
+              getRowId={(t) => (isDependencyRow(t) ? `dep-${t.id}` : t.id)}
+              onRowClick={(t) => window.open(rowHref(t), '_blank', 'noopener,noreferrer')}
+              rowClassName={(t) => (isDependencyRow(t) ? '' : ROW_TINT_CLASS[t.status] || '')}
               emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
               className={fullScreen ? styles.fullScreenTableWrap : undefined}
               expandedContent={(t) =>
-                expandedTaskIds.has(t.id) && t.dependencyTickets?.length > 0 ? (
+                !isDependencyRow(t) && expandedTaskIds.has(t.id) && t.dependencyTickets?.length > 0 ? (
                   <DependencyTree tickets={t.dependencyTickets} />
                 ) : null
               }
@@ -1014,7 +1063,13 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
           {viewMode !== 'workload' && (
             <div className={styles.filterBar} style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <span className={styles.issueMeta}>
-                {total === 0 ? '0 tasks' : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
+                {total === 0
+                  ? '0 tasks'
+                  : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}${
+                      includedDependencyCount > 0
+                        ? ` (incl. ${includedDependencyCount} ${includedDependencyCount === 1 ? 'dependency' : 'dependencies'})`
+                        : ''
+                    }`}
               </span>
               <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
                 <div className={styles.filterGroup} style={{ minWidth: 90 }}>

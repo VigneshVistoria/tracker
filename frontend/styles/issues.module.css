@@ -164,8 +164,8 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 }
 .typeTagDefect { background: var(--color-red-tint); color: var(--color-red-dark); }
 .typeTagTask { background: var(--color-slate-tint); color: var(--color-slate); }
-/* Team Tasks' "Dependencies to clear" rows - warning tone, matching the
-   "Open" Badge on the same tickets in the dependency tree. */
+/* Team Tasks' dependency rows/cards - warning tone, matching the "Open"
+   Badge on the same tickets in the dependency tree. */
 .typeTagDependency { background: var(--ds-color-warning-tint); color: var(--ds-color-warning-dark); }
 
 .field {
@@ -853,6 +853,15 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .taskTile.railSlate { border-left-color: var(--color-slate); }
 .taskTile.railHold { border-left-color: var(--ds-color-info); }
 .taskTile.railClosed { border-left-color: var(--ds-color-gray-500); }
+.taskTile.railDependency { border-left-color: var(--ds-color-warning); }
+
+/* "Raised by Salman on #98 ..." under a dependency's tile/table Title
+   (TeamTaskWorkboard's DependencyTile + Title column) - who is waiting. */
+.dependencyRaisedBy {
+  margin-top: var(--ds-space-1);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
 
 .taskTileTop {
   display: flex;
@@ -947,91 +956,13 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   outline-offset: 1px;
 }
 
-/* Team Tasks' Development / Failed tab - open dependency tickets the
-   selected assignee owns (TeamTaskWorkboard's DependenciesToClear),
-   shown above the task table/tiles. Each row is one link to the parent
-   task, with the same visible focus ring as .workloadChip. */
-.depsToClear {
-  margin-bottom: var(--ds-space-4);
-  padding: var(--ds-space-3) var(--ds-space-4);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-bg-surface);
-}
-
-.depsToClearHeading {
-  margin: 0 0 var(--ds-space-2);
-  font-size: var(--ds-text-sm);
-  font-weight: 700;
-}
-
-.depsToClearList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-1);
-}
-
-.depsToClearItem {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-1);
-  padding: var(--ds-space-2);
+/* Task detail page - the dependency ticket a Team Tasks dependency card
+   linked to (/tasks/:id#dependency-:ticketId). Same warning tone as the
+   DEPENDENCY tag; the outline keeps it visible without relying on the
+   tint alone. */
+.ticketHighlight {
+  background: var(--ds-color-warning-tint);
+  outline: 2px solid var(--ds-color-warning);
+  outline-offset: -2px;
   border-radius: var(--ds-radius-sm);
-}
-
-.depsToClearItem:hover {
-  background: var(--ds-bg-surface-sunken);
-}
-
-/* Disclosure button for the row's Title line - reset to look like text,
-   with its focus ring restored explicitly (same reason as .workloadChip). */
-.depsToClearToggle {
-  all: unset;
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-2);
-  min-width: 0;
-  max-width: 100%;
-  cursor: pointer;
-  border-radius: var(--ds-radius-sm);
-}
-
-.depsToClearToggle:focus-visible {
-  outline: 2px solid var(--ds-border-focus);
-  outline-offset: 2px;
-}
-
-.depsToClearTitle {
-  font-size: var(--ds-text-sm);
-  font-weight: 700;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.depsToClearMeta {
-  font-size: var(--ds-text-sm);
-  color: var(--ds-text-secondary);
-  padding-left: var(--ds-space-5);
-}
-
-.depsToClearMeta a {
-  color: inherit;
-  text-decoration: underline;
-}
-
-.depsToClearMeta a:focus-visible {
-  outline: 2px solid var(--ds-border-focus);
-  outline-offset: 1px;
-}
-
-.depsToClearDesc {
-  margin: var(--ds-space-1) 0 0;
-  padding-left: var(--ds-space-5);
-  font-size: var(--ds-text-sm);
-  white-space: pre-wrap;
 }

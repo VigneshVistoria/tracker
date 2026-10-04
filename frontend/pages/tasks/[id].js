@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import AppShell from '../../components/AppShell';
@@ -271,6 +271,14 @@ export default function TaskDetailPage() {
   const [editingTicketId, setEditingTicketId] = useState(null);
   const [ticketTitleDraft, setTicketTitleDraft] = useState('');
   const [savingTicketTitle, setSavingTicketTitle] = useState(false);
+  // Team Tasks' dependency cards link here as /tasks/:id#dependency-:ticketId
+  // (a ticket has no page of its own) - once the tickets have rendered,
+  // scroll to and highlight that ticket. Done by hand rather than relying
+  // on the browser's own hash scroll, which fires before the async ticket
+  // list exists. Only once per page load, so later re-fetches (resolve,
+  // edit title) don't keep jumping the page back.
+  const [highlightedTicketId, setHighlightedTicketId] = useState(null);
+  const ticketHashHandled = useRef(false);
   const [ticketOwner, setTicketOwner] = useState(null);
   const [filingTicket, setFilingTicket] = useState(false);
 
@@ -388,6 +396,19 @@ export default function TaskDetailPage() {
       showToast(err.message, 'error');
     }
   };
+
+  useEffect(() => {
+    if (ticketHashHandled.current || tickets.length === 0) return;
+    const match = window.location.hash.match(/^#dependency-(\d+)$/);
+    if (!match) return;
+    const ticketId = Number(match[1]);
+    const el = document.getElementById(`dependency-${ticketId}`);
+    if (!el) return;
+    ticketHashHandled.current = true;
+    setHighlightedTicketId(ticketId);
+    el.scrollIntoView({ block: 'center' });
+    el.focus({ preventScroll: true });
+  }, [tickets, loading]);
 
   const handleSaveTicketTitle = async (ticketId) => {
     if (!ticketTitleDraft.trim()) {
@@ -1841,7 +1862,16 @@ export default function TaskDetailPage() {
         </h2>
         {tickets.length === 0 && <div className={styles.empty}>No dependency tickets filed for this task.</div>}
         {tickets.map((ticket) => (
-          <div key={ticket.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+          <div
+            key={ticket.id}
+            id={`dependency-${ticket.id}`}
+            tabIndex={-1}
+            className={highlightedTicketId === ticket.id ? styles.ticketHighlight : undefined}
+            style={{
+              padding: highlightedTicketId === ticket.id ? 'var(--space-3)' : 'var(--space-3) 0',
+              borderTop: '1px solid var(--color-border)',
+            }}
+          >
             {editingTicketId === ticket.id ? (
               <div className={styles.field} style={{ marginBottom: 'var(--space-2)' }}>
                 <label className={styles.label} htmlFor={`tdTicketTitleEdit-${ticket.id}`}>Dependency Title</label>
