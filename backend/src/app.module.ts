@@ -81,6 +81,7 @@ import { PermissionsModule } from './permissions/permissions.module';
 import { Release } from './release-logs/release.entity';
 import { ReleaseItem } from './release-logs/release-item.entity';
 import { ReleaseLogsModule } from './release-logs/release-logs.module';
+import { StatusReviewModule } from './status-review/status-review.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 @Module({
   imports: [
@@ -185,6 +186,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
     NonComplianceReportModule,
     PermissionsModule,
     ReleaseLogsModule,
+    StatusReviewModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
 })
