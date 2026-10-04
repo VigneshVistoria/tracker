@@ -102,7 +102,7 @@ export class PdfNonComplianceReportService {
     const rangeLabel = report.range.from || report.range.to ? `${report.range.from ?? 'Start'} to ${report.range.to ?? 'Now'}` : 'All Time';
     doc.fontSize(10).fillColor(INK_SOFT).text(`Period: ${rangeLabel}`);
     doc.text(
-      `Thresholds: ${report.thresholds.missedSlaCount}+ missed SLA/due dates, rejection rate > ${report.thresholds.rejectionRatePercent}% (min ${report.thresholds.rejectionRateMinSubmissions} submissions), ${report.thresholds.escalationCount}+ escalation(s), ${report.thresholds.vagueNotesCount}+ vague resolution note(s).`,
+      `Thresholds: ${report.thresholds.missedSlaCount}+ missed SLA/due dates, rejection rate > ${report.thresholds.rejectionRatePercent}% (min ${report.thresholds.rejectionRateMinSubmissions} submissions), ${report.thresholds.escalationCount}+ PM intervention(s), ${report.thresholds.vagueNotesCount}+ vague resolution note(s).`,
     );
     doc.moveDown(0.8);
     this.hr(doc);
@@ -140,7 +140,7 @@ export class PdfNonComplianceReportService {
         critical: false,
       },
       {
-        label: 'ESCALATED TO PM',
+        label: 'PM INTERVENTIONS',
         value: `${summary.escalationsTotal}`,
         sub: 'across flagged developers',
         critical: false,
@@ -314,7 +314,7 @@ export class PdfNonComplianceReportService {
         dev.rejectionRate.flagged,
       );
 
-      this.renderMetricLine(doc, 'Escalated to PM', `${dev.escalations.count}`, dev.escalations.flagged);
+      this.renderMetricLine(doc, 'PM Interventions', `${dev.escalations.count}`, dev.escalations.flagged);
       dev.escalations.items.forEach((item) => {
         doc.fontSize(8.5).fillColor(INK_SOFT).text(`   #${item.taskId} ${item.title} on ${item.escalatedAt}`);
       });
@@ -373,7 +373,7 @@ export class PdfNonComplianceReportService {
         .text(`${devName(dev)}  `, { continued: true })
         .font('Helvetica')
         .fillColor(INK_SOFT)
-        .text(`- ${dev.missedSla.count} missed, ${rateText}, ${dev.escalations.count} escalated`);
+        .text(`- ${dev.missedSla.count} missed, ${rateText}, ${dev.escalations.count} interventions`);
     });
   }
 

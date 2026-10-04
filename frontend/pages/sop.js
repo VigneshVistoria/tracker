@@ -26,7 +26,7 @@ const SECTIONS = [
   { id: 'new-task', label: '6. Picking up a task' },
   { id: 'dependencies', label: '7. Dependency tickets' },
   { id: 'submit', label: '8. Submitting work' },
-  { id: 'rejections', label: '9. Rejections, defects, escalations' },
+  { id: 'rejections', label: '9. Rejections, defects, interventions' },
   { id: 'peer-reviewer', label: '10. Acting as peer reviewer' },
   { id: 'measured', label: '11. How you are measured' },
   { id: 'resolution-notes', label: '12. Writing resolution notes' },
@@ -36,9 +36,9 @@ const SECTIONS = [
 
 const ROLES = [
   ['Developer / Designer / DevOps', 'Sets Estimated Hours and Due Date, does the work, raises dependency tickets when blocked, submits for QA or peer review with evidence, fixes rejections, resolves dependency tickets routed to them, performs peer reviews when assigned.'],
-  ['QA', 'Reviews submissions: approves (Pass), rejects (Failed), raises defects, or escalates unclear submissions to the PM.'],
+  ['QA', 'Reviews submissions: approves (Pass), rejects (Failed), raises defects, or sends unclear submissions to the PM for intervention.'],
   ['Peer Reviewer', 'Another developer picked by the submitter. Approves or rejects peer review rounds.'],
-  ['Program Manager', 'Creates and assigns tasks; owns Title, Description, Priority and Project/Module/Phase; changes locked estimates and due dates; handles escalations; enables peer review; puts tasks on Hold or Closes them.'],
+  ['Program Manager', 'Creates and assigns tasks; owns Title, Description, Priority and Project/Module/Phase; changes locked estimates and due dates; handles interventions; enables peer review; puts tasks on Hold or Closes them.'],
   ['Admin', 'Creates user accounts; can Hold/Close/Reopen tasks and enable peer review.'],
 ];
 
@@ -65,9 +65,9 @@ const STATUSES = [
   ['Peer Review', 'First submission waiting for your peer reviewer', 'Peer reviewer'],
   ['Re-Peer-Review', 'Peer resubmission after a rejection', 'Peer reviewer'],
   ['Failed', 'Rejected by QA or peer reviewer', 'You'],
-  ['Escalated', 'QA sent the round to the PM instead of deciding', 'PM'],
+  ['Intervention', 'QA sent the round to the PM instead of deciding', 'PM'],
   ['Pass', 'Approved; task complete', 'Nobody'],
-  ['Junk', 'PM closed an escalated task as not a real issue; does not count against you', 'Nobody'],
+  ['Junk', 'PM closed a task sent for intervention as not a real issue; does not count against you', 'Nobody'],
   ['Hold', 'Paused by PM/Admin', 'PM/Admin (to release)'],
   ['Closed', 'Closed by PM/Admin', 'PM/Admin (to reopen)'],
 ];
@@ -84,7 +84,7 @@ const KPI_FACTORS = [
 const NON_COMPLIANCE_RULES = [
   ['Missed SLA', '3 or more items across: tasks completed after Due Date, open tasks past Due Date, and tasks whose QA Review Due Date has passed while still in review'],
   ['Rejection rate', 'Above 20%, with at least 3 submissions (QA and peer combined)'],
-  ['Escalations', '1 or more rounds escalated to a PM'],
+  ['Interventions', '1 or more rounds sent to a PM for intervention'],
   ['Vague resolution notes', '3 or more resolution notes judged too vague'],
 ];
 
@@ -109,7 +109,7 @@ const CHECKLIST = [
   'Estimated Hours and Due Date are set',
   'No open dependency tickets on the task',
   'No open linked defects',
-  'Task is not Escalated, on Hold or Closed',
+  'Task is not in Intervention, on Hold or Closed',
   'Work tested end to end',
   'Resolution states cause, change and verification',
   'At least one artifact, each link opens correctly',
@@ -358,7 +358,7 @@ export default function TrackerSopPage() {
               <li>Estimated Hours and Due Date are set.</li>
               <li>No open dependency tickets on the task.</li>
               <li>No open linked defects (see section 9).</li>
-              <li>The task is not Escalated, on Hold or Closed. Check with the PM before touching Held or Closed tasks.</li>
+              <li>The task is not in Intervention, on Hold or Closed. Check with the PM before touching Held or Closed tasks.</li>
             </ul>
             <p>Then:</p>
             <ol className={g.steps}>
@@ -400,7 +400,7 @@ export default function TrackerSopPage() {
             </ol>
           </Section>
 
-          <Section id="rejections" number={9} title="Rejections, defects and escalations">
+          <Section id="rejections" number={9} title="Rejections, defects and interventions">
             <h3 className={g.subTitle}>Handling a rejection</h3>
             <ol className={g.steps}>
               <li>
@@ -429,13 +429,13 @@ export default function TrackerSopPage() {
               rejection. The parent task <strong>cannot be resubmitted to QA</strong> until every linked defect is
               Pass or Junk. Work the linked defects first, then resubmit the parent.
             </p>
-            <h3 className={g.subTitle}>Escalation</h3>
+            <h3 className={g.subTitle}>Intervention</h3>
             <p>
-              If QA finds your resolution unclear or unrelated to the task, they can escalate the round to the PM.
-              The task becomes <strong>Escalated</strong>, a notice appears on the task page, and you cannot
+              If QA finds your resolution unclear or unrelated to the task, they can send the round to the PM for intervention.
+              The task becomes <strong>Intervention</strong>, a notice appears on the task page, and you cannot
               resubmit. The PM will either reassign it (back to Development; your Estimated Hours and Due Date are
-              kept) or close it as <strong>Junk</strong>. Junk does not count against you, but an escalation that is
-              reassigned does. Clear resolution notes prevent escalations.
+              kept) or close it as <strong>Junk</strong>. Junk does not count against you, but an intervention that is
+              reassigned does. Clear resolution notes prevent interventions.
             </p>
           </Section>
 

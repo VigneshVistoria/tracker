@@ -10,7 +10,7 @@ import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { isQaReviewOverdue } from '../lib/developerTaskStats';
-import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel, statusBadgeStyle } from '../lib/taskTableShared';
+import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel, statusBadgeStyle, statusLabel } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
 import { apiFetch } from '../lib/api';
@@ -45,7 +45,7 @@ const QA_LEGEND_ITEMS = LEGEND_ITEMS.filter(
 // QA review round is actually pending. See OPEN_DEFECT_STATUSES on the
 // backend (TasksService.findDefectQueue()).
 const DEFECT_LEGEND_ITEMS = LEGEND_ITEMS.filter(
-  (item) => item.label === 'Development' || item.label.includes('Feedback') || item.label === 'Escalated' || item.label === 'Pass' || item.label.startsWith('Failed'),
+  (item) => item.label === 'Development' || item.label.includes('Feedback') || item.label === statusLabel('Escalated') || item.label === 'Pass' || item.label.startsWith('Failed'),
 );
 
 const CARD_DEFS = [
@@ -223,7 +223,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
               key: 'status',
               header: <ColHeader icon={Activity} label="Status" />,
               sortable: true,
-              render: (t) => <span className={styles.badge} style={statusBadgeStyle(t.status)}>{t.status}</span>,
+              render: (t) => <span className={styles.badge} style={statusBadgeStyle(t.status)}>{statusLabel(t.status)}</span>,
             },
             {
               key: 'createdAt',
@@ -318,7 +318,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
                 {showDefectColumns && <option value="Development">Development</option>}
                 <option value="Feedback">Feedback</option>
                 <option value="Re-Feedback">Re-Feedback</option>
-                {showDefectColumns && <option value="Escalated">Escalated</option>}
+                {showDefectColumns && <option value="Escalated">{statusLabel('Escalated')}</option>}
                 <option value="Pass">Approved</option>
                 <option value="Failed">Rejected</option>
               </select>

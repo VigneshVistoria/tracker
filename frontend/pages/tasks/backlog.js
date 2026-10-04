@@ -9,7 +9,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
-import { priorityTone, priorityLabel, statusBadgeStyle } from '../../lib/taskTableShared';
+import { priorityTone, priorityLabel, statusBadgeStyle, statusLabel } from '../../lib/taskTableShared';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
@@ -365,7 +365,7 @@ export default function TaskBacklogPage() {
                     <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
                   </td>
                   <td className={styles.colCompact}>
-                    <span className={styles.badge} style={statusBadgeStyle(task.status)}>{task.status}</span>
+                    <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status)}</span>
                   </td>
                   {(canManage || canManageHoldClosed) && (
                     <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>

@@ -5,6 +5,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
+import { statusLabel } from '../../lib/taskTableShared';
 
 export default function TaskStatusConfigPage() {
   const router = useRouter();
@@ -51,7 +52,7 @@ export default function TaskStatusConfigPage() {
         method: 'PATCH',
         body: JSON.stringify({ percent }),
       });
-      showToast(`"${row.status}" % Complete updated`, 'success');
+      showToast(`"${statusLabel(row.status)}" % Complete updated`, 'success');
       load();
     } catch (err) {
       setError(err.message);
@@ -89,7 +90,7 @@ export default function TaskStatusConfigPage() {
             <tbody>
               {config.map((row) => (
                 <tr key={row.id}>
-                  <td style={{ fontWeight: 600 }}>{row.status}</td>
+                  <td style={{ fontWeight: 600 }}>{statusLabel(row.status)}</td>
                   <td>
                     <input
                       className={styles.input}

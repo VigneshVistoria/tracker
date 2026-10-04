@@ -39,10 +39,19 @@ export const COMPLETED_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers',
 // hand, same as COMPLETED_STATUSES.
 export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
 
+// Display text for a task status. The stored/API value stays 'Escalated'
+// (filters, colors, backend checks all key off it) - only what users read
+// is "Intervention" (renamed 2026-10, label-only per the user).
+const STATUS_LABELS = { Escalated: 'Intervention' };
+
+export function statusLabel(status) {
+  return STATUS_LABELS[status] || status;
+}
+
 export const LEGEND_ITEMS = [
   { label: 'Development', swatch: 'var(--color-slate-tint)' },
   { label: 'Feedback / Re-Feedback', swatch: 'var(--color-plum-tint)' },
-  { label: 'Escalated', swatch: 'var(--color-amber-tint)' },
+  { label: statusLabel('Escalated'), swatch: 'var(--color-amber-tint)' },
   { label: 'Pass', swatch: 'var(--color-moss-tint)' },
   { label: 'Failed / Released - With Showstoppers', swatch: 'var(--color-red-tint)' },
   { label: 'Junk', swatch: 'var(--color-slate-tint)' },
@@ -134,7 +143,7 @@ export const STATUS_TAB_GROUPS = [
     statuses: ['Development', 'Failed', 'Released - With Showstoppers'],
   },
   { key: 'Feedback', label: 'QA', statuses: ['Feedback', 'Re-Feedback'] },
-  { key: 'Escalated', label: 'Escalated', statuses: ['Escalated'] },
+  { key: 'Escalated', label: statusLabel('Escalated'), statuses: ['Escalated'] },
   { key: 'Pass', label: 'Pass', statuses: ['Pass'] },
   { key: 'Junk', label: 'Junk', statuses: ['Junk'] },
   { key: 'ReleasedNoShowstoppers', label: 'Released - No Showstoppers', statuses: ['Released - No Showstoppers'] },

@@ -157,7 +157,7 @@ export default function NonComplianceReportPage() {
         <div>
           <h1 className={styles.pageTitle}>Developer Non-Compliance Report</h1>
           <p className={styles.pageSubtitle}>
-            Missed SLA/due dates, QA/Peer Review rejection rate, escalations, and vague resolution notes, per developer.
+            Missed SLA/due dates, QA/Peer Review rejection rate, PM interventions, and vague resolution notes, per developer.
           </p>
         </div>
         <div className={styles.actions}>
@@ -228,7 +228,7 @@ export default function NonComplianceReportPage() {
               <div className={nc.kpiSub}>{report.summary.blendedRejectionRate}% blended rate, across flagged developers</div>
             </div>
             <div className={nc.kpiTile}>
-              <div className={nc.kpiLabel}>Escalated to PM</div>
+              <div className={nc.kpiLabel}>PM Interventions</div>
               <div className={nc.kpiValue}>{report.summary.escalationsTotal}</div>
               <div className={nc.kpiSub}>across flagged developers</div>
             </div>
@@ -349,7 +349,7 @@ export default function NonComplianceReportPage() {
                     <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Developer</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Missed SLA</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Rejection Rate</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Escalated</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Interventions</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Vague Notes</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Status</th>
                   </tr>
@@ -449,7 +449,7 @@ export default function NonComplianceReportPage() {
                         {dev.rejectionRate.submissions >= report.thresholds.rejectionRateMinSubmissions
                           ? `${dev.rejectionRate.rate}% rate`
                           : 'n/a rate'}{' '}
-                        &middot; {dev.escalations.count} escalated &middot; {dev.resolutionQuality.count} vague
+                        &middot; {dev.escalations.count} interventions &middot; {dev.resolutionQuality.count} vague
                       </span>
                     </span>
                   </div>

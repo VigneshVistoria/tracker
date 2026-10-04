@@ -154,7 +154,7 @@ const PROJECT_TEAMS_NAV_ITEM = { href: '/project-teams', label: 'Project Teams',
 const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox };
 // Same visibility split as Task Backlog - Admin/Program Manager view,
 // only Program Manager can act (reassign/close as Junk) within the page.
-const ESCALATIONS_NAV_ITEM = { href: '/tasks/escalations', label: 'Escalations', icon: AlertTriangle };
+const ESCALATIONS_NAV_ITEM = { href: '/tasks/escalations', label: 'Interventions', icon: AlertTriangle };
 const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
 // Admin/Executive/Program Manager only - leadership-wide (not project-
 // scoped), same visibility grant as Task Backlog/QA Review above. Edit

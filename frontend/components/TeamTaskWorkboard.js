@@ -12,7 +12,7 @@ import dashboardStyles from '../styles/dashboard.module.css';
 import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
 import {
   buildRowTintClass, buildRowRailClass, visibleStatusTabs,
-  priorityRank, priorityTone, priorityLabel, priorityStripeColor, statusBadgeStyle,
+  priorityRank, priorityTone, priorityLabel, priorityStripeColor, statusBadgeStyle, statusLabel,
   HOLD_CLOSED_STATUSES, STATUS_TAB_GROUPS,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
@@ -263,7 +263,7 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
           <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
-          <span className={styles.badge} style={statusBadgeStyle(task.status)}>{task.status}</span>
+          <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status)}</span>
         </div>
       </div>
       <div className={styles.taskTileDesc} title={task.title}>
@@ -685,7 +685,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
           isDependencyRow(t) ? (
             <Badge tone="warning">{t.status}</Badge>
           ) : (
-            <span className={styles.badge} style={statusBadgeStyle(t.status)}>{t.status}</span>
+            <span className={styles.badge} style={statusBadgeStyle(t.status)}>{statusLabel(t.status)}</span>
           ),
       },
       {

@@ -15,7 +15,7 @@ import { isQaReviewOverdue } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
-import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
+import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel } from '../../lib/taskTableShared';
 import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 
@@ -59,7 +59,7 @@ function StatusBadge({ status }) {
   const color = STATUS_COLOR[status] || { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' };
   return (
     <span className={styles.badge} style={{ background: color.bg, color: color.fg }}>
-      {status}
+      {statusLabel(status)}
     </span>
   );
 }
@@ -527,7 +527,7 @@ export default function TaskDetailPage() {
   useEffect(() => {
     if (!task || !canLinkBlocking) return;
     apiFetch(`/tasks/blocking-link-candidates?kind=${task.isDefect ? 'tasks' : 'defects'}`)
-      .then((rows) => setBlockingCandidates(rows.map((r) => ({ id: r.id, name: `#${r.id} - ${r.title} (${r.status})` }))))
+      .then((rows) => setBlockingCandidates(rows.map((r) => ({ id: r.id, name: `#${r.id} - ${r.title} (${statusLabel(r.status)})` }))))
       .catch(() => setBlockingCandidates([]));
   }, [task?.id, task?.isDefect, canLinkBlocking]);
 
@@ -662,7 +662,7 @@ export default function TaskDetailPage() {
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
     { key: 'reviewType', header: 'Type', width: 72, render: (r) => (r.reviewType === 'peer' ? 'Peer' : 'QA') },
-    { key: 'status', header: 'Status', width: 96, render: (r) => r.status.charAt(0).toUpperCase() + r.status.slice(1) },
+    { key: 'status', header: 'Status', width: 96, render: (r) => statusLabel(r.status.charAt(0).toUpperCase() + r.status.slice(1)) },
     { key: 'resolution', header: 'Description', render: (r) => stripHtmlForPreview(r.resolution) },
     { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
     { key: 'qaArtifacts', header: 'QA Artifact', width: 100, render: (r) => <QaArtifactIcons artifacts={r.qaArtifacts} /> },
@@ -924,7 +924,7 @@ export default function TaskDetailPage() {
     try {
       const updated = await apiFetch(`/tasks/${task.id}/reopen`, { method: 'PATCH' });
       setTask(updated);
-      showToast(`Task reopened as ${updated.status}`, 'success');
+      showToast(`Task reopened as ${statusLabel(updated.status)}`, 'success');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1249,7 +1249,7 @@ export default function TaskDetailPage() {
     e.preventDefault();
     setError('');
     if (!stripHtmlForPreview(escalateComment).trim()) {
-      setError('A comment explaining the escalation is required.');
+      setError('A comment explaining why PM intervention is needed is required.');
       return;
     }
     setQaActionBusy(true);
@@ -1258,7 +1258,7 @@ export default function TaskDetailPage() {
         method: 'PATCH',
         body: JSON.stringify({ comment: escalateComment }),
       });
-      showToast('Task escalated to PM', 'success');
+      showToast('Task sent to PM for intervention', 'success');
       setEscalateComment('');
       setShowEscalateForm(false);
       const [refreshedTask, refreshedReviews] = await Promise.all([
@@ -1493,8 +1493,8 @@ export default function TaskDetailPage() {
             />
             <p className={styles.helpText}>
               Leave this blank to send the task back to the Task Backlog, unassigned. Past QA/Peer Review history stays
-              attributed to whoever was assigned at the time - reassigning never rewrites it. A Peer Review, Escalation to
-              PM, or Dependency Ticket already in progress keeps going to whoever it's currently routed to.
+              attributed to whoever was assigned at the time - reassigning never rewrites it. A Peer Review, PM
+              Intervention, or Dependency Ticket already in progress keeps going to whoever it's currently routed to.
             </p>
             <div className={styles.actions}>
               <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingAssignee} onClick={handleSaveAssignee}>
@@ -1745,7 +1745,7 @@ export default function TaskDetailPage() {
           ) : (
             <>
               <p className={styles.helpText}>
-                Pause or force-end this task from its current status ({task.status}) - no reason or comment
+                Pause or force-end this task from its current status ({statusLabel(task.status)}) - no reason or comment
                 required. Either can be undone later - releasing or reopening returns it to this same status.
               </p>
               <div className={styles.actions}>
@@ -2036,10 +2036,10 @@ export default function TaskDetailPage() {
       {isAssignee && isEscalated && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
-            Escalated to PM
+            Sent to PM for Intervention
           </h2>
           <p style={{ margin: 0 }}>
-            QA escalated this task instead of approving or rejecting it. It's waiting in the PM Escalation queue -
+            QA sent this task to PM for intervention instead of approving or rejecting it. It's waiting in the PM Interventions queue -
             you can&apos;t resubmit it until PM reassigns it.
           </p>
         </div>
@@ -2321,7 +2321,7 @@ export default function TaskDetailPage() {
                   Reject
                 </button>
                 <button className={styles.button} type="button" onClick={() => setShowEscalateForm(true)} disabled={qaActionBusy}>
-                  Escalate to PM
+                  Send to PM for Intervention
                 </button>
               </div>
             </>
@@ -2503,7 +2503,7 @@ export default function TaskDetailPage() {
           {showEscalateForm && (
             <form onSubmit={handleQaEscalate} style={{ marginTop: 'var(--space-3)' }}>
               <div className={styles.field}>
-                <label className={styles.label} htmlFor="tdEscalateComment">Escalation Comment</label>
+                <label className={styles.label} htmlFor="tdEscalateComment">Intervention Comment</label>
                 <RichTextEditor
                   id="tdEscalateComment"
                   placeholder="Explain why this needs PM's attention instead of a straightforward pass/fail (e.g. resolution is unclear or unrelated to the task)"
@@ -2513,7 +2513,7 @@ export default function TaskDetailPage() {
               </div>
               <div className={styles.actions}>
                 <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={qaActionBusy}>
-                  {qaActionBusy ? 'Working...' : 'Confirm Escalation'}
+                  {qaActionBusy ? 'Working...' : 'Confirm Intervention'}
                 </button>
                 <button className={styles.button} type="button" onClick={() => setShowEscalateForm(false)} disabled={qaActionBusy}>
                   Cancel

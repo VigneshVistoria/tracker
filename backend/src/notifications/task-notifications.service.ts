@@ -43,12 +43,12 @@ export class TaskNotificationsService {
 
     // task.title is plain text already (unlike description, which is rich
     // text/HTML) - comment still needs the plain-text conversion.
-    const subject = `Task #${task.id} escalated to you for review`;
+    const subject = `Task #${task.id} needs your intervention`;
     const html =
-      `<p><strong>${escapeHtml(escalatedByEmail)}</strong> escalated task <strong>#${task.id} - ${escapeHtml(task.title)}</strong>` +
-      ` in project <strong>${escapeHtml(task.projectName)}</strong> instead of approving or rejecting it.</p>` +
+      `<p><strong>${escapeHtml(escalatedByEmail)}</strong> sent task <strong>#${task.id} - ${escapeHtml(task.title)}</strong>` +
+      ` in project <strong>${escapeHtml(task.projectName)}</strong> to PM for intervention instead of approving or rejecting it.</p>` +
       `<p><strong>Reason:</strong> ${escapeHtml(richTextToPlainText(comment))}</p>` +
-      `<p>Reassign it to a developer or close it as Junk from the Escalations queue.</p>`;
+      `<p>Reassign it to a developer or close it as Junk from the Interventions queue.</p>`;
 
     await Promise.all(
       programManagers.map((pm) => this.mailService.sendToAssignee(pm.email, subject, html)),

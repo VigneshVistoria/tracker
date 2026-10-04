@@ -104,9 +104,9 @@ export default function EscalationsPage() {
     <AppShell>
       <div className={styles.pageHeader}>
         <div>
-          <h1 className={styles.pageTitle}>Escalations</h1>
+          <h1 className={styles.pageTitle}>Interventions</h1>
           <p className={styles.pageSubtitle}>
-            Tasks QA escalated instead of Approve/Reject - reassign to a Developer to send it back into the normal
+            Tasks QA sent to PM for intervention instead of Approve/Reject - reassign to a Developer to send it back into the normal
             flow, or close it as Junk if it was never a real issue.
           </p>
         </div>
@@ -126,14 +126,14 @@ export default function EscalationsPage() {
                 <th className={styles.colCompact}>Phase</th>
                 <th>Description</th>
                 <th className={styles.colCompact}>Assignee</th>
-                <th>Escalation</th>
+                <th>Intervention</th>
                 {canManage && <th></th>}
               </tr>
             </thead>
             <tbody>
               {tasks.length === 0 && (
                 <tr>
-                  <td colSpan={canManage ? 7 : 6} className={styles.empty}>No escalated tasks right now.</td>
+                  <td colSpan={canManage ? 7 : 6} className={styles.empty}>No tasks need intervention right now.</td>
                 </tr>
               )}
               {tasks.map((task) => (

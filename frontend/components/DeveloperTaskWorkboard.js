@@ -12,7 +12,7 @@ import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask } from '../lib/developerTaskStats';
 import {
-  COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses,
+  COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses, statusLabel,
   priorityRank, priorityTone, priorityLabel,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
@@ -343,7 +343,7 @@ export default function DeveloperTaskWorkboard({
               >
                 <option value="All">All</option>
                 {statusOptions.map((s) => (
-                  <option key={s} value={s}>{s}</option>
+                  <option key={s} value={s}>{statusLabel(s)}</option>
                 ))}
               </select>
             </div>
