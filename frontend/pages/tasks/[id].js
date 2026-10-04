@@ -14,6 +14,7 @@ import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { isQaReviewOverdue } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
+import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
 import { TASK_PRIORITIES, priorityTone, priorityLabel } from '../../lib/taskTableShared';
 import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
@@ -263,7 +264,13 @@ export default function TaskDetailPage() {
   const [qaReviewDueDateDraft, setQaReviewDueDateDraft] = useState('');
   const [savingQaReviewDueDate, setSavingQaReviewDueDate] = useState(false);
 
+  const [ticketTitle, setTicketTitle] = useState('');
   const [ticketDescription, setTicketDescription] = useState('');
+  // Inline "Edit Title" on an existing dependency ticket - one at a time,
+  // keyed by ticket id (see TaskDependencyTicketsService.updateTitle()).
+  const [editingTicketId, setEditingTicketId] = useState(null);
+  const [ticketTitleDraft, setTicketTitleDraft] = useState('');
+  const [savingTicketTitle, setSavingTicketTitle] = useState(false);
   const [ticketOwner, setTicketOwner] = useState(null);
   const [filingTicket, setFilingTicket] = useState(false);
 
@@ -379,6 +386,27 @@ export default function TaskDetailPage() {
       loadBlockingLinks();
     } catch (err) {
       showToast(err.message, 'error');
+    }
+  };
+
+  const handleSaveTicketTitle = async (ticketId) => {
+    if (!ticketTitleDraft.trim()) {
+      showToast('Dependency Title is required.', 'error');
+      return;
+    }
+    setSavingTicketTitle(true);
+    try {
+      await apiFetch(`/task-dependency-tickets/${ticketId}/title`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title: ticketTitleDraft.trim() }),
+      });
+      showToast('Dependency title updated', 'success');
+      setEditingTicketId(null);
+      loadTickets();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setSavingTicketTitle(false);
     }
   };
 
@@ -1299,8 +1327,8 @@ export default function TaskDetailPage() {
   const handleFileTicket = async (e) => {
     e.preventDefault();
     setError('');
-    if (!ticketDescription.trim() || !ticketOwner) {
-      setError('Dependency Description and Dependency Owner are both required.');
+    if (!ticketTitle.trim() || !ticketDescription.trim() || !ticketOwner) {
+      setError('Dependency Title, Description, and Owner are all required.');
       return;
     }
     setFilingTicket(true);
@@ -1309,11 +1337,13 @@ export default function TaskDetailPage() {
         method: 'POST',
         body: JSON.stringify({
           parentTaskId: task.id,
+          title: ticketTitle.trim(),
           description: ticketDescription,
           ownerUserId: ticketOwner.id,
         }),
       });
       showToast('Dependency Ticket created', 'success');
+      setTicketTitle('');
       setTicketDescription('');
       setTicketOwner(null);
       loadTickets();
@@ -1763,6 +1793,21 @@ export default function TaskDetailPage() {
             Create Dependency Ticket
           </h2>
           <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdTicketTitle">Dependency Title</label>
+            <input
+              className={styles.input}
+              id="tdTicketTitle"
+              required
+              maxLength={TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH}
+              value={ticketTitle}
+              onChange={(e) => setTicketTitle(e.target.value)}
+              aria-describedby="tdTicketTitleHint"
+            />
+            <p id="tdTicketTitleHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              A short one-line summary, shown wherever this dependency is listed.
+            </p>
+          </div>
+          <div className={styles.field}>
             <label className={styles.label} htmlFor="tdTicketDesc">Dependency Description</label>
             <textarea
               className={styles.textarea}
@@ -1797,16 +1842,57 @@ export default function TaskDetailPage() {
         {tickets.length === 0 && <div className={styles.empty}>No dependency tickets filed for this task.</div>}
         {tickets.map((ticket) => (
           <div key={ticket.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ margin: 0 }}>
-              {ticket.description}{' '}
-              <span className={styles.badge} style={ticket.status === 'resolved' ? { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' } : { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
-                {ticket.status === 'resolved' ? 'Resolved' : 'Open'}
-              </span>
-            </p>
+            {editingTicketId === ticket.id ? (
+              <div className={styles.field} style={{ marginBottom: 'var(--space-2)' }}>
+                <label className={styles.label} htmlFor={`tdTicketTitleEdit-${ticket.id}`}>Dependency Title</label>
+                <input
+                  className={styles.input}
+                  id={`tdTicketTitleEdit-${ticket.id}`}
+                  required
+                  maxLength={TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH}
+                  value={ticketTitleDraft}
+                  onChange={(e) => setTicketTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveTicketTitle(ticket.id);
+                    if (e.key === 'Escape') setEditingTicketId(null);
+                  }}
+                  autoFocus
+                />
+                <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+                  <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingTicketTitle} onClick={() => handleSaveTicketTitle(ticket.id)}>
+                    {savingTicketTitle ? 'Saving...' : 'Save Title'}
+                  </button>
+                  <button className={styles.buttonSecondary} type="button" disabled={savingTicketTitle} onClick={() => setEditingTicketId(null)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontWeight: 600 }}>
+                {ticket.title}{' '}
+                <span className={styles.badge} style={ticket.status === 'resolved' ? { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' } : { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
+                  {ticket.status === 'resolved' ? 'Resolved' : 'Open'}
+                </span>
+              </p>
+            )}
+            <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Owner: {ticket.ownerEmail} &middot; Filed by {ticket.createdByEmail} &middot;{' '}
               {formatDate(ticket.createdAt)}
             </p>
+            {editingTicketId !== ticket.id && (ticket.createdByUserId === user.id || canManage || user.role === 'admin') && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
+                onClick={() => {
+                  setEditingTicketId(ticket.id);
+                  setTicketTitleDraft(ticket.title);
+                }}
+              >
+                Edit Title
+              </button>
+            )}
             {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
               <button
                 className={styles.buttonSecondary}

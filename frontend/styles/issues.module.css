@@ -976,35 +976,62 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 
 .depsToClearItem {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--ds-space-2);
+  flex-direction: column;
+  gap: var(--ds-space-1);
   padding: var(--ds-space-2);
   border-radius: var(--ds-radius-sm);
-  color: inherit;
-  text-decoration: none;
 }
 
 .depsToClearItem:hover {
   background: var(--ds-bg-surface-sunken);
 }
 
-.depsToClearItem:focus-visible {
+/* Disclosure button for the row's Title line - reset to look like text,
+   with its focus ring restored explicitly (same reason as .workloadChip). */
+.depsToClearToggle {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-width: 0;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: var(--ds-radius-sm);
+}
+
+.depsToClearToggle:focus-visible {
   outline: 2px solid var(--ds-border-focus);
   outline-offset: 2px;
 }
 
-.depsToClearDesc {
+.depsToClearTitle {
   font-size: var(--ds-text-sm);
-  font-weight: 600;
+  font-weight: 700;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
 }
 
 .depsToClearMeta {
   font-size: var(--ds-text-sm);
   color: var(--ds-text-secondary);
+  padding-left: var(--ds-space-5);
+}
+
+.depsToClearMeta a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.depsToClearMeta a:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 1px;
+}
+
+.depsToClearDesc {
+  margin: var(--ds-space-1) 0 0;
+  padding-left: var(--ds-space-5);
+  font-size: var(--ds-text-sm);
+  white-space: pre-wrap;
 }

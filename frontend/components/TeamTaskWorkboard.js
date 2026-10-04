@@ -143,7 +143,7 @@ function DependencyTree({ tickets }) {
       {tickets.map((tk) => (
         <div key={tk.id} className={styles.dependencyTreeItem}>
           <Link2 size={13} aria-hidden="true" />
-          <span>{tk.description}</span>
+          <span title={tk.description}>{tk.title}</span>
           <span className={styles.dependencyTreeOwner}>{tk.ownerEmail}</span>
           <Badge tone={tk.status === 'open' ? 'warning' : 'success'}>{tk.status === 'open' ? 'Open' : 'Resolved'}</Badge>
         </div>
@@ -158,33 +158,58 @@ function DependencyTree({ tickets }) {
 // tasks. Rendered as its own list above the task table/tiles rather than
 // merged into the paginated task rows - a ticket has no Status/Priority/
 // Progress/Due Date of its own, and mixing it into server-side pagination
-// would break the page counts. Each row opens its parent task, where the
-// ticket itself lives and gets resolved.
+// would break the page counts.
+//
+// Each item is a one-line Title (the full description is behind a
+// disclosure button, plus a hover tooltip, so the list stays scannable -
+// confirmed with the user 2026-10) and a "Raised by ... on #id Task" line
+// linking to the parent task, where the ticket itself gets resolved.
 function DependenciesToClear({ tickets, labelForEmail, showOwner }) {
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggle = (id) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   return (
     <section className={styles.depsToClear} aria-labelledby="teamDepsToClearHeading">
       <h2 id="teamDepsToClearHeading" className={styles.depsToClearHeading}>
         Dependencies to clear ({tickets.length})
       </h2>
       <ul className={styles.depsToClearList}>
-        {tickets.map((tk) => (
-          <li key={tk.id}>
-            <a
-              href={`/tasks/${tk.parentTaskId}`}
-              className={styles.depsToClearItem}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
-              <span className={styles.depsToClearDesc} title={tk.description}>{tk.description}</span>
-              <span className={styles.depsToClearMeta}>
+        {tickets.map((tk) => {
+          const expanded = expandedIds.has(tk.id);
+          const descId = `teamDepToClearDesc-${tk.id}`;
+          return (
+            <li key={tk.id} className={styles.depsToClearItem}>
+              <button
+                type="button"
+                className={styles.depsToClearToggle}
+                aria-expanded={expanded}
+                aria-controls={descId}
+                title={tk.description}
+                onClick={() => toggle(tk.id)}
+              >
+                {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
+                <span className={styles.depsToClearTitle}>{tk.title}</span>
+              </button>
+              <div className={styles.depsToClearMeta}>
                 {showOwner && <>Owner: {labelForEmail(tk.ownerEmail)} · </>}
-                Raised by {labelForEmail(tk.createdByEmail)} on #{tk.parentTaskId}
-                {tk.parentTaskTitle ? ` ${tk.parentTaskTitle}` : ''} · {formatDate(tk.createdAt)}
-              </span>
-            </a>
-          </li>
-        ))}
+                Raised by {labelForEmail(tk.createdByEmail)} on{' '}
+                <Link href={`/tasks/${tk.parentTaskId}`} target="_blank" rel="noopener noreferrer">
+                  #{tk.parentTaskId}{tk.parentTaskTitle ? ` ${tk.parentTaskTitle}` : ''}
+                </Link>
+                {' · '}{formatDate(tk.createdAt)}
+              </div>
+              {expanded && (
+                <p id={descId} className={styles.depsToClearDesc}>{tk.description}</p>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -15,7 +15,7 @@ export function TicketRow({ ticket, subtitle }) {
       rel="noopener noreferrer"
     >
       <div className={issueStyles.issueMain}>
-        <p className={`${issueStyles.issueTitle} ${issueStyles.issueTitleClamp}`}>{ticket.description}</p>
+        <p className={`${issueStyles.issueTitle} ${issueStyles.issueTitleClamp}`} title={ticket.description}>{ticket.title}</p>
         <div className={issueStyles.issueMeta}>
           <span>{ticket.parentTaskTitle ? `Task: ${ticket.parentTaskTitle}` : `Task #${ticket.parentTaskId}`}</span>
           <span>{subtitle}</span>

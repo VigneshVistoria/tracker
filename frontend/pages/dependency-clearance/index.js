@@ -61,7 +61,8 @@ export default function DependencyClearancePage() {
 
       {!loading && tickets.map((ticket) => (
         <div key={ticket.id} className={styles.card} style={{ marginBottom: 'var(--space-3)' }}>
-          <p style={{ margin: 0 }}>{ticket.description}</p>
+          <p style={{ margin: 0, fontWeight: 600 }}>{ticket.title}</p>
+          <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
           <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
             Filed by {ticket.createdByEmail} &middot; {formatDate(ticket.createdAt)}
           </p>

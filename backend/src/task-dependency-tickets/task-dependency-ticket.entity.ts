@@ -17,6 +17,17 @@ export class TaskDependencyTicket {
   @Column()
   parentTaskId: number;
 
+  // Short one-line name shown wherever the ticket is listed (Team Tasks'
+  // Dependencies to clear, Dependency Clearance, Outbound/Inbound cards,
+  // the task detail page) instead of the full description - same idea as
+  // ProjectTask.title. Plain text, trimmed, capped at
+  // TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH. Required for every ticket
+  // created from here on; existing rows were backfilled from their
+  // description's first meaningful line (scripts/backfill-task-dependency-
+  // ticket-titles.js).
+  @Column()
+  title: string;
+
   @Column({ type: 'text' })
   description: string;
 

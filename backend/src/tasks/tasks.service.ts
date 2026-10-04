@@ -33,7 +33,7 @@ export interface ProjectTaskWithComputed extends ProjectTask {
   // tree needs the actual tickets (not just the boolean above), but only
   // for whichever page is currently on screen, so this is left undefined
   // everywhere else rather than a wasted query on every other task list.
-  dependencyTickets?: Array<{ id: number; description: string; ownerEmail: string; status: string }>;
+  dependencyTickets?: Array<{ id: number; title: string; description: string; ownerEmail: string; status: string }>;
   // Only populated by findQaQueue()/findDefectQueue() (QA Review's Assignee
   // column) - Team Tasks/KPI already have a separate id-keyed user list
   // fetched client-side to build their own display label from, so this
@@ -91,6 +91,7 @@ export interface TeamTasksResult {
 
 export interface TeamDependencyToClear {
   id: number;
+  title: string;
   description: string;
   ownerUserId: number;
   ownerEmail: string;
@@ -905,6 +906,7 @@ export class TasksService {
       const parent = parentById.get(t.parentTaskId);
       return {
         id: t.id,
+        title: t.title,
         description: t.description,
         ownerUserId: t.ownerUserId,
         ownerEmail: t.ownerEmail,
@@ -927,13 +929,13 @@ export class TasksService {
   // this only ever needs to answer for the ~25-100 rows actually rendered.
   private async findDependencyTicketsForTasks(
     taskIds: number[],
-  ): Promise<Map<number, Array<{ id: number; description: string; ownerEmail: string; status: string }>>> {
-    const map = new Map<number, Array<{ id: number; description: string; ownerEmail: string; status: string }>>();
+  ): Promise<Map<number, Array<{ id: number; title: string; description: string; ownerEmail: string; status: string }>>> {
+    const map = new Map<number, Array<{ id: number; title: string; description: string; ownerEmail: string; status: string }>>();
     if (taskIds.length === 0) return map;
     const tickets = await this.dependencyTicketsRepository.find({ where: { parentTaskId: In(taskIds) } });
     for (const ticket of tickets) {
       const existing = map.get(ticket.parentTaskId) || [];
-      existing.push({ id: ticket.id, description: ticket.description, ownerEmail: ticket.ownerEmail, status: ticket.status });
+      existing.push({ id: ticket.id, title: ticket.title, description: ticket.description, ownerEmail: ticket.ownerEmail, status: ticket.status });
       map.set(ticket.parentTaskId, existing);
     }
     return map;

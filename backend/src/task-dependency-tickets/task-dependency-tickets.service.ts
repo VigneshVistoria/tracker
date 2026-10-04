@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
+import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
 import { TasksService } from '../tasks/tasks.service';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
@@ -87,10 +88,16 @@ export class TaskDependencyTicketsService {
     if (!DEVELOPER_EQUIVALENT_ROLES.includes(owner.role)) {
       throw new BadRequestException('Dependency Owner must be a Developer, Designer, or DevOps.');
     }
+    // MinLength(1) alone lets a whitespace-only title through.
+    const title = dto.title.trim();
+    if (!title) {
+      throw new BadRequestException('Dependency Title is required.');
+    }
 
     const ticket = this.ticketsRepository.create({
       tenantId,
       parentTaskId: task.id,
+      title,
       description: dto.description,
       ownerUserId: owner.id,
       ownerEmail: owner.email,
@@ -107,7 +114,50 @@ export class TaskDependencyTicketsService {
       tenantId,
       entityType: 'TaskDependencyTicket',
       entityId: saved.id,
-      details: { parentTaskId: saved.parentTaskId, ownerEmail: saved.ownerEmail },
+      details: { parentTaskId: saved.parentTaskId, ownerEmail: saved.ownerEmail, title: saved.title },
+    });
+
+    return saved;
+  }
+
+  // Title is the only field editable after creation. Allowed for whoever
+  // raised the ticket (they wrote it) or Admin/Program Manager - the same
+  // "author or leadership" shape as task Title editing (confirmed with the
+  // user 2026-10). The owner can't rename it - they're the one being asked
+  // to act on it, not its author.
+  async updateTitle(
+    id: number,
+    dto: UpdateTaskDependencyTicketTitleDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskDependencyTicket> {
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) {
+      throw new NotFoundException(`Dependency ticket #${id} not found`);
+    }
+    const isCreator = ticket.createdByUserId === currentUser.id;
+    const isLeadership = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.PROGRAM_MANAGER;
+    if (!isCreator && !isLeadership) {
+      throw new ForbiddenException('Only the person who raised this dependency, Admin, or Program Manager can edit its title.');
+    }
+    const title = dto.title.trim();
+    if (!title) {
+      throw new BadRequestException('Dependency Title is required.');
+    }
+
+    const previousTitle = ticket.title;
+    ticket.title = title;
+    const saved = await this.ticketsRepository.save(ticket);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_DEPENDENCY_TICKET_TITLE_UPDATED,
+      tenantId,
+      entityType: 'TaskDependencyTicket',
+      entityId: saved.id,
+      details: { parentTaskId: saved.parentTaskId, previousTitle, title: saved.title },
     });
 
     return saved;
