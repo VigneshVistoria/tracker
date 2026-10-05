@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
+import TestCaseExecutionSummary from '../../../components/TestCaseExecutionSummary';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch, apiDownload } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatDate';
@@ -72,6 +73,7 @@ export default function TestCasesList() {
 
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
+  const [moduleFilter, setModuleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [reviewFilter, setReviewFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
@@ -115,12 +117,37 @@ export default function TestCasesList() {
         return false;
       }
       if (projectFilter && String(tc.projectId) !== projectFilter) return false;
+      if (moduleFilter && String(tc.moduleId) !== moduleFilter) return false;
       if (statusFilter && tc.status !== statusFilter) return false;
       if (reviewFilter && tc.reviewStatus !== reviewFilter) return false;
       if (labelFilter && !(tc.labelIds || []).includes(Number(labelFilter))) return false;
       return true;
     });
-  }, [testCases, search, projectFilter, statusFilter, reviewFilter, labelFilter]);
+  }, [testCases, search, projectFilter, moduleFilter, statusFilter, reviewFilter, labelFilter]);
+
+  // Module options come from the test cases already loaded for the chosen
+  // project, rather than GET /modules - that endpoint 403s for QA users not
+  // assigned to the project, and this way only modules that have test
+  // cases are offered.
+  const moduleOptions = useMemo(() => {
+    if (!projectFilter) return [];
+    const byId = new Map();
+    testCases.forEach((tc) => {
+      if (String(tc.projectId) === projectFilter && tc.moduleId) byId.set(tc.moduleId, tc.moduleName);
+    });
+    return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [testCases, projectFilter]);
+
+  // Same filters the list applies above, for the Execution Summary's
+  // server-side counts (TestCasesService.applyListFilters()).
+  const summaryFilters = {
+    search,
+    projectId: projectFilter,
+    moduleId: moduleFilter,
+    status: statusFilter,
+    reviewStatus: reviewFilter,
+    labelId: labelFilter,
+  };
 
   const sortedTestCases = useMemo(() => {
     const sorted = [...filteredTestCases].sort(SORTERS[sort.key]);
@@ -254,9 +281,30 @@ export default function TestCasesList() {
         </div>
         <div className={styles.field} style={{ margin: 0, minWidth: 180 }}>
           <label className={styles.label} htmlFor="tcProjectFilter">Project</label>
-          <select className={styles.select} id="tcProjectFilter" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+          <select
+            className={styles.select}
+            id="tcProjectFilter"
+            value={projectFilter}
+            onChange={(e) => {
+              setProjectFilter(e.target.value);
+              setModuleFilter('');
+            }}
+          >
             <option value="">All projects</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className={styles.field} style={{ margin: 0, minWidth: 180 }}>
+          <label className={styles.label} htmlFor="tcModuleFilter">Module</label>
+          <select
+            className={styles.select}
+            id="tcModuleFilter"
+            value={moduleFilter}
+            onChange={(e) => setModuleFilter(e.target.value)}
+            disabled={!projectFilter}
+          >
+            <option value="">{projectFilter ? 'All modules' : 'Choose a project first'}</option>
+            {moduleOptions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
         <div className={styles.field} style={{ margin: 0, minWidth: 160 }}>
@@ -283,6 +331,8 @@ export default function TestCasesList() {
           </div>
         )}
       </div>
+
+      {!loading && testCases.length > 0 && <TestCaseExecutionSummary filters={summaryFilters} refreshKey={testCases} />}
 
       {selectedIds.length > 0 && (
         <div className={styles.card} role="region" aria-label="Actions for selected test cases">

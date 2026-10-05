@@ -19,6 +19,7 @@ import { CreateTestCaseDto } from './dto/create-test-case.dto';
 import { UpdateTestCaseDto } from './dto/update-test-case.dto';
 import { CreateTestExecutionDto } from './dto/create-test-execution.dto';
 import { BulkImportTestCasesDto, TestCaseSpreadsheetFormat } from './dto/bulk-import-test-cases.dto';
+import { ExecutionSummaryQueryDto } from './dto/execution-summary-query.dto';
 import { ApproveTestCasesDto, RejectTestCasesDto, SubmitTestCasesForReviewDto } from './dto/review-test-cases.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
@@ -120,6 +121,22 @@ export class TestCasesController {
     const fileFormat = parseFormat(format);
     const buffer = await this.testCasesService.buildTemplate(req.user.tenantId, fileFormat);
     sendSpreadsheet(res, buffer, fileFormat, 'test-cases-template');
+  }
+
+  // Execution Summary for the Test Cases page - same viewer gate and the
+  // same filters as the list. Registered ahead of GET ':id' for the same
+  // reason as bulk-export above.
+  @Get('execution-summary')
+  async executionSummary(@Query() filters: ExecutionSummaryQueryDto, @Req() req: any) {
+    await this.requireViewer(req);
+    return this.testCasesService.executionSummary(req.user.tenantId, filters);
+  }
+
+  @Get('execution-summary/export')
+  async exportExecutionSummary(@Query() filters: ExecutionSummaryQueryDto, @Req() req: any, @Res() res: Response) {
+    await this.requireViewer(req);
+    const buffer = await this.testCasesService.exportExecutionSummary(req.user.tenantId, filters);
+    sendSpreadsheet(res, buffer, 'xlsx', `test-case-execution-summary-${new Date().toISOString().slice(0, 10)}`);
   }
 
   @Get(':id')

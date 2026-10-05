@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { TestCase, TestCaseReviewStatus, TestCaseStatus } from './test-case.entity';
 import { TestExecution, TestResult } from './test-execution.entity';
 import { CreateTestCaseDto } from './dto/create-test-case.dto';
@@ -19,6 +19,7 @@ import { TestCaseCustomFieldsService, CustomFieldValues } from './test-case-cust
 import { TestCaseCustomField, CustomFieldType } from './test-case-custom-field.entity';
 import { TestCaseTemplateSettingsService } from './test-case-template-settings.service';
 import { BulkImportTestCasesDto, TestCaseSpreadsheetFormat } from './dto/bulk-import-test-cases.dto';
+import { ExecutionSummaryQueryDto } from './dto/execution-summary-query.dto';
 import {
   BuiltInColumn,
   REQUIRED_COLUMNS,
@@ -26,7 +27,7 @@ import {
   isExportOnlyHeader,
   normalizeHeader,
 } from './test-case-columns';
-import { parseSpreadsheet, writeSpreadsheet, SpreadsheetSpec } from './test-case-spreadsheet';
+import { parseSpreadsheet, writeSpreadsheet, writeExecutionSummary, SpreadsheetSpec } from './test-case-spreadsheet';
 
 export interface BulkImportRowProblem {
   row: number;
@@ -58,6 +59,30 @@ export interface BulkImportResult {
   // File-level notes, e.g. a column that didn't match any field.
   warnings: string[];
 }
+
+// One bucket per Execution Summary row. Every test case lands in exactly
+// one, so the buckets always add up to the total. N/A = Deprecated (a
+// retired case isn't applicable, whatever its last run said); otherwise
+// the latest run's result, and no run at all = Not Executed.
+export interface ExecutionCounts {
+  total: number;
+  passed: number;
+  failed: number;
+  blocked: number;
+  notExecuted: number;
+  na: number;
+}
+
+export interface ExecutionSummary {
+  overall: ExecutionCounts;
+  // priority null = "Not set". High/Medium/Low are always listed;
+  // Critical and Not set only when they have cases.
+  byPriority: (ExecutionCounts & { priority: Priority | null })[];
+}
+
+const emptyCounts = (): ExecutionCounts => ({ total: 0, passed: 0, failed: 0, blocked: 0, notExecuted: 0, na: 0 });
+const ALWAYS_LISTED_PRIORITIES = [Priority.HIGH, Priority.MEDIUM, Priority.LOW];
+const PRIORITY_ORDER: (Priority | null)[] = [Priority.CRITICAL, Priority.HIGH, Priority.MEDIUM, Priority.LOW, null];
 
 // Duplicate key for "is this the same test case": same project (or both
 // without one) and the same title, ignoring case and repeated spaces.
@@ -689,6 +714,90 @@ export class TestCasesService {
       },
     });
     return result;
+  }
+
+  // The Test Cases list's filters, applied server-side. Must match the
+  // list page's client-side filtering (pages/qa/test-cases/index.js) so
+  // the summary always counts exactly the rows the list shows: search is a
+  // case-insensitive substring of title or case number, the rest are exact
+  // matches.
+  private applyListFilters(qb: SelectQueryBuilder<TestCase>, filters: ExecutionSummaryQueryDto): void {
+    if (filters.projectId !== undefined) qb.andWhere('tc.projectId = :projectId', { projectId: filters.projectId });
+    if (filters.moduleId !== undefined) qb.andWhere('tc.moduleId = :moduleId', { moduleId: filters.moduleId });
+    if (filters.status) qb.andWhere('tc.status = :status', { status: filters.status });
+    if (filters.reviewStatus) qb.andWhere('tc.reviewStatus = :reviewStatus', { reviewStatus: filters.reviewStatus });
+    if (filters.labelId !== undefined) qb.andWhere(':labelId = ANY(tc.labelIds)', { labelId: filters.labelId });
+    const term = filters.search?.trim().toLowerCase();
+    if (term) {
+      // POSITION rather than LIKE so % and _ in the search box are literal,
+      // same as the list's String.includes().
+      qb.andWhere(
+        "(POSITION(:term IN LOWER(tc.title)) > 0 OR POSITION(:term IN LOWER(COALESCE(tc.caseNumber, ''))) > 0)",
+        { term },
+      );
+    }
+  }
+
+  // One grouped query (priority x bucket) feeds both tables, so the
+  // overall row and the per-priority rows can never disagree.
+  async executionSummary(tenantId: number, filters: ExecutionSummaryQueryDto): Promise<ExecutionSummary> {
+    const qb = this.testCasesRepository
+      .createQueryBuilder('tc')
+      .select('tc.priority', 'priority')
+      .addSelect(
+        `CASE
+           WHEN tc.status = :deprecated THEN 'na'
+           WHEN tc.lastResult = :passed THEN 'passed'
+           WHEN tc.lastResult = :failed THEN 'failed'
+           WHEN tc.lastResult = :blocked THEN 'blocked'
+           ELSE 'notExecuted'
+         END`,
+        'bucket',
+      )
+      .addSelect('COUNT(*)::int', 'count')
+      .where('tc.tenantId = :tenantId', { tenantId })
+      .setParameters({
+        deprecated: TestCaseStatus.DEPRECATED,
+        passed: TestResult.PASSED,
+        failed: TestResult.FAILED,
+        blocked: TestResult.BLOCKED,
+      })
+      .groupBy('1')
+      .addGroupBy('2');
+    this.applyListFilters(qb, filters);
+    const rows: { priority: Priority | null; bucket: keyof ExecutionCounts; count: number }[] = await qb.getRawMany();
+
+    const overall = emptyCounts();
+    const byPriority = new Map<Priority | null, ExecutionCounts>(ALWAYS_LISTED_PRIORITIES.map((p) => [p, emptyCounts()]));
+    for (const { priority, bucket, count } of rows) {
+      const counts = byPriority.get(priority) ?? emptyCounts();
+      counts[bucket] += count;
+      counts.total += count;
+      byPriority.set(priority, counts);
+      overall[bucket] += count;
+      overall.total += count;
+    }
+    return {
+      overall,
+      byPriority: PRIORITY_ORDER.filter((p) => byPriority.has(p)).map((priority) => ({ priority, ...byPriority.get(priority)! })),
+    };
+  }
+
+  // Excel download of the summary for the same filters, with a line
+  // naming them so a downloaded file says what it covers.
+  async exportExecutionSummary(tenantId: number, filters: ExecutionSummaryQueryDto): Promise<Buffer> {
+    const summary = await this.executionSummary(tenantId, filters);
+    const applied: string[] = [];
+    if (filters.projectId !== undefined) applied.push(`Project: ${(await this.projectsService.findOne(filters.projectId, tenantId)).name}`);
+    if (filters.moduleId !== undefined) applied.push(`Module: ${(await this.modulesService.findOne(filters.moduleId, tenantId)).name}`);
+    if (filters.status) applied.push(`Status: ${filters.status}`);
+    if (filters.reviewStatus) applied.push(`Review Status: ${filters.reviewStatus}`);
+    if (filters.labelId !== undefined) {
+      const label = (await this.labelsService.findAll(tenantId)).find((l) => l.id === filters.labelId);
+      applied.push(`Label: ${label?.name ?? `#${filters.labelId}`}`);
+    }
+    if (filters.search?.trim()) applied.push(`Search: "${filters.search.trim()}"`);
+    return writeExecutionSummary(summary, applied.length ? applied.join('; ') : 'None (all test cases)');
   }
 
   // Column headers for template/export: built-ins plus every active

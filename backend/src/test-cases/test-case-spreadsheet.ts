@@ -148,3 +148,62 @@ export async function writeSpreadsheet(spec: SpreadsheetSpec, format: TestCaseSp
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
+
+// Execution Summary download - one sheet laid out like the team's own
+// Excel summary (Overall Progress, then By Priority). Values, not
+// formulas, so the file is a snapshot of the portal at download time.
+// Typed loosely to avoid importing the service's types back into here.
+export async function writeExecutionSummary(
+  summary: {
+    overall: Record<'total' | 'passed' | 'failed' | 'blocked' | 'notExecuted' | 'na', number>;
+    byPriority: (Record<'total' | 'passed' | 'failed' | 'blocked' | 'notExecuted' | 'na', number> & { priority: string | null })[];
+  },
+  filtersApplied: string,
+): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Execution Summary');
+  sheet.columns = [{ width: 30 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 14 }, { width: 10 }];
+  const heading = (text: string) => {
+    sheet.addRow([text]).font = { bold: true, size: 12 };
+  };
+  const header = (cells: string[]) => {
+    const row = sheet.addRow(cells);
+    row.font = { bold: true };
+    row.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE7EAF0' } };
+      cell.border = { bottom: { style: 'thin' } };
+    });
+  };
+
+  sheet.addRow(['Test Case – Execution Summary']).font = { bold: true, size: 14 };
+  sheet.addRow([`Filters: ${filtersApplied}`]);
+  sheet.addRow([`Generated: ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`]);
+  sheet.addRow(['Results are each test case\'s latest run. N/A = Deprecated test cases.']);
+  sheet.addRow([]);
+
+  const { overall } = summary;
+  heading('Overall Progress');
+  header(['Metric', 'Count', '% of Total']);
+  const pct = (n: number) => (overall.total ? n / overall.total : 0);
+  [
+    ['Total Test Cases', overall.total],
+    ['Passed', overall.passed],
+    ['Failed', overall.failed],
+    ['Blocked', overall.blocked],
+    ['Not Executed (incl. blank)', overall.notExecuted],
+    ['N/A', overall.na],
+  ].forEach(([label, count]) => {
+    const row = sheet.addRow([label, count, pct(count as number)]);
+    row.getCell(3).numFmt = '0.0%';
+  });
+  sheet.addRow([]);
+
+  heading('By Priority');
+  header(['Priority', 'Total', 'Pass', 'Fail', 'Blocked', 'Not Executed', 'N/A']);
+  const countsRow = (label: string, c: (typeof summary.byPriority)[number] | typeof overall) =>
+    sheet.addRow([label, c.total, c.passed, c.failed, c.blocked, c.notExecuted, c.na]);
+  summary.byPriority.forEach((p) => countsRow(p.priority ?? 'Not set', p));
+  countsRow('Total', overall).font = { bold: true };
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
