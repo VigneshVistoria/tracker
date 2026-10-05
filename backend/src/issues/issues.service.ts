@@ -60,13 +60,13 @@ export class IssuesService {
   }
 
   findAll(tenantId: number): Promise<Issue[]> {
-    return this.issuesRepository.find({ where: { tenantId }, order: { createdAt: 'DESC' } });
+    return this.issuesRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } });
   }
 
   findByAssignee(userId: number, tenantId: number): Promise<Issue[]> {
     return this.issuesRepository.find({
       where: { assigneeUserId: userId, tenantId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
   }
 
@@ -76,7 +76,7 @@ export class IssuesService {
   findReceivedDependencies(userId: number, tenantId: number): Promise<Issue[]> {
     return this.issuesRepository.find({
       where: { assigneeUserId: userId, parentIssueId: Not(IsNull()), tenantId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
   }
 
@@ -85,7 +85,7 @@ export class IssuesService {
   findByCreator(userId: number, tenantId: number): Promise<Issue[]> {
     return this.issuesRepository.find({
       where: { createdByUserId: userId, tenantId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
   }
 
@@ -95,7 +95,7 @@ export class IssuesService {
     if (projectIds.length === 0) return Promise.resolve([]);
     return this.issuesRepository.find({
       where: { projectId: In(projectIds), tenantId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
   }
 
@@ -124,7 +124,7 @@ export class IssuesService {
     }
     const dependencies = await this.issuesRepository.find({
       where: { parentIssueId: id, tenantId },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'ASC', id: 'ASC' },
     });
     return { ...issue, dependencies };
   }
@@ -216,7 +216,7 @@ export class IssuesService {
 
     const recentTickets = await this.issuesRepository.find({
       where: { createdByUserId: issue.createdByUserId, tenantId: issue.tenantId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
       take: 6, // 5 "recent" + the one just created/updated, filtered out below
     });
     const recentTicketsExcludingThisOne = recentTickets.filter((t) => t.id !== issue.id);
@@ -502,7 +502,7 @@ export class IssuesService {
   findFlaggedShowstoppers(tenantId: number): Promise<Issue[]> {
     return this.issuesRepository.find({
       where: { showstopperReviewStatus: ShowstopperReviewStatus.PENDING, tenantId },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
   }
 

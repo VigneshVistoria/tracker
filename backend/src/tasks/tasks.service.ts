@@ -437,7 +437,7 @@ export class TasksService {
   // caller (TasksController.findLinkedDefects) via canView(), same
   // pattern as TaskDependencyTicketsService.findForTask().
   findLinkedDefectsForTask(parentTaskId: number, tenantId: number): Promise<ProjectTask[]> {
-    return this.tasksRepository.find({ where: { parentTaskId, tenantId }, order: { createdAt: 'DESC' } });
+    return this.tasksRepository.find({ where: { parentTaskId, tenantId }, order: { createdAt: 'DESC', id: 'DESC' } });
   }
 
   private isInAssignedProject(task: ProjectTask, user: UserWithProjects): boolean {
@@ -455,7 +455,7 @@ export class TasksService {
   // Defects QA/PM manually linked as blocking this task (not the
   // parentTaskId spun-off ones - those come from findLinkedDefectsForTask()).
   async findBlockingDefectsForTask(taskId: number, tenantId: number) {
-    const links = await this.blockingDefectsRepository.find({ where: { taskId, tenantId }, order: { createdAt: 'DESC' } });
+    const links = await this.blockingDefectsRepository.find({ where: { taskId, tenantId }, order: { createdAt: 'DESC', id: 'DESC' } });
     const defects = await this.findManyByIds(links.map((l) => l.defectId), tenantId);
     const defectById = new Map(defects.map((d) => [d.id, d]));
     return links
@@ -603,8 +603,8 @@ export class TasksService {
   async findAllForUser(currentUser: { id: number; role: UserRole }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
     const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
     const tasks = isLeadership
-      ? await this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC' } })
-      : await this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC' } }).then((all) =>
+      ? await this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } })
+      : await this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } }).then((all) =>
           all.filter((t) => t.assigneeUserId === currentUser.id || t.createdByUserId === currentUser.id),
         );
 
@@ -626,7 +626,7 @@ export class TasksService {
     const tasks = this.sortByPriority(
       await this.tasksRepository.find({
         where,
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
       }),
     );
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
@@ -643,7 +643,7 @@ export class TasksService {
   async findEscalationQueue(tenantId: number): Promise<Array<ProjectTaskWithComputed & { escalationComment: string | null; escalatedByEmail: string | null }>> {
     const tasks = await this.tasksRepository.find({
       where: { tenantId, status: 'Escalated' },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
@@ -685,7 +685,7 @@ export class TasksService {
     const pendingTasks = this.sortByPriority(
       await this.tasksRepository.find({
         where: { tenantId, isDefect: false, status: In(QA_PENDING_STATUSES) },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
       }),
     );
     const today = new Date().toISOString().slice(0, 10);
@@ -704,7 +704,7 @@ export class TasksService {
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
       tasks = this.sortByPriority(
-        await this.tasksRepository.find({ where: { tenantId, isDefect: false, status }, order: { createdAt: 'DESC' } }),
+        await this.tasksRepository.find({ where: { tenantId, isDefect: false, status }, order: { createdAt: 'DESC', id: 'DESC' } }),
       );
     } else if (status === 'Feedback' || status === 'Re-Feedback') {
       tasks = pendingTasks.filter((t) => t.status === status);
@@ -739,7 +739,7 @@ export class TasksService {
     // it's open, not just while a QA review round is actually pending.
     const openTasks = await this.tasksRepository.find({
       where: { ...baseWhere, status: In(OPEN_DEFECT_STATUSES) },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
     const today = new Date().toISOString().slice(0, 10);
     const statCounts = {
@@ -756,7 +756,7 @@ export class TasksService {
 
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
-      tasks = await this.tasksRepository.find({ where: { ...baseWhere, status }, order: { createdAt: 'DESC' } });
+      tasks = await this.tasksRepository.find({ where: { ...baseWhere, status }, order: { createdAt: 'DESC', id: 'DESC' } });
     } else if (OPEN_DEFECT_STATUSES.includes(status || '')) {
       tasks = openTasks.filter((t) => t.status === status);
     } else {
@@ -781,7 +781,7 @@ export class TasksService {
     if (pendingRounds.length === 0) return [];
     const tasks = await this.tasksRepository.find({
       where: { tenantId, id: In(pendingRounds.map((r) => r.taskId)), status: In(PEER_REVIEW_PENDING_STATUSES) },
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
     });
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
@@ -792,7 +792,7 @@ export class TasksService {
     const tasks = this.sortByPriority(
       await this.tasksRepository.find({
         where: { tenantId, assigneeUserId: currentUser.id },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
       }),
     );
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
@@ -870,7 +870,7 @@ export class TasksService {
       where.dueDate = LessThanOrEqual(filters.dueTo);
     }
 
-    const matching = this.sortByPriority(await this.tasksRepository.find({ where, order: { createdAt: 'DESC' } }));
+    const matching = this.sortByPriority(await this.tasksRepository.find({ where, order: { createdAt: 'DESC', id: 'DESC' } }));
     const openDependencyIds = await this.findOpenDependencyTaskIds(matching.map((t) => t.id));
 
     let filtered = matching;
@@ -963,7 +963,7 @@ export class TasksService {
   private async findTeamDependencyRows(tenantId: number, ownerUserId?: number): Promise<TeamDependencyRow[]> {
     const where: Record<string, any> = { tenantId, status: 'open' };
     if (ownerUserId) where.ownerUserId = ownerUserId;
-    const tickets = await this.dependencyTicketsRepository.find({ where, order: { createdAt: 'ASC' } });
+    const tickets = await this.dependencyTicketsRepository.find({ where, order: { createdAt: 'ASC', id: 'ASC' } });
     if (tickets.length === 0) return [];
     const parentTasks = await this.findManyByIds([...new Set(tickets.map((t) => t.parentTaskId))], tenantId);
     const parentById = new Map(parentTasks.map((t) => [t.id, t]));
