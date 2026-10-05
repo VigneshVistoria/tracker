@@ -114,10 +114,15 @@ export class TestCasesService {
     return unique;
   }
 
+  // Ordered by id, which is case-number order (caseNumber is derived from
+  // id - see assignCaseNumber()), so TC-0002 sorts before TC-0010. Not
+  // createdAt: bulkImport() saves a whole file in one transaction, so every
+  // row it creates shares the same createdAt and ties come back in no
+  // stable order.
   findAll(tenantId: number, projectId?: number): Promise<TestCase[]> {
     return this.testCasesRepository.find({
       where: projectId ? { projectId, tenantId } : { tenantId },
-      order: { createdAt: 'DESC' },
+      order: { id: 'ASC' },
     });
   }
 

@@ -464,6 +464,37 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   white-space: nowrap;
 }
 
+/* Clickable column header (Test Cases list) - same look as
+   components/ui/Table.module.css's .sortButton: the button fills the
+   cell and carries the th's padding, so the whole header is the target. */
+.table th.sortableHeader {
+  padding: 0;
+}
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+.sortButton:hover {
+  color: var(--color-ink-soft);
+}
+.sortButton:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: -2px;
+}
+.sortIdle {
+  opacity: 0.4;
+}
+
 .table tbody tr {
   cursor: pointer;
   transition: background 0.1s ease;

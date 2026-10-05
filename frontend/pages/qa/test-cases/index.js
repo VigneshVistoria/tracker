@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
@@ -30,6 +31,31 @@ function ReviewBadge({ status }) {
   return <span className={styles.badge} style={REVIEW_BADGE_STYLE[status]}>{status}</span>;
 }
 
+// Sorting is client-side: GET /test-cases isn't paginated, so the browser
+// already holds every row and sorting here covers all of them. Case # sorts
+// by id - caseNumber is derived from id, so that's numeric case-number
+// order (TC-0002 before TC-0010). Ties on Title fall back to id.
+const titleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+const SORTERS = {
+  caseNumber: (a, b) => a.id - b.id,
+  title: (a, b) => titleCollator.compare(a.title, b.title) || a.id - b.id,
+};
+
+// Same click behaviour and icons as components/ui/Table.js: first click
+// sorts ascending, the next toggles to descending.
+function SortableHeader({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className={styles.sortableHeader} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className={styles.sortButton} onClick={() => onSort(sortKey)}>
+        {label}
+        <Icon size={13} aria-hidden="true" className={active ? undefined : styles.sortIdle} />
+      </button>
+    </th>
+  );
+}
+
 export default function TestCasesList() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -49,6 +75,7 @@ export default function TestCasesList() {
   const [statusFilter, setStatusFilter] = useState('');
   const [reviewFilter, setReviewFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
+  const [sort, setSort] = useState({ key: 'caseNumber', dir: 'asc' });
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [rejecting, setRejecting] = useState(false);
@@ -94,6 +121,14 @@ export default function TestCasesList() {
       return true;
     });
   }, [testCases, search, projectFilter, statusFilter, reviewFilter, labelFilter]);
+
+  const sortedTestCases = useMemo(() => {
+    const sorted = [...filteredTestCases].sort(SORTERS[sort.key]);
+    return sort.dir === 'desc' ? sorted.reverse() : sorted;
+  }, [filteredTestCases, sort]);
+
+  const handleSort = (key) =>
+    setSort((current) => ({ key, dir: current.key === key && current.dir === 'asc' ? 'desc' : 'asc' }));
 
   const labelById = useMemo(() => new Map(labels.map((l) => [l.id, l])), [labels]);
 
@@ -331,8 +366,8 @@ export default function TestCasesList() {
                     />
                   </th>
                 )}
-                <th>Case #</th>
-                <th>Title</th>
+                <SortableHeader label="Case #" sortKey="caseNumber" sort={sort} onSort={handleSort} />
+                <SortableHeader label="Title" sortKey="title" sort={sort} onSort={handleSort} />
                 <th>Project</th>
                 <th>Module</th>
                 <th>Phase</th>
@@ -346,7 +381,7 @@ export default function TestCasesList() {
               </tr>
             </thead>
             <tbody>
-              {filteredTestCases.map((tc) => (
+              {sortedTestCases.map((tc) => (
                 <tr key={tc.id} onClick={() => router.push(`/qa/test-cases/${tc.id}`)} style={{ cursor: 'pointer' }}>
                   {(canManage || canReview) && (
                     <td onClick={(e) => e.stopPropagation()}>
