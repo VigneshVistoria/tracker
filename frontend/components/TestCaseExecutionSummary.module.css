@@ -90,3 +90,214 @@
   font-size: var(--ds-text-sm);
   color: var(--ds-text-secondary);
 }
+
+/* ---- Dashboard: result colours ----------------------------------------
+   Pass / Blocked / Fail / Not Executed, one set per theme, each checked
+   with the dataviz palette validator against that theme's surface (CVD and
+   normal-vision separation of adjacent segments) and for >= 4.5:1 label
+   contrast (--tc-on-*). Status colours are used only for results here,
+   always beside a text label - never colour alone. */
+.dashboard {
+  --tc-pass: #1f7a4c;
+  --tc-blocked: #eab14a;
+  --tc-fail: #b8403b;
+  --tc-none: #e2e6ec;
+  --tc-on-pass: #ffffff;
+  --tc-on-blocked: #111827;
+  --tc-on-fail: #ffffff;
+}
+:global(:root[data-theme='warm']) .dashboard {
+  --tc-none: #e8ded3;
+  --tc-on-blocked: #3a2f28;
+}
+:global(:root[data-theme='dark']) .dashboard {
+  --tc-pass: #2e9e60;
+  --tc-blocked: #d9a63a;
+  --tc-fail: #e05a52;
+  --tc-none: #3a4456;
+  --tc-on-pass: #0b0f17;
+  --tc-on-blocked: #0b0f17;
+  --tc-on-fail: #0b0f17;
+}
+:global(:root[data-theme='terminal']) .dashboard {
+  --tc-pass: #1fa31f;
+  --tc-blocked: #ffcc00;
+  --tc-fail: #ff4d4d;
+  --tc-none: #143314;
+  --tc-on-pass: #000000;
+  --tc-on-blocked: #000000;
+  --tc-on-fail: #000000;
+}
+
+.segPass { background: var(--tc-pass); color: var(--tc-on-pass); }
+.segBlocked { background: var(--tc-blocked); color: var(--tc-on-blocked); }
+.segFail { background: var(--tc-fail); color: var(--tc-on-fail); }
+.segNone { background: var(--tc-none); color: var(--ds-text-primary); }
+/* N/A (Deprecated): the neutral, hatched, so it never reads as a result. */
+.segNa {
+  background: repeating-linear-gradient(45deg, var(--tc-none) 0 4px, var(--ds-bg-surface) 4px 7px);
+  color: var(--ds-text-primary);
+}
+
+/* ---- Tiles ---- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--ds-space-3);
+}
+@media (max-width: 1024px) {
+  .tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.tile {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+}
+.tileLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-secondary);
+}
+.tileValue {
+  margin-top: var(--ds-space-1);
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-weight-semibold);
+  line-height: 1.2;
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.tileDetail {
+  margin-top: var(--ds-space-1);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.swatch {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  /* Keeps the pale Not Executed / N/A swatches visible on the surface. */
+  box-shadow: inset 0 0 0 1px var(--ds-border-strong);
+}
+
+/* ---- Chart ---- */
+.chart {
+  margin: var(--ds-space-6) 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2) var(--ds-space-4);
+  margin: 0 0 var(--ds-space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.chartRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+}
+.chartRow {
+  display: grid;
+  grid-template-columns: minmax(64px, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--ds-space-3);
+}
+.chartLabel {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+}
+.chartTotal {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  border-inline-start: 1px solid var(--ds-border-strong);
+}
+/* Bars share one scale: the longest bar fills the track less a fixed
+   space reserved for the total that follows it. */
+.bar {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  width: calc((100% - var(--ds-space-10)) * var(--bar-share));
+  height: 28px;
+}
+.bar:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+.segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-basis: 0;
+  min-width: 2px;
+  overflow: hidden;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.segment:last-child {
+  border-start-end-radius: 4px;
+  border-end-end-radius: 4px;
+}
+
+.tooltip {
+  position: absolute;
+  top: calc(100% + var(--ds-space-2));
+  inset-inline-start: 0;
+  z-index: 2;
+  min-width: 180px;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  box-shadow: var(--ds-shadow-md);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-primary);
+  pointer-events: none;
+}
+.tooltipTitle {
+  margin-bottom: var(--ds-space-1);
+  font-weight: var(--ds-weight-semibold);
+}
+.tooltipRow {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+.tooltipValue {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}

@@ -332,7 +332,9 @@ export default function TestCasesList() {
         )}
       </div>
 
-      {!loading && testCases.length > 0 && <TestCaseExecutionSummary filters={summaryFilters} refreshKey={testCases} />}
+      {!loading && (
+        <TestCaseExecutionSummary filters={summaryFilters} refreshKey={testCases} hasTestCases={testCases.length > 0} />
+      )}
 
       {selectedIds.length > 0 && (
         <div className={styles.card} role="region" aria-label="Actions for selected test cases">
