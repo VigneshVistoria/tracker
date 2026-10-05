@@ -1,0 +1,95 @@
+/* Test Cases list only - layered on top of issues.module.css's shared
+   .tableWrap/.table, which 29 other pages use unchanged.
+
+   The table is wide (13 columns), and with the whole page scrolling its
+   horizontal scrollbar sat at the very bottom of up to 100 rows. Instead
+   the table gets its own scroll area sized to the viewport, so that
+   scrollbar is always on screen once the table is in view, with the header
+   row pinned on top and the select / Case # / Title columns pinned on the
+   left so every row stays identifiable while scrolling sideways. */
+
+.scrollArea {
+  max-height: calc(100vh - var(--ds-topbar-height) - var(--ds-space-8));
+  overflow: auto;
+}
+/* Focusable (tabIndex=0) so keyboard users can scroll it with arrow keys -
+   WCAG 2.1.1 for scrollable regions. */
+.scrollArea:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+/* Sticky cells need their own background, and border-collapse borders
+   don't travel with sticky cells - an inset shadow draws the divider
+   instead. */
+.scrollArea thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ds-bg-surface);
+  box-shadow: inset 0 -1px 0 var(--ds-border);
+}
+
+.stickyCol {
+  position: sticky;
+  z-index: 1;
+  background: var(--ds-bg-surface);
+}
+.scrollArea thead th.stickyCol {
+  z-index: 3;
+}
+/* Keep the row hover tint (issues.module.css .table tbody tr:hover) on
+   the pinned cells too. */
+.scrollArea tbody tr:hover .stickyCol {
+  background: var(--color-paper);
+}
+
+/* --tc-case-left is set inline: the select column's width when it's
+   shown (QA/PM/Admin), 0 when it isn't. */
+.colSelect {
+  left: 0;
+  width: 36px;
+  min-width: 36px;
+}
+.colCase {
+  left: var(--tc-case-left);
+  width: 104px;
+  min-width: 104px;
+}
+.colTitle {
+  left: calc(var(--tc-case-left) + 104px);
+  min-width: 240px;
+  max-width: 320px;
+  /* Divider between the pinned columns and the ones scrolling under them. */
+  box-shadow: inset -1px 0 0 var(--ds-border-strong);
+}
+.scrollArea thead th.colTitle {
+  box-shadow: inset -1px 0 0 var(--ds-border-strong), inset 0 -1px 0 var(--ds-border);
+}
+/* The shared .table td rule is nowrap (and more specific than
+   .tableTitleCell's own white-space: normal) - long titles must wrap
+   inside the pinned column instead of spilling under the next one. */
+.scrollArea td.colTitle {
+  white-space: normal;
+}
+
+/* On phones, pinning Title as well would leave almost no room for the
+   scrolling columns - pin only select + Case #. */
+@media (max-width: 640px) {
+  /* left: auto - the header cell stays sticky to the top (thead rule
+     above) but no longer pins sideways. */
+  .colTitle {
+    position: static;
+    left: auto;
+    box-shadow: none;
+  }
+  .scrollArea thead th.colTitle {
+    box-shadow: inset 0 -1px 0 var(--ds-border);
+  }
+  .colCase {
+    box-shadow: inset -1px 0 0 var(--ds-border-strong);
+  }
+  .scrollArea thead th.colCase {
+    box-shadow: inset -1px 0 0 var(--ds-border-strong), inset 0 -1px 0 var(--ds-border);
+  }
+}

@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import TestCaseExecutionSummary from '../../../components/TestCaseExecutionSummary';
 import styles from '../../../styles/issues.module.css';
+import tableStyles from '../../../styles/testCasesTable.module.css';
 import { apiFetch, apiDownload } from '../../../lib/api';
 import { formatDate } from '../../../lib/formatDate';
 import { useToast } from '../../../lib/toast';
@@ -51,11 +52,11 @@ const PAGE_SIZE_STORAGE_KEY = 'testCasesPageSize';
 
 // Same click behaviour and icons as components/ui/Table.js: first click
 // sorts ascending, the next toggles to descending.
-function SortableHeader({ label, sortKey, sort, onSort }) {
+function SortableHeader({ label, sortKey, sort, onSort, className }) {
   const active = sort.key === sortKey;
   const Icon = !active ? ArrowUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown;
   return (
-    <th className={styles.sortableHeader} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <th className={`${styles.sortableHeader} ${className || ''}`} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button type="button" className={styles.sortButton} onClick={() => onSort(sortKey)}>
         {label}
         <Icon size={13} aria-hidden="true" className={active ? undefined : styles.sortIdle} />
@@ -436,12 +437,18 @@ export default function TestCasesList() {
       )}
 
       {!loading && filteredTestCases.length > 0 && (
-        <div className={styles.tableWrap}>
+        <div
+          className={`${styles.tableWrap} ${tableStyles.scrollArea}`}
+          role="region"
+          aria-label="Test cases table - scrolls horizontally and vertically"
+          tabIndex={0}
+          style={{ '--tc-case-left': canManage || canReview ? '36px' : '0px' }}
+        >
           <table className={styles.table}>
             <thead>
               <tr>
                 {(canManage || canReview) && (
-                  <th style={{ width: 36 }}>
+                  <th className={`${tableStyles.stickyCol} ${tableStyles.colSelect}`}>
                     <input
                       type="checkbox"
                       aria-label="Select all actionable test cases on this page"
@@ -451,8 +458,20 @@ export default function TestCasesList() {
                     />
                   </th>
                 )}
-                <SortableHeader label="Case #" sortKey="caseNumber" sort={sort} onSort={handleSort} />
-                <SortableHeader label="Title" sortKey="title" sort={sort} onSort={handleSort} />
+                <SortableHeader
+                  label="Case #"
+                  sortKey="caseNumber"
+                  sort={sort}
+                  onSort={handleSort}
+                  className={`${tableStyles.stickyCol} ${tableStyles.colCase}`}
+                />
+                <SortableHeader
+                  label="Title"
+                  sortKey="title"
+                  sort={sort}
+                  onSort={handleSort}
+                  className={`${tableStyles.stickyCol} ${tableStyles.colTitle}`}
+                />
                 <th>Project</th>
                 <th>Module</th>
                 <th>Phase</th>
@@ -469,7 +488,7 @@ export default function TestCasesList() {
               {pageTestCases.map((tc) => (
                 <tr key={tc.id} onClick={() => router.push(`/qa/test-cases/${tc.id}`)} style={{ cursor: 'pointer' }}>
                   {(canManage || canReview) && (
-                    <td onClick={(e) => e.stopPropagation()}>
+                    <td className={`${tableStyles.stickyCol} ${tableStyles.colSelect}`} onClick={(e) => e.stopPropagation()}>
                       {isSelectable(tc) && (
                         <input
                           type="checkbox"
@@ -480,8 +499,8 @@ export default function TestCasesList() {
                       )}
                     </td>
                   )}
-                  <td className={styles.issueId}>{tc.caseNumber || `#${tc.id}`}</td>
-                  <td className={styles.tableTitleCell}>{tc.title}</td>
+                  <td className={`${styles.issueId} ${tableStyles.stickyCol} ${tableStyles.colCase}`}>{tc.caseNumber || `#${tc.id}`}</td>
+                  <td className={`${styles.tableTitleCell} ${tableStyles.stickyCol} ${tableStyles.colTitle}`}>{tc.title}</td>
                   <td>{tc.projectName || '—'}</td>
                   <td>{tc.moduleName || '—'}</td>
                   <td>{tc.phaseName || '—'}</td>
