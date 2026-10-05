@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import TestCaseExecutionSummary from '../../../components/TestCaseExecutionSummary';
@@ -42,6 +42,13 @@ const SORTERS = {
   title: (a, b) => titleCollator.compare(a.title, b.title) || a.id - b.id,
 };
 
+// Same page sizes, default and footer as Team Tasks (TeamTaskWorkboard).
+// Pagination is client-side because the whole list is already loaded: it
+// slices the filtered + sorted rows, so sorting still spans every page.
+const PAGE_SIZE_OPTIONS = [25, 50, 100];
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_STORAGE_KEY = 'testCasesPageSize';
+
 // Same click behaviour and icons as components/ui/Table.js: first click
 // sorts ascending, the next toggles to descending.
 function SortableHeader({ label, sortKey, sort, onSort }) {
@@ -78,6 +85,8 @@ export default function TestCasesList() {
   const [reviewFilter, setReviewFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
   const [sort, setSort] = useState({ key: 'caseNumber', dir: 'asc' });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const [selectedIds, setSelectedIds] = useState([]);
   const [rejecting, setRejecting] = useState(false);
@@ -98,6 +107,8 @@ export default function TestCasesList() {
       setCanReview(role === 'program_manager');
       setCanConfigure(role === 'admin' || role === 'program_manager');
     }
+    const storedPageSize = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    if (PAGE_SIZE_OPTIONS.includes(storedPageSize)) setPageSize(storedPageSize);
     apiFetch('/projects').then(setProjects).catch(() => {});
     apiFetch('/labels').then(setLabels).catch(() => {});
     load();
@@ -154,6 +165,22 @@ export default function TestCasesList() {
     return sort.dir === 'desc' ? sorted.reverse() : sorted;
   }, [filteredTestCases, sort]);
 
+  // Any filter, sort or page-size change starts again from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [search, projectFilter, moduleFilter, statusFilter, reviewFilter, labelFilter, sort, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedTestCases.length / pageSize));
+  // Clamped, so a list that shrinks (e.g. after a review action) never
+  // leaves you on an empty page past the end.
+  const currentPage = Math.min(page, totalPages);
+  const pageTestCases = sortedTestCases.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(size));
+  };
+
   const handleSort = (key) =>
     setSort((current) => ({ key, dir: current.key === key && current.dir === 'asc' ? 'desc' : 'asc' }));
 
@@ -166,7 +193,7 @@ export default function TestCasesList() {
   const isSelectable = (tc) =>
     (canManage && SUBMITTABLE_REVIEW_STATUSES.includes(tc.reviewStatus) && tc.status !== 'Deprecated') ||
     (canReview && tc.reviewStatus === REVIEW_STATUS.PENDING);
-  const selectableVisible = filteredTestCases.filter(isSelectable);
+  const selectableVisible = pageTestCases.filter(isSelectable);
   const selectedCases = testCases.filter((tc) => selectedIds.includes(tc.id));
   const selectedSubmittable = selectedCases.filter((tc) => SUBMITTABLE_REVIEW_STATUSES.includes(tc.reviewStatus));
   const selectedPending = selectedCases.filter((tc) => tc.reviewStatus === REVIEW_STATUS.PENDING);
@@ -174,8 +201,14 @@ export default function TestCasesList() {
 
   const toggleSelected = (id) =>
     setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
-  const toggleAllVisible = () =>
-    setSelectedIds(allVisibleSelected ? [] : selectableVisible.map((tc) => tc.id));
+  // The header checkbox selects/clears this page's rows only; selections
+  // made on other pages are kept.
+  const toggleAllVisible = () => {
+    const visibleIds = selectableVisible.map((tc) => tc.id);
+    setSelectedIds((ids) =>
+      allVisibleSelected ? ids.filter((id) => !visibleIds.includes(id)) : [...new Set([...ids, ...visibleIds])],
+    );
+  };
 
   const runReviewAction = async (path, ids, body, successMessage) => {
     setBusy(true);
@@ -411,7 +444,7 @@ export default function TestCasesList() {
                   <th style={{ width: 36 }}>
                     <input
                       type="checkbox"
-                      aria-label="Select all actionable test cases shown"
+                      aria-label="Select all actionable test cases on this page"
                       checked={allVisibleSelected}
                       disabled={selectableVisible.length === 0}
                       onChange={toggleAllVisible}
@@ -433,7 +466,7 @@ export default function TestCasesList() {
               </tr>
             </thead>
             <tbody>
-              {sortedTestCases.map((tc) => (
+              {pageTestCases.map((tc) => (
                 <tr key={tc.id} onClick={() => router.push(`/qa/test-cases/${tc.id}`)} style={{ cursor: 'pointer' }}>
                   {(canManage || canReview) && (
                     <td onClick={(e) => e.stopPropagation()}>
@@ -468,6 +501,54 @@ export default function TestCasesList() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {!loading && filteredTestCases.length > 0 && (
+        <nav
+          className={styles.filterBar}
+          style={{ justifyContent: 'space-between', alignItems: 'center' }}
+          aria-label="Test case pages"
+        >
+          <span className={styles.issueMeta} aria-live="polite">
+            {`Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, sortedTestCases.length)} of ${sortedTestCases.length}`}
+            {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
+          </span>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
+            <div className={styles.filterGroup} style={{ minWidth: 90 }}>
+              <label className={styles.filterLabel} htmlFor="tcPageSize">Per page</label>
+              <select
+                id="tcPageSize"
+                className={styles.filterSelect}
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <button
+                type="button"
+                className={`${styles.button} ${styles.buttonSecondary}`}
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage <= 1}
+              >
+                <ChevronLeft size={16} aria-hidden="true" />
+                Previous
+              </button>
+              <button
+                type="button"
+                className={`${styles.button} ${styles.buttonSecondary}`}
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage >= totalPages}
+              >
+                Next
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </nav>
       )}
     </AppShell>
   );
