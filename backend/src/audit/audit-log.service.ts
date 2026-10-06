@@ -68,6 +68,7 @@ export const AuditActions = {
   TASK_DEFECT_CREATED: 'task_defect_created',
   TASK_UPDATED: 'task_updated',
   TASK_DUE_DATE_EDITED: 'task_due_date_edited',
+  TASK_MODULE_PHASE_EDITED: 'task_module_phase_edited',
   TASK_QA_REVIEW_DUE_DATE_EDITED: 'task_qa_review_due_date_edited',
   TASK_STATUS_CHANGED: 'task_status_changed',
   TASK_STATUS_PERCENT_UPDATED: 'task_status_percent_updated',

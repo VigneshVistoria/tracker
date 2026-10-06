@@ -1710,6 +1710,16 @@ export class TasksService {
     const phaseId = dto.phaseId ?? task.phaseId;
     if (dto.projectId !== undefined || dto.moduleId !== undefined || dto.phaseId !== undefined) {
       const { project, module, phase } = await this.resolveChain(projectId, moduleId, phaseId, tenantId);
+      // resolveChain() doesn't check isActive (pickers already hide
+      // deactivated Modules/Phases) - enforced here only when the value
+      // is actually changing, so re-saving a task that's still sitting
+      // on a since-deactivated Module/Phase isn't blocked.
+      if (module.id !== task.moduleId && !module.isActive) {
+        throw new BadRequestException(`Module "${module.name}" is inactive.`);
+      }
+      if (phase.id !== task.phaseId && !phase.isActive) {
+        throw new BadRequestException(`Phase "${phase.name}" is inactive.`);
+      }
       task.projectId = project.id;
       task.projectName = project.name;
       task.moduleId = module.id;
@@ -1747,6 +1757,31 @@ export class TasksService {
         entityType: 'ProjectTask',
         entityId: saved.id,
         details: { previousDueDate: previous.dueDate, newDueDate: saved.dueDate },
+      });
+    }
+
+    // Dedicated old -> new entry for Module/Phase changes, same idea as
+    // TASK_DUE_DATE_EDITED above - TASK_UPDATED's `updated` only carries
+    // the submitted IDs, not the resolved names.
+    if (saved.moduleId !== previous.moduleId || saved.phaseId !== previous.phaseId) {
+      await this.auditLogService.record({
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: AuditActions.TASK_MODULE_PHASE_EDITED,
+        tenantId,
+        entityType: 'ProjectTask',
+        entityId: saved.id,
+        details: {
+          previousModuleId: previous.moduleId,
+          previousModuleName: previous.moduleName,
+          newModuleId: saved.moduleId,
+          newModuleName: saved.moduleName,
+          previousPhaseId: previous.phaseId,
+          previousPhaseName: previous.phaseName,
+          newPhaseId: saved.phaseId,
+          newPhaseName: saved.phaseName,
+        },
       });
     }
 

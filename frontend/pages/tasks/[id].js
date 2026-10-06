@@ -249,6 +249,16 @@ export default function TaskDetailPage() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [savingTitle, setSavingTitle] = useState(false);
+  // Module/Phase edit - same PM-only, any-status rules as Title above.
+  // Project stays fixed (only the defect form can move a task across
+  // projects), so Module options are this task's project's active
+  // Modules and Phase options follow the chosen Module.
+  const [editingModulePhase, setEditingModulePhase] = useState(false);
+  const [moduleDraftId, setModuleDraftId] = useState('');
+  const [phaseDraftId, setPhaseDraftId] = useState('');
+  const [moduleOptions, setModuleOptions] = useState([]);
+  const [phaseOptions, setPhaseOptions] = useState([]);
+  const [savingModulePhase, setSavingModulePhase] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -478,6 +488,20 @@ export default function TaskDetailPage() {
     }
     apiFetch(`/phases?moduleId=${defectModule.id}`).then(setDefectPhases).catch(() => setDefectPhases([]));
   }, [defectModule]);
+
+  useEffect(() => {
+    if (!editingModulePhase || !task) return;
+    apiFetch(`/modules?projectId=${task.projectId}`).then(setModuleOptions).catch(() => setModuleOptions([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingModulePhase, task?.projectId]);
+
+  useEffect(() => {
+    if (!editingModulePhase || !moduleDraftId) {
+      setPhaseOptions([]);
+      return;
+    }
+    apiFetch(`/phases?moduleId=${moduleDraftId}`).then(setPhaseOptions).catch(() => setPhaseOptions([]));
+  }, [editingModulePhase, moduleDraftId]);
 
   useEffect(() => {
     if (!user || !id) return;
@@ -852,6 +876,38 @@ export default function TaskDetailPage() {
   const handleCancelEditTitle = () => {
     setTitleDraft(task.title);
     setEditingTitle(false);
+  };
+
+  const handleStartEditModulePhase = () => {
+    setModuleDraftId(String(task.moduleId));
+    setPhaseDraftId(String(task.phaseId));
+    setEditingModulePhase(true);
+  };
+
+  const handleSaveModulePhase = async () => {
+    setError('');
+    if (!moduleDraftId || !phaseDraftId) {
+      setError('Module and Phase are required.');
+      return;
+    }
+    setSavingModulePhase(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ moduleId: Number(moduleDraftId), phaseId: Number(phaseDraftId) }),
+      });
+      setTask(updated);
+      setEditingModulePhase(false);
+      showToast('Module and Phase updated', 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingModulePhase(false);
+    }
+  };
+
+  const handleCancelEditModulePhase = () => {
+    setEditingModulePhase(false);
   };
 
   const handleSavePeerReviewFlag = async () => {
@@ -1413,7 +1469,73 @@ export default function TaskDetailPage() {
               </div>
             </div>
           )}
-          <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
+          {!editingModulePhase && (
+            <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
+          )}
+          {canManage && !editingModulePhase && (
+            <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
+              <button className={styles.buttonSecondary} type="button" onClick={handleStartEditModulePhase}>
+                Edit Module / Phase
+              </button>
+            </div>
+          )}
+          {canManage && editingModulePhase && (
+            <div>
+              <p className={styles.pageSubtitle}>{task.projectName}</p>
+              <div className={styles.fieldGrid3}>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="taskModuleEdit">Module</label>
+                  <select
+                    className={styles.input}
+                    id="taskModuleEdit"
+                    required
+                    value={moduleDraftId}
+                    onChange={(e) => { setModuleDraftId(e.target.value); setPhaseDraftId(''); }}
+                    autoFocus
+                  >
+                    {/* Keeps the current value selectable even if it has since been deactivated (inactive ones aren't in moduleOptions). */}
+                    {!moduleOptions.some((m) => String(m.id) === String(task.moduleId)) && (
+                      <option value={String(task.moduleId)}>{task.moduleName}</option>
+                    )}
+                    {moduleOptions.map((m) => (
+                      <option key={m.id} value={String(m.id)}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="taskPhaseEdit">Phase</label>
+                  <select
+                    className={styles.input}
+                    id="taskPhaseEdit"
+                    required
+                    value={phaseDraftId}
+                    onChange={(e) => setPhaseDraftId(e.target.value)}
+                  >
+                    <option value="" disabled>Select a Phase</option>
+                    {moduleDraftId === String(task.moduleId) && !phaseOptions.some((p) => String(p.id) === String(task.phaseId)) && (
+                      <option value={String(task.phaseId)}>{task.phaseName}</option>
+                    )}
+                    {phaseOptions.map((p) => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  disabled={savingModulePhase || !moduleDraftId || !phaseDraftId}
+                  onClick={handleSaveModulePhase}
+                >
+                  {savingModulePhase ? 'Saving...' : 'Save'}
+                </button>
+                <button className={styles.buttonSecondary} type="button" disabled={savingModulePhase} onClick={handleCancelEditModulePhase}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           {(openLinkedDefects.length > 0 || (task.isDefect && blockedTasks.length > 0)) && (
             <ul className={styles.blockingBadges} aria-label="Blocking links">
               {openLinkedDefects.map((d) => (
