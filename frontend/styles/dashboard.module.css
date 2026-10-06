@@ -235,3 +235,16 @@
   font-size: 1.1rem;
   flex-shrink: 0;
 }
+
+/* Mobile (≤640px): let the five Team Tasks tiles wrap into rows instead
+   of being clipped at the right edge. */
+@media (max-width: 640px) {
+  .statsStrip {
+    flex-wrap: wrap;
+  }
+  .statStripSegment {
+    flex: 1 1 33%;
+    border-left: none;
+    border-top: 1px solid var(--ds-border);
+  }
+}

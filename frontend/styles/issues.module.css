@@ -1022,8 +1022,29 @@ td.empty::before,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-2);
+}
+
+/* #id + type tag, kept together on one line. */
+.taskTileTopLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  white-space: nowrap;
+}
+
+/* Priority + status badges: wrap onto their own line inside the card
+   when they don't fit beside the #id, instead of overflowing the card's
+   edge. Each badge itself stays on one line (.badge is nowrap). */
+.taskTileBadges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ds-space-1);
+  margin-left: auto;
+  min-width: 0;
 }
 
 .taskTileDesc {
@@ -1377,4 +1398,12 @@ td.empty::before,
 .teamCheckChip input {
   margin: 0;
   accent-color: var(--ds-color-primary-600);
+}
+
+/* Mobile (≤640px): the shared .filterBar stacks its groups; keep them
+   left-aligned and full width here rather than pushed to the right. */
+@media (max-width: 640px) {
+  .teamFilterBar {
+    align-items: stretch;
+  }
 }

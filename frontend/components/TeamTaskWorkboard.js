@@ -246,7 +246,7 @@ function DependencyTile({ row, assigneeLabel, labelForEmail }) {
       }}
     >
       <div className={styles.taskTileTop}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div className={styles.taskTileTopLeft}>
           <Link
             href={href}
             className={styles.issueId}
@@ -258,7 +258,9 @@ function DependencyTile({ row, assigneeLabel, labelForEmail }) {
           </Link>
           <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
         </div>
-        <Badge tone="warning">{row.status}</Badge>
+        <div className={styles.taskTileBadges}>
+          <Badge tone="warning">{row.status}</Badge>
+        </div>
       </div>
       <div className={styles.taskTileDesc} title={row.title}>
         {row.title}
@@ -297,7 +299,7 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
       }}
     >
       <div className={styles.taskTileTop}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div className={styles.taskTileTopLeft}>
           <Link
             href={`/tasks/${task.id}`}
             className={styles.issueId}
@@ -311,7 +313,7 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, on
             {task.isDefect ? 'Defect' : 'Task'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+        <div className={styles.taskTileBadges}>
           <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
           <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status)}</span>
         </div>
