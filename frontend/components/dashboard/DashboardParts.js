@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowRight, CalendarClock, CheckCircle2 } from 'lucide-react';
 import Badge from '../ui/Badge';
 import Skeleton from '../ui/Skeleton';
+import Avatar from '../ui/Avatar';
 import { formatDate } from '../../lib/formatDate';
 import { isOverdueTask, todayISO } from '../../lib/developerTaskStats';
 import { COMPLETED_STATUSES, HOLD_CLOSED_STATUSES, statusBadgeStyle, statusLabel, priorityTone, priorityLabel } from '../../lib/taskTableShared';
@@ -22,6 +23,7 @@ export function DashboardHeader({ user, summary, actions }) {
   const firstName = user.fullName ? user.fullName.split(' ')[0] : null;
   return (
     <header className={styles.header}>
+      <Avatar name={user.fullName || user.email} size="lg" className={styles.headerAvatar} />
       <div className={styles.headerText}>
         <p className={styles.headerDate}>
           {now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}

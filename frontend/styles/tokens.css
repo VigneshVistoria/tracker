@@ -76,10 +76,13 @@
   /* ---- Typography ---- */
   --ds-font-body: var(--ds-font-inter, 'Inter'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --ds-font-mono: ui-monospace, 'SF Mono', 'IBM Plex Mono', monospace;
+  /* Headings and big numbers - friendlier rounded geometric face
+     (loaded in _app.js); falls back to the body font. */
+  --ds-font-display: var(--ds-font-jakarta, 'Plus Jakarta Sans'), var(--ds-font-body);
 
   --ds-text-xs: 12px;
-  --ds-text-sm: 13px;
-  --ds-text-base: 14px;
+  --ds-text-sm: 14px;
+  --ds-text-base: 15px;
   --ds-text-md: 15px;
   --ds-text-lg: 17px;
   --ds-text-xl: 20px;
@@ -169,7 +172,7 @@
 
   --ds-bg-canvas: #17120f;
   --ds-bg-surface: #211a16;
-  --ds-bg-surface-sunken: #1b1512;
+  --ds-bg-surface-sunken: #1e1814;
   --ds-bg-overlay: rgba(0, 0, 0, 0.6);
 
   --ds-text-primary: #f5ece4;
@@ -207,8 +210,8 @@
   --ds-shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.3);
   --ds-shadow-focus: 0 0 0 3px rgba(255, 148, 102, 0.35);
 
-  --ds-sidebar-bg: #1d1713;
-  --ds-sidebar-active-bg: #3a2a20;
+  --ds-sidebar-bg: #17120f;
+  --ds-sidebar-active-bg: #2e221b;
 }
 
 /* ============================================================
@@ -239,9 +242,11 @@
   --ds-color-primary-800: #8a3f1f;
   --ds-color-primary-900: #6e321a;
 
-  --ds-bg-canvas: #fbf7f2;
+  /* "Airy & calm" pass (2026-10-06): neutral warm off-whites instead of
+     peach everywhere - peach is kept for selection and brand accents. */
+  --ds-bg-canvas: #faf8f6;
   --ds-bg-surface: #ffffff;
-  --ds-bg-surface-sunken: #fff3ea;
+  --ds-bg-surface-sunken: #f6f3f0;
   --ds-bg-overlay: rgba(58, 47, 40, 0.42);
 
   --ds-text-primary: #3a2f28;
@@ -253,8 +258,8 @@
   --ds-text-link: var(--ds-color-primary-700);
   --ds-text-link-hover: var(--ds-color-primary-800);
 
-  --ds-border: #f0e2d4;
-  --ds-border-strong: #e3cdb5;
+  --ds-border: #ece6e0;
+  --ds-border-strong: #ddd4cb;
   --ds-border-focus: var(--ds-color-primary-600);
 
   --ds-color-success: #2f9e63;
@@ -275,17 +280,18 @@
   --ds-color-info-dark: var(--ds-color-primary-800);
   --ds-color-info-tint: var(--ds-color-primary-100);
 
-  --ds-shadow-xs: 0 1px 2px rgba(160, 120, 90, 0.06);
-  --ds-shadow-sm: 0 1px 3px rgba(160, 120, 90, 0.1), 0 1px 2px rgba(160, 120, 90, 0.06);
-  --ds-shadow-md: 0 4px 16px rgba(160, 120, 90, 0.08), 0 2px 4px rgba(160, 120, 90, 0.05);
-  --ds-shadow-lg: 0 16px 32px rgba(160, 120, 90, 0.16), 0 4px 8px rgba(160, 120, 90, 0.06);
+  /* Softer, more diffuse elevation. */
+  --ds-shadow-xs: 0 1px 2px rgba(60, 40, 20, 0.04);
+  --ds-shadow-sm: 0 1px 2px rgba(60, 40, 20, 0.04), 0 2px 8px rgba(60, 40, 20, 0.04);
+  --ds-shadow-md: 0 2px 4px rgba(60, 40, 20, 0.04), 0 8px 24px rgba(60, 40, 20, 0.07);
+  --ds-shadow-lg: 0 4px 8px rgba(60, 40, 20, 0.05), 0 20px 48px rgba(60, 40, 20, 0.12);
   --ds-shadow-focus: 0 0 0 3px rgba(181, 83, 42, 0.3);
 
   /* Distinct peach sidebar, not a reuse of --ds-bg-surface/
      --ds-color-info-tint - see the --ds-sidebar-* default declarations
      in :root above. */
-  --ds-sidebar-bg: #fff3ea;
-  --ds-sidebar-active-bg: #ffe1c9;
+  --ds-sidebar-bg: #ffffff;
+  --ds-sidebar-active-bg: #fff1e8;
 }
 
 /* Structure shared by warm and dark, so switching theme never changes

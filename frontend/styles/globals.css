@@ -64,7 +64,7 @@
   --status-closed-tint: var(--color-teal-tint);
 
   /* Typography */
-  --font-display: var(--ds-font-body);
+  --font-display: var(--ds-font-display);
   --font-body: var(--ds-font-body);
   --font-mono: var(--ds-font-mono);
 
@@ -107,7 +107,7 @@
   --color-slate: var(--ds-text-secondary);
   /* Warm neutral tint (was cool gray-100) for Backlog/Development tints
      and neutral panels. */
-  --color-slate-tint: #f1ebe4;
+  --color-slate-tint: #f2eeea;
   --status-open-tint: var(--color-slate-tint);
   /* primary-50 is almost invisible on the warm canvas; 200 keeps In
      Progress/Intervention tints readable (text on it: 4.99:1). */
@@ -149,9 +149,13 @@ body {
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 0;
+}
+
+p {
+  line-height: var(--ds-leading-relaxed);
 }
 
 code, .mono {

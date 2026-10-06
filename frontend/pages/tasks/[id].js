@@ -22,6 +22,7 @@ import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
+import Avatar from '../../components/ui/Avatar';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -1474,7 +1475,8 @@ export default function TaskDetailPage() {
               <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
                 {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(task.dueDate)}` : 'No due date'}
               </span>
-              <span className={styles.metaItem}>
+              <span className={`${styles.metaItem} ${styles.metaPerson}`}>
+                {(task.assigneeFullName || task.assigneeEmail) && <Avatar name={task.assigneeFullName || task.assigneeEmail} size="xs" />}
                 {task.assigneeFullName || task.assigneeEmail || 'Unassigned'}
               </span>
             </div>

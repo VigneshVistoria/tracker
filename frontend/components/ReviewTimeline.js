@@ -2,6 +2,7 @@ import { CheckCircle2, Clock, Send, XCircle, AlertTriangle } from 'lucide-react'
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
 import { statusLabel } from '../lib/taskTableShared';
+import Avatar from './ui/Avatar';
 import styles from '../styles/reviewTimeline.module.css';
 
 const OUTCOME = {
@@ -39,13 +40,13 @@ export default function ReviewTimeline({ reviews }) {
               </div>
               <p className={styles.meta}>
                 <Send size={12} aria-hidden="true" />
-                Submitted by {r.submittedByFullName || 'Unknown'} · {formatDate(r.submittedAt)}
+                Submitted by <Avatar name={r.submittedByFullName} size="xs" /> {r.submittedByFullName || 'Unknown'} · {formatDate(r.submittedAt)}
               </p>
               {resolution && <p className={styles.text}>{resolution}</p>}
               {r.status !== 'pending' && (
                 <p className={styles.meta}>
                   <outcome.icon size={12} aria-hidden="true" />
-                  Reviewed by {r.reviewedByFullName || 'Unknown'}
+                  Reviewed by <Avatar name={r.reviewedByFullName} size="xs" /> {r.reviewedByFullName || 'Unknown'}
                   {r.reviewedAt ? ` · ${formatDate(r.reviewedAt)}` : ''}
                 </p>
               )}

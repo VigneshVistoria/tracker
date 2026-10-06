@@ -5,13 +5,18 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: var(--ds-space-4);
+  gap: var(--ds-space-4) var(--ds-space-5);
   flex-wrap: wrap;
   margin-bottom: var(--ds-space-6);
 }
 
 .headerText {
+  flex: 1;
   min-width: 0;
+}
+
+.headerAvatar {
+  align-self: center;
 }
 
 .headerDate {
@@ -45,8 +50,8 @@
 .tileGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--ds-space-4);
-  margin-bottom: var(--ds-space-6);
+  gap: var(--ds-space-5);
+  margin-bottom: var(--ds-space-8);
 }
 
 .tile {
@@ -119,6 +124,7 @@
 }
 
 .tileValue {
+  font-family: var(--ds-font-display);
   font-size: var(--ds-text-3xl);
   font-weight: var(--ds-weight-bold);
   line-height: var(--ds-leading-tight);
@@ -333,6 +339,7 @@
 }
 
 .pipelineCount {
+  font-family: var(--ds-font-display);
   font-size: var(--ds-text-xl);
   font-weight: var(--ds-weight-bold);
   font-variant-numeric: tabular-nums;
@@ -373,6 +380,7 @@
 }
 
 .statRowValue {
+  font-family: var(--ds-font-display);
   margin: 2px 0 0;
   font-size: var(--ds-text-xl);
   font-weight: var(--ds-weight-bold);

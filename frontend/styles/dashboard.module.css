@@ -37,6 +37,7 @@
 .statCard.accentNeutral .statValue { color: var(--color-ink); }
 
 .statValue {
+  font-family: var(--ds-font-display);
   font-size: var(--ds-text-3xl);
   font-weight: var(--ds-weight-bold);
   font-variant-numeric: tabular-nums;

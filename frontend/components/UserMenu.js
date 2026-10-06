@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Keyboard, LogOut, Moon, Sun, UserRoundX } from 'lucide-react';
 import { roleLabel } from '../lib/status';
+import Avatar from './ui/Avatar';
 import styles from '../styles/appshell.module.css';
-
-export function initialsFor(user) {
-  if (!user) return '?';
-  if (user.fullName) {
-    return user.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-  }
-  return user.email[0].toUpperCase();
-}
 
 // Avatar button + menu (WAI-ARIA menu button pattern): arrow keys move
 // between items, Esc/Tab/outside-click close it and return focus.
@@ -87,7 +80,7 @@ export default function UserMenu({ user, theme, onToggleTheme, onShowShortcuts, 
           }
         }}
       >
-        <span className={styles.avatar} aria-hidden="true">{initialsFor(user)}</span>
+        <Avatar name={user.fullName || user.email} />
         <span className={styles.userBadgeText}>
           <span className={styles.userName}>{user.fullName || user.email}</span>
           <span className={styles.userRole}>{roleLabel(user.role)}</span>

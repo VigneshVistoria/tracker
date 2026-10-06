@@ -175,6 +175,9 @@
 }
 
 .itemMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
   font-size: var(--ds-text-xs);
   color: var(--ds-text-secondary);
 }

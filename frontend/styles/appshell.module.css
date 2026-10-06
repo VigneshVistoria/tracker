@@ -31,6 +31,7 @@
 }
 
 .brand {
+  font-family: var(--ds-font-display);
   display: flex;
   align-items: center;
   gap: var(--ds-space-2);
@@ -418,7 +419,7 @@
   color: var(--ds-text-secondary);
   font-size: var(--ds-text-sm);
   font-weight: var(--ds-weight-medium);
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
   margin-bottom: 2px;
   white-space: nowrap;
   transition: background-color var(--ds-transition-fast), color var(--ds-transition-fast), border-color var(--ds-transition-fast);
@@ -447,7 +448,7 @@
 /* Nav sidebar count badge (e.g. "My Tasks 6"). */
 .navCount {
   margin-left: auto;
-  background: var(--ds-bg-surface);
+  background: var(--color-slate-tint);
   color: var(--ds-color-primary-700);
   font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-bold);
@@ -533,12 +534,20 @@
   flex: 1;
   min-width: 0;
   outline: none;
-  padding: var(--ds-space-6) var(--ds-space-5);
+  padding: var(--ds-space-8) var(--ds-space-8);
 }
 
 .contentInner {
   max-width: var(--ds-max-content-width);
   margin: 0 auto;
+  /* Gentle fade/rise on every page change (AppShell remounts per page).
+     The global prefers-reduced-motion rule in globals.css switches it off. */
+  animation: pageIn 220ms ease-out;
+}
+
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* Full screen mode (AppShell's fullScreen prop, currently only Team

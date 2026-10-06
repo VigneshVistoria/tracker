@@ -17,6 +17,7 @@ import {
 import { apiFetch } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { formatRelativeTime } from '../lib/formatDate';
+import Avatar from './ui/Avatar';
 import styles from '../styles/notificationBell.module.css';
 
 const TYPE_ICON = {
@@ -191,6 +192,7 @@ export default function NotificationBell() {
                           <span className={styles.itemTitle}>{item.title}</span>
                           {item.body && <span className={styles.itemBody}>{item.body}</span>}
                           <span className={styles.itemMeta}>
+                            {item.actorName && <Avatar name={item.actorName} size="xs" />}
                             {item.actorName ? `${item.actorName} · ` : ''}
                             {formatRelativeTime(item.createdAt)}
                           </span>
