@@ -63,6 +63,13 @@ it, don't invent new values in component CSS.
   `--ds-space-16` (64px). Themes may override the scale's values (see
   `warm` theme's roomier overrides) but every component must consume
   the token, never a literal pixel value.
+- **Fonts**: Inter (body) and Plus Jakarta Sans (headings, big numbers)
+  are self-hosted in `frontend/fonts/` and loaded with `next/font/local`
+  in `_app.js` - never add a Google Fonts `<link>` or `next/font/google`
+  (builds and page loads must not depend on Google). Font-family tokens
+  that reference the `next/font` variables must be declared on
+  `.font-root` (globals.css), not `:root`: on `:root` the variables are
+  undefined and `var()` silently falls back to an unloaded family name.
 - **Type**: `--ds-text-xs` (12px) through `--ds-text-3xl` (30px), paired
   with `--ds-weight-*` and `--ds-leading-*`. Pick from this scale; don't
   set one-off `font-size`/`line-height` per page.

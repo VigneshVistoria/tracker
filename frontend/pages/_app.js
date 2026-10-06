@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import Head from 'next/head';
-import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
+import localFont from 'next/font/local';
 import '../styles/globals.css';
 import '../styles/tokens.css';
 import { ToastProvider } from '../lib/toast';
@@ -8,9 +8,26 @@ import { ConfirmProvider } from '../lib/confirm';
 import { ThemeProvider } from '../lib/theme';
 import { installChunkErrorRecovery } from '../lib/chunkErrorRecovery';
 
-const inter = Inter({ subsets: ['latin'], variable: '--ds-font-inter', display: 'swap' });
-const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], weight: ['600', '700', '800'], variable: '--ds-font-jakarta', display: 'swap' });
-const fontVariables = `${inter.variable} ${jakarta.variable}`;
+// Self-hosted (frontend/fonts/, SIL OFL 1.1 - licences alongside) rather
+// than next/font/google, which downloads the fonts during every build:
+// a Google Fonts hiccup was failing builds/deploys (2026-10-06). Same
+// latin-subset variable files Google serves, same CSS variable names.
+const inter = localFont({
+  src: '../fonts/Inter-Variable-latin.woff2',
+  weight: '100 900',
+  variable: '--ds-font-inter',
+  display: 'swap',
+});
+const jakarta = localFont({
+  src: '../fonts/PlusJakartaSans-Variable-latin.woff2',
+  weight: '200 800',
+  variable: '--ds-font-jakarta',
+  display: 'swap',
+});
+// `font-root` (globals.css) re-declares the font tokens on the same
+// element that carries these variables - declared on :root they'd resolve
+// before the variables exist and silently fall back to plain names.
+const fontVariables = `${inter.variable} ${jakarta.variable} font-root`;
 
 export default function App({ Component, pageProps }) {
   useEffect(() => installChunkErrorRecovery(), []);

@@ -75,7 +75,7 @@
 
   /* ---- Typography ---- */
   --ds-font-body: var(--ds-font-inter, 'Inter'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --ds-font-mono: ui-monospace, 'SF Mono', 'IBM Plex Mono', monospace;
+  --ds-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
   /* Headings and big numbers - friendlier rounded geometric face
      (loaded in _app.js); falls back to the body font. */
   --ds-font-display: var(--ds-font-jakarta, 'Plus Jakarta Sans'), var(--ds-font-body);

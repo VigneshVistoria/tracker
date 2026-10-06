@@ -177,6 +177,19 @@ button {
   font-family: inherit;
 }
 
+/* Applied (with the next/font variable classes) to _app's wrapper div and
+   to <body> - see _app.js. The font tokens must be declared on an element
+   that has --ds-font-inter/--ds-font-jakarta in scope: on :root those are
+   undefined, so var() would fall back to plain family names that aren't
+   loaded. Children inherit the resolved values. */
+.font-root {
+  --ds-font-body: var(--ds-font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ds-font-display: var(--ds-font-jakarta), var(--ds-font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--ds-font-body);
+  --font-display: var(--ds-font-display);
+  font-family: var(--ds-font-body);
+}
+
 /* Visually hidden but still read by screen readers. */
 .sr-only {
   position: absolute;
