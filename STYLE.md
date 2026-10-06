@@ -13,9 +13,14 @@ documented, and built under these same constraints.
   18px+ bold). Check every `--ds-text-*` / `--ds-bg-*` pairing introduced
   in a theme (`frontend/styles/tokens.css`) against the surface it's
   actually painted on — this is the #1 way "vibrant" redesigns fail.
-  The `warm` theme already documents one such fix (`--ds-text-link` uses
-  primary-700, not 600, because raw accent orange fails on white) —
-  follow that pattern for new themes/colors.
+  The `warm` theme documents the main fixes (2026-10-06): the reference
+  accent `#ff9466` is decorative only (primary-500) — buttons and links
+  use the deeper primary-600/700 steps, because the raw accent fails
+  with white text (2.2:1) and as link text; secondary/muted text was
+  darkened to pass on the peach sidebar; legacy status colours point at
+  the `-dark` steps. White text on a red fill uses
+  `--ds-color-danger-solid`, never `--ds-color-error`. Follow that
+  pattern for new colours.
 - **Keyboard**: every interactive element (buttons, tabs, menu items,
   icon-only actions) must be reachable via Tab and operable via
   Enter/Space, in a sensible DOM order. No `onClick`-only `<div>`s.
@@ -79,6 +84,9 @@ rather than adding another one-off value:
 - **Tablet**: 641px–1024px
 - **Desktop**: 1025px+
 
+The app shell follows this: the sidebar becomes a drawer at ≤1024px and
+the search bar becomes an icon at ≤640px.
+
 When a page/component needs a breakpoint, use the closest value above
 instead of picking a new number, and note in a comment if a value
 genuinely can't fit the scale (e.g. matching an existing sidebar
@@ -87,8 +95,13 @@ collapse width).
 ## Applying this
 
 - New components: build against `--ds-*` tokens from the start; check
-  contrast on every theme (`light` in `:root`, `dark`, `terminal`,
-  `warm`) since this app supports theme switching.
+  contrast on both themes — `warm` (default, every role) and `dark` (its
+  night counterpart, user toggle). `light`/`terminal` were retired
+  2026-10-06; a saved retired value falls back to `warm`. The `:root`
+  block is only the pre-hydration base, not a theme users can pick.
+- Overlays (dialogs, palette, toasts) must go through the shared pieces:
+  `components/ui/Modal`, `lib/confirm.js` (`useConfirm()` — never
+  `window.confirm()`), `lib/toast.js` (renders `components/ui/Toast`).
 - Existing pages being touched for other reasons: don't do a drive-by
   full migration, but don't add new hardcoded values either.
 - See `PROJECT.md` for the broader technical writeup of the app; this

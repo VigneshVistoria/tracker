@@ -6,6 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
+import { useConfirm } from '../../lib/confirm';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 const STATUS_OPTIONS = ['ToDo', 'In Progress', 'Completed', 'Delayed'];
@@ -43,6 +44,7 @@ function ProgressBar({ percent }) {
 }
 
 export default function ProjectPlanningPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -193,7 +195,7 @@ export default function ProjectPlanningPage() {
   };
 
   const handleToggleActive = async (entry) => {
-    if (entry.isActive && !confirm(`Deactivate this Project Planning entry for "${entry.projectName}"?`)) return;
+    if (entry.isActive && !await confirmAction({ title: 'Deactivate planning entry?', message: `Deactivate this Project Planning entry for "${entry.projectName}"?`, confirmLabel: 'Deactivate', danger: true })) return;
     setBusyId(entry.id);
     setError('');
     try {

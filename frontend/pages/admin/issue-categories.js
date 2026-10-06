@@ -5,6 +5,7 @@ import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { useConfirm } from '../../lib/confirm';
 
 // Mirrors IssueCategoriesService.PROTECTED_NAMES on the backend exactly -
 // these two are matched by name (not id) in 3 other backend services
@@ -14,6 +15,7 @@ import { useToast } from '../../lib/toast';
 const PROTECTED_NAMES = ['Critical', 'Showstopper'];
 
 export default function IssueCategoriesPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
   const [categories, setCategories] = useState([]);
@@ -95,7 +97,7 @@ export default function IssueCategoriesPage() {
   };
 
   const handleDelete = async (category) => {
-    if (!confirm(`Delete "${category.name}"? This cannot be undone.`)) return;
+    if (!await confirmAction({ title: 'Delete issue category?', message: `Delete "${category.name}"? This cannot be undone.`, confirmLabel: 'Delete', danger: true })) return;
     setError('');
     try {
       await apiFetch(`/issue-categories/${category.id}`, { method: 'DELETE' });

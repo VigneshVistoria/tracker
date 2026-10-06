@@ -6,6 +6,7 @@ import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { useConfirm } from '../../lib/confirm';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 
@@ -24,6 +25,7 @@ function ProgressBar({ percent }) {
 }
 
 export default function ProjectModulesPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -108,7 +110,7 @@ export default function ProjectModulesPage() {
   };
 
   const handleToggleActive = async (module) => {
-    if (module.isActive && !confirm(`Deactivate "${module.name}"? It will no longer be assignable to new issues or Project Planning entries.`)) return;
+    if (module.isActive && !await confirmAction({ title: 'Deactivate module?', message: `Deactivate "${module.name}"? It will no longer be assignable to new issues or Project Planning entries.`, confirmLabel: 'Deactivate', danger: true })) return;
     setBusyId(module.id);
     setError('');
     try {

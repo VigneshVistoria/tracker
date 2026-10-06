@@ -8,6 +8,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
+import { useConfirm } from '../../lib/confirm';
 
 // Program Manager only for now (built PM-first for review, 2026-09-26) -
 // widen together with ReleaseLogsController.assertIsPm and the AppShell
@@ -17,6 +18,7 @@ const VIEW_ROLES = ['program_manager'];
 const EMPTY_FORM = { project: null, appName: '', version: '', releaseDate: '', artifacts: '' };
 
 export default function ReleaseLogPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -162,7 +164,7 @@ export default function ReleaseLogPage() {
   };
 
   const handleRemoveItem = async (item) => {
-    if (!confirm(`Remove ticket #${item.taskId} from this release?`)) return;
+    if (!await confirmAction({ title: 'Remove from release?', message: `Remove ticket #${item.taskId} from this release?`, confirmLabel: 'Remove', danger: true })) return;
     setRemovingId(item.id);
     setDetailError('');
     try {

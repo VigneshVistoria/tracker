@@ -11,6 +11,7 @@ import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { priorityTone, priorityLabel, statusBadgeStyle, statusLabel } from '../../lib/taskTableShared';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
+import { useConfirm } from '../../lib/confirm';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -31,6 +32,7 @@ function userToOption(u) {
 const EMPTY_FORM = EMPTY_TASK_FORM;
 
 export default function TaskBacklogPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -123,7 +125,7 @@ export default function TaskBacklogPage() {
   };
 
   const handleClose = async (task) => {
-    if (!window.confirm('Close this task? This ends it regardless of resolution state and cannot be undone.')) return;
+    if (!await confirmAction({ title: 'Close task?', message: 'Close this task? This ends it regardless of resolution state and cannot be undone.', confirmLabel: 'Close task', danger: true })) return;
     setActingOnId(task.id);
     setError('');
     try {

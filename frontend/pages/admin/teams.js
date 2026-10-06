@@ -4,8 +4,10 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { useConfirm } from '../../lib/confirm';
 
 export default function TeamsPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
   const [teams, setTeams] = useState([]);
@@ -78,7 +80,7 @@ export default function TeamsPage() {
   };
 
   const handleDelete = async (team) => {
-    if (!confirm(`Delete "${team.name}"? This cannot be undone.`)) return;
+    if (!await confirmAction({ title: 'Delete team?', message: `Delete "${team.name}"? This cannot be undone.`, confirmLabel: 'Delete', danger: true })) return;
     setError('');
     try {
       await apiFetch(`/teams/${team.id}`, { method: 'DELETE' });

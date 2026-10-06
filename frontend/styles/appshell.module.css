@@ -24,6 +24,12 @@
   flex-shrink: 0;
 }
 
+.brand:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+  border-radius: var(--ds-radius-md);
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -44,7 +50,7 @@
   height: 30px;
   border-radius: var(--ds-radius-md);
   background: var(--ds-color-primary-600);
-  color: #fff;
+  color: var(--ds-text-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -66,71 +72,81 @@
   color: var(--ds-text-primary);
 }
 
-/* ---------- Global search (decorative placeholder for now) ---------- */
-.searchWrap {
-  position: relative;
+/* ---------- Skip link (first Tab stop on every page) ---------- */
+.skipLink {
+  position: absolute;
+  left: var(--ds-space-4);
+  top: -100px;
+  z-index: var(--ds-z-toast);
+  padding: var(--ds-space-2) var(--ds-space-4);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-link);
+  border: 1px solid var(--ds-border-focus);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-md);
+  font-weight: var(--ds-weight-semibold);
+}
+.skipLink:focus {
+  top: var(--ds-space-2);
+}
+
+/* ---------- Search / command palette trigger ---------- */
+.searchTrigger {
   flex: 1;
   max-width: 440px;
+  height: 40px;
   display: flex;
   align-items: center;
-}
-
-.searchIcon {
-  position: absolute;
-  left: var(--ds-space-3);
-  color: var(--ds-text-muted);
-  pointer-events: none;
-}
-
-.searchInput {
-  width: 100%;
-  height: 38px;
-  padding: 0 var(--ds-space-3) 0 var(--ds-space-8);
-  font-size: var(--ds-text-sm);
-  font-family: inherit;
+  gap: var(--ds-space-2);
+  padding: 0 var(--ds-space-2) 0 var(--ds-space-4);
   background: var(--ds-bg-surface-sunken);
-  border: 1px solid transparent;
-  border-radius: var(--ds-radius-md);
-  color: var(--ds-text-primary);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-full);
+  color: var(--ds-text-secondary);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  cursor: pointer;
+  text-align: left;
   transition: background-color var(--ds-transition-fast), border-color var(--ds-transition-fast), box-shadow var(--ds-transition-fast);
 }
-.searchInput::placeholder {
-  color: var(--ds-text-muted);
-}
-.searchInput:focus-visible,
-.searchInput:focus {
-  outline: none;
+.searchTrigger:hover {
   background: var(--ds-bg-surface);
+  border-color: var(--ds-border-strong);
+}
+.searchTrigger:focus-visible {
+  outline: none;
   border-color: var(--ds-border-focus);
   box-shadow: var(--ds-shadow-focus);
 }
 
-/* Warm theme only (Admin/Executive/Program Manager - see
-   lib/newDesignRoles.js): full-pill search bar with a decorative "⌘K"
-   hint, matching the reference. The hint is a CSS-generated ::after on
-   the wrapper (not real DOM/JSX) since <input> doesn't support
-   pseudo-elements - pointer-events: none keeps it purely decorative so
-   it can never intercept a click or a keystroke. Scoped entirely by the
-   :root[data-theme='warm'] ancestor, so Developer/QA/Client/Designer/
-   DevOps (never in that theme) get the exact same search bar as today. */
-:root[data-theme='warm'] .searchInput {
-  border-radius: var(--ds-radius-full);
-  padding-right: 52px;
+.searchTriggerIcon {
+  flex-shrink: 0;
 }
-:root[data-theme='warm'] .searchWrap::after {
-  content: '⌘K';
-  position: absolute;
-  right: var(--ds-space-3);
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 10px;
-  font-weight: var(--ds-weight-bold);
-  color: var(--ds-text-muted);
+
+.searchTriggerText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchTriggerKbd {
+  flex-shrink: 0;
+  padding: 2px var(--ds-space-2);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-full);
   background: var(--ds-bg-surface);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-sm);
-  padding: 1px 6px;
-  pointer-events: none;
+  font-family: inherit;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+}
+
+/* Icon-only search button - replaces the wide trigger on small screens.
+   Doubled class so it beats .iconButton's display regardless of order. */
+.iconButton.searchIconButton {
+  display: none;
 }
 
 .topbarRight {
@@ -197,15 +213,99 @@
   box-shadow: var(--ds-shadow-focus);
 }
 
+.userMenuWrap {
+  position: relative;
+  margin-left: var(--ds-space-1);
+  padding-left: var(--ds-space-2);
+  border-left: 1px solid var(--ds-border);
+}
+
 .userBadge {
   display: flex;
   align-items: center;
   gap: var(--ds-space-2);
+  font-family: inherit;
   font-size: var(--ds-text-sm);
   color: var(--ds-text-secondary);
-  padding: var(--ds-space-1) var(--ds-space-2) var(--ds-space-1) var(--ds-space-3);
-  border-left: 1px solid var(--ds-border);
-  margin-left: var(--ds-space-1);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--ds-radius-full);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--ds-transition-fast);
+}
+.userBadge:hover,
+.userBadge[aria-expanded='true'] {
+  background: var(--ds-bg-surface-sunken);
+}
+.userBadge:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.userChevron {
+  color: var(--ds-text-secondary);
+  flex-shrink: 0;
+}
+
+.userMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--ds-space-2));
+  min-width: 240px;
+  padding: var(--ds-space-2);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-lg);
+  z-index: var(--ds-z-dropdown);
+}
+
+.userMenuHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--ds-space-2) var(--ds-space-3) var(--ds-space-3);
+  margin-bottom: var(--ds-space-1);
+  border-bottom: 1px solid var(--ds-border);
+}
+.userMenuName {
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+}
+.userMenuEmail,
+.userMenuRole {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.userMenuItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  min-height: 40px;
+  border: none;
+  border-radius: var(--ds-radius-md);
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.userMenuItem:hover,
+.userMenuItem:focus-visible {
+  outline: none;
+  background: var(--ds-sidebar-active-bg);
+}
+.userMenuItem:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .userBadgeText {
@@ -221,8 +321,8 @@
 }
 
 .userRole {
-  font-size: 11px;
-  color: var(--ds-text-muted);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
 }
 
 .avatar {
@@ -247,9 +347,9 @@
   display: flex;
   align-items: center;
   gap: var(--ds-space-1);
-  font-size: 11px;
+  font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-semibold);
-  color: var(--ds-text-muted);
+  color: var(--ds-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -333,8 +433,7 @@
   /* --ds-sidebar-active-bg, not the raw primary-50/700 palette steps -
      those are fixed light-mode values and would render as a near-white
      highlight behind dark-mode-illegible text on a dark sidebar. Defaults
-     to the same --ds-color-info-tint value this used before the token
-     was introduced (see tokens.css); only the 'warm' theme diverges. */
+     to --ds-color-info-tint; the warm and dark themes set their own. */
   background: var(--ds-sidebar-active-bg);
   color: var(--ds-color-info-dark);
   border-left-color: var(--ds-color-primary-600);
@@ -345,30 +444,68 @@
   flex-shrink: 0;
 }
 
-/* Nav sidebar count badge (e.g. "My Tasks 6") - only ever rendered with
-   content for the gated new-design roles (AppShell.js only passes a
-   non-null count for those - see navCounts), so no theme-scoping is
-   needed here the way the searchInput/statCard warm overrides above
-   needed it. */
+/* Nav sidebar count badge (e.g. "My Tasks 6"). */
 .navCount {
   margin-left: auto;
   background: var(--ds-bg-surface);
   color: var(--ds-color-primary-700);
-  font-size: 10px;
+  font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-bold);
   padding: 1px 7px;
   border-radius: var(--ds-radius-full);
   flex-shrink: 0;
 }
 
+.navGroup + .navGroup {
+  margin-top: var(--ds-space-2);
+}
+
 .navSection {
-  margin: var(--ds-space-4) var(--ds-space-3) var(--ds-space-2);
-  font-size: 11px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 var(--ds-space-1);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--ds-text-muted);
-  min-height: 14px;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+.navSection:hover:not(:disabled) {
+  color: var(--ds-text-primary);
+}
+.navSection:disabled {
+  cursor: default;
+}
+.navSection:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.navSectionChevron {
+  transition: transform var(--ds-transition-fast);
+}
+.navSectionChevronClosed {
+  transform: rotate(-90deg);
+}
+
+.navDivider {
+  border: none;
+  border-top: 1px solid var(--ds-border);
+  margin: var(--ds-space-2) var(--ds-space-2);
+}
+
+.navLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .collapseButton {
@@ -395,6 +532,7 @@
 .content {
   flex: 1;
   min-width: 0;
+  outline: none;
   padding: var(--ds-space-6) var(--ds-space-5);
 }
 
@@ -417,13 +555,10 @@
   display: none;
 }
 
-@media (max-width: 900px) {
+/* Tablet and below (≤1024px, STYLE.md §4): sidebar becomes a drawer. */
+@media (max-width: 1024px) {
   .menuButton {
     display: flex;
-  }
-
-  .searchWrap {
-    display: none;
   }
 
   .sidebar {
@@ -462,18 +597,34 @@
     display: none; /* keep just the avatar on small screens */
   }
 
-  .userBadge {
-    border-left: none;
-    padding-left: 0;
-    margin-left: 0;
+  .userChevron {
+    display: none;
   }
 
   .connectionStatus {
     display: none; /* the dot's text label doesn't fit - hide the whole indicator rather than leave a bare dot */
   }
 
+}
+
+/* Mobile (≤640px): icon-only search, no brand wordmark. */
+@media (max-width: 640px) {
+  .searchTrigger {
+    display: none;
+  }
+  .iconButton.searchIconButton {
+    display: inline-flex;
+  }
   .brandName {
     display: none;
+  }
+  .topbar {
+    padding: 0 var(--ds-space-3);
+    gap: var(--ds-space-2);
+  }
+  .userMenuWrap {
+    border-left: none;
+    padding-left: 0;
   }
 }
 

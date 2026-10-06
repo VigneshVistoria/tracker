@@ -11,7 +11,7 @@ const TONE = {
 export function Toast({ type = 'info', message, onDismiss }) {
   const { icon: Icon, className } = TONE[type] || TONE.info;
   return (
-    <div className={`${styles.toast} ${styles[className]}`} role="status">
+    <div className={`${styles.toast} ${styles[className]}`} role={type === 'error' ? 'alert' : 'status'}>
       <Icon size={18} className={styles.icon} aria-hidden="true" />
       <span className={styles.message}>{message}</span>
       {onDismiss && (

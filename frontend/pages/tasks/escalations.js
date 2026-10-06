@@ -6,6 +6,7 @@ import SearchSelectField from '../../components/SearchSelectField';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { useConfirm } from '../../lib/confirm';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -17,6 +18,7 @@ function userToOption(u) {
 // Program Manager can Reassign (to any Developer) or Close as Junk;
 // Admin can view but not act, same view/mutate split as Task Backlog.
 export default function EscalationsPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -86,7 +88,7 @@ export default function EscalationsPage() {
   };
 
   const handleCloseAsJunk = async (task) => {
-    if (!confirm(`Close task #${task.id} as Junk? This is a final status and cannot be undone.`)) return;
+    if (!await confirmAction({ title: 'Close as Junk?', message: `Close task #${task.id} as Junk? This is a final status and cannot be undone.`, confirmLabel: 'Close as Junk', danger: true })) return;
     setBusyId(task.id);
     setError('');
     try {

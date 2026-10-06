@@ -8,6 +8,7 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
+import { useConfirm } from '../../../lib/confirm';
 
 const RISK_STYLE = {
   High: { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
@@ -114,6 +115,7 @@ function EditModuleForm({ module, onSaved, onCancel }) {
 }
 
 function ModuleRow({ module, projectId, initialExpanded, canManageModules, onChanged }) {
+  const confirmAction = useConfirm();
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(initialExpanded);
   const [detail, setDetail] = useState(null);
@@ -158,7 +160,7 @@ function ModuleRow({ module, projectId, initialExpanded, canManageModules, onCha
 
   const handleToggleActive = async (e) => {
     e.stopPropagation();
-    if (module.isActive && !confirm(`Deactivate "${module.name}"? It will no longer be assignable to new issues or Project Planning entries.`)) return;
+    if (module.isActive && !await confirmAction({ title: 'Deactivate module?', message: `Deactivate "${module.name}"? It will no longer be assignable to new issues or Project Planning entries.`, confirmLabel: 'Deactivate', danger: true })) return;
     try {
       await apiFetch(`/modules/${module.id}/${module.isActive ? 'deactivate' : 'activate'}`, { method: 'PATCH' });
       showToast(module.isActive ? 'Module deactivated' : 'Module activated', 'success');

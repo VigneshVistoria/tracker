@@ -9,3 +9,6 @@ dist/
 .env
 .env.local
 *.log
+
+# Throwaway compile-check builds (NEXT_DIST_DIR=.next-check) - never the live build
+.next-check/

@@ -114,19 +114,10 @@
   --tc-pass: #2e9e60;
   --tc-blocked: #d9a63a;
   --tc-fail: #e05a52;
-  --tc-none: #3a4456;
+  --tc-none: #3a2e27;
   --tc-on-pass: #0b0f17;
   --tc-on-blocked: #0b0f17;
   --tc-on-fail: #0b0f17;
-}
-:global(:root[data-theme='terminal']) .dashboard {
-  --tc-pass: #1fa31f;
-  --tc-blocked: #ffcc00;
-  --tc-fail: #ff4d4d;
-  --tc-none: #143314;
-  --tc-on-pass: #000000;
-  --tc-on-blocked: #000000;
-  --tc-on-fail: #000000;
 }
 
 .segPass { background: var(--tc-pass); color: var(--tc-on-pass); }

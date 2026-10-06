@@ -64,6 +64,10 @@
   --ds-color-error: #dc2626;
   --ds-color-error-dark: #b91c1c;
   --ds-color-error-tint: #fee2e2;
+  /* Solid fills behind white text (danger buttons) - kept separate from
+     --ds-color-error, which is tuned for icons/borders, not text contrast. */
+  --ds-color-danger-solid: #b91c1c;
+  --ds-color-danger-solid-hover: #991b1b;
 
   --ds-color-info: var(--ds-color-primary-600);
   --ds-color-info-dark: var(--ds-color-primary-800);
@@ -137,39 +141,47 @@
   --ds-z-toast: 60;
 
   /* ---- Sidebar-specific surface tokens ----
-     Default to the existing surface/info-tint values (so light/dark/
-     terminal render identically to before these were introduced); the
-     'warm' theme below overrides them to its own distinct peach tones
-     instead of reusing --ds-bg-surface / --ds-color-info-tint. */
+     Default to the surface/info-tint values; the warm and dark themes
+     below override them with their own distinct sidebar tones. */
   --ds-sidebar-bg: var(--ds-bg-surface);
   --ds-sidebar-active-bg: var(--ds-color-info-tint);
 }
 
 /* ============================================================
-   Dark theme — overrides only the semantic tokens (surfaces, text,
-   borders, shadows, status tints), not the raw palette scale. Every
-   component in the app reads colors through these semantic names (or
-   through the legacy --color-* aliases in globals.css, which now point
-   at these same names), so this one block is enough to re-theme the
-   whole product. Applied via [data-theme='dark'] on <html>, set by
-   lib/theme.js from system preference or the user's manual override.
+   Dark theme — the warm theme's night counterpart (warm-brown
+   surfaces, same orange brand). Overrides only colour tokens; radius,
+   spacing and structure come from the shared warm/dark block below,
+   so both themes have the same layout. Applied via [data-theme='dark']
+   on <html>, set by lib/theme.js from the user's toggle.
+   Every text/surface pairing below is checked at WCAG 2.1 AA (≥4.5:1).
    ============================================================ */
 :root[data-theme='dark'] {
-  --ds-bg-canvas: #0a0e16;
-  --ds-bg-surface: #141a26;
-  --ds-bg-surface-sunken: #0e131c;
+  --ds-color-primary-50: #2a1f18;
+  --ds-color-primary-100: #33251c;
+  --ds-color-primary-200: #3a2a20;
+  --ds-color-primary-300: #ffc9a3;
+  --ds-color-primary-400: #ffab7d;
+  --ds-color-primary-500: #ff9466;
+  --ds-color-primary-600: #b5532a;
+  --ds-color-primary-700: #9a4a27;
+  --ds-color-primary-800: #ffab7d;
+  --ds-color-primary-900: #ffc9a3;
+
+  --ds-bg-canvas: #17120f;
+  --ds-bg-surface: #211a16;
+  --ds-bg-surface-sunken: #1b1512;
   --ds-bg-overlay: rgba(0, 0, 0, 0.6);
 
-  --ds-text-primary: var(--ds-color-gray-100);
-  --ds-text-secondary: var(--ds-color-gray-400);
-  --ds-text-muted: var(--ds-color-gray-500);
+  --ds-text-primary: #f5ece4;
+  --ds-text-secondary: #cbbcae;
+  --ds-text-muted: #a8988a;
   --ds-text-on-primary: #ffffff;
-  --ds-text-link: var(--ds-color-primary-400);
-  --ds-text-link-hover: var(--ds-color-primary-300);
+  --ds-text-link: #ffab7d;
+  --ds-text-link-hover: #ffc9a3;
 
-  --ds-border: #232b3a;
-  --ds-border-strong: #2f3a4d;
-  --ds-border-focus: var(--ds-color-primary-400);
+  --ds-border: #3a2e27;
+  --ds-border-strong: #4a3b32;
+  --ds-border-focus: #ff9466;
 
   --ds-color-success: #22c55e;
   --ds-color-success-dark: #4ade80;
@@ -182,78 +194,27 @@
   --ds-color-error: #ef4444;
   --ds-color-error-dark: #f87171;
   --ds-color-error-tint: rgba(239, 68, 68, 0.16);
+  --ds-color-danger-solid: #c03a3a;
+  --ds-color-danger-solid-hover: #a83232;
 
-  --ds-color-info: var(--ds-color-primary-400);
-  --ds-color-info-dark: var(--ds-color-primary-300);
-  --ds-color-info-tint: rgba(95, 163, 250, 0.14);
+  --ds-color-info: #ff9466;
+  --ds-color-info-dark: #ffab7d;
+  --ds-color-info-tint: rgba(255, 148, 102, 0.14);
 
   --ds-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --ds-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
   --ds-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
   --ds-shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.55), 0 4px 8px rgba(0, 0, 0, 0.3);
-  --ds-shadow-focus: 0 0 0 3px rgba(95, 163, 250, 0.35);
+  --ds-shadow-focus: 0 0 0 3px rgba(255, 148, 102, 0.35);
+
+  --ds-sidebar-bg: #1d1713;
+  --ds-sidebar-active-bg: #3a2a20;
 }
 
 /* ============================================================
-   Terminal theme — phosphor-green CRT look: pure black canvas,
-   monospace body font, sharp (zero) corners, flat borders instead of
-   soft shadows. Overrides only the semantic tokens, same as dark
-   theme above, so every existing component re-themes automatically.
-   Applied via [data-theme='terminal'] on <html>.
-   ============================================================ */
-:root[data-theme='terminal'] {
-  --ds-bg-canvas: #000000;
-  --ds-bg-surface: #050805;
-  --ds-bg-surface-sunken: #000000;
-  --ds-bg-overlay: rgba(0, 0, 0, 0.75);
-
-  --ds-text-primary: #4dff4d;
-  --ds-text-secondary: #33cc33;
-  --ds-text-muted: #1f9d1f;
-  --ds-text-on-primary: #000000;
-  --ds-text-link: #66ffb3;
-  --ds-text-link-hover: #9dffcc;
-
-  --ds-border: #1a4d1a;
-  --ds-border-strong: #2a7a2a;
-  --ds-border-focus: #4dff4d;
-
-  --ds-color-success: #4dff4d;
-  --ds-color-success-dark: #33cc33;
-  --ds-color-success-tint: rgba(77, 255, 77, 0.14);
-
-  --ds-color-warning: #ffcc00;
-  --ds-color-warning-dark: #cc9900;
-  --ds-color-warning-tint: rgba(255, 204, 0, 0.14);
-
-  --ds-color-error: #ff4d4d;
-  --ds-color-error-dark: #ff8080;
-  --ds-color-error-tint: rgba(255, 77, 77, 0.16);
-
-  --ds-color-info: #66ffb3;
-  --ds-color-info-dark: #9dffcc;
-  --ds-color-info-tint: rgba(102, 255, 179, 0.14);
-
-  --ds-font-body: var(--ds-font-mono);
-
-  --ds-radius-sm: 0px;
-  --ds-radius-md: 0px;
-  --ds-radius-lg: 0px;
-  --ds-radius-xl: 0px;
-  --ds-radius-full: 0px;
-
-  --ds-shadow-xs: none;
-  --ds-shadow-sm: none;
-  --ds-shadow-md: none;
-  --ds-shadow-lg: none;
-  --ds-shadow-focus: 0 0 0 2px #4dff4d;
-}
-
-/* ============================================================
-   Warm theme — Phase 1 redesign (see ~/tracker/design-reference/
-   tracker_full_soft_warm_preview.html), gated to Admin/Executive/
-   Program Manager only (frontend/lib/newDesignRoles.js). Overrides only
-   the semantic tokens, same as dark/terminal above, so every existing
+   Warm theme — the default for every role (see ~/tracker/design-
+   reference/tracker_full_soft_warm_preview.html). Overrides only
+   the semantic tokens, same as dark above, so every existing
    component (Badge, Card, StatCard, Table, Button, AppShell, ...)
    re-themes automatically with no component changes. Applied via
    [data-theme='warm'] on <html>.
@@ -268,11 +229,15 @@
   --ds-color-primary-200: #ffe1c9;
   --ds-color-primary-300: #ffc9a3;
   --ds-color-primary-400: #ffab7d;
-  --ds-color-primary-500: #ffab7d;
-  --ds-color-primary-600: #ff9466;
-  --ds-color-primary-700: #e37a4f;
-  --ds-color-primary-800: #b85f3a;
-  --ds-color-primary-900: #8a4529;
+  --ds-color-primary-500: #ff9466; /* reference accent: decorative only */
+  /* 600+ are the action/text steps. The reference's #ff9466 fails AA
+     with white text (2.2:1) and as link text on white (2.2:1), so
+     buttons and links use this deeper burnt orange instead
+     (white-on-600 4.96:1, 700 on white 6.2:1). */
+  --ds-color-primary-600: #b5532a;
+  --ds-color-primary-700: #9a4a27;
+  --ds-color-primary-800: #8a3f1f;
+  --ds-color-primary-900: #6e321a;
 
   --ds-bg-canvas: #fbf7f2;
   --ds-bg-surface: #ffffff;
@@ -280,11 +245,11 @@
   --ds-bg-overlay: rgba(58, 47, 40, 0.42);
 
   --ds-text-primary: #3a2f28;
-  --ds-text-secondary: #7a6f66;
-  --ds-text-muted: #a89a8d;
+  /* Darkened from the reference (#7a6f66 / #a89a8d), which fall below
+     4.5:1 on the peach sidebar and canvas. */
+  --ds-text-secondary: #6e625a;
+  --ds-text-muted: #75685f;
   --ds-text-on-primary: #ffffff;
-  /* Primary-700, not 600 - the raw accent orange is too low-contrast for
-     body-text links on a white surface. */
   --ds-text-link: var(--ds-color-primary-700);
   --ds-text-link-hover: var(--ds-color-primary-800);
 
@@ -293,7 +258,7 @@
   --ds-border-focus: var(--ds-color-primary-600);
 
   --ds-color-success: #2f9e63;
-  --ds-color-success-dark: #1f7a4c;
+  --ds-color-success-dark: #17683a;
   --ds-color-success-tint: #d9f0e3;
 
   --ds-color-warning: #b8791f;
@@ -303,11 +268,30 @@
   --ds-color-error: #cc5252;
   --ds-color-error-dark: #b23a3a;
   --ds-color-error-tint: #fbdcdc;
+  --ds-color-danger-solid: #b23a3a;
+  --ds-color-danger-solid-hover: #9a2f2f;
 
   --ds-color-info: var(--ds-color-primary-600);
   --ds-color-info-dark: var(--ds-color-primary-800);
   --ds-color-info-tint: var(--ds-color-primary-100);
 
+  --ds-shadow-xs: 0 1px 2px rgba(160, 120, 90, 0.06);
+  --ds-shadow-sm: 0 1px 3px rgba(160, 120, 90, 0.1), 0 1px 2px rgba(160, 120, 90, 0.06);
+  --ds-shadow-md: 0 4px 16px rgba(160, 120, 90, 0.08), 0 2px 4px rgba(160, 120, 90, 0.05);
+  --ds-shadow-lg: 0 16px 32px rgba(160, 120, 90, 0.16), 0 4px 8px rgba(160, 120, 90, 0.06);
+  --ds-shadow-focus: 0 0 0 3px rgba(181, 83, 42, 0.3);
+
+  /* Distinct peach sidebar, not a reuse of --ds-bg-surface/
+     --ds-color-info-tint - see the --ds-sidebar-* default declarations
+     in :root above. */
+  --ds-sidebar-bg: #fff3ea;
+  --ds-sidebar-active-bg: #ffe1c9;
+}
+
+/* Structure shared by warm and dark, so switching theme never changes
+   layout - only colour. */
+:root[data-theme='warm'],
+:root[data-theme='dark'] {
   /* Pushed noticeably rounder than the first pass (was 8/10/14/20) - the
      reference's felt "soft" character comes from radius that reads as
      near-pill on compact elements (nav items, buttons, inputs), not just
@@ -318,20 +302,6 @@
   --ds-radius-md: 14px;
   --ds-radius-lg: 20px;
   --ds-radius-xl: 24px;
-
-  /* Warm-brown-tinted shadows (rgba(160,120,90,...)) instead of slate,
-     matching the reference's .tile/.card box-shadow exactly. */
-  --ds-shadow-xs: 0 1px 2px rgba(160, 120, 90, 0.06);
-  --ds-shadow-sm: 0 1px 3px rgba(160, 120, 90, 0.1), 0 1px 2px rgba(160, 120, 90, 0.06);
-  --ds-shadow-md: 0 4px 16px rgba(160, 120, 90, 0.08), 0 2px 4px rgba(160, 120, 90, 0.05);
-  --ds-shadow-lg: 0 16px 32px rgba(160, 120, 90, 0.16), 0 4px 8px rgba(160, 120, 90, 0.06);
-  --ds-shadow-focus: 0 0 0 3px rgba(255, 148, 102, 0.28);
-
-  /* Distinct peach sidebar, not a reuse of --ds-bg-surface/
-     --ds-color-info-tint - see the --ds-sidebar-* default declarations
-     in :root above. */
-  --ds-sidebar-bg: #fff3ea;
-  --ds-sidebar-active-bg: #ffe1c9;
 
   /* Roomier spacing than the base theme (was untouched in the first
      pass) - the reference's cards/tiles/nav read airier than the current

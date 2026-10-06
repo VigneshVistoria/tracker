@@ -81,12 +81,12 @@
 }
 
 .danger {
-  background: var(--ds-color-error);
+  background: var(--ds-color-danger-solid);
   color: #ffffff;
   box-shadow: var(--ds-shadow-xs);
 }
 .danger:hover:not(:disabled) {
-  background: var(--ds-color-error-dark);
+  background: var(--ds-color-danger-solid-hover);
 }
 
 .spinner {

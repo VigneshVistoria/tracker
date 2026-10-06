@@ -4,8 +4,10 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { useConfirm } from '../../lib/confirm';
 
 export default function LabelsPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
   const [labels, setLabels] = useState([]);
@@ -78,7 +80,7 @@ export default function LabelsPage() {
   };
 
   const handleDelete = async (label) => {
-    if (!confirm(`Delete "${label.name}"? This cannot be undone.`)) return;
+    if (!await confirmAction({ title: 'Delete label?', message: `Delete "${label.name}"? This cannot be undone.`, confirmLabel: 'Delete', danger: true })) return;
     setError('');
     try {
       await apiFetch(`/labels/${label.id}`, { method: 'DELETE' });

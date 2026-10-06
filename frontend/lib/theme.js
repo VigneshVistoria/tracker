@@ -1,40 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { isNewDesignRole } from './newDesignRoles';
 
 const ThemeContext = createContext(null);
 const STORAGE_KEY = 'theme';
-const DEFAULT_THEME = 'terminal';
-export const THEMES = ['light', 'dark', 'terminal'];
+const DEFAULT_THEME = 'warm';
+export const THEMES = ['warm', 'dark'];
 
-// Phase 1 redesign gate (see lib/newDesignRoles.js) - reads the same
-// localStorage 'user' key AppShell reads, independently, so this stays
-// correct even though ThemeProvider mounts above AppShell in the tree.
-// Any failure (missing/stale/corrupt value) falls through to `null`,
-// meaning "use the normal per-user theme preference" - never forces the
-// new design on an unconfirmed role.
-function currentDesignRole() {
-  try {
-    const stored = localStorage.getItem('user');
-    if (!stored) return null;
-    return JSON.parse(stored)?.role ?? null;
-  } catch (e) {
-    return null;
-  }
+// Older saved values ('light', 'terminal') are retired themes - treat any
+// unrecognized value as the default rather than leaving the page unthemed.
+function normalizeTheme(value) {
+  return THEMES.includes(value) ? value : DEFAULT_THEME;
 }
 
 function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', isNewDesignRole(currentDesignRole()) ? 'warm' : theme);
+  document.documentElement.setAttribute('data-theme', theme);
 }
 
 export function ThemeProvider({ children }) {
-  // Starts 'light' to match the server-rendered markup; the inline script in
-  // _document.js already set the real attribute on <html> before paint, so
-  // this only has to catch up in state without causing a flash.
-  const [theme, setTheme] = useState('light');
+  // Starts at the default to match the server-rendered markup; the inline
+  // script in _document.js already set the real attribute on <html> before
+  // paint, so this only has to catch up in state without causing a flash.
+  const [theme, setTheme] = useState(DEFAULT_THEME);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    setTheme(stored || DEFAULT_THEME);
+    setTheme(normalizeTheme(localStorage.getItem(STORAGE_KEY)));
   }, []);
 
   useEffect(() => {
@@ -63,24 +51,17 @@ export function useTheme() {
 }
 
 // Inlined into _document.js as a blocking <script> so the correct theme is
-// set on <html> before first paint - without this, the page always flashes
-// light mode first because localStorage isn't readable during SSR.
-//
-// Mirrors lib/newDesignRoles.js's NEW_DESIGN_ROLES (can't import a module
-// into an inlined script string, so the role list is duplicated here - keep
-// the two in sync). Any missing/unparsable 'user' value falls through to
-// the normal stored theme, same fail-safe-to-old-design behavior as
-// applyTheme() above.
+// set on <html> before first paint - without this, the page flashes the
+// default theme first because localStorage isn't readable during SSR.
+// Mirrors normalizeTheme() above (can't import into an inlined string).
 export const THEME_INIT_SCRIPT = `
 (function () {
   try {
-    var theme = localStorage.getItem('${STORAGE_KEY}') || '${DEFAULT_THEME}';
-    var newDesignRoles = ['admin', 'executive', 'program_manager'];
-    try {
-      var user = JSON.parse(localStorage.getItem('user') || 'null');
-      if (user && newDesignRoles.indexOf(user.role) !== -1) theme = 'warm';
-    } catch (e) {}
+    var theme = localStorage.getItem('${STORAGE_KEY}');
+    if (${JSON.stringify(THEMES)}.indexOf(theme) === -1) theme = '${DEFAULT_THEME}';
     document.documentElement.setAttribute('data-theme', theme);
-  } catch (e) {}
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', '${DEFAULT_THEME}');
+  }
 })();
 `;

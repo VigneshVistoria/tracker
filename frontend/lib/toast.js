@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
-import styles from '../styles/toast.module.css';
+import { ToastStack } from '../components/ui/Toast';
 
 const ToastContext = createContext(null);
 
@@ -24,20 +24,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className={styles.stack} aria-live="polite" aria-atomic="true">
-        {toasts.map((t) => (
-          <div key={t.id} className={`${styles.toast} ${styles[t.type] || ''}`} role="status">
-            <span>{t.message}</span>
-            <button
-              className={styles.dismiss}
-              onClick={() => dismiss(t.id)}
-              aria-label="Dismiss notification"
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
+      <ToastStack toasts={toasts} onDismiss={dismiss} />
     </ToastContext.Provider>
   );
 }

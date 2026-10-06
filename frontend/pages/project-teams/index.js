@@ -6,11 +6,13 @@ import InlineEditName from '../../components/ui/InlineEditName';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { useConfirm } from '../../lib/confirm';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 const STATUS_OPTIONS = ['Active', 'Inactive'];
 
 export default function ProjectTeamsPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -103,7 +105,7 @@ export default function ProjectTeamsPage() {
 
   const handleToggleActive = async (team) => {
     const isActive = team.status === 'Active';
-    if (isActive && !confirm(`Deactivate "${team.name}"? It will no longer be assignable to new Project Planning entries or Tasks - existing ones keep it.`)) return;
+    if (isActive && !await confirmAction({ title: 'Deactivate team?', message: `Deactivate "${team.name}"? It will no longer be assignable to new Project Planning entries or Tasks - existing ones keep it.`, confirmLabel: 'Deactivate', danger: true })) return;
     setBusyId(team.id);
     setError('');
     try {

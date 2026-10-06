@@ -1,293 +1,78 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import {
-  Bell,
-  ChevronsLeft,
-  ChevronsRight,
-  LayoutDashboard,
-  Ticket,
-  FolderKanban,
-  ClipboardEdit,
-  Users,
-  GitBranch,
-  FileBarChart,
-  MessagesSquare,
-  Radio,
-  CheckSquare,
-  ClipboardCheck,
-  Workflow,
-  Timer,
-  ShieldAlert,
-  TrendingUp,
-  SlidersHorizontal,
-  Search,
-  LogOut,
-  Menu,
-  X,
-  Globe,
-  FileSpreadsheet,
-  Layers,
-  UsersRound,
-  Tag,
-  CalendarRange,
-  Boxes,
-  GitBranchPlus,
-  Percent,
-  Inbox,
-  ListTodo,
-  ListChecks,
-  Link2,
-  FlaskConical,
-  RotateCcw,
-  Gauge,
-  LayoutGrid,
-  Bug,
-  AlertTriangle,
-  AlertOctagon,
-  BookOpen,
-  PackageCheck,
-  SquarePlus,
-} from 'lucide-react';
+import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, Search, LogOut, Menu, X, SquarePlus } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
+import CommandPalette, { recordRecentPage } from './CommandPalette';
+import ShortcutsDialog, { GO_SHORTCUTS, isMacPlatform } from './ShortcutsDialog';
+import UserMenu from './UserMenu';
 import { getSocket, disconnectSocket } from '../lib/socket';
 import { apiFetch } from '../lib/api';
-import { roleLabel, DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
-import { isNewDesignRole } from '../lib/newDesignRoles';
+import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
+import { navSectionsFor, isNavItemActive } from '../lib/navigation';
+import { useTheme } from '../lib/theme';
 import ThemeToggle from './ui/ThemeToggle';
 
-const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/issues', label: 'Issues', icon: Ticket },
-  { href: '/dependencies', label: 'Dependency', icon: Workflow },
-  { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp },
-  { href: '/daily-update', label: 'Daily Update', icon: ClipboardEdit },
-];
+const COLLAPSED_SECTIONS_KEY = 'navCollapsedSections';
 
-// Executives get read-only access to just the dashboard and weekly
-// reports - no ticket list, no project management, nothing editable.
-// Dependency is still included - any role can be routed a dependency to
-// own, Executive included, even though Executive can't create one.
-// Performance is included too - Executive is one of the wide-view roles
-// on that dashboard. Projects is included too - Executive gets the same
-// leadership-wide, read-only completion%/risk drill-down Program Manager
-// sees (backend grants this regardless of project assignment).
-const EXECUTIVE_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dependencies', label: 'Dependency', icon: Workflow },
-  { href: '/admin/projects', label: 'Projects', icon: FolderKanban },
-  { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp },
-  { href: '/time-sheets', label: 'Time Sheets', icon: Timer },
-  { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
-];
+function readCollapsedSections() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    return [];
+  }
+}
 
-// QA and Program Manager get the Test Case catalog in addition to the
-// common nav above - QA authors/runs test cases, Program Manager gets
-// read-only visibility into them (enforced on the backend, same pattern
-// as everywhere else in this file - the frontend just hides the entry
-// point for roles that can't use it).
-const TEST_CASES_NAV_ITEM = { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck };
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
 
-// Same visibility as Test Cases (QA + Program Manager + Admin) - the
-// queue of showstopper tickets the heuristic flagged as questionable,
-// waiting for one of them to confirm or downgrade.
-const SHOWSTOPPER_REVIEW_NAV_ITEM = { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert };
-
-// Developer + Program Manager + Admin only - QA has no involvement in
-// Time Sheets today (doesn't log time, doesn't view the report), so it's
-// kept out of the shared NAV_ITEMS array rather than shown as a dead end.
-// Executive gets its own entry in EXECUTIVE_NAV_ITEMS below (report-only,
-// no log-time form - the page itself handles that distinction).
-const TIME_SHEETS_NAV_ITEM = { href: '/time-sheets', label: 'Time Sheets', icon: Timer };
-
-// Admin + Program Manager only, same authorization boundary the backend
-// enforces on the bulk-export/bulk-import endpoints
-// (IssuesBulkService.isAllowedToBulkImportExport) - deliberately not QA/
-// Executive/Client, unlike ticket creation's own (wider) role list.
-const BULK_IMPORT_EXPORT_NAV_ITEM = { href: '/admin/issues-bulk', label: 'Bulk Import/Export', icon: FileSpreadsheet };
-
-// Admin + Program Manager only, same authorization boundary as the
-// backend guards on these 3 lookup-table modules (issue-categories,
-// teams, labels controllers). Standalone catalogs for now - not yet
-// referenced by Issues/Users (see backend/migrations/2026-09-issue-
-// categories-teams-labels.sql).
-const ISSUE_CATEGORIES_NAV_ITEM = { href: '/admin/issue-categories', label: 'Issue Categories', icon: Layers };
-const TEAMS_NAV_ITEM = { href: '/admin/teams', label: 'Teams', icon: UsersRound };
-const LABELS_NAV_ITEM = { href: '/admin/labels', label: 'Labels', icon: Tag };
-
-// Admin + Executive + Program Manager only (view), create/edit is further
-// restricted to Program Manager alone within the page itself - QA/Developer
-// don't get this entry at all, matching the backend's assertCanView on
-// every route including reads (unlike the 3 items above, which are
-// readable by anyone authenticated).
-const PROJECT_PLANNING_NAV_ITEM = { href: '/project-planning', label: 'Project Planning', icon: CalendarRange };
-
-// Same visibility rule as Project Planning - Admin/Executive/PM view,
-// create/deactivate further restricted to Admin/PM within the page.
-const PROJECT_MODULES_NAV_ITEM = { href: '/project-modules', label: 'Project Modules', icon: Boxes };
-
-// Same visibility rule as Project Modules/Planning - Admin/Executive/PM
-// view, create/deactivate is Program Manager only within the page (no
-// legacy Admin capability to preserve here, unlike Modules).
-const PROJECT_PHASES_NAV_ITEM = { href: '/project-phases', label: 'Project Phases', icon: GitBranchPlus };
-
-// Same visibility rule as Project Modules/Phases/Planning - Admin/
-// Executive/PM view, create/edit/status-change is Program Manager only
-// within the page (no legacy Admin capability to preserve here, same as
-// Phases).
-const PROJECT_TEAMS_NAV_ITEM = { href: '/project-teams', label: 'Project Teams', icon: UsersRound };
-
-// Task lifecycle nav (replaces the old single Tasks entry): Task Backlog
-// is viewable by Admin/Program Manager (who creates/assigns tasks - Admin
-// is view-only there, TasksController's own role checks handle that); My
-// Tasks is visible to everyone who can be assigned or view their own tasks
-// (Admin/Executive/Program Manager/QA/Developer, plus Designer/DevOps who
-// are DEVELOPER_EQUIVALENT_ROLES - Client excluded, same as TasksService.
-// findAllForUser never returning anything client-relevant); Dependency
-// Clearance is Developer(-equivalent) only, since Dependency Owner is
-// restricted to DEVELOPER_EQUIVALENT_ROLES (TaskDependencyTicketsService); QA
-// Review matches TasksController.ROLES_ALLOWED_TO_VIEW_QA_QUEUE
-// (Admin/Executive/Program Manager/QA) - previously QA-only here despite
-// the backend and the page itself already allowing the other three roles.
-const TASK_BACKLOG_NAV_ITEM = { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox };
-// Same visibility split as Task Backlog - Admin/Program Manager view,
-// only Program Manager can act (reassign/close as Junk) within the page.
-const ESCALATIONS_NAV_ITEM = { href: '/tasks/escalations', label: 'Interventions', icon: AlertTriangle };
-const MY_TASKS_NAV_ITEM = { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo };
-// Admin/Executive/Program Manager only - leadership-wide (not project-
-// scoped), same visibility grant as Task Backlog/QA Review above. Edit
-// (reassign/due date/etc.) stays Program Manager only, enforced on the
-// task detail page itself - Admin/Executive are view-only here too.
-const TEAM_TASKS_NAV_ITEM = { href: '/tasks/team', label: 'Team Tasks', icon: ListChecks };
-const DEPENDENCY_CLEARANCE_NAV_ITEM = { href: '/dependency-clearance', label: 'Dependency Clearance', icon: Link2 };
-const QA_REVIEW_NAV_ITEM = { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical };
-// Self-scoped to the current Developer (or Designer/DevOps) as reviewer
-// (TasksService.findPeerReviewQueue()) - only DEVELOPER_EQUIVALENT_ROLES
-// can be picked as a Peer Reviewer, so unlike QA_REVIEW_NAV_ITEM above
-// this isn't shown to Admin/Executive/Program Manager.
-const PEER_REVIEW_NAV_ITEM = { href: '/tasks/peer-review', label: 'Peer Review', icon: Users };
-// QA sees their own defects (self-scoped, unlike QA_REVIEW_NAV_ITEM above,
-// which is the shared tenant-wide queue) and is the only role that can
-// reach Create Defect, linked from the page's header. Admin/Program
-// Manager have no "my own" defects concept, so they see every QA person's
-// defects tenant-wide instead (TasksService.findDefectQueue()) - same
-// view-only leadership grant the rest of Tasks gives them.
-const MY_DEFECTS_NAV_ITEM = { href: '/tasks/my-defects', label: 'My Defects', icon: Bug };
-
-// Same visibility as My Tasks (Admin/Executive/Program Manager/QA/
-// Developer, Client excluded - Clients have no tasks assigned, so there's
-// nothing for this page to show them). Server-side, /kpi/me vs /kpi/report
-// is what actually restricts a non-leadership user to only their own
-// score - this nav entry point is available to everyone in that role set,
-// but what each of them sees behind it differs per role.
-const KPI_NAV_ITEM = { href: '/kpi', label: 'KPI Dashboard', icon: Gauge };
-
-// Same visibility as the /kpi/report endpoint it reads (Admin/Executive/
-// Program Manager only) - a grid reshape of the exact same generated,
-// immutable KpiPeriodScore rows, not a separate data source. QA/Developer
-// keep only the per-person KPI_NAV_ITEM above, unchanged.
-const KPI_MATRIX_NAV_ITEM = { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid };
-const NON_COMPLIANCE_REPORT_NAV_ITEM = { href: '/reports/non-compliance', label: 'Non-Compliance Report', icon: AlertOctagon };
-// Program Manager only for now (built PM-first for review, 2026-09-26) -
-// same check as pages/release-log's VIEW_ROLES and
-// ReleaseLogsController.assertIsPm; widen all three together.
-const RELEASE_LOG_NAV_ITEM = { href: '/release-log', label: 'Release Log', icon: PackageCheck };
-// Admin/Executive/Program Manager only while it's being reviewed (confirmed
-// with the user 2026-09-25) - same VIEW_ROLES as pages/sop.js. Widen
-// both together when it's released to developers.
-const TRACKER_SOP_NAV_ITEM = { href: '/sop', label: 'Tracker SOP', icon: BookOpen };
-
-// Multi-tenant conversion Phase E - gated by isPlatformSuperadmin, which
-// is orthogonal to `role` (a tenant's own admin doesn't get this just by
-// being role === 'admin').
-const PLATFORM_TENANTS_NAV_ITEM = { href: '/platform/tenants', label: 'Platform Tenants', icon: Globe };
-
-// Clients only ever see their own tickets and their own assigned tasks -
-// still a minimal nav with nothing internal (no Issues list, Projects,
-// Dependency, Test Cases, etc.). My Tasks added 2026-09 alongside letting
-// a task be assigned directly to a Client (e.g. "provide documents") -
-// reuses the same page/endpoint every other role's My Tasks does, which
-// already self-scopes to tasks assigned to the current user.
-const CLIENT_NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/issues', label: 'My Tickets', icon: Ticket },
-  MY_TASKS_NAV_ITEM,
-];
-
-// Developer gets the Task-lifecycle-focused Dashboard (see
-// components/DeveloperDashboard.js) plus My Tasks/Dependency Clearance/
-// Time Sheets (added below via the conditional SingleNavLink blocks,
-// unchanged by this). Issues, Dependency (the old Issue-linked module),
-// Projects, Performance, and Daily Update are deliberately dropped from
-// Developer's nav - confirmed with the user 2026-09 after flagging that
-// Issues/Dependency/Performance/Daily Update each lose the Developer's
-// only way to see or do something (Daily Update is a submit action, not
-// just a view) - the user chose to hide all five anyway.
-const DEVELOPER_NAV_ITEMS = [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }];
-
-const ADMIN_NAV_ITEMS = [
-  { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/sprints', label: 'Sprints', icon: GitBranch },
-  { href: '/qa/test-cases', label: 'Test Cases', icon: ClipboardCheck },
-  { href: '/admin/showstopper-review', label: 'Showstopper Review', icon: ShieldAlert },
-  { href: '/admin/sla-config', label: 'SLA Configuration', icon: Timer },
-  { href: '/admin/performance-scoring-config', label: 'Performance Scoring', icon: SlidersHorizontal },
-  { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart },
-  { href: '/admin/team-updates', label: 'Team Updates', icon: MessagesSquare },
-  { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio },
-  { href: '/admin/regression-testing', label: 'Regression Testing', icon: CheckSquare },
-  { href: '/admin/task-status-config', label: 'Task Status Config', icon: Percent },
-  { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw },
-];
-
-// A single conditionally-shown nav entry outside the main NAV_ITEMS/
-// ADMIN_NAV_ITEMS arrays (e.g. Test Cases, Showstopper Review) - visible
-// to a specific set of roles that doesn't match either of those groups.
-function SingleNavLink({ item, isActive, collapsed, count }) {
+function NavLink({ item, active, collapsed, count }) {
   return (
     <Link
       href={item.href}
-      className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+      className={`${styles.navLink} ${active ? styles.active : ''}`}
       title={collapsed ? item.label : undefined}
+      aria-current={active ? 'page' : undefined}
     >
       <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
-      {!collapsed && <span>{item.label}</span>}
-      {/* Only ever passed a number for the gated new-design roles (see
-          the navCounts fetch below) - null/undefined renders nothing, so
-          every other role's nav is byte-for-byte what it was before. */}
-      {!collapsed && count != null && <span className={styles.navCount}>{count}</span>}
+      {collapsed ? <span className="sr-only">{item.label}</span> : <span className={styles.navLabel}>{item.label}</span>}
+      {!collapsed && count != null && count > 0 && (
+        <span className={styles.navCount} aria-label={`${count} items`}>
+          {count}
+        </span>
+      )}
     </Link>
   );
 }
 
-function initialsFor(user) {
-  if (!user) return '?';
-  if (user.fullName) {
-    return user.fullName.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
-  }
-  return user.email[0].toUpperCase();
-}
-
 export default function AppShell({ children, fullScreen = false }) {
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState([]);
   const [connected, setConnected] = useState(false);
   const [impersonator, setImpersonator] = useState(null);
   const [exiting, setExiting] = useState(false);
   const [selfTaskOpen, setSelfTaskOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [isMac, setIsMac] = useState(false);
+  // Sidebar count badges (e.g. "My Tasks 6"); null = not loaded, no badge.
+  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null });
+  const pendingGo = useRef(null);
   // Stable so Modal's focus-trap effect (keyed on onClose) doesn't re-run
   // and steal focus on every AppShell re-render.
   const closeSelfTask = useCallback(() => setSelfTaskOpen(false), []);
-  // Nav sidebar count badges (e.g. "My Tasks 6") - Phase 1 redesign,
-  // gated new-design roles only (see lib/newDesignRoles.js). null means
-  // "don't render a badge" - SingleNavLink only shows one once a number
-  // has actually loaded. myDefects is fetched separately below since it's
-  // also shown to QA, who's outside the Phase 1 gate.
-  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null });
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -298,6 +83,8 @@ export default function AppShell({ children, fullScreen = false }) {
     setUser(JSON.parse(storedUser));
     const storedImpersonator = localStorage.getItem('impersonator');
     setImpersonator(storedImpersonator ? JSON.parse(storedImpersonator) : null);
+    setCollapsedSections(readCollapsedSections());
+    setIsMac(isMacPlatform());
 
     const socket = getSocket();
     if (socket) {
@@ -313,13 +100,13 @@ export default function AppShell({ children, fullScreen = false }) {
     }
   }, [router]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     disconnectSocket();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     localStorage.removeItem('impersonator');
     router.push('/');
-  };
+  }, [router]);
 
   const handleExitImpersonation = async () => {
     setExiting(true);
@@ -338,161 +125,231 @@ export default function AppShell({ children, fullScreen = false }) {
     }
   };
 
+  const hideSidebar = !!user && DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
+  const sections = useMemo(() => (hideSidebar ? [] : navSectionsFor(user)), [user, hideSidebar]);
+  const visibleItems = useMemo(() => sections.flatMap((s) => s.items), [sections]);
+  const availableHrefs = useMemo(() => new Set(visibleItems.map((i) => i.href)), [visibleItems]);
+  const visibleCountKeys = useMemo(() => new Set(visibleItems.map((i) => i.countKey).filter(Boolean)), [visibleItems]);
+
   useEffect(() => {
     setDrawerOpen(false);
   }, [router.pathname]);
 
-  // Refetch the nav badge counts on every navigation, same trigger as the
-  // drawer-close effect above - keeps them from ever going stale as the
-  // user works through tasks. Skipped entirely for roles outside the
-  // Phase 1 gate, so this adds no network activity for Developer/QA/
-  // Client/Designer/DevOps.
+  // Remember the nav page just visited, for the palette's "Recent" group.
+  // Longest matching href wins so /kpi/matrix isn't recorded as /kpi.
   useEffect(() => {
-    if (!user || !isNewDesignRole(user.role)) return;
-    let cancelled = false;
-    Promise.all([
-      apiFetch('/tasks/mine').catch(() => []),
-      apiFetch('/tasks/qa-queue').catch(() => []),
-    ]).then(([mine, qaQueue]) => {
-      if (cancelled) return;
-      // Merge rather than replace - myDefects is fetched by the separate
-      // effect below, on its own role gate, and would otherwise get wiped
-      // back to null every time this one re-resolves.
-      setNavCounts((prev) => ({ ...prev, myTasks: mine.length, qaReview: qaQueue.length }));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, router.pathname]);
+    const match = visibleItems
+      .filter((item) => isNavItemActive(router.pathname, item.href))
+      .sort((a, b) => b.href.length - a.href.length)[0];
+    if (match) recordRecentPage(match);
+  }, [router.pathname, visibleItems]);
 
-  // My Defects badge - its own effect/role gate since it's shown to QA too
-  // (unlike My Tasks/QA Review above, gated to the Phase 1 new-design
-  // roles only). statCounts.pending from the defect-queue endpoint is the
-  // same "open" definition QaReviewWorkboard's Pending card already uses,
-  // scoped to just this user for QA or tenant-wide for Admin/Program
-  // Manager (see TasksService.findDefectQueue()).
+  // Refetch badge counts on every navigation so they never go stale as
+  // the user works through tasks - only for badges this role can see.
   useEffect(() => {
-    if (!user || !(user.role === 'qa' || user.role === 'admin' || user.role === 'program_manager')) return;
+    if (!user || visibleCountKeys.size === 0) return undefined;
     let cancelled = false;
-    apiFetch('/tasks/defect-queue')
-      .then((res) => {
-        if (cancelled) return;
-        setNavCounts((prev) => ({ ...prev, myDefects: res.statCounts.pending }));
-      })
-      .catch(() => {});
+    if (visibleCountKeys.has('myTasks')) {
+      apiFetch('/tasks/mine')
+        .then((mine) => !cancelled && setNavCounts((prev) => ({ ...prev, myTasks: mine.length })))
+        .catch(() => {});
+    }
+    if (visibleCountKeys.has('qaReview')) {
+      apiFetch('/tasks/qa-queue')
+        .then((queue) => !cancelled && setNavCounts((prev) => ({ ...prev, qaReview: queue.length })))
+        .catch(() => {});
+    }
+    // statCounts.pending is the same "open" definition QaReviewWorkboard's
+    // Pending card uses - self-scoped for QA, tenant-wide for Admin/PM.
+    if (visibleCountKeys.has('myDefects')) {
+      apiFetch('/tasks/defect-queue')
+        .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, myDefects: res.statCounts.pending })))
+        .catch(() => {});
+    }
     return () => {
       cancelled = true;
     };
-  }, [user, router.pathname]);
+  }, [user, visibleCountKeys, router.pathname]);
+
+  // Global shortcuts (sidebar roles only - Developer/Designer/DevOps keep
+  // their minimal header): Ctrl/⌘+K and "/" open the palette, "?" opens
+  // the help sheet, "g" then a letter jumps to a page in the user's nav.
+  useEffect(() => {
+    if (!user || hideSidebar) return undefined;
+    const onKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShortcutsOpen(false);
+        setPaletteOpen((v) => !v);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
+      if (isTypingTarget(e.target) || document.querySelector('[aria-modal="true"]')) return;
+
+      if (pendingGo.current) {
+        const target = GO_SHORTCUTS.find((s) => s.key === e.key.toLowerCase() && availableHrefs.has(s.href));
+        clearTimeout(pendingGo.current);
+        pendingGo.current = null;
+        if (target) {
+          e.preventDefault();
+          router.push(target.href);
+        }
+        return;
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setShortcutsOpen(true);
+      } else if (e.key === 'g') {
+        pendingGo.current = setTimeout(() => {
+          pendingGo.current = null;
+        }, 1200);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      clearTimeout(pendingGo.current);
+      pendingGo.current = null;
+    };
+  }, [user, hideSidebar, availableHrefs, router]);
+
+  const toggleSection = (id) => {
+    setCollapsedSections((prev) => {
+      const next = prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id];
+      try {
+        localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify(next));
+      } catch (e) {
+        // Non-critical preference.
+      }
+      return next;
+    });
+  };
 
   if (!user) return null;
 
-  const isActive = (href) => router.pathname === href || router.pathname.startsWith(href + '/');
-  // Developer (and Designer/DevOps, who get identical treatment - see
-  // DEVELOPER_EQUIVALENT_ROLES) gets no sidebar at all (confirmed with
-  // the user - a follow-up to the icon-only redesign, which is now moot
-  // since there's no nav left to render icon-only). Time Sheets/KPI
-  // Dashboard access for Developer without a sidebar is a known,
-  // deliberately deferred gap - the user asked to come back to it
-  // separately.
-  const hideSidebar = DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
-  const navItems =
-    user.role === 'client'
-      ? CLIENT_NAV_ITEMS
-      : user.role === 'executive'
-        ? EXECUTIVE_NAV_ITEMS
-        : DEVELOPER_EQUIVALENT_ROLES.includes(user.role)
-          ? DEVELOPER_NAV_ITEMS
-          : NAV_ITEMS;
+  // Longest match wins, so only one item is ever highlighted
+  // (e.g. KPI Matrix, not KPI Dashboard as well).
+  const activeHref = visibleItems
+    .filter((item) => isNavItemActive(router.pathname, item.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+  const shortcutLabel = isMac ? '⌘K' : 'Ctrl K';
 
   return (
     <div className={styles.shell}>
+      <a href="#main-content" className={styles.skipLink}>
+        Skip to main content
+      </a>
+
       {!fullScreen && (
-      <header className={styles.topbar}>
-        <div className={styles.topbarLeft}>
+        <header className={styles.topbar}>
+          <div className={styles.topbarLeft}>
+            {!hideSidebar && (
+              <button
+                type="button"
+                className={styles.menuButton}
+                onClick={() => setDrawerOpen((v) => !v)}
+                aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={drawerOpen}
+                aria-controls="main-navigation"
+              >
+                {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
+              </button>
+            )}
+            {hideSidebar ? (
+              <Link href="/dashboard" className={styles.iconButton} aria-label="Dashboard">
+                <LayoutDashboard size={18} aria-hidden="true" />
+              </Link>
+            ) : (
+              <Link href="/dashboard" className={styles.brand} aria-label="Tracker home">
+                <span className={styles.brandMark} aria-hidden="true">T</span>
+                <span className={styles.brandName}>Tracker</span>
+              </Link>
+            )}
+            {/* Developer/Designer/DevOps shortcut to create a task for
+                themselves - opens the same Create Task form as Task Backlog,
+                assignee locked to them (SelfCreateTaskModal). */}
+            {hideSidebar && (
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => setSelfTaskOpen(true)}
+                aria-label="New task"
+                aria-haspopup="dialog"
+                title="New task"
+              >
+                <SquarePlus size={18} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
           {!hideSidebar && (
-            <button
-              className={styles.menuButton}
-              onClick={() => setDrawerOpen((v) => !v)}
-              aria-label={drawerOpen ? 'Close navigation menu' : 'Open navigation menu'}
-              aria-expanded={drawerOpen}
-            >
-              {drawerOpen ? <X size={18} aria-hidden="true" /> : <Menu size={18} aria-hidden="true" />}
-            </button>
-          )}
-          <Link href="/dashboard" className={styles.iconButton} aria-label="Dashboard">
-            <LayoutDashboard size={18} aria-hidden="true" />
-          </Link>
-          {/* Developer/Designer/DevOps shortcut to create a task for
-              themselves - opens the same Create Task form as Task Backlog,
-              assignee locked to them (SelfCreateTaskModal). */}
-          {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
             <button
               type="button"
-              className={styles.iconButton}
-              onClick={() => setSelfTaskOpen(true)}
-              aria-label="New task"
+              className={styles.searchTrigger}
+              onClick={() => setPaletteOpen(true)}
               aria-haspopup="dialog"
-              title="New task"
+              aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}
             >
-              <SquarePlus size={18} aria-hidden="true" />
+              <Search size={16} className={styles.searchTriggerIcon} aria-hidden="true" />
+              <span className={styles.searchTriggerText}>Search or jump to…</span>
+              <kbd className={styles.searchTriggerKbd}>{shortcutLabel}</kbd>
             </button>
           )}
-        </div>
 
-        {!hideSidebar && (
-          <div className={styles.searchWrap}>
-            <Search size={16} className={styles.searchIcon} aria-hidden="true" />
-            <input
-              type="search"
-              className={styles.searchInput}
-              placeholder="Search issues, projects, people…"
-              aria-label="Search"
-            />
-          </div>
-        )}
-
-        <div className={styles.topbarRight}>
-          {!hideSidebar && (
-            <>
-              <span
-                className={`${styles.connectionStatus} ${connected ? styles.live : ''}`}
-                title={connected ? 'Live updates connected' : 'Live updates disconnected'}
+          <div className={styles.topbarRight}>
+            {!hideSidebar && (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.iconButton} ${styles.searchIconButton}`}
+                  onClick={() => setPaletteOpen(true)}
+                  aria-label="Search or jump to"
+                  aria-haspopup="dialog"
+                >
+                  <Search size={18} aria-hidden="true" />
+                </button>
+                <span
+                  className={`${styles.connectionStatus} ${connected ? styles.live : ''}`}
+                  title={connected ? 'Live updates connected' : 'Live updates disconnected'}
+                >
+                  <span className={styles.connectionDot} aria-hidden="true" />
+                  <span className={styles.connectionLabel}>{connected ? 'Live' : 'Offline'}</span>
+                </span>
+              </>
+            )}
+            <ThemeToggle variant="ghost" />
+            {hideSidebar ? (
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={impersonator ? handleExitImpersonation : handleLogout}
+                disabled={impersonator ? exiting : false}
+                aria-label={impersonator ? 'Exit impersonation' : 'Log out'}
+                title={impersonator ? 'Exit impersonation' : undefined}
               >
-                <span className={styles.connectionDot} aria-hidden="true" />
-                <span className={styles.connectionLabel}>{connected ? 'Live' : 'Offline'}</span>
-              </span>
-              <button type="button" className={styles.iconButton} aria-label="Notifications">
-                <Bell size={18} aria-hidden="true" />
+                <LogOut size={17} aria-hidden="true" />
               </button>
-            </>
-          )}
-          <ThemeToggle variant="ghost" role={user.role} />
-          {!hideSidebar && (
-            <div className={styles.userBadge}>
-              <span className={styles.avatar}>{initialsFor(user)}</span>
-              <span className={styles.userBadgeText}>
-                <span className={styles.userName}>{user.fullName || user.email}</span>
-                <span className={styles.userRole}>{roleLabel(user.role)}</span>
-              </span>
-            </div>
-          )}
-          <button
-            type="button"
-            className={styles.iconButton}
-            onClick={impersonator ? handleExitImpersonation : handleLogout}
-            disabled={impersonator ? exiting : false}
-            aria-label={impersonator ? 'Exit impersonation' : 'Log out'}
-            title={impersonator ? 'Exit impersonation' : undefined}
-          >
-            <LogOut size={17} aria-hidden="true" />
-          </button>
-        </div>
-      </header>
+            ) : (
+              <UserMenu
+                user={user}
+                theme={theme}
+                onToggleTheme={toggleTheme}
+                onShowShortcuts={openShortcuts}
+                onLogout={handleLogout}
+                impersonator={impersonator}
+                onExitImpersonation={handleExitImpersonation}
+                exiting={exiting}
+              />
+            )}
+          </div>
+        </header>
       )}
 
       {impersonator && (
-        <div className={styles.impersonationBanner}>
+        <div className={styles.impersonationBanner} role="status">
           <span>
             Viewing as <strong>{user.fullName || user.email}</strong> - impersonated by {impersonator.fullName || impersonator.email}
           </span>
@@ -505,170 +362,97 @@ export default function AppShell({ children, fullScreen = false }) {
       <div className={styles.body}>
         {!hideSidebar && !fullScreen && (
           <>
-        <div
-          className={`${styles.overlay} ${drawerOpen ? styles.open : ''}`}
-          onClick={() => setDrawerOpen(false)}
-        />
-        <nav
-          className={`${styles.sidebar} ${drawerOpen ? styles.open : ''} ${collapsed ? styles.collapsed : ''}`}
-          aria-label="Main navigation"
-        >
-          <div className={styles.navScroll}>
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
-                title={collapsed ? item.label : undefined}
+            <div
+              className={`${styles.overlay} ${drawerOpen ? styles.open : ''}`}
+              onClick={() => setDrawerOpen(false)}
+              aria-hidden="true"
+            />
+            <nav
+              id="main-navigation"
+              className={`${styles.sidebar} ${drawerOpen ? styles.open : ''} ${collapsed ? styles.collapsed : ''}`}
+              aria-label="Main navigation"
+            >
+              <div className={styles.navScroll}>
+                {sections.map((section, sectionIndex) => {
+                  const containsActive = section.items.some((item) => item.href === activeHref);
+                  // The section holding the current page is always open, so
+                  // the highlighted item can never be hidden.
+                  const sectionOpen = collapsed || containsActive || !collapsedSections.includes(section.id);
+                  // A one-item section (e.g. Platform) needs no toggle.
+                  const showHeader = !collapsed && sections.length > 1;
+                  return (
+                    <div key={section.id} className={styles.navGroup}>
+                      {collapsed && sectionIndex > 0 && <hr className={styles.navDivider} aria-hidden="true" />}
+                      {showHeader && (
+                        <button
+                          type="button"
+                          className={styles.navSection}
+                          onClick={() => toggleSection(section.id)}
+                          aria-expanded={sectionOpen}
+                          aria-controls={`nav-section-${section.id}`}
+                          disabled={containsActive}
+                        >
+                          <span>{section.title}</span>
+                          {!containsActive && (
+                            <ChevronDown
+                              size={14}
+                              className={`${styles.navSectionChevron} ${sectionOpen ? '' : styles.navSectionChevronClosed}`}
+                              aria-hidden="true"
+                            />
+                          )}
+                        </button>
+                      )}
+                      {sectionOpen && (
+                        <div id={`nav-section-${section.id}`}>
+                          {section.items.map((item) => (
+                            <NavLink
+                              key={`${item.href}:${item.label}`}
+                              item={item}
+                              active={item.href === activeHref}
+                              collapsed={collapsed}
+                              count={item.countKey ? navCounts[item.countKey] : null}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                className={styles.collapseButton}
+                onClick={() => setCollapsed((v) => !v)}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-expanded={!collapsed}
               >
-                <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            ))}
-
-            {(user.role === 'admin' || user.role === 'program_manager') && (
-              <SingleNavLink item={TASK_BACKLOG_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'program_manager') && (
-              <SingleNavLink item={ESCALATIONS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' ||
-              user.role === 'executive' ||
-              user.role === 'program_manager' ||
-              user.role === 'qa' ||
-              DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) && (
-              <SingleNavLink item={MY_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.myTasks} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'program_manager' || user.role === 'qa') && (
-              <SingleNavLink item={MY_DEFECTS_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.myDefects} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={TEAM_TASKS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
-              <SingleNavLink item={DEPENDENCY_CLEARANCE_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' ||
-              user.role === 'executive' ||
-              user.role === 'program_manager' ||
-              user.role === 'qa') && (
-              <SingleNavLink item={QA_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} count={navCounts.qaReview} />
-            )}
-
-            {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
-              <SingleNavLink item={PEER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' ||
-              user.role === 'executive' ||
-              user.role === 'program_manager' ||
-              user.role === 'qa' ||
-              DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) && (
-              <SingleNavLink item={KPI_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={KPI_MATRIX_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={NON_COMPLIANCE_REPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {user.role === 'program_manager' && (
-              <SingleNavLink item={RELEASE_LOG_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={TRACKER_SOP_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'qa' || user.role === 'program_manager') && (
-              <>
-                <SingleNavLink item={TEST_CASES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-                <SingleNavLink item={SHOWSTOPPER_REVIEW_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-              </>
-            )}
-
-            {(DEVELOPER_EQUIVALENT_ROLES.includes(user.role) || user.role === 'program_manager' || user.role === 'admin') && (
-              <SingleNavLink item={TIME_SHEETS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'program_manager' || user.role === 'admin') && (
-              <>
-                <SingleNavLink item={BULK_IMPORT_EXPORT_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-                <SingleNavLink item={ISSUE_CATEGORIES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-                <SingleNavLink item={TEAMS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-                <SingleNavLink item={LABELS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-              </>
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={PROJECT_PLANNING_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={PROJECT_MODULES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={PROJECT_PHASES_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {(user.role === 'admin' || user.role === 'executive' || user.role === 'program_manager') && (
-              <SingleNavLink item={PROJECT_TEAMS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-            )}
-
-            {user.role === 'admin' && (
-              <>
-                <div className={styles.navSection}>{!collapsed && 'Admin'}</div>
-                {ADMIN_NAV_ITEMS.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
-                    title={collapsed ? item.label : undefined}
-                  >
-                    <item.icon size={18} className={styles.navIcon} aria-hidden="true" />
-                    {!collapsed && <span>{item.label}</span>}
-                  </Link>
-                ))}
-              </>
-            )}
-
-            {user.isPlatformSuperadmin && (
-              <>
-                <div className={styles.navSection}>{!collapsed && 'Platform'}</div>
-                <SingleNavLink item={PLATFORM_TENANTS_NAV_ITEM} isActive={isActive} collapsed={collapsed} />
-              </>
-            )}
-          </div>
-
-          <button
-            type="button"
-            className={styles.collapseButton}
-            onClick={() => setCollapsed((v) => !v)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
-            {!collapsed && <span>Collapse</span>}
-          </button>
-        </nav>
+                {collapsed ? <ChevronsRight size={16} aria-hidden="true" /> : <ChevronsLeft size={16} aria-hidden="true" />}
+                {!collapsed && <span>Collapse</span>}
+              </button>
+            </nav>
           </>
         )}
 
-        <main className={styles.content}>
+        <main id="main-content" className={styles.content} tabIndex={-1}>
           <div className={`${styles.contentInner} ${fullScreen ? styles.contentInnerFullScreen : ''}`}>{children}</div>
         </main>
       </div>
-      {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && (
-        <SelfCreateTaskModal open={selfTaskOpen} onClose={closeSelfTask} user={user} />
+
+      {hideSidebar && <SelfCreateTaskModal open={selfTaskOpen} onClose={closeSelfTask} user={user} />}
+      {!hideSidebar && (
+        <>
+          <CommandPalette
+            open={paletteOpen}
+            onClose={closePalette}
+            user={user}
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onShowShortcuts={openShortcuts}
+            onLogout={handleLogout}
+          />
+          <ShortcutsDialog open={shortcutsOpen} onClose={closeShortcuts} availableHrefs={availableHrefs} />
+        </>
       )}
     </div>
   );

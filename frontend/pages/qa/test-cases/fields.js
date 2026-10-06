@@ -6,6 +6,7 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { FIELD_TYPE, FIELD_TYPE_OPTIONS } from '../../../lib/testCaseFields';
+import { useConfirm } from '../../../lib/confirm';
 
 const EMPTY_FIELD = { name: '', fieldType: FIELD_TYPE.TEXT, optionsText: '', isRequired: false };
 
@@ -19,6 +20,7 @@ function parseOptions(text) {
 // (backend TestCaseCustomFieldsController). A field's name is also the
 // column header bulk import matches on.
 export default function TestCaseFieldsPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
   const [fields, setFields] = useState([]);
@@ -105,7 +107,7 @@ export default function TestCaseFieldsPage() {
   };
 
   const handleDelete = async (field) => {
-    if (!confirm(`Delete "${field.name}"? This cannot be undone.`)) return;
+    if (!await confirmAction({ title: 'Delete custom field?', message: `Delete "${field.name}"? This cannot be undone.`, confirmLabel: 'Delete', danger: true })) return;
     setError('');
     try {
       await apiFetch(`/test-case-custom-fields/${field.id}`, { method: 'DELETE' });

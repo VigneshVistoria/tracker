@@ -18,6 +18,7 @@ import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependenc
 import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel } from '../../lib/taskTableShared';
 import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useConfirm } from '../../lib/confirm';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -219,6 +220,7 @@ function recordArtifactUrlHistory(urls) {
 }
 
 export default function TaskDetailPage() {
+  const confirmAction = useConfirm();
   const router = useRouter();
   const { id } = router.query;
   const { showToast } = useToast();
@@ -928,7 +930,7 @@ export default function TaskDetailPage() {
   };
 
   // No reason/comment required (confirmed with the user) - a plain PATCH,
-  // same shape as handleSavePeerReviewFlag above, just with a confirm()
+  // same shape as handleSavePeerReviewFlag above, just with a confirm dialog
   // guard since these are bigger, less-reversible actions than a checkbox.
   const handleHold = async () => {
     setError('');
@@ -959,7 +961,7 @@ export default function TaskDetailPage() {
   };
 
   const handleClose = async () => {
-    if (!window.confirm('Close this task? This ends it regardless of resolution state. It can be reopened later.')) return;
+    if (!await confirmAction({ title: 'Close task?', message: 'Close this task? This ends it regardless of resolution state. It can be reopened later.', confirmLabel: 'Close task', danger: true })) return;
     setError('');
     setSavingHoldClosed(true);
     try {
@@ -974,7 +976,7 @@ export default function TaskDetailPage() {
   };
 
   const handleReopen = async () => {
-    if (!window.confirm('Reopen this task? It returns to the status it had before it was closed.')) return;
+    if (!await confirmAction({ title: 'Reopen task?', message: 'Reopen this task? It returns to the status it had before it was closed.', confirmLabel: 'Reopen' })) return;
     setError('');
     setSavingHoldClosed(true);
     try {
