@@ -272,6 +272,17 @@ export class TaskQaReviewsService {
       },
     });
 
+    this.eventEmitter.emit('task.reviewDecided', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      decision: 'approved',
+      reviewType: 'qa',
+    });
+
     return { ...savedReview, qaArtifacts: savedQaArtifacts };
   }
 
@@ -369,6 +380,17 @@ export class TaskQaReviewsService {
         artifactTypes: (dto.artifacts || []).map((a) => a.type),
         linkedDefectIds: linkedDefects.map((d) => d.id),
       },
+    });
+
+    this.eventEmitter.emit('task.reviewDecided', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      decision: 'rejected',
+      reviewType: 'qa',
     });
 
     return { ...savedReview, qaArtifacts: savedQaArtifacts, linkedDefects };

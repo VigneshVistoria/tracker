@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
@@ -263,6 +264,7 @@ export class TasksService {
     private usersService: UsersService,
     private taskStatusConfigService: TaskStatusConfigService,
     private auditLogService: AuditLogService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   // Also grants view access to the owner of a Dependency Ticket filed
@@ -600,13 +602,20 @@ export class TasksService {
     return new Map(users.map((u) => [u.id, u.fullName]));
   }
 
-  async findAllForUser(currentUser: { id: number; role: UserRole }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
+  // The visibility rule behind findAllForUser(), without the computed
+  // fields - also used by global search (SearchService) so search can
+  // never show a task this list wouldn't.
+  async findVisibleToUser(currentUser: { id: number; role: UserRole }, tenantId: number): Promise<ProjectTask[]> {
     const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
-    const tasks = isLeadership
-      ? await this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } })
-      : await this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } }).then((all) =>
+    return isLeadership
+      ? this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } })
+      : this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } }).then((all) =>
           all.filter((t) => t.assigneeUserId === currentUser.id || t.createdByUserId === currentUser.id),
         );
+  }
+
+  async findAllForUser(currentUser: { id: number; role: UserRole }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
+    const tasks = await this.findVisibleToUser(currentUser, tenantId);
 
     const percentByStatus = await this.taskStatusConfigService.percentByStatus(tenantId);
     return Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus)));
@@ -1178,7 +1187,26 @@ export class TasksService {
       },
     });
 
+    if (saved.assigneeUserId) {
+      this.emitAssigned(saved, user, tenantId);
+    }
+
     return saved;
+  }
+
+  // In-app notification hook (UserNotificationListenersService) - fired
+  // after the save + audit record, never awaited, so it can't affect the
+  // request. Self-assignment is filtered out by the listener.
+  private emitAssigned(task: ProjectTask, actor: { id: number; email: string }, tenantId: number) {
+    this.eventEmitter.emit('task.assigned', {
+      tenantId,
+      taskId: task.id,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      actorUserId: actor.id,
+      actorEmail: actor.email,
+      isDefect: task.isDefect,
+    });
   }
 
   // Create Defect (QA only) - a fresh, standalone ticket with no link to
@@ -1269,6 +1297,8 @@ export class TasksService {
       },
     });
 
+    this.emitAssigned(saved, user, tenantId);
+
     return saved;
   }
 
@@ -1313,6 +1343,8 @@ export class TasksService {
       entityId: saved.id,
       details: { assigneeUserId: assignee.id, assigneeEmail: assignee.email },
     });
+
+    this.emitAssigned(saved, currentUser, tenantId);
 
     return saved;
   }
@@ -1391,6 +1423,10 @@ export class TasksService {
         assigneeEmail: saved.assigneeEmail,
       },
     });
+
+    if (saved.assigneeUserId && saved.assigneeUserId !== previousAssigneeUserId) {
+      this.emitAssigned(saved, currentUser, tenantId);
+    }
 
     return { ...saved, assigneeFullName };
   }

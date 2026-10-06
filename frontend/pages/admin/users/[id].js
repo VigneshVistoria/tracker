@@ -5,6 +5,7 @@ import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
+import { disconnectSocket } from '../../../lib/socket';
 import LoadingState from '../../../components/ui/LoadingState';
 
 export default function EditUser() {
@@ -39,6 +40,9 @@ export default function EditUser() {
       localStorage.setItem('impersonator', JSON.stringify(res.impersonator));
       localStorage.setItem('accessToken', res.accessToken);
       localStorage.setItem('user', JSON.stringify(res.user));
+      // Reconnect live updates as the impersonated user (personal
+      // notification room is keyed by the token's user).
+      disconnectSocket();
       router.push('/dashboard');
     } catch (err) {
       setError(err.message);

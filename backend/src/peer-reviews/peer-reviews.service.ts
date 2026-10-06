@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
@@ -41,6 +42,7 @@ export class PeerReviewsService {
     private usersService: UsersService,
     private auditLogService: AuditLogService,
     private noteQualityService: NoteQualityService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   private async findPendingPeerRound(taskId: number, tenantId: number): Promise<TaskQaReview> {
@@ -143,6 +145,15 @@ export class PeerReviewsService {
       },
     });
 
+    this.eventEmitter.emit('task.peerReviewRequested', {
+      tenantId,
+      taskId,
+      title: task.title,
+      reviewerUserId: reviewer.id,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+    });
+
     // Fire-and-forget - never awaited, so a slow/failed/rate-limited
     // Gemini call can't add latency to or fail this submission. See
     // NoteQualityService.
@@ -209,6 +220,17 @@ export class PeerReviewsService {
       },
     });
 
+    this.eventEmitter.emit('task.reviewDecided', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      decision: 'approved',
+      reviewType: 'peer',
+    });
+
     return { ...savedReview, qaArtifacts: savedQaArtifacts };
   }
 
@@ -266,6 +288,17 @@ export class PeerReviewsService {
         comment: dto.comment,
         artifactTypes: (dto.artifacts || []).map((a) => a.type),
       },
+    });
+
+    this.eventEmitter.emit('task.reviewDecided', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      decision: 'rejected',
+      reviewType: 'peer',
     });
 
     return { ...savedReview, qaArtifacts: savedQaArtifacts };

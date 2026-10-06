@@ -30,3 +30,17 @@ export function formatDateTime(value) {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
+
+// "just now", "5 min ago", "3 hr ago", "2 days ago" - then the normal
+// date once it's more than a week old. Locale pinned like formatDate().
+const relativeFormatter = new Intl.RelativeTimeFormat('en-US', { numeric: 'auto', style: 'short' });
+export function formatRelativeTime(value, now = Date.now()) {
+  if (!value) return '—';
+  const seconds = Math.round((toDate(value).getTime() - now) / 1000);
+  const abs = Math.abs(seconds);
+  if (abs < 45) return 'just now';
+  if (abs < 3600) return relativeFormatter.format(Math.round(seconds / 60), 'minute');
+  if (abs < 86400) return relativeFormatter.format(Math.round(seconds / 3600), 'hour');
+  if (abs < 7 * 86400) return relativeFormatter.format(Math.round(seconds / 86400), 'day');
+  return formatDate(value);
+}

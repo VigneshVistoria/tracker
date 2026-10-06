@@ -12,6 +12,10 @@ function tenantRoom(tenantId: number): string {
   return `tenant:${tenantId}`;
 }
 
+function userRoom(userId: number): string {
+  return `user:${userId}`;
+}
+
 @WebSocketGateway({
   cors: {
     origin: process.env.FRONTEND_URL || '*',
@@ -41,6 +45,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const payload = this.jwtService.verify(token);
       client.join(tenantRoom(payload.tenantId));
+      // Personal room for in-app notifications - only this user's own
+      // sockets ever join it (keyed by the verified JWT's own user id).
+      if (payload.sub) client.join(userRoom(payload.sub));
       this.logger.log(`Client connected: ${client.id} (tenant ${payload.tenantId})`);
     } catch {
       this.logger.warn(`Client ${client.id} connected with an invalid/expired token - disconnecting.`);
@@ -50,6 +57,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  // Delivered to exactly one user's sockets (see userRoom above), unlike
+  // every tenant-wide emit below.
+  emitToUser(userId: number, event: string, payload: any) {
+    this.server?.to(userRoom(userId)).emit(event, payload);
   }
 
   emitIssueCreated(issue: any) {

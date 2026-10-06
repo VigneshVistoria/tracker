@@ -83,6 +83,9 @@ import { ReleaseItem } from './release-logs/release-item.entity';
 import { ReleaseLogsModule } from './release-logs/release-logs.module';
 import { StatusReviewModule } from './status-review/status-review.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { UserNotification } from './user-notifications/user-notification.entity';
+import { UserNotificationsModule } from './user-notifications/user-notifications.module';
+import { SearchModule } from './search/search.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -99,6 +102,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_NAME'),
         entities: [
+          UserNotification,
           User,
           Issue,
           Project,
@@ -164,6 +168,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
     AuditModule,
     ModulesModule,
     TestCasesModule,
+    UserNotificationsModule,
+    SearchModule,
     SlaModule,
     PerformanceScoringModule,
     PerformanceDashboardModule,

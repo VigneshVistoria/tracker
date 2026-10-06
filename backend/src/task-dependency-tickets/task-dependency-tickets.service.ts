@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
@@ -22,6 +23,7 @@ export class TaskDependencyTicketsService {
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   // Combined task detail view - dependency tickets filed against a given
@@ -117,6 +119,16 @@ export class TaskDependencyTicketsService {
       details: { parentTaskId: saved.parentTaskId, ownerEmail: saved.ownerEmail, title: saved.title },
     });
 
+    this.eventEmitter.emit('dependencyTicket.created', {
+      tenantId,
+      ticketId: saved.id,
+      parentTaskId: saved.parentTaskId,
+      title: saved.title,
+      recipientUserId: saved.ownerUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+    });
+
     return saved;
   }
 
@@ -198,6 +210,17 @@ export class TaskDependencyTicketsService {
       entityType: 'TaskDependencyTicket',
       entityId: saved.id,
       details: { parentTaskId: saved.parentTaskId },
+    });
+
+    // Tell whoever filed the ticket their blocker is cleared.
+    this.eventEmitter.emit('dependencyTicket.resolved', {
+      tenantId,
+      ticketId: saved.id,
+      parentTaskId: saved.parentTaskId,
+      title: saved.title,
+      recipientUserId: saved.createdByUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
     });
 
     return saved;

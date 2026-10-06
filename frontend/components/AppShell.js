@@ -7,6 +7,7 @@ import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
 import ShortcutsDialog, { GO_SHORTCUTS, isMacPlatform } from './ShortcutsDialog';
 import UserMenu from './UserMenu';
+import NotificationBell from './NotificationBell';
 import { getSocket, disconnectSocket } from '../lib/socket';
 import { apiFetch } from '../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
@@ -115,6 +116,7 @@ export default function AppShell({ children, fullScreen = false }) {
       localStorage.setItem('accessToken', res.accessToken);
       localStorage.setItem('user', JSON.stringify(res.user));
       localStorage.removeItem('impersonator');
+      disconnectSocket();
       router.push('/admin/users');
     } catch (err) {
       // Session's stale or invalid either way - safest is to drop back to
@@ -320,6 +322,9 @@ export default function AppShell({ children, fullScreen = false }) {
                 </span>
               </>
             )}
+            {/* Every role, including Developer/Designer/DevOps (confirmed
+                2026-10-06) - the only addition to their minimal header. */}
+            <NotificationBell />
             <ThemeToggle variant="ghost" />
             {hideSidebar ? (
               <button

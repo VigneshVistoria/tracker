@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/router';
-import { Search, History, CornerDownLeft, Plus, Bug, ClipboardPlus, Moon, Sun, Keyboard, LogOut } from 'lucide-react';
+import { Search, History, CornerDownLeft, Plus, Bug, ClipboardPlus, Moon, Sun, Keyboard, LogOut, Ticket, ListTodo, ClipboardCheck, UserRound } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 import { navSectionsFor } from '../lib/navigation';
 import { canCreateTickets } from '../lib/status';
 import styles from '../styles/commandPalette.module.css';
@@ -52,12 +53,18 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [recent, setRecent] = useState([]);
+  // Server-side search (/search) - tickets, tasks, test cases, people,
+  // already scoped by the API to what this user can see.
+  const [remote, setRemote] = useState(null);
+  const [searching, setSearching] = useState(false);
+  const searchSeq = useRef(0);
 
   useEffect(() => {
     if (!open) return undefined;
     previouslyFocused.current = document.activeElement;
     setQuery('');
     setActiveIndex(0);
+    setRemote(null);
     setRecent(readRecentPages());
     // Next tick so the portal is mounted before focusing.
     const id = requestAnimationFrame(() => inputRef.current?.focus());
@@ -105,6 +112,47 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
     return { actions, pages };
   }, [user, theme, router, onToggleTheme, onShowShortcuts, onLogout]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const q = query.trim();
+    const seq = ++searchSeq.current;
+    if (q.length < 2) {
+      setRemote(null);
+      setSearching(false);
+      return undefined;
+    }
+    setSearching(true);
+    const timer = setTimeout(() => {
+      apiFetch(`/search?q=${encodeURIComponent(q)}`)
+        .then((res) => seq === searchSeq.current && setRemote(res))
+        .catch(() => seq === searchSeq.current && setRemote(null))
+        .finally(() => seq === searchSeq.current && setSearching(false));
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [query, open]);
+
+  const remoteGroups = useMemo(() => {
+    if (!remote) return [];
+    const toEntries = (hits, kind, icon) =>
+      hits.map((hit) => ({
+        id: `${kind}:${hit.id}`,
+        label: hit.title,
+        hint: hit.subtitle,
+        hintLong: true,
+        icon,
+        run: () => {
+          if (hit.href) router.push(hit.href);
+          else if (kind === 'person') window.location.href = `mailto:${(hit.subtitle || '').split(' · ')[0]}`;
+        },
+      }));
+    return [
+      { title: 'Tasks', entries: toEntries(remote.tasks || [], 'task', ListTodo) },
+      { title: 'Tickets', entries: toEntries(remote.issues || [], 'issue', Ticket) },
+      { title: 'Test cases', entries: toEntries(remote.testCases || [], 'testCase', ClipboardCheck) },
+      { title: 'People', entries: toEntries(remote.people || [], 'person', UserRound) },
+    ].filter((g) => g.entries.length > 0);
+  }, [remote, router]);
+
   // Grouped, filtered results. With no query: Recent, Actions, then every
   // page. With a query: one ranked list across pages and actions.
   const groups = useMemo(() => {
@@ -131,8 +179,8 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
       .filter((r) => r.score != null)
       .sort((a, b) => a.score - b.score || a.entry.label.localeCompare(b.entry.label))
       .map((r) => r.entry);
-    return ranked.length ? [{ title: 'Results', entries: ranked }] : [];
-  }, [allEntries, recent, query]);
+    return [...(ranked.length ? [{ title: 'Pages & actions', entries: ranked }] : []), ...remoteGroups];
+  }, [allEntries, recent, query, remoteGroups]);
 
   const flat = useMemo(() => groups.flatMap((g) => g.entries), [groups]);
 
@@ -191,7 +239,7 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search pages and actions…"
+            placeholder="Search pages, tasks, tickets…"
             role="combobox"
             aria-expanded="true"
             aria-controls="cmdk-list"
@@ -203,9 +251,9 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
         </div>
 
         <div ref={listRef} id="cmdk-list" role="listbox" aria-label="Results" className={styles.list}>
-          {groups.length === 0 && (
+          {groups.length === 0 && !searching && (
             <p className={styles.empty} role="status">
-              No pages or actions match “{query.trim()}”.
+              Nothing matches “{query.trim()}”.
             </p>
           )}
           {groups.map((group) => (
@@ -230,7 +278,9 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
                   >
                     <entry.icon size={16} className={styles.optionIcon} aria-hidden="true" />
                     <span className={styles.optionLabel}>{entry.label}</span>
-                    {entry.hint && <span className={styles.optionHint}>{entry.hint}</span>}
+                    {entry.hint && (
+                      <span className={`${styles.optionHint} ${entry.hintLong ? styles.optionHintLong : ''}`}>{entry.hint}</span>
+                    )}
                     {selected && <CornerDownLeft size={14} className={styles.enterIcon} aria-hidden="true" />}
                   </div>
                 );
@@ -238,6 +288,12 @@ export default function CommandPalette({ open, onClose, user, theme, onToggleThe
             </div>
           ))}
         </div>
+
+        {searching && (
+          <p className={styles.searching} role="status">
+            Searching tickets, tasks{user && ['admin', 'program_manager', 'executive'].includes(user.role) ? ', people' : ''}…
+          </p>
+        )}
 
         <div className={styles.footer} aria-hidden="true">
           <span><kbd>↑</kbd><kbd>↓</kbd> to move</span>
