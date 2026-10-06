@@ -36,6 +36,15 @@ export default function Table({
   // mode, which uses it to flex-grow the table to fill leftover vertical
   // space instead of leaving it blank.
   className,
+  // Optional, additive (Team Tasks only): table-layout: fixed, so each
+  // column's `width` is honoured exactly and the one column without a
+  // width (Title) takes the remaining space. Also aligns each sortable
+  // header's contents with its column's `align`. Off for every other
+  // caller, whose rendering is unchanged.
+  fixedLayout = false,
+  // Optional (with fixedLayout): the table's minimum width, so on narrow
+  // screens it scrolls sideways instead of squeezing the flexible column.
+  minWidth,
 }) {
   const [internalSort, setInternalSort] = useState({ key: null, dir: 'asc' });
   const sortKey = controlledSortKey !== undefined ? controlledSortKey : internalSort.key;
@@ -73,9 +82,18 @@ export default function Table({
     return sortDir === 'desc' ? sorted.reverse() : sorted;
   }, [rows, sortKey, sortDir, columns, onSortChange]);
 
+  // Passed to each column's render() as a second argument (existing
+  // renderers ignore it): whether group header rows are currently shown,
+  // so a cell can drop text the group header already says.
+  const grouped = Boolean(groupHeader) && !sortKey;
+  const justifyFor = (align) => (align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start');
+
   return (
     <div className={`${styles.wrap} ${className || ''}`}>
-      <table className={`${styles.table} ${dense ? styles.dense : ''}`}>
+      <table
+        className={`${styles.table} ${dense ? styles.dense : ''} ${fixedLayout ? styles.fixedLayout : ''}`}
+        style={minWidth ? { minWidth } : undefined}
+      >
         <thead>
           <tr>
             {columns.map((col) => (
@@ -86,7 +104,12 @@ export default function Table({
                 aria-sort={sortKey === col.key ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
               >
                 {col.sortable ? (
-                  <button type="button" className={styles.sortButton} onClick={() => handleSort(col)}>
+                  <button
+                    type="button"
+                    className={styles.sortButton}
+                    style={fixedLayout ? { justifyContent: justifyFor(col.align) } : undefined}
+                    onClick={() => handleSort(col)}
+                  >
                     {col.header}
                     {sortKey === col.key ? (
                       sortDir === 'asc' ? <ArrowUp size={13} aria-hidden="true" /> : <ArrowDown size={13} aria-hidden="true" />
@@ -129,7 +152,7 @@ export default function Table({
                 >
                   {columns.map((col) => (
                     <td key={col.key} style={{ textAlign: col.align || 'left', verticalAlign: bodyVerticalAlign }}>
-                      {col.render ? col.render(row) : row[col.key]}
+                      {col.render ? col.render(row, { grouped }) : row[col.key]}
                     </td>
                   ))}
                 </tr>

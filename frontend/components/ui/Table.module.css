@@ -15,6 +15,21 @@
   font-size: var(--ds-text-sm);
 }
 
+.fixedLayout {
+  table-layout: fixed;
+}
+/* Slightly tighter side padding so labelled headers fit narrow fixed
+   columns (fixedLayout callers only). */
+.fixedLayout thead th,
+.fixedLayout tbody td,
+.fixedLayout .sortButton {
+  padding-left: var(--ds-space-3);
+  padding-right: var(--ds-space-3);
+}
+.fixedLayout .sortableHeader {
+  padding: 0 !important;
+}
+
 .table thead th {
   text-align: left;
   font-size: var(--ds-text-xs);

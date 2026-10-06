@@ -134,42 +134,53 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--ds-space-3);
   cursor: pointer;
   text-align: center;
-  border-left: 1px solid var(--color-border);
+  border-left: 1px solid var(--ds-border);
   transition: background-color 0.15s ease;
 }
 .statStripSegment:first-child {
   border-left: none;
 }
 .statStripSegment:hover {
-  background: var(--color-slate-tint);
+  background: var(--ds-bg-surface-sunken);
 }
 .statStripSegment:focus-visible {
-  outline: 2px solid var(--color-ink);
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--ds-border-focus);
 }
-.statStripSegment.expanded {
-  background: var(--color-slate-tint);
+/* The one tile whose filters are currently applied: tint + accent bar
+   along the bottom, distinct from the lighter hover. aria-pressed carries
+   the state for assistive tech. */
+.statStripSegment.selected {
+  background: var(--ds-sidebar-active-bg);
+  box-shadow: inset 0 -3px 0 var(--ds-color-primary-600);
+}
+.statStripSegment.selected .statStripLabel {
+  color: var(--ds-text-primary);
+  font-weight: var(--ds-weight-semibold);
 }
 
 .statStripValue {
-  font-family: var(--font-mono);
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--color-ink);
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-xl);
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-primary);
   line-height: 1;
 }
 /* Rejected/Overdue "indicate a problem" - Team Tasks and Open Dependency
    stay the default neutral .statStripValue color above. */
 .statStripValue.accentDanger { color: var(--color-red-dark); }
 .statStripValue.accentWarning { color: var(--color-amber-dark); }
+/* Zero (or still loading) is never a warning - neutral grey. */
+.statStripValue.statStripZero { color: var(--ds-text-secondary); }
 
 .statStripLabel {
-  font-size: 0.72rem;
-  color: var(--color-slate);
-  margin-top: 2px;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  margin-top: var(--ds-space-1);
 }
 
 .sectionHeader {

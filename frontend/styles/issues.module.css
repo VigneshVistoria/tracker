@@ -1269,3 +1269,112 @@ td.empty::before,
   font-size: var(--ds-text-xs);
   box-shadow: none;
 }
+
+/* ---------- Team Tasks table (TeamTaskWorkboard only) ---------- */
+/* Icon + short text label column header (ColHeader showLabel). */
+.colHeaderLabeled {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  white-space: nowrap;
+}
+
+.teamEmpty {
+  color: var(--ds-text-muted);
+}
+
+/* Ticket number: same size/colour as the rest of the row, underline on
+   hover only (the shared .issueId stays mono/small for other pages). */
+.teamTaskId {
+  color: var(--ds-text-primary);
+  font-size: inherit;
+  font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.teamTaskId:hover {
+  text-decoration: underline;
+}
+
+.teamNowrap {
+  white-space: nowrap;
+}
+
+.teamOneLine {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamTitleCell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  min-width: 0;
+}
+
+/* Badges sit on their own line above the title and never wrap. */
+.teamTitleBadges {
+  display: flex;
+  gap: var(--ds-space-1);
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.teamTitleClamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-primary);
+}
+
+.teamParentDue {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  color: var(--ds-text-secondary);
+}
+
+/* Filter bar: one aligned row, even gaps, controls bottom-aligned, wraps
+   cleanly on small screens. */
+.teamFilterBar {
+  align-items: flex-end;
+  gap: var(--ds-space-3) var(--ds-space-4);
+}
+.teamFilterBar .filterGroup {
+  min-width: 0;
+}
+
+/* Checkbox as a chip the same height as the selects beside it. */
+.teamCheckChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: 36px;
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.teamCheckChip:hover {
+  border-color: var(--ds-text-secondary);
+}
+.teamCheckChip:focus-within {
+  border-color: var(--ds-border-focus);
+  box-shadow: var(--ds-shadow-focus);
+}
+.teamCheckChip input {
+  margin: 0;
+  accent-color: var(--ds-color-primary-600);
+}
