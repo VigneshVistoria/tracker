@@ -10,6 +10,7 @@ import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, SELF_SERVICE_TRANSITIONS, MODE_OPTIONS } from '../../lib/status';
 import { formatDateTime } from '../../lib/formatDate';
 import LoadingState from '../../components/ui/LoadingState';
+import Breadcrumbs from '../../components/ui/Breadcrumbs';
 
 // Mirrors backend/src/evidence/evidence.entity.ts's EvidenceType enum -
 // keep these in sync if that enum ever changes.
@@ -409,6 +410,7 @@ export default function IssueDetail() {
   if (currentUser?.role === 'client') {
     return (
       <AppShell>
+        <Breadcrumbs items={[{ label: 'My Tickets', href: '/issues' }, { label: `#${issue.id}` }]} />
         <div className={styles.pageHeader}>
           <div>
             <h1 className={styles.pageTitle}>
@@ -430,13 +432,13 @@ export default function IssueDetail() {
         )}
 
         <div className={styles.card}>
-          <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Description</p>
+          <h2 className={styles.cardTitle}>Description</h2>
           <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{issue.description || 'No description provided.'}</p>
         </div>
 
         {issue.photoBase64 && (
           <div className={styles.card}>
-            <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Attached Photo</p>
+            <h2 className={styles.cardTitle}>Attached Photo</h2>
             <img
               src={`data:image/jpeg;base64,${issue.photoBase64}`}
               alt="Attached to ticket"
@@ -472,6 +474,7 @@ export default function IssueDetail() {
 
   return (
     <AppShell>
+      <Breadcrumbs items={[{ label: 'Issues', href: '/issues' }, { label: `#${issue.id}` }]} />
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>
@@ -482,7 +485,7 @@ export default function IssueDetail() {
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
           {issue.category && (
-            <span className={styles.badge} style={{ background: 'var(--color-slate-tint, #eef0f2)', color: 'var(--color-ink-soft)' }}>
+            <span className={styles.badge} style={{ background: 'var(--color-slate-tint)', color: 'var(--ds-text-secondary)' }}>
               {issue.category}
             </span>
           )}
@@ -515,7 +518,7 @@ export default function IssueDetail() {
 
       <div className={styles.card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Dependencies ({(issue.dependencies || []).length})</h3>
+          <h2 className={styles.cardTitle}>Dependencies ({(issue.dependencies || []).length})</h2>
           {currentUser?.role !== 'executive' && (
             <button className={styles.buttonSecondary} type="button" onClick={() => setShowDependencyForm((v) => !v)}>
               {showDependencyForm ? 'Cancel' : 'Create Dependency'}
@@ -599,7 +602,7 @@ export default function IssueDetail() {
 
       <div className={styles.card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Evidence ({evidenceSubmissions.length})</h3>
+          <h2 className={styles.cardTitle}>Evidence ({evidenceSubmissions.length})</h2>
           {isAssignee && (
             <button className={styles.buttonSecondary} type="button" onClick={() => setShowEvidenceForm((v) => !v)}>
               {showEvidenceForm ? 'Cancel' : 'Submit Evidence'}
@@ -696,7 +699,7 @@ export default function IssueDetail() {
 
       {(canSubmitForReview || canReview || canReviewQa) && (
         <div className={styles.card}>
-          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Workflow</h3>
+          <h2 className={styles.cardTitle}>Workflow</h2>
           {canSubmitForReview && (
             <div className={styles.actions}>
               <p className={styles.helpText} style={{ marginTop: 0, marginBottom: 'var(--space-3)', width: '100%' }}>

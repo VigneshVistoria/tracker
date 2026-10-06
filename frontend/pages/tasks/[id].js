@@ -11,15 +11,17 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
-import { isQaReviewOverdue } from '../../lib/developerTaskStats';
+import { isQaReviewOverdue, isOverdueTask } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
-import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel } from '../../lib/taskTableShared';
+import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel, statusBadgeStyle } from '../../lib/taskTableShared';
 import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
+import ReviewTimeline from '../../components/ReviewTimeline';
+import Breadcrumbs from '../../components/ui/Breadcrumbs';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -228,6 +230,7 @@ export default function TaskDetailPage() {
 
   const [user, setUser] = useState(null);
   const [task, setTask] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
   const [tickets, setTickets] = useState([]);
   const [developers, setDevelopers] = useState([]);
   // Team Tasks - Assignee edit (Program Manager only). A separate,
@@ -667,6 +670,27 @@ export default function TaskDetailPage() {
   // until PM reassigns it from the Escalations queue.
   const isEscalated = task.status === 'Escalated';
   const isPeerReviewer = latestQaReview?.reviewType === 'peer' && latestQaReview?.reviewerUserId === user.id;
+  // "What needs me on this task" - mirrors the exact conditions of the
+  // action cards below, so the banner can never point at a form that
+  // isn't rendered for this user.
+  const pendingAction = (() => {
+    if (canActOnQaReview && hasPendingQaReview) {
+      return { tone: 'info', icon: ClipboardList, title: 'Waiting for your QA review', detail: 'Approve, reject or escalate this round.', cta: 'Review now', target: 'task-action-qa-review' };
+    }
+    if (isPeerReviewer && hasPendingQaReview) {
+      return { tone: 'info', icon: ClipboardList, title: 'Waiting for your peer review', detail: 'Approve or send this round back.', cta: 'Review now', target: 'task-action-peer-review' };
+    }
+    if (isAssignee && isEscalated) {
+      return { tone: 'warning', icon: AlertTriangle, title: 'With the Program Manager', detail: 'This task was sent for a PM decision - nothing to do until it comes back.' };
+    }
+    if (isAssignee && !hasPendingQaReview && task.status === 'Failed') {
+      return { tone: 'error', icon: AlertTriangle, title: 'Sent back by review', detail: 'Check the latest comments in Review history, fix, and resubmit.', cta: 'Go to resubmit', target: 'task-action-submit' };
+    }
+    if (isAssignee && hasPendingQaReview) {
+      return { tone: 'neutral', icon: CheckCircle2, title: 'Submitted for review', detail: 'Waiting on the reviewer - you\'ll see the outcome here.' };
+    }
+    return null;
+  })();
   // QA-only hard block (backend: TasksService.assertNoOpenDependencyTickets(),
   // called from TaskQaReviewsService.submit()) - deliberately not consulted
   // by the Peer Review submit form below, which stays reachable regardless.
@@ -1436,9 +1460,25 @@ export default function TaskDetailPage() {
 
   return (
     <AppShell>
+      <Breadcrumbs items={[{ label: 'My Tasks', href: '/tasks/mine' }, { label: `#${task.id}` }]} />
       <div className={styles.pageHeader}>
         <div>
           {!editingTitle && <h1 className={styles.pageTitle}>#{task.id} - {task.title}</h1>}
+          {!editingTitle && (
+            <div className={styles.metaRow}>
+              <span className={styles.statusChip} style={statusBadgeStyle(task.status)}>
+                {statusLabel(task.status)}
+              </span>
+              {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
+              {task.isDefect && <Badge tone="error">Defect</Badge>}
+              <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
+                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(task.dueDate)}` : 'No due date'}
+              </span>
+              <span className={styles.metaItem}>
+                {task.assigneeFullName || task.assigneeEmail || 'Unassigned'}
+              </span>
+            </div>
+          )}
           {canManage && !editingTitle && (
             <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
               <button className={styles.buttonSecondary} type="button" onClick={() => setEditingTitle(true)}>
@@ -1558,10 +1598,69 @@ export default function TaskDetailPage() {
             </ul>
           )}
         </div>
-        <Link href="/tasks/mine" className={styles.backLink}>&larr; Back to My Tasks</Link>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {pendingAction && (
+        <div className={`${styles.actionBanner} ${styles[`actionBanner_${pendingAction.tone}`]}`} role="status">
+          <pendingAction.icon size={20} aria-hidden="true" className={styles.actionBannerIcon} />
+          <div className={styles.actionBannerText}>
+            <strong>{pendingAction.title}</strong>
+            <span>{pendingAction.detail}</span>
+          </div>
+          {pendingAction.target && (
+            <button
+              type="button"
+              className={`${styles.button} ${styles.buttonAccent}`}
+              onClick={() => {
+                setActiveTab('overview');
+                requestAnimationFrame(() => {
+                  const el = document.getElementById(pendingAction.target);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  el?.focus({ preventScroll: true });
+                });
+              }}
+            >
+              {pendingAction.cta}
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className={styles.tabs} role="tablist" aria-label="Task sections">
+        {[
+          { key: 'overview', label: 'Overview' },
+          { key: 'history', label: 'Review history', count: qaReviews.length },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            id={`task-tab-${tab.key}`}
+            aria-selected={activeTab === tab.key}
+            aria-controls={`task-panel-${tab.key}`}
+            tabIndex={activeTab === tab.key ? 0 : -1}
+            className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                const next = activeTab === 'overview' ? 'history' : 'overview';
+                setActiveTab(next);
+                document.getElementById(`task-tab-${next}`)?.focus();
+              }
+            }}
+          >
+            {tab.label}
+            {tab.count > 0 && <span className={styles.tabCount}>{tab.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Panels stay mounted (hidden, not unmounted) so switching tabs never
+          loses a half-written review comment or form draft. */}
+      <div role="tabpanel" id="task-panel-overview" aria-labelledby="task-tab-overview" hidden={activeTab !== 'overview'}>
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         {task.isDefect && (
@@ -1648,7 +1747,7 @@ export default function TaskDetailPage() {
 
       {canEditDefectScope && editingDefectFields && (
         <form onSubmit={handleSaveDefectFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          <h2 className={styles.cardTitle}>
             Edit Defect Details
           </h2>
           <div className={styles.fieldGrid3}>
@@ -1793,7 +1892,7 @@ export default function TaskDetailPage() {
 
       {canManagePeerReviewFlag && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          <h2 className={styles.cardTitle}>
             Review Routing
           </h2>
           <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -1823,7 +1922,7 @@ export default function TaskDetailPage() {
 
       {canManageHoldClosed && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          <h2 className={styles.cardTitle}>
             Hold / Close
           </h2>
           {task.status === 'Closed' ? (
@@ -1897,7 +1996,7 @@ export default function TaskDetailPage() {
       )}
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <h2 className={styles.cardTitle}>
           QA Review Due Date
         </h2>
         <p style={{ margin: 0 }} className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
@@ -1935,7 +2034,7 @@ export default function TaskDetailPage() {
 
       {isAssignee && (
         <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          <h2 className={styles.cardTitle}>
             Create Dependency Ticket
           </h2>
           <div className={styles.field}>
@@ -1982,7 +2081,7 @@ export default function TaskDetailPage() {
       )}
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <h2 className={styles.cardTitle}>
           Dependency Tickets
         </h2>
         {tickets.length === 0 && <div className={styles.empty}>No dependency tickets filed for this task.</div>}
@@ -2063,7 +2162,7 @@ export default function TaskDetailPage() {
       </div>
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <h2 className={styles.cardTitle}>
           Linked Defects
         </h2>
         {linkedDefects.length === 0 && (
@@ -2083,7 +2182,7 @@ export default function TaskDetailPage() {
       </div>
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <h2 className={styles.cardTitle}>
           {task.isDefect ? 'Blocked Tasks' : 'Blocking Defects'}
         </h2>
         <p className={styles.helpText} style={{ marginTop: 0 }}>
@@ -2160,7 +2259,7 @@ export default function TaskDetailPage() {
 
       {isAssignee && isEscalated && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+          <h2 className={styles.cardTitle}>
             Sent to PM for Intervention
           </h2>
           <p style={{ margin: 0 }}>
@@ -2171,8 +2270,8 @@ export default function TaskDetailPage() {
       )}
 
       {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <div id="task-action-submit" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
             Submit for QA Testing
           </h2>
           {openDependencyTickets.length > 0 && (
@@ -2191,8 +2290,8 @@ export default function TaskDetailPage() {
       )}
 
       {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length === 0 && openLinkedDefects.length === 0 && (
-        <form onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <form id="task-action-submit" tabIndex={-1} onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
             Submit for QA Testing
           </h2>
           <div className={styles.field}>
@@ -2274,8 +2373,8 @@ export default function TaskDetailPage() {
       )}
 
       {isAssignee && !hasPendingQaReview && !isEscalated && task.peerReviewEnabled && (
-        <form onSubmit={handleSubmitForPeerReview} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <form id="task-action-submit" tabIndex={-1} onSubmit={handleSubmitForPeerReview} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
             Submit for Peer Review
           </h2>
           <div className={styles.field}>
@@ -2367,8 +2466,8 @@ export default function TaskDetailPage() {
       )}
 
       {canActOnQaReview && hasPendingQaReview && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <div id="task-action-qa-review" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
             QA Review
           </h2>
           <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
@@ -2650,8 +2749,8 @@ export default function TaskDetailPage() {
       )}
 
       {isPeerReviewer && hasPendingQaReview && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
+        <div id="task-action-peer-review" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
             Peer Review
           </h2>
           <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
@@ -2756,9 +2855,16 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      </div>
+
+      <div role="tabpanel" id="task-panel-history" aria-labelledby="task-tab-history" hidden={activeTab !== 'history'}>
       <div className={styles.card}>
-        <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-3)', fontWeight: 600 }}>
-          Review History
+        <h2 className={styles.cardTitle}>
+          Timeline
+        </h2>
+        <ReviewTimeline reviews={qaReviews} />
+        <h2 className={styles.cardTitle}>
+          All rounds
         </h2>
         <Table
           columns={qaReviewColumns}
@@ -2767,6 +2873,7 @@ export default function TaskDetailPage() {
           emptyState="No QA review rounds yet."
           bodyVerticalAlign="top"
         />
+      </div>
       </div>
     </AppShell>
   );

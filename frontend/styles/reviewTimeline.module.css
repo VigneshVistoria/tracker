@@ -1,0 +1,101 @@
+.timeline {
+  list-style: none;
+  margin: 0 0 var(--ds-space-5);
+  padding: 0;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  gap: var(--ds-space-3);
+  padding-bottom: var(--ds-space-5);
+}
+/* Connector line between markers. */
+.item:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 34px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--ds-border);
+}
+
+.marker {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tone-bg);
+  color: var(--tone-fg);
+}
+
+.pending { --tone-bg: var(--ds-color-info-tint); --tone-fg: var(--ds-color-info-dark); }
+.approved { --tone-bg: var(--ds-color-success-tint); --tone-fg: var(--ds-color-success-dark); }
+.rejected { --tone-bg: var(--ds-color-error-tint); --tone-fg: var(--ds-color-error-dark); }
+.escalated { --tone-bg: var(--ds-color-warning-tint); --tone-fg: var(--ds-color-warning-dark); }
+
+.body {
+  flex: 1;
+  min-width: 0;
+  padding-top: var(--ds-space-1);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--ds-space-1);
+}
+
+.title {
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+}
+
+.outcome {
+  padding: 1px var(--ds-space-2);
+  border-radius: var(--ds-radius-full);
+  background: var(--tone-bg);
+  color: var(--tone-fg);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  margin: var(--ds-space-1) 0 0;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.text {
+  margin: var(--ds-space-2) 0 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.comment {
+  margin: var(--ds-space-2) 0 0;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-left: 3px solid var(--tone-fg, var(--ds-border-strong));
+  background: var(--ds-bg-surface-sunken);
+  border-radius: 0 var(--ds-radius-md) var(--ds-radius-md) 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0 0 var(--ds-space-4);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+}

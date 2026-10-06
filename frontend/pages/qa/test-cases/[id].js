@@ -9,6 +9,7 @@ import { useToast } from '../../../lib/toast';
 import { REVIEW_STATUS, REVIEW_BADGE_STYLE, SUBMITTABLE_REVIEW_STATUSES } from '../../../lib/testCaseReview';
 import { formatCustomFieldValue } from '../../../lib/testCaseFields';
 import LoadingState from '../../../components/ui/LoadingState';
+import Breadcrumbs from '../../../components/ui/Breadcrumbs';
 
 const RESULT_OPTIONS = ['Passed', 'Failed', 'Blocked'];
 
@@ -121,6 +122,7 @@ export default function TestCaseDetail() {
 
   return (
     <AppShell>
+      <Breadcrumbs items={[{ label: 'Test Cases', href: '/qa/test-cases' }, { label: testCase.caseNumber || `#${testCase.id}` }]} />
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>
@@ -145,7 +147,7 @@ export default function TestCaseDetail() {
       {error && <div className={styles.error}>{error}</div>}
 
       <div className={styles.card}>
-        <h3 style={{ marginTop: 0, fontSize: '1rem' }}>PM Review</h3>
+        <h2 className={styles.cardTitle}>PM Review</h2>
         <p className={styles.issueMeta}>
           {testCase.reviewStatus === REVIEW_STATUS.DRAFT && 'Not yet submitted. Submit it to the Program Manager - runs can be recorded once it is approved.'}
           {testCase.reviewStatus === REVIEW_STATUS.PENDING &&
@@ -211,19 +213,19 @@ export default function TestCaseDetail() {
       <div className={styles.card}>
         {testCase.description && (
           <>
-            <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Description</p>
+            <h2 className={styles.cardTitle}>Description</h2>
             <p className={styles.issueMeta}>{testCase.description}</p>
           </>
         )}
         {testCase.preconditions && (
           <>
-            <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Preconditions</p>
+            <h2 className={styles.cardTitle}>Preconditions</h2>
             <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{testCase.preconditions}</p>
           </>
         )}
-        <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Steps</p>
+        <h2 className={styles.cardTitle}>Steps</h2>
         <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{testCase.steps}</p>
-        <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Expected Result</p>
+        <h2 className={styles.cardTitle}>Expected Result</h2>
         <p className={styles.issueMeta} style={{ whiteSpace: 'pre-wrap' }}>{testCase.expectedResult}</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
           <span className={styles.issueMeta}>Priority: {testCase.priority || '—'}</span>
@@ -248,7 +250,7 @@ export default function TestCaseDetail() {
 
       {canManage && testCase.reviewStatus === REVIEW_STATUS.READY && (
         <div className={styles.card}>
-          <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Record a Run</h3>
+          <h2 className={styles.cardTitle}>Record a Run</h2>
           <form onSubmit={handleRecordRun}>
             <div className={styles.field}>
               <label className={styles.label} htmlFor="result">Result</label>
@@ -291,7 +293,7 @@ export default function TestCaseDetail() {
       )}
 
       <div className={styles.card}>
-        <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Run History ({executions.length})</h3>
+        <h2 className={styles.cardTitle}>Run History ({executions.length})</h2>
         {executions.length === 0 && <p className={styles.issueMeta}>Never run yet.</p>}
         {executions.length > 0 && (
           <div className={styles.tableWrap}>

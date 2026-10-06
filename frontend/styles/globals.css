@@ -109,6 +109,9 @@
      and neutral panels. */
   --color-slate-tint: #f1ebe4;
   --status-open-tint: var(--color-slate-tint);
+  /* primary-50 is almost invisible on the warm canvas; 200 keeps In
+     Progress/Intervention tints readable (text on it: 4.99:1). */
+  --color-amber-tint: var(--ds-color-primary-200);
   --color-teal: var(--ds-color-success-dark);
   --color-moss: var(--ds-color-warning-dark);
   --color-red: var(--ds-color-error-dark);

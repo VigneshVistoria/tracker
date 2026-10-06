@@ -1103,3 +1103,146 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   outline-offset: -2px;
   border-radius: var(--ds-radius-sm);
 }
+
+/* ---------- Detail pages (task/issue/test case) ---------- */
+.cardTitle {
+  margin: 0 0 var(--ds-space-3);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+* + .cardTitle {
+  margin-top: var(--ds-space-5);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin: var(--ds-space-2) 0 var(--ds-space-2);
+}
+
+.statusChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--ds-space-3);
+  border-radius: var(--ds-radius-full);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  white-space: nowrap;
+}
+
+.metaItem {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+.metaItem + .metaItem::before {
+  content: '·';
+  margin-right: var(--ds-space-2);
+  color: var(--ds-text-muted);
+}
+.metaOverdue {
+  color: var(--ds-color-error-dark);
+  font-weight: var(--ds-weight-semibold);
+}
+
+/* "What needs me on this page" banner. Tone = icon + title text, never
+   colour alone. */
+.actionBanner {
+  --banner-bg: var(--ds-bg-surface);
+  --banner-fg: var(--ds-text-primary);
+  --banner-accent: var(--ds-border-strong);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  flex-wrap: wrap;
+  padding: var(--ds-space-4);
+  margin-bottom: var(--ds-space-4);
+  background: var(--banner-bg);
+  border: 1px solid var(--banner-accent);
+  border-left-width: 4px;
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-sm);
+  color: var(--banner-fg);
+}
+.actionBanner_info { --banner-bg: var(--ds-color-info-tint); --banner-fg: var(--ds-color-info-dark); --banner-accent: var(--ds-color-info); }
+.actionBanner_warning { --banner-bg: var(--ds-color-warning-tint); --banner-fg: var(--ds-color-warning-dark); --banner-accent: var(--ds-color-warning); }
+.actionBanner_error { --banner-bg: var(--ds-color-error-tint); --banner-fg: var(--ds-color-error-dark); --banner-accent: var(--ds-color-error); }
+.actionBanner_neutral { --banner-bg: var(--ds-bg-surface); --banner-fg: var(--ds-text-primary); --banner-accent: var(--ds-border-strong); }
+
+.actionBannerIcon {
+  flex-shrink: 0;
+}
+
+.actionBannerText {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--ds-text-sm);
+}
+.actionBannerText strong {
+  font-size: var(--ds-text-md);
+}
+
+/* Tabs (WAI-ARIA tablist; arrow keys move between tabs). */
+.tabs {
+  display: flex;
+  gap: var(--ds-space-1);
+  margin-bottom: var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border);
+  overflow-x: auto;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-4);
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: var(--ds-radius-sm) var(--ds-radius-sm) 0 0;
+}
+.tab:hover {
+  color: var(--ds-text-primary);
+}
+.tab:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+.tabActive {
+  color: var(--ds-text-primary);
+  border-bottom-color: var(--ds-color-primary-600);
+}
+
+.tabCount {
+  min-width: 20px;
+  padding: 0 var(--ds-space-1);
+  border-radius: var(--ds-radius-full);
+  background: var(--color-slate-tint);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-xs);
+  text-align: center;
+}
+
+/* Inline edit triggers in a page header (Edit Title, Edit Module/Phase) -
+   compact so they don't compete with the title. */
+.pageHeader .actions {
+  margin-top: var(--ds-space-1);
+}
+.pageHeader .actions .buttonSecondary {
+  min-height: 30px;
+  padding: 0 var(--ds-space-3);
+  font-size: var(--ds-text-xs);
+  box-shadow: none;
+}
