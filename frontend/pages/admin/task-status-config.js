@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 import { statusLabel } from '../../lib/taskTableShared';
+import LoadingState from '../../components/ui/LoadingState';
 
 export default function TaskStatusConfigPage() {
   const router = useRouter();
@@ -74,7 +75,7 @@ export default function TaskStatusConfigPage() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.tableWrap}>

@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { FIELD_TYPE, FIELD_TYPE_OPTIONS } from '../../../lib/testCaseFields';
 import { useConfirm } from '../../../lib/confirm';
+import LoadingState from '../../../components/ui/LoadingState';
 
 const EMPTY_FIELD = { name: '', fieldType: FIELD_TYPE.TEXT, optionsText: '', isRequired: false };
 
@@ -159,7 +160,7 @@ export default function TestCaseFieldsPage() {
       </div>
 
       {error && <div className={styles.error} role="alert">{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.card}>

@@ -5,6 +5,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import LoadingState from '../../components/ui/LoadingState';
 
 function ReviewCard({ issue, onDecide, deciding }) {
   let reasons = [];
@@ -117,7 +118,7 @@ export default function ShowstopperReviewPage() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && flagged.length === 0 && (
         <div className={styles.card}>

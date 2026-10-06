@@ -7,6 +7,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 
@@ -248,7 +249,7 @@ export default function ProjectPhasesPage() {
         </div>
       </div>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.tableWrap}>

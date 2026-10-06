@@ -19,6 +19,7 @@ import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel } from '../..
 import { formatDate } from '../../lib/formatDate';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -615,7 +616,7 @@ export default function TaskDetailPage() {
   if (!user || loading) {
     return (
       <AppShell>
-        <div className={styles.empty}>Loading...</div>
+        <LoadingState />
       </AppShell>
     );
   }

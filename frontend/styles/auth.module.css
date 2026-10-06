@@ -91,7 +91,7 @@
   transition: background 0.15s ease;
 }
 
-.button:hover { background: var(--color-amber-dark); }
+.button:hover { background: var(--ds-color-primary-700); }
 .button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .error {

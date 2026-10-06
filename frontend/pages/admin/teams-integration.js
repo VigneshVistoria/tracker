@@ -5,6 +5,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
+import LoadingState from '../../components/ui/LoadingState';
 
 export default function TeamsIntegrationPage() {
   const router = useRouter();
@@ -120,7 +121,7 @@ export default function TeamsIntegrationPage() {
 
       <div className={styles.card}>
         <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Connected channels</h3>
-        {loading && <div className={styles.empty}>Loading...</div>}
+        {loading && <LoadingState />}
         {!loading && subscriptions.length === 0 && <div className={styles.empty}>No channels connected yet.</div>}
         {subscriptions.map((s) => {
           const isExpired = new Date(s.expirationDateTime).getTime() <= Date.now();

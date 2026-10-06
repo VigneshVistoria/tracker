@@ -8,6 +8,7 @@ import { formatDateTime } from '../../../lib/formatDate';
 import { useToast } from '../../../lib/toast';
 import { REVIEW_STATUS, REVIEW_BADGE_STYLE, SUBMITTABLE_REVIEW_STATUSES } from '../../../lib/testCaseReview';
 import { formatCustomFieldValue } from '../../../lib/testCaseFields';
+import LoadingState from '../../../components/ui/LoadingState';
 
 const RESULT_OPTIONS = ['Passed', 'Failed', 'Blocked'];
 
@@ -106,7 +107,7 @@ export default function TestCaseDetail() {
     }
   };
 
-  if (loading) return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
+  if (loading) return <AppShell><LoadingState /></AppShell>;
   if (!testCase) {
     return (
       <AppShell>

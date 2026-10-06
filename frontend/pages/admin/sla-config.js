@@ -5,6 +5,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
+import LoadingState from '../../components/ui/LoadingState';
 
 const KEY_DESCRIPTIONS = {
   Showstopper: 'Applied whenever a ticket is marked Showstopper - overrides priority.',
@@ -83,7 +84,7 @@ export default function SlaConfigPage() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.tableWrap}>

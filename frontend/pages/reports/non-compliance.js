@@ -8,6 +8,7 @@ import nc from '../../styles/nonCompliance.module.css';
 import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 // Same tier as KPI Matrix (GET /kpi/report) - Admin/Executive/Program
 // Manager only. A developer never sees this report about themselves or
@@ -200,7 +201,7 @@ export default function NonComplianceReportPage() {
         </div>
       </div>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && report && (
         <>

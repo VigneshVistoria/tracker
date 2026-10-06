@@ -5,6 +5,7 @@ import DeveloperTaskWorkboard from '../../components/DeveloperTaskWorkboard';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
+import LoadingState from '../../components/ui/LoadingState';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 
@@ -67,7 +68,7 @@ export default function MyTasksPage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <DeveloperTaskWorkboard

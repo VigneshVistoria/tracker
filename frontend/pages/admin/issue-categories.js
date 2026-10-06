@@ -6,6 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 // Mirrors IssueCategoriesService.PROTECTED_NAMES on the backend exactly -
 // these two are matched by name (not id) in 3 other backend services
@@ -121,7 +122,7 @@ export default function IssueCategoriesPage() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.card}>
@@ -163,13 +164,15 @@ export default function IssueCategoriesPage() {
                         {category.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => handleToggleActive(category)}>
-                        {category.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => handleDelete(category)}>
-                        Delete
-                      </button>
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => handleToggleActive(category)}>
+                          {category.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => handleDelete(category)}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -5,6 +5,7 @@ import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
+import LoadingState from '../../../components/ui/LoadingState';
 
 export default function EditUser() {
   const router = useRouter();
@@ -109,7 +110,7 @@ export default function EditUser() {
   };
 
   if (loading) {
-    return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
+    return <AppShell><LoadingState /></AppShell>;
   }
 
   return (

@@ -15,6 +15,7 @@ import {
   formatDateTime,
   canEditDependency,
 } from '../../lib/dependencyStatus';
+import LoadingState from '../../components/ui/LoadingState';
 
 export default function DependencyDetailPage() {
   const router = useRouter();
@@ -69,7 +70,7 @@ export default function DependencyDetailPage() {
   };
 
   if (loading) {
-    return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
+    return <AppShell><LoadingState /></AppShell>;
   }
 
   if (!dependency) {

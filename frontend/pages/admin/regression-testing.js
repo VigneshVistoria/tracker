@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 import { getSocket } from '../../lib/socket';
+import LoadingState from '../../components/ui/LoadingState';
 
 function CheckRow({ check }) {
   const [expanded, setExpanded] = useState(!check.passed);
@@ -182,7 +183,7 @@ export default function RegressionTestingPage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
       {!loading && history.length === 0 && !running && (
         <div className={styles.empty}>No regression test runs yet - click "Run Regression Testing" above.</div>
       )}

@@ -7,6 +7,7 @@ import { apiFetch } from '../lib/api';
 import { useToast } from '../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
 import { formatDate } from '../lib/formatDate';
+import LoadingState from '../components/ui/LoadingState';
 
 function toDateInputValue(date) {
   return date.toISOString().slice(0, 10);
@@ -355,7 +356,7 @@ export default function TimeSheets() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <>

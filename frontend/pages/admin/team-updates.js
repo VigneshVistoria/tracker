@@ -8,6 +8,7 @@ import styles from '../../styles/dailyupdate.module.css';
 import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
+import LoadingState from '../../components/ui/LoadingState';
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -105,7 +106,7 @@ export default function TeamUpdatesPage() {
         </div>
       )}
 
-      {loading && <div className={issueStyles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && summary && summary.updates.length === 0 && (
         <div className={issueStyles.card}>

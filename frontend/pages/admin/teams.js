@@ -5,6 +5,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 export default function TeamsPage() {
   const confirmAction = useConfirm();
@@ -104,7 +105,7 @@ export default function TeamsPage() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.card}>
@@ -146,13 +147,15 @@ export default function TeamsPage() {
                         {team.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => handleToggleActive(team)}>
-                        {team.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => handleDelete(team)}>
-                        Delete
-                      </button>
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => handleToggleActive(team)}>
+                          {team.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => handleDelete(team)}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

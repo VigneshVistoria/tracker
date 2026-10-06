@@ -9,6 +9,7 @@ import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 // Program Manager only for now (built PM-first for review, 2026-09-26) -
 // widen together with ReleaseLogsController.assertIsPm and the AppShell
@@ -326,7 +327,7 @@ export default function ReleaseLogPage() {
         </form>
       )}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.tableWrap} style={{ marginBottom: 'var(--space-4)' }}>
@@ -376,7 +377,7 @@ export default function ReleaseLogPage() {
         <section className={styles.card} aria-labelledby="releaseDetailTitle">
           {detailError && <div className={styles.error} role="alert">{detailError}</div>}
 
-          {!selected && !detailError && <div className={styles.empty}>Loading...</div>}
+          {!selected && !detailError && <LoadingState />}
 
           {selected && (
             <>

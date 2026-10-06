@@ -9,6 +9,7 @@ import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
 import { useConfirm } from '../../../lib/confirm';
+import LoadingState from '../../../components/ui/LoadingState';
 
 const RISK_STYLE = {
   High: { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' },
@@ -429,7 +430,7 @@ export default function ProjectOverview() {
         </div>
       </div>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
       {error && <div className={styles.error}>{error}</div>}
 
       {overview && (

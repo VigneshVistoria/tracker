@@ -22,6 +22,7 @@ import {
   priorityRank, priorityTone, priorityLabel,
 } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
+import LoadingState from './ui/LoadingState';
 
 // Shared by the My Tasks page (pages/tasks/mine.js) and the Developer
 // Dashboard (components/DeveloperDashboard.js): the stat cards (My Tasks/
@@ -345,7 +346,7 @@ export default function DeveloperTaskWorkboard({
           <div className={dashboardStyles.sectionHeader}>
             <h2 className={dashboardStyles.sectionTitle}>{activeCardDef.label}</h2>
           </div>
-          {loading ? <div className={styles.empty}>Loading...</div> : activeCardDef.content}
+          {loading ? <LoadingState /> : activeCardDef.content}
         </>
       )}
 

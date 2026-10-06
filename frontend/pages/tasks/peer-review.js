@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { formatDate } from '../../lib/formatDate';
 import { isQaReviewOverdue } from '../../lib/developerTaskStats';
+import LoadingState from '../../components/ui/LoadingState';
 
 // Self-scoped to the current user as reviewer (TasksService.
 // findPeerReviewQueue()) - only Developer/Designer/DevOps can be picked
@@ -56,7 +57,7 @@ export default function PeerReviewQueuePage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && tasks.length === 0 && (
         <div className={styles.card}>

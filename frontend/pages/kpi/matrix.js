@@ -3,6 +3,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { formatDate } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -198,7 +199,7 @@ export default function KpiMatrix() {
           </div>
 
           {error && <div className={styles.error}>{error}</div>}
-          {loading && <div className={styles.empty}>Loading...</div>}
+          {loading && <LoadingState />}
 
           {!loading && !error && (
             <div className={styles.card}>

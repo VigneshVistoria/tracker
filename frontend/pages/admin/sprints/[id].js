@@ -6,6 +6,7 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
+import LoadingState from '../../../components/ui/LoadingState';
 
 const STATUS_OPTIONS = ['Planned', 'Active', 'Completed'];
 
@@ -180,7 +181,7 @@ export default function SprintDetailPage() {
   };
 
   if (loading) {
-    return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
+    return <AppShell><LoadingState /></AppShell>;
   }
 
   if (!sprint) {

@@ -7,6 +7,7 @@ import StatCard from '../components/ui/StatCard';
 import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 import { formatDate } from '../lib/formatDate';
+import LoadingState from '../components/ui/LoadingState';
 
 const PERIOD_OPTIONS = [
   { value: 'day', label: 'Daily' },
@@ -195,7 +196,7 @@ export default function PerformanceDashboard() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && dashboard && (
         <>

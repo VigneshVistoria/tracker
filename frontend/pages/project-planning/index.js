@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 const STATUS_OPTIONS = ['ToDo', 'In Progress', 'Completed', 'Delayed'];
@@ -342,7 +343,7 @@ export default function ProjectPlanningPage() {
         </div>
       </div>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.tableWrap}>
@@ -390,16 +391,18 @@ export default function ProjectPlanningPage() {
                   </td>
                   <td><ProgressBar percent={entry.percentComplete} /></td>
                   {canManage && (
-                    <td style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                      <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(entry)}>Edit</button>
-                      <button
-                        className={styles.buttonSecondary}
-                        type="button"
-                        disabled={busyId === entry.id}
-                        onClick={() => handleToggleActive(entry)}
-                      >
-                        {entry.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                        <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(entry)}>Edit</button>
+                        <button
+                          className={styles.buttonSecondary}
+                          type="button"
+                          disabled={busyId === entry.id}
+                          onClick={() => handleToggleActive(entry)}
+                        >
+                          {entry.isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>

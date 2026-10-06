@@ -14,6 +14,7 @@ import {
   statusBucketStyle,
   dueMeta,
 } from '../../lib/dependencyStatus';
+import LoadingState from '../../components/ui/LoadingState';
 
 const ALL_VIEW_ROLES = ['admin', 'program_manager', 'executive'];
 
@@ -426,7 +427,7 @@ export default function DependenciesInboxPage() {
         ))}
       </div>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && list.length === 0 && (
         <div className={styles.card}>

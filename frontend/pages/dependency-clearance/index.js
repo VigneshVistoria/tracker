@@ -6,6 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { formatDate } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 const VIEW_ROLES = DEVELOPER_EQUIVALENT_ROLES;
 
@@ -51,7 +52,7 @@ export default function DependencyClearancePage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && tickets.length === 0 && (
         <div className={styles.card}>

@@ -6,6 +6,7 @@ import styles from '../../../styles/issues.module.css';
 import { apiFetch } from '../../../lib/api';
 import { getSocket } from '../../../lib/socket';
 import { useToast } from '../../../lib/toast';
+import LoadingState from '../../../components/ui/LoadingState';
 
 export default function UsersList() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function UsersList() {
       {error && <div className={styles.error}>{error}</div>}
 
       <div className={styles.card}>
-        {loading && <div className={styles.empty}>Loading...</div>}
+        {loading && <LoadingState />}
         {!loading && users.length === 0 && <div className={styles.empty}>No users yet.</div>}
 
         {users.map((u) => (

@@ -12,6 +12,7 @@ import { stripHtmlForPreview } from '../../lib/richText';
 import { priorityTone, priorityLabel, statusBadgeStyle, statusLabel } from '../../lib/taskTableShared';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { useConfirm } from '../../lib/confirm';
+import LoadingState from '../../components/ui/LoadingState';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -318,7 +319,7 @@ export default function TaskBacklogPage() {
         Show Hold/Closed
       </label>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.tableWrap}>
@@ -370,52 +371,54 @@ export default function TaskBacklogPage() {
                     <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status)}</span>
                   </td>
                   {(canManage || canManageHoldClosed) && (
-                    <td style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                      {canManage && (
-                        <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>
-                          Edit
-                        </button>
-                      )}
-                      {canManageHoldClosed && task.status === 'Hold' && (
-                        <>
-                          <button
-                            className={styles.buttonSecondary}
-                            type="button"
-                            disabled={actingOnId === task.id}
-                            onClick={() => handleRelease(task)}
-                          >
-                            Release
+                    <td>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {canManage && (
+                          <button className={styles.buttonSecondary} type="button" onClick={() => startEdit(task)}>
+                            Edit
                           </button>
-                          <button
-                            className={styles.buttonSecondary}
-                            type="button"
-                            disabled={actingOnId === task.id}
-                            onClick={() => handleClose(task)}
-                          >
-                            Close
-                          </button>
-                        </>
-                      )}
-                      {canManageHoldClosed && task.status !== 'Hold' && task.status !== 'Closed' && (
-                        <>
-                          <button
-                            className={styles.buttonSecondary}
-                            type="button"
-                            disabled={actingOnId === task.id}
-                            onClick={() => handleHold(task)}
-                          >
-                            Hold
-                          </button>
-                          <button
-                            className={styles.buttonSecondary}
-                            type="button"
-                            disabled={actingOnId === task.id}
-                            onClick={() => handleClose(task)}
-                          >
-                            Close
-                          </button>
-                        </>
-                      )}
+                        )}
+                        {canManageHoldClosed && task.status === 'Hold' && (
+                          <>
+                            <button
+                              className={styles.buttonSecondary}
+                              type="button"
+                              disabled={actingOnId === task.id}
+                              onClick={() => handleRelease(task)}
+                            >
+                              Release
+                            </button>
+                            <button
+                              className={styles.buttonSecondary}
+                              type="button"
+                              disabled={actingOnId === task.id}
+                              onClick={() => handleClose(task)}
+                            >
+                              Close
+                            </button>
+                          </>
+                        )}
+                        {canManageHoldClosed && task.status !== 'Hold' && task.status !== 'Closed' && (
+                          <>
+                            <button
+                              className={styles.buttonSecondary}
+                              type="button"
+                              disabled={actingOnId === task.id}
+                              onClick={() => handleHold(task)}
+                            >
+                              Hold
+                            </button>
+                            <button
+                              className={styles.buttonSecondary}
+                              type="button"
+                              disabled={actingOnId === task.id}
+                              onClick={() => handleClose(task)}
+                            >
+                              Close
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>

@@ -15,6 +15,7 @@ import {
   REVIEW_BADGE_STYLE,
   SUBMITTABLE_REVIEW_STATUSES,
 } from '../../../lib/testCaseReview';
+import LoadingState from '../../../components/ui/LoadingState';
 
 const STATUS_OPTIONS = ['Active', 'Deprecated'];
 
@@ -419,7 +420,7 @@ export default function TestCasesList() {
       )}
 
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && testCases.length === 0 && (
         <div className={styles.card}>

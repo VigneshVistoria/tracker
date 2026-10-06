@@ -4,6 +4,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 function Section({ title, children }) {
   return (
@@ -225,7 +226,7 @@ export default function WeeklyReportsPage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
       {!loading && history.length === 0 && (
         <div className={styles.empty}>No reports yet - click "Generate Report Now" above.</div>
       )}

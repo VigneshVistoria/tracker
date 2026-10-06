@@ -1,63 +1,91 @@
 .pageHeader {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
+  gap: var(--ds-space-4);
+  margin-bottom: var(--ds-space-6);
   flex-wrap: wrap;
 }
 
 .pageTitle {
-  font-size: 1.5rem;
-  margin: 0 0 var(--space-1);
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-weight-bold);
+  line-height: var(--ds-leading-tight);
+  color: var(--ds-text-primary);
+  margin: 0 0 var(--ds-space-1);
 }
 
 .pageSubtitle {
-  color: var(--color-slate);
-  font-size: 0.9rem;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-md);
+  line-height: var(--ds-leading-normal);
   margin: 0;
+  max-width: 72ch;
 }
 
+/* Default button = high-contrast ink chip. Inverts with the theme
+   (dark-brown on warm, cream on dark), so the text/background pairing
+   always passes AA in both. */
 .button {
-  padding: 0.6rem 1.1rem;
-  border: none;
-  border-radius: var(--radius-md);
-  /* Fixed dark chip in both themes - not --color-ink (theme-aware text
-     color, would go light-on-light in dark mode). */
-  background: var(--ds-color-gray-900);
-  color: #fff;
-  font-size: 0.9rem;
-  font-weight: 600;
+  min-height: 38px;
+  padding: 0 var(--ds-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-text-primary);
+  color: var(--ds-bg-surface);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  line-height: 1.2;
   cursor: pointer;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  transition: background 0.15s ease;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  white-space: nowrap;
+  box-shadow: var(--ds-shadow-xs);
+  transition: background-color var(--ds-transition-fast), border-color var(--ds-transition-fast),
+    box-shadow var(--ds-transition-fast), transform var(--ds-transition-fast);
 }
-.button:hover { background: var(--ds-color-gray-700); }
+.button:hover { background: var(--ds-text-secondary); }
+.button:active:not(:disabled) { transform: translateY(1px); }
+.button:focus-visible { outline: none; box-shadow: var(--ds-shadow-focus); }
 .button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .buttonAccent {
-  background: var(--color-amber);
-  color: #fff;
+  /* Self-sufficient: many pages use a variant class without .button. */
+  composes: button;
+  background: var(--ds-color-primary-600);
+  color: var(--ds-text-on-primary);
 }
-.buttonAccent:hover { background: var(--color-amber-dark); }
+.buttonAccent:hover { background: var(--ds-color-primary-700); }
 
 .buttonSecondary {
-  background: var(--color-surface);
-  color: var(--color-ink);
-  border: 1px solid var(--color-border);
+  composes: button;
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-strong);
 }
-.buttonSecondary:hover { border-color: var(--color-border-strong); background: var(--color-paper); }
+.buttonSecondary:hover { border-color: var(--ds-text-secondary); background: var(--ds-bg-surface-sunken); }
+
+/* Compact in-row actions (Deactivate/Delete inside table cells). */
+.table .button,
+.table .buttonSecondary,
+.table .buttonAccent {
+  min-height: 30px;
+  padding: 0 var(--ds-space-3);
+  font-size: var(--ds-text-xs);
+  box-shadow: none;
+}
 
 .card {
-  background: var(--color-surface);
-  padding: var(--space-5);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm);
-  margin-bottom: var(--space-4);
+  background: var(--ds-bg-surface);
+  padding: var(--ds-space-5);
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid var(--ds-border);
+  box-shadow: var(--ds-shadow-sm);
+  margin-bottom: var(--ds-space-4);
 }
 
 /* ---------- Issue rows: status shown as a left rail, the app's signature ---------- */
@@ -77,8 +105,12 @@
   transition: box-shadow 0.15s ease, transform 0.1s ease;
 }
 .issueRow:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--ds-shadow-md);
   transform: translateY(-1px);
+}
+.issueRow:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
 }
 .issueRow.railOpen { border-left-color: var(--status-open); }
 .issueRow.railInProgress { border-left-color: var(--status-inprogress); }
@@ -127,12 +159,13 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 }
 
 .badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  line-height: 1.5;
+  padding: 2px var(--ds-space-3);
+  border-radius: var(--ds-radius-full);
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -245,33 +278,46 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 
 .label {
   display: block;
-  margin-bottom: var(--space-2);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--color-ink-soft);
+  margin-bottom: var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
 }
 
 .helpText {
-  font-size: 0.78rem;
-  color: var(--color-slate);
-  margin-top: var(--space-1);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  margin-top: var(--ds-space-1);
 }
 
 .input, .textarea, .select {
   width: 100%;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: 0.95rem;
+  min-height: 40px;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-base);
   box-sizing: border-box;
   font-family: inherit;
-  background: var(--color-surface);
-  color: var(--color-ink);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  transition: border-color var(--ds-transition-fast), box-shadow var(--ds-transition-fast);
+}
+.input::placeholder, .textarea::placeholder {
+  color: var(--ds-text-muted);
+}
+.input:hover, .textarea:hover, .select:hover {
+  border-color: var(--ds-text-secondary);
 }
 .input:focus, .textarea:focus, .select:focus {
   outline: none;
-  border-color: var(--color-amber);
-  box-shadow: 0 0 0 3px var(--color-amber-tint);
+  border-color: var(--ds-border-focus);
+  box-shadow: var(--ds-shadow-focus);
+}
+.input:disabled, .textarea:disabled, .select:disabled {
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-secondary);
+  cursor: not-allowed;
 }
 
 .textarea {
@@ -280,38 +326,45 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 }
 
 .error {
-  background: var(--color-red-tint);
-  color: var(--color-red-dark);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  margin-bottom: var(--space-4);
-  border-left: 3px solid var(--color-red);
+  background: var(--ds-color-error-tint);
+  color: var(--ds-color-error-dark);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  margin-bottom: var(--ds-space-4);
+  border: 1px solid var(--ds-color-error);
+  border-left-width: 4px;
 }
 
 .successBanner {
-  background: var(--color-teal-tint);
-  color: var(--color-teal-dark);
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  margin-bottom: var(--space-4);
-  border-left: 3px solid var(--color-teal);
+  background: var(--ds-color-success-tint);
+  color: var(--ds-color-success-dark);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  margin-bottom: var(--ds-space-4);
+  border: 1px solid var(--ds-color-success);
+  border-left-width: 4px;
 }
 
 .empty {
   text-align: center;
-  color: var(--color-slate);
-  padding: var(--space-6) 0;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+  padding: var(--ds-space-8) var(--ds-space-4);
 }
 
 .backLink {
-  color: var(--color-ink-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  color: var(--ds-text-link);
   text-decoration: none;
-  font-size: 0.88rem;
-  font-weight: 500;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  border-radius: var(--ds-radius-sm);
 }
-.backLink:hover { color: var(--color-ink); }
+.backLink:hover { color: var(--ds-text-link-hover); text-decoration: underline; }
 
 .actions {
   display: flex;
@@ -362,14 +415,15 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 /* ---------- Filterable table ---------- */
 .filterBar {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--ds-space-3);
   flex-wrap: wrap;
   align-items: flex-end;
-  margin-bottom: var(--space-4);
-  padding: var(--space-4);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  margin-bottom: var(--ds-space-4);
+  padding: var(--ds-space-4);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-xs);
 }
 
 .filterGroup {
@@ -380,24 +434,28 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 }
 
 .filterLabel {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-slate);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
 }
 
 .filterSelect {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  background: var(--color-surface);
-  color: var(--color-ink);
+  min-height: 36px;
+  padding: var(--ds-space-1) var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+}
+.filterSelect:hover {
+  border-color: var(--ds-text-secondary);
 }
 .filterSelect:focus {
   outline: none;
-  border-color: var(--color-amber);
+  border-color: var(--ds-border-focus);
+  box-shadow: var(--ds-shadow-focus);
 }
 
 .dateFieldWrap {
@@ -424,42 +482,55 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 }
 
 .searchInput {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
+  min-height: 36px;
+  padding: var(--ds-space-1) var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
   min-width: 200px;
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+}
+.searchInput::placeholder {
+  color: var(--ds-text-muted);
+}
+.searchInput:focus {
+  outline: none;
+  border-color: var(--ds-border-focus);
+  box-shadow: var(--ds-shadow-focus);
 }
 
 .tableWrap {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
   overflow-x: auto;
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.87rem;
+  font-size: var(--ds-text-sm);
   min-width: 760px;
+  color: var(--ds-text-primary);
 }
 
 .table th {
   text-align: left;
-  padding: var(--space-3) var(--space-4);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-slate);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-surface-sunken);
+  border-bottom: 1px solid var(--ds-border);
   white-space: nowrap;
 }
 
 .table td {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border);
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -500,7 +571,7 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   transition: background 0.1s ease;
 }
 .table tbody tr:hover {
-  background: var(--color-paper);
+  background: var(--ds-bg-surface-sunken);
 }
 .table tbody tr:last-child td {
   border-bottom: none;
@@ -538,10 +609,10 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   text-overflow: ellipsis;
 }
 
-/* My Tasks has 10 columns, too many to stay readable on a phone screen
+/* My Tasks has 10 columns, too many to stay readable on a tablet/phone screen
    even with horizontal scroll; hide the least essential ones there and
    rely on the row's "Open" link for full detail. */
-@media (max-width: 860px) {
+@media (max-width: 1024px) {
   .table th.hideOnMobile,
   .table td.hideOnMobile {
     display: none;
@@ -701,7 +772,7 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   outline-offset: 1px;
 }
 
-@media (max-width: 700px) {
+@media (max-width: 640px) {
   .filterBar {
     flex-direction: column;
     align-items: stretch;
@@ -815,28 +886,39 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 /* ---------- Team Tasks: table/tile view toggle ---------- */
 .viewToggle {
   display: inline-flex;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ds-bg-surface-sunken);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
 }
 .viewToggleButton {
-  padding: 0.45rem 0.8rem;
+  min-height: 30px;
+  padding: 0 var(--ds-space-3);
   border: none;
-  background: var(--color-surface);
-  color: var(--color-ink-soft);
-  font-size: 0.82rem;
-  font-weight: 600;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font-family: inherit;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--ds-space-1);
+  transition: background-color var(--ds-transition-fast), color var(--ds-transition-fast);
 }
-.viewToggleButton + .viewToggleButton {
-  border-left: 1px solid var(--color-border);
+.viewToggleButton:hover {
+  color: var(--ds-text-primary);
+}
+.viewToggleButton:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
 }
 .viewToggleButton.viewToggleActive {
-  background: var(--color-ink);
-  color: var(--color-surface);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 /* ---------- Team Tasks: tile/card view ---------- */

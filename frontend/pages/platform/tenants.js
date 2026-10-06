@@ -5,6 +5,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDateTime } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 const EMPTY_FORM = { name: '', subdomain: '', adminEmail: '', adminFullName: '' };
 
@@ -64,7 +65,7 @@ export default function PlatformTenantsPage() {
   };
 
   if (!authorized) {
-    return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
+    return <AppShell><LoadingState /></AppShell>;
   }
 
   return (
@@ -154,7 +155,7 @@ export default function PlatformTenantsPage() {
       </div>
 
       <h3 style={{ fontSize: '1rem' }}>Existing tenants ({tenants.length})</h3>
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
       {!loading && tenants.length === 0 && (
         <div className={styles.card}>
           <div className={styles.empty}>No tenants yet.</div>

@@ -102,12 +102,22 @@
    fills, and fall under 4.5:1 as small text on white - legacy status
    colours are used as text all over, so point them at the -dark steps. */
 :root[data-theme='warm'] {
+  /* Legacy "slate" is mostly used as secondary text; the cool gray-500
+     clashes with the warm palette and is <4.5:1 on its canvas. */
+  --color-slate: var(--ds-text-secondary);
+  /* Warm neutral tint (was cool gray-100) for Backlog/Development tints
+     and neutral panels. */
+  --color-slate-tint: #f1ebe4;
+  --status-open-tint: var(--color-slate-tint);
   --color-teal: var(--ds-color-success-dark);
   --color-moss: var(--ds-color-warning-dark);
   --color-red: var(--ds-color-error-dark);
 }
 
 :root[data-theme='dark'] {
+  --color-slate: var(--ds-text-secondary);
+  /* Used as text on tints (badges) - the base primary-700 is too dark here. */
+  --color-amber-dark: var(--ds-color-primary-400);
   /* Status colours are used as text on dark surfaces - the base steps
      (gray-500, primary-600) are too dark for that here (<4.5:1). */
   --status-open: var(--ds-color-gray-400);

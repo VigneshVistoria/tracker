@@ -34,6 +34,6 @@
   color: var(--ds-color-info-dark);
 }
 .neutral {
-  background: var(--ds-color-gray-100);
-  color: var(--ds-color-gray-600);
+  background: var(--color-slate-tint);
+  color: var(--ds-text-secondary);
 }

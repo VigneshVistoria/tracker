@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
 import { formatDate } from '../../../lib/formatDate';
+import LoadingState from '../../../components/ui/LoadingState';
 
 const STATUS_BADGE_STYLE = {
   Planned: { background: 'var(--color-slate-tint, #eef0f2)', color: 'var(--color-ink-soft)' },
@@ -181,7 +182,7 @@ export default function SprintsListPage() {
 
       <div className={styles.card}>
         <h3 style={{ marginTop: 0, fontSize: '1rem' }}>Sprints for this project</h3>
-        {loading && <div className={styles.empty}>Loading...</div>}
+        {loading && <LoadingState />}
         {!loading && sprints.length === 0 && <div className={styles.empty}>No sprints yet for this project.</div>}
         {sprints.map((s) => (
           <Link key={s.id} href={`/admin/sprints/${s.id}`} className={styles.issueRow}>

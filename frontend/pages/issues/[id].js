@@ -9,6 +9,7 @@ import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, SELF_SERVICE_TRANSITIONS, MODE_OPTIONS } from '../../lib/status';
 import { formatDateTime } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 // Mirrors backend/src/evidence/evidence.entity.ts's EvidenceType enum -
 // keep these in sync if that enum ever changes.
@@ -393,7 +394,7 @@ export default function IssueDetail() {
   };
 
   if (loading) {
-    return <AppShell><div className={styles.empty}>Loading...</div></AppShell>;
+    return <AppShell><LoadingState /></AppShell>;
   }
 
   if (!issue) {

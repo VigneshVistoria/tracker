@@ -9,6 +9,7 @@ import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets, getIssueMoveAction } from '../../lib/status';
 import { formatDate } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 const MOVE_ACTION_TO_REQUEST = {
   patch: (id, targetStatus) => ({ path: `/issues/${id}`, options: { method: 'PATCH', body: JSON.stringify({ status: targetStatus }) } }),
@@ -205,17 +206,19 @@ export default function IssuesList() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+      <div className={styles.viewToggle} role="group" aria-label="View" style={{ marginBottom: 'var(--ds-space-3)' }}>
         <button
           type="button"
-          className={viewMode === 'table' ? styles.button : styles.buttonSecondary}
+          className={`${styles.viewToggleButton} ${viewMode === 'table' ? styles.viewToggleActive : ''}`}
+          aria-pressed={viewMode === 'table'}
           onClick={() => setViewMode('table')}
         >
           Table
         </button>
         <button
           type="button"
-          className={viewMode === 'board' ? styles.button : styles.buttonSecondary}
+          className={`${styles.viewToggleButton} ${viewMode === 'board' ? styles.viewToggleActive : ''}`}
+          aria-pressed={viewMode === 'board'}
           onClick={() => setViewMode('board')}
         >
           Board
@@ -260,7 +263,7 @@ export default function IssuesList() {
         </div>
       </div>
 
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && viewMode === 'table' && visibleIssues.length === 0 && (
         <div className={styles.card}>

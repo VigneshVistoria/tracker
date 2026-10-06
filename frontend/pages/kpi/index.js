@@ -3,6 +3,7 @@ import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { formatDate } from '../../lib/formatDate';
+import LoadingState from '../../components/ui/LoadingState';
 
 const PERIOD_OPTIONS = [
   { value: 'daily', label: 'Daily' },
@@ -165,7 +166,7 @@ export default function KpiDashboard() {
 
       {generateMessage && <div className={styles.empty}>{generateMessage}</div>}
       {error && <div className={styles.error}>{error}</div>}
-      {loading && <div className={styles.empty}>Loading...</div>}
+      {loading && <LoadingState />}
 
       {!loading && (
         <div className={styles.card}>

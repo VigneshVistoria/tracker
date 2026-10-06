@@ -34,3 +34,17 @@
     animation: none;
   }
 }
+
+.loadingState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-4) 0;
+}
+
+.loadingRow {
+  display: block;
+  border-radius: var(--ds-radius-md);
+}
+.loadingRow:nth-child(3) { width: 92%; }
+.loadingRow:nth-child(4) { width: 80%; }

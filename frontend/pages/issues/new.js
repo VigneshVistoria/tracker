@@ -185,7 +185,7 @@ export default function NewIssue() {
         {error && <div className={styles.error}>{error}</div>}
 
         {isProgramManager && (
-          <div className={styles.field} style={{ background: 'var(--color-slate-tint, #eef0f2)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}>
+          <div className={styles.field} style={{ background: 'var(--ds-bg-surface-sunken)', border: '1px solid var(--ds-border)', padding: 'var(--ds-space-4)', borderRadius: 'var(--ds-radius-md)' }}>
             <label className={styles.label} htmlFor="keyword">AI Assist &mdash; generate from a keyword</label>
             <p className={styles.helpText} style={{ marginTop: 0 }}>
               Type a short phrase (e.g. "create login page") and generate a draft User Story, Acceptance Criteria, and
