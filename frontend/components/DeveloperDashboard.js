@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import AppShell from './AppShell';
 import DeveloperTaskWorkboard from './DeveloperTaskWorkboard';
+import { DashboardHeader } from './dashboard/DashboardParts';
 import issueStyles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 
@@ -38,14 +39,7 @@ export default function DeveloperDashboard({ user }) {
 
   return (
     <AppShell>
-      <div className={issueStyles.pageHeader}>
-        <div>
-          <h1 className={issueStyles.pageTitle}>
-            Welcome{user.fullName ? `, ${user.fullName.split(' ')[0]}` : ''}
-          </h1>
-          <p className={issueStyles.pageSubtitle}>Here&rsquo;s what&rsquo;s on your plate right now.</p>
-        </div>
-      </div>
+      <DashboardHeader user={user} summary="Here’s what’s on your plate right now." />
 
       {error && <div className={issueStyles.error}>{error}</div>}
 

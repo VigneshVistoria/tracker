@@ -37,16 +37,16 @@
 .statCard.accentNeutral .statValue { color: var(--color-ink); }
 
 .statValue {
-  font-family: var(--font-mono);
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--color-ink);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-primary);
   line-height: 1;
 }
 
 .statLabel {
-  font-size: 0.82rem;
-  color: var(--color-slate);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
   margin-top: var(--space-2);
 }
 
@@ -62,22 +62,52 @@
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.1s ease;
 }
-.statCardButton:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.statCardButton:focus-visible { outline: 2px solid var(--color-ink); outline-offset: 2px; }
-.statCard.expanded { border-left-width: 6px; }
+.statCardButton { border-radius: var(--ds-radius-lg); }
+.statCardButton:hover .statCard { box-shadow: var(--ds-shadow-md); border-color: var(--ds-border-strong); }
+.statCardButton:hover { transform: translateY(-1px); }
+.statCardButton:focus-visible { outline: none; box-shadow: var(--ds-shadow-focus); }
+/* Selected drill-down card: tinted surface + accent border (not colour
+   alone - aria-expanded carries the state for assistive tech). */
+.statCard.expanded {
+  background: var(--ds-sidebar-active-bg);
+  border-color: var(--ds-color-primary-600);
+}
 
 /* Developer Dashboard only (DeveloperDashboard.js) - applied alongside
    .statCard/.statValue/.statLabel, never replacing them, so the default
    dashboard's own stat cards (pages/dashboard.js) are unaffected. */
 .statCardCompact {
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-4);
 }
 .statValueCompact {
-  font-size: 1.25rem;
+  font-size: var(--ds-text-2xl);
 }
 .statLabelCompact {
-  font-size: 0.72rem;
-  margin-top: 2px;
+  font-size: var(--ds-text-sm);
+  margin-top: var(--ds-space-1);
+}
+.statCardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-secondary);
+}
+.statCardIconAlert {
+  background: var(--ds-color-error-tint);
+  color: var(--ds-color-error-dark);
+}
+/* Drill-down card grid: cards keep a natural width instead of stretching
+   two cards across the whole page. */
+.statsGridCompact {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 }
 
 /* Team Tasks only (TeamTaskWorkboard.js) - one thin card divided into

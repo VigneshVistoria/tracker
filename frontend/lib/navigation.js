@@ -64,6 +64,8 @@ export const NAV_SECTIONS = [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: [ADMIN, PM, EXEC, QA, CLIENT] },
       // Client sees only their own tasks - /tasks/mine self-scopes for everyone.
       { href: '/tasks/mine', label: 'My Tasks', icon: ListTodo, roles: [ADMIN, PM, EXEC, QA, CLIENT], countKey: 'myTasks' },
+      // Clients only ever see their own tickets, so it lives under My Work for them.
+      { href: '/issues', label: 'My Tickets', icon: Ticket, roles: [CLIENT] },
       // QA sees their own defects; Admin/PM see every QA person's
       // (TasksService.findDefectQueue()).
       { href: '/tasks/my-defects', label: 'My Defects', icon: Bug, roles: [ADMIN, PM, QA], countKey: 'myDefects' },
@@ -83,7 +85,6 @@ export const NAV_SECTIONS = [
       // Matches TasksController.ROLES_ALLOWED_TO_VIEW_QA_QUEUE.
       { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical, roles: [ADMIN, PM, EXEC, QA], countKey: 'qaReview' },
       { href: '/issues', label: 'Issues', icon: Ticket, roles: [ADMIN, PM, QA] },
-      { href: '/issues', label: 'My Tickets', icon: Ticket, roles: [CLIENT] },
       { href: '/dependencies', label: 'Dependency', icon: Workflow, roles: [ADMIN, PM, EXEC, QA] },
     ],
   },

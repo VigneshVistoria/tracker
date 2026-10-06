@@ -156,7 +156,7 @@ export default function AppShell({ children, fullScreen = false }) {
     }
     if (visibleCountKeys.has('qaReview')) {
       apiFetch('/tasks/qa-queue')
-        .then((queue) => !cancelled && setNavCounts((prev) => ({ ...prev, qaReview: queue.length })))
+        .then((queue) => !cancelled && setNavCounts((prev) => ({ ...prev, qaReview: queue.statCounts.pending })))
         .catch(() => {});
     }
     // statCounts.pending is the same "open" definition QaReviewWorkboard's

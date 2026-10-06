@@ -3,6 +3,12 @@ import Link from 'next/link';
 import {
   Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, Flag,
   ChevronDown, ChevronUp,
+  ListTodo,
+  XCircle,
+  ArrowDownLeft,
+  ArrowUpRight,
+  CalendarX,
+  Bug,
 } from 'lucide-react';
 import Table from './ui/Table';
 import Badge from './ui/Badge';
@@ -34,6 +40,17 @@ import { formatDate } from '../lib/formatDate';
 // the color language stays consistent. Development has no entry - it's
 // the neutral/no-highlight baseline.
 const ROW_TINT_CLASS = buildRowTintClass(styles);
+
+const CARD_ICONS = {
+  myTasks: ListTodo,
+  rejected: XCircle,
+  inbound: ArrowDownLeft,
+  outbound: ArrowUpRight,
+  overdue: CalendarX,
+  defects: Bug,
+};
+// Cards whose non-zero count is a problem - their icon gets the error tint.
+const ALERT_CARDS = ['rejected', 'overdue'];
 
 function ProgressBar({ percent }) {
   if (percent === null || percent === undefined) {
@@ -273,23 +290,34 @@ export default function DeveloperTaskWorkboard({
   return (
     <>
       {showCards && (
-        <div className={dashboardStyles.statsGrid}>
-          {visibleCards.map((card) => (
-            <button
-              key={card.key}
-              type="button"
-              className={dashboardStyles.statCardButton}
-              aria-expanded={activeCard === card.key}
-              onClick={() => handleCardClick(card)}
-            >
-              <div
-                className={`${dashboardStyles.statCard} ${dashboardStyles.statCardCompact} ${activeCard === card.key ? dashboardStyles.expanded : ''}`}
+        <div className={`${dashboardStyles.statsGrid} ${dashboardStyles.statsGridCompact}`}>
+          {visibleCards.map((card) => {
+            const Icon = CARD_ICONS[card.key];
+            const alert = ALERT_CARDS.includes(card.key) && card.count > 0;
+            return (
+              <button
+                key={card.key}
+                type="button"
+                className={dashboardStyles.statCardButton}
+                aria-expanded={activeCard === card.key}
+                onClick={() => handleCardClick(card)}
               >
-                <div className={`${dashboardStyles.statValue} ${dashboardStyles.statValueCompact}`}>{loading ? '–' : card.count}</div>
-                <div className={`${dashboardStyles.statLabel} ${dashboardStyles.statLabelCompact}`}>{card.label}</div>
-              </div>
-            </button>
-          ))}
+                <div
+                  className={`${dashboardStyles.statCard} ${dashboardStyles.statCardCompact} ${activeCard === card.key ? dashboardStyles.expanded : ''}`}
+                >
+                  {Icon && (
+                    <span className={`${dashboardStyles.statCardIcon} ${alert ? dashboardStyles.statCardIconAlert : ''}`} aria-hidden="true">
+                      <Icon size={18} />
+                    </span>
+                  )}
+                  <div>
+                    <div className={`${dashboardStyles.statValue} ${dashboardStyles.statValueCompact}`}>{loading ? '–' : card.count}</div>
+                    <div className={`${dashboardStyles.statLabel} ${dashboardStyles.statLabelCompact}`}>{card.label}</div>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
 
