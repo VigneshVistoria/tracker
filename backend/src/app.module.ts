@@ -23,6 +23,12 @@ import { SlaConfig } from './sla/sla-config.entity';
 import { PerformanceScoringConfig } from './performance-scoring/performance-scoring-config.entity';
 import { OverduePenaltyTier } from './performance-scoring/overdue-penalty-tier.entity';
 import { Tenant } from './tenants/tenant.entity';
+import { Client } from './client-portal/client.entity';
+import { ClientUser } from './client-portal/client-user.entity';
+import { ClientTeamMember } from './client-portal/client-team-member.entity';
+import { ClientTicket } from './client-portal/client-ticket.entity';
+import { ClientRequest } from './client-portal/client-request.entity';
+import { ClientPortalModule } from './client-portal/client-portal.module';
 import { TimeEntry } from './time-sheets/time-entry.entity';
 import { IssueCategoryOption } from './issue-categories/issue-category.entity';
 import { Team } from './teams/team.entity';
@@ -144,6 +150,11 @@ import { SearchModule } from './search/search.module';
           RolePermission,
           Release,
           ReleaseItem,
+          Client,
+          ClientUser,
+          ClientTeamMember,
+          ClientTicket,
+          ClientRequest,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
@@ -155,6 +166,7 @@ import { SearchModule } from './search/search.module';
     }),
     UsersModule,
     AuthModule,
+    ClientPortalModule,
     IssuesModule,
     ProjectsModule,
     DailyUpdatesModule,

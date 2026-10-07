@@ -7,6 +7,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ClientAccessService } from '../client-portal/client-access.service';
 
 function tenantRoom(tenantId: number): string {
   return `tenant:${tenantId}`;
@@ -27,7 +28,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(EventsGateway.name);
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private clientAccess: ClientAccessService,
+  ) {}
 
   // Every real-time payload below carries data belonging to exactly one
   // tenant, so a client must prove which tenant it belongs to before it
@@ -35,22 +39,35 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // (resolved from the same JWT used for REST auth) instead of the old
   // global broadcast, which would otherwise leak live updates across
   // tenants. Connections that don't present a valid token are dropped.
-  handleConnection(client: Socket) {
+  async handleConnection(client: Socket) {
     const token = client.handshake.auth?.token;
     if (!token) {
       this.logger.warn(`Client ${client.id} connected with no auth token - disconnecting.`);
       client.disconnect(true);
       return;
     }
+    let payload: any;
     try {
-      const payload = this.jwtService.verify(token);
-      client.join(tenantRoom(payload.tenantId));
+      payload = this.jwtService.verify(token);
+    } catch {
+      this.logger.warn(`Client ${client.id} connected with an invalid/expired token - disconnecting.`);
+      client.disconnect(true);
+      return;
+    }
+    try {
+      // Client-portal users never join the tenant room - every emit to it
+      // carries internal, all-client data (full issues, sprints, ...).
+      // They still get their own personal room below.
+      const portalUser = payload.sub ? await this.clientAccess.isPortalClientUser(payload.sub, payload.tenantId) : false;
+      if (!portalUser) client.join(tenantRoom(payload.tenantId));
       // Personal room for in-app notifications - only this user's own
       // sockets ever join it (keyed by the verified JWT's own user id).
       if (payload.sub) client.join(userRoom(payload.sub));
-      this.logger.log(`Client connected: ${client.id} (tenant ${payload.tenantId})`);
-    } catch {
-      this.logger.warn(`Client ${client.id} connected with an invalid/expired token - disconnecting.`);
+      this.logger.log(`Client connected: ${client.id} (tenant ${payload.tenantId}${portalUser ? ', client portal' : ''})`);
+    } catch (err) {
+      // Couldn't confirm who this is (e.g. a database blip) - fail closed
+      // rather than risk putting a portal user in the tenant room.
+      this.logger.warn(`Client ${client.id} room check failed (${(err as Error).message}) - disconnecting.`);
       client.disconnect(true);
     }
   }

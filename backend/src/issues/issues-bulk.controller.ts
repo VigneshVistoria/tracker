@@ -14,6 +14,7 @@ import { Response } from 'express';
 import { IssuesBulkService } from './issues-bulk.service';
 import { BulkImportIssuesDto, BulkSpreadsheetFormat } from './dto/bulk-import-issues.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { BlockPortalClientsGuard } from '../client-portal/block-portal-clients.guard';
 import { UsersService } from '../users/users.service';
 
 const CONTENT_TYPES: Record<BulkSpreadsheetFormat, string> = {
@@ -27,7 +28,7 @@ const CONTENT_TYPES: Record<BulkSpreadsheetFormat, string> = {
 // ordering precedent already relied on for `dependencies/received` and
 // `showstoppers/flagged`.
 @Controller('issues')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockPortalClientsGuard)
 export class IssuesBulkController {
   constructor(
     private issuesBulkService: IssuesBulkService,

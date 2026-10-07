@@ -22,9 +22,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { SlaService } from '../sla/sla.service';
+import { BlockPortalClientsGuard } from '../client-portal/block-portal-clients.guard';
 
 @Controller('issues')
-@UseGuards(JwtAuthGuard) // every route below requires a logged-in user
+// Every route requires a logged-in user; client-portal users are kept out
+// entirely (they use /client-portal instead).
+@UseGuards(JwtAuthGuard, BlockPortalClientsGuard)
 export class IssuesController {
   constructor(
     private issuesService: IssuesService,

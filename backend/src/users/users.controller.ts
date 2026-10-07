@@ -17,6 +17,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../common/admin.guard';
 import { User, UserRole, DEVELOPER_EQUIVALENT_ROLES } from './user.entity';
+import { BlockPortalClientsGuard } from '../client-portal/block-portal-clients.guard';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard) // every route requires login; admin-only ones add AdminGuard below
@@ -40,7 +41,9 @@ export class UsersController {
   // "pick a developer" picker (defect assignee, dependency owner, peer
   // reviewer, escalation reassignment) also surfaces Designer/DevOps
   // users without every caller needing to know that equivalence.
+  // Client-portal users never see the staff list.
   @Get('assignable')
+  @UseGuards(BlockPortalClientsGuard)
   async findAssignable(@Query('role') role: string | undefined, @Req() req: any) {
     const users = await this.usersService.findAll(req.user.tenantId);
     const filtered = !role

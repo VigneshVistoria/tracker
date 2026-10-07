@@ -12,6 +12,7 @@ import { IssueSpreadsheetService } from './spreadsheet/issue-spreadsheet.service
 import { IssueAnalyzerService } from './issue-analyzer.service';
 import { ShowstopperValidatorService } from './showstopper-validator.service';
 import { GuardsModule } from '../common/guards.module';
+import { ClientPortalCoreModule } from '../client-portal/client-portal-core.module';
 import { UsersModule } from '../users/users.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { EventsModule } from '../events/events.module';
@@ -22,6 +23,7 @@ import { SlaModule } from '../sla/sla.module';
   imports: [
     TypeOrmModule.forFeature([Issue, Sprint, ProjectModule, Phase]),
     GuardsModule,
+    ClientPortalCoreModule,
     UsersModule,
     ProjectsModule,
     EventsModule,

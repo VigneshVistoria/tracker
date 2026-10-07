@@ -16,6 +16,7 @@ import { ModulesService } from './modules.service';
 import { CreateModuleDto } from './dto/create-module.dto';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { BlockPortalClientsGuard } from '../client-portal/block-portal-clients.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 
@@ -33,7 +34,7 @@ import { UserRole } from '../users/user.entity';
 // ModulesModule right back, a circular module dependency. No @Controller
 // prefix below since routes span both /modules and /projects/:id/....
 @Controller()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockPortalClientsGuard)
 export class ModulesController {
   constructor(
     private modulesService: ModulesService,

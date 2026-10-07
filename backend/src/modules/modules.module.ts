@@ -8,6 +8,7 @@ import { Phase } from '../phases/phase.entity';
 import { ModulesService } from './modules.service';
 import { ModulesController } from './modules.controller';
 import { GuardsModule } from '../common/guards.module';
+import { ClientPortalCoreModule } from '../client-portal/client-portal-core.module';
 import { UsersModule } from '../users/users.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { EventsModule } from '../events/events.module';
@@ -22,6 +23,7 @@ import { AuditModule } from '../audit/audit.module';
     // that cycle - same technique already used for ProjectTask above.
     TypeOrmModule.forFeature([ProjectModule, Issue, ProjectPlanEntry, ProjectTask, Phase]),
     GuardsModule,
+    ClientPortalCoreModule,
     UsersModule,
     ProjectsModule,
     EventsModule,

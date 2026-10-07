@@ -4,3 +4,6 @@ dist/
 .env.local
 *.log
 *.pdf
+
+# Throwaway test database (scripts/test-db.sh)
+.test-db/

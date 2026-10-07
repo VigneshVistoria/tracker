@@ -20,13 +20,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../common/admin.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
+import { BlockPortalClientsGuard } from '../client-portal/block-portal-clients.guard';
 
 // Viewing sprints is open to anyone with access to the parent project -
 // same check ProjectsController.findOne/ModulesController use - creating,
 // editing, and moving issues in/out of a sprint is admin-only, consistent
 // with how Projects are managed today.
 @Controller('sprints')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, BlockPortalClientsGuard)
 export class SprintsController {
   constructor(
     private sprintsService: SprintsService,
