@@ -5,7 +5,7 @@ import { TEST_DB, assertTestDatabase } from './test-db-config';
 
 const SRC = path.resolve(__dirname, '../../src');
 // Applied in order, exactly as on production.
-const MIGRATIONS = ['2026-10-client-portal-foundation.sql', '2026-10-client-portal-tickets.sql'].map((f) =>
+const MIGRATIONS = ['2026-10-client-portal-foundation.sql', '2026-10-client-portal-tickets.sql', '2026-10-client-portal-attachments.sql'].map((f) =>
   path.resolve(__dirname, '../../migrations', f),
 );
 const PORTAL_DIR = path.join(SRC, 'client-portal');
@@ -43,7 +43,7 @@ export async function buildTestSchema() {
   const check = dataSource(all);
   await check.initialize();
   const problems: string[] = [];
-  const portalTables = ['clients', 'client_users', 'client_team_members', 'client_tickets', 'client_requests', 'client_ticket_comments', 'client_ticket_events'];
+  const portalTables = ['clients', 'client_users', 'client_team_members', 'client_tickets', 'client_requests', 'client_ticket_comments', 'client_ticket_events', 'client_ticket_attachments'];
   const portalMetas = check.entityMetadatas.filter((m) => portalTables.includes(m.tableName));
   if (portalMetas.length !== portalTables.length || portal.length !== portalTables.length) {
     problems.push(`expected ${portalTables.length} portal entities, found ${portalMetas.length} (${portal.length} files)`);

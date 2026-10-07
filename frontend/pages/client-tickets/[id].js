@@ -8,7 +8,7 @@ import Select from '../../components/ui/Select';
 import LoadingState from '../../components/ui/LoadingState';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { STATUSES, TEAM_STATUS_OPTIONS, usePortalMe } from '../../lib/clientTickets';
+import { STATUSES, TEAM_STATUS_OPTIONS, postReply, usePortalMe } from '../../lib/clientTickets';
 import styles from '../../styles/portal.module.css';
 
 // One client ticket, team side (Stage 2): reply or add an internal note,
@@ -60,8 +60,13 @@ export default function ClientTicketTeamPage() {
   }, [canSee, id]);
 
   // A reply refreshes the conversation but keeps any unsaved status/assignee choice.
-  const reply = async ({ body, isInternal }) => {
-    setTicket(await apiFetch(`/client-portal/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ body, isInternal }) }));
+  const reply = async ({ body, isInternal, files }) => {
+    try {
+      setTicket(await postReply(id, { body, isInternal, files }, user.id));
+    } catch (err) {
+      if (err.ticket) setTicket(err.ticket);
+      throw err;
+    }
   };
 
   const save = async (e) => {
@@ -116,7 +121,7 @@ export default function ClientTicketTeamPage() {
               </section>
               <section className={styles.panel} aria-labelledby="conversation-heading">
                 <h2 id="conversation-heading" className={styles.panelTitle}>Conversation</h2>
-                <Thread comments={ticket.comments} events={ticket.events} viewerId={user.id} audience="team" />
+                <Thread comments={ticket.comments} events={ticket.events} files={ticket.files} viewerId={user.id} audience="team" />
                 <ReplyForm onSubmit={reply} allowInternal />
               </section>
             </div>

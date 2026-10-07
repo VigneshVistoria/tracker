@@ -6,7 +6,8 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
-import { CATEGORIES, PRIORITIES, SEVERITIES } from '../../../lib/clientTickets';
+import { CATEGORIES, PRIORITIES, SEVERITIES, uploadTicketFiles } from '../../../lib/clientTickets';
+import { FilePicker } from '../../../components/portal/TicketFiles';
 import styles from '../../../styles/portal.module.css';
 
 // Radio cards (category, severity). Native radios inside labels, so
@@ -67,6 +68,7 @@ function NewTicket({ me }) {
     stepsToReproduce: '',
     expectedResult: '',
   });
+  const [files, setFiles] = useState([]);
   const [errors, setErrors] = useState({});
   const [submitError, setSubmitError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -100,6 +102,16 @@ function NewTicket({ me }) {
           ...(isBug ? { stepsToReproduce: form.stepsToReproduce.trim(), expectedResult: form.expectedResult.trim() } : {}),
         }),
       });
+      if (files.length) {
+        try {
+          await uploadTicketFiles(ticket.id, files);
+        } catch (err) {
+          // The ticket exists - say so, and let them add the files from the ticket page.
+          showToast(`Ticket ${ticket.key} submitted, but the files were not attached: ${err.message} You can add them from the ticket.`, 'error', 9000);
+          router.push(`/portal/tickets/${ticket.id}`);
+          return;
+        }
+      }
       showToast(`Ticket ${ticket.key} submitted. The team has been notified.`, 'success');
       router.push(`/portal/tickets/${ticket.id}`);
     } catch (err) {
@@ -167,6 +179,11 @@ function NewTicket({ me }) {
             <TextArea id="ticket-expected" label="Expected result" rows={4} value={form.expectedResult} onChange={set('expectedResult')} hint="Optional" />
           </div>
         )}
+
+        <fieldset className={styles.fieldset}>
+          <legend className={styles.legend}>Screenshots or documents (optional)</legend>
+          <FilePicker files={files} onChange={setFiles} disabled={saving} />
+        </fieldset>
 
         <div className={styles.formActions}>
           <Button type="button" variant="secondary" href="/portal/tickets">Cancel</Button>

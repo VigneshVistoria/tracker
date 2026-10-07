@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource, In, Repository } from 'typeorm';
@@ -7,6 +8,9 @@ import { ClientTeamMember } from './client-team-member.entity';
 import { ClientTicket } from './client-ticket.entity';
 import { ClientTicketComment } from './client-ticket-comment.entity';
 import { ClientTicketEvent } from './client-ticket-event.entity';
+import { ClientTicketAttachment } from './client-ticket-attachment.entity';
+import { MAX_ATTACHMENTS_PER_UPLOAD, MAX_ATTACHMENT_BYTES, cleanFileName, detectAttachmentType } from './attachment-types';
+import { StorageService } from '../storage/storage.service';
 import { ClientAccessService, PortalCaller } from './client-access.service';
 import { CreateClientTicketCommentDto, CreateClientTicketDto, UpdateClientTicketDto } from './dto/client-ticket.dto';
 import { ProjectModule } from '../modules/project-module.entity';
@@ -20,6 +24,15 @@ const CLIENT_STATUS_LABELS: Record<string, string> = {
   client_review: 'Ready for your review',
   closed: 'Closed',
 };
+
+export const ATTACHMENTS_BUCKET = 'client-portal-attachments';
+
+// What arrives from the upload (multer, in memory).
+export interface UploadedPortalFile {
+  originalname: string;
+  size: number;
+  buffer: Buffer;
+}
 
 // One recipient of a portal notification. Client users and team members
 // get different links (/portal vs /client-tickets).
@@ -48,11 +61,13 @@ export class ClientTicketsService {
     @InjectRepository(ClientTicket) private ticketsRepository: Repository<ClientTicket>,
     @InjectRepository(ClientTicketComment) private commentsRepository: Repository<ClientTicketComment>,
     @InjectRepository(ClientTicketEvent) private eventsRepository: Repository<ClientTicketEvent>,
+    @InjectRepository(ClientTicketAttachment) private attachmentsRepository: Repository<ClientTicketAttachment>,
     @InjectRepository(ProjectModule) private modulesRepository: Repository<ProjectModule>,
     @InjectRepository(User) private usersRepository: Repository<User>,
     private access: ClientAccessService,
     private dataSource: DataSource,
     private eventEmitter: EventEmitter2,
+    private storage: StorageService,
   ) {}
 
   private isClientCaller(caller: PortalCaller) {
@@ -77,14 +92,16 @@ export class ClientTicketsService {
     const ticket = await this.findAccessible(caller, tenantId, id);
     const [view] = await this.toViews([ticket], tenantId);
     const commentWhere: Record<string, any> = { ticketId: ticket.id, tenantId };
-    // Internal notes are dropped in the query itself for client users.
+    // Internal notes and their files are dropped in the query itself for client users.
     if (this.isClientCaller(caller)) commentWhere.isInternal = false;
-    const [comments, events] = await Promise.all([
+    const [comments, events, files] = await Promise.all([
       this.commentsRepository.find({ where: commentWhere, order: { createdAt: 'ASC', id: 'ASC' } }),
       this.eventsRepository.find({ where: { ticketId: ticket.id, tenantId }, order: { createdAt: 'ASC', id: 'ASC' } }),
+      this.attachmentsRepository.find({ where: commentWhere, order: { createdAt: 'ASC', id: 'ASC' } }),
     ]);
     const userIds = [
       ...comments.map((c) => c.authorUserId),
+      ...files.map((f) => f.uploadedByUserId),
       ...events.map((e) => e.actorUserId),
       ...events.filter((e) => e.type === 'assignee').flatMap((e) => [Number(e.fromValue), Number(e.toValue)]),
     ];
@@ -101,6 +118,17 @@ export class ClientTicketsService {
         body: c.body,
         isInternal: c.isInternal,
         createdAt: c.createdAt,
+      })),
+      files: files.map((f) => ({
+        id: f.id,
+        commentId: f.commentId,
+        fileName: f.fileName,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+        isInternal: f.isInternal,
+        uploadedByUserId: f.uploadedByUserId,
+        uploadedByName: name(f.uploadedByUserId),
+        createdAt: f.createdAt,
       })),
       events: events.map((e) => ({
         id: e.id,
@@ -241,6 +269,80 @@ export class ClientTicketsService {
       ]);
     }
     return this.get(caller, tenantId, ticket.id);
+  }
+
+  // ---------- Attachments (Stage 3) ----------
+
+  // Files on the ticket itself, or on a reply the caller just posted
+  // (commentId) - those inherit the reply's internal flag. Every file is
+  // checked before any is stored, so an upload is all-or-nothing.
+  async addAttachments(caller: PortalCaller, tenantId: number, id: number, files: UploadedPortalFile[], commentId?: number) {
+    const ticket = await this.findAccessible(caller, tenantId, id);
+    const fromClient = this.isClientCaller(caller);
+    if (fromClient && ticket.status === 'closed') throw new BadRequestException('This ticket is closed.');
+    if (!files?.length) throw new BadRequestException('Choose at least one file.');
+    if (files.length > MAX_ATTACHMENTS_PER_UPLOAD) throw new BadRequestException(`Attach at most ${MAX_ATTACHMENTS_PER_UPLOAD} files at a time.`);
+
+    let comment: ClientTicketComment | null = null;
+    if (commentId !== undefined) {
+      comment = await this.commentsRepository.findOne({ where: { id: commentId, ticketId: ticket.id, tenantId } });
+      // Only to your own reply - and a client can't even learn an internal note's id exists.
+      if (!comment || comment.authorUserId !== caller.id) throw new NotFoundException('Reply not found');
+    }
+
+    const prepared = files.map((f) => {
+      // multer reads names as latin1; browsers send UTF-8.
+      const fileName = cleanFileName(Buffer.from(f.originalname || '', 'latin1').toString('utf8'));
+      if (f.size > MAX_ATTACHMENT_BYTES || f.buffer.length > MAX_ATTACHMENT_BYTES) {
+        throw new BadRequestException(`${fileName} is larger than 10 MB.`);
+      }
+      const mimeType = detectAttachmentType(fileName, f.buffer);
+      if (!mimeType) {
+        throw new BadRequestException(`${fileName} is not an allowed file type (images, PDF, TXT, CSV, Word, Excel, PowerPoint).`);
+      }
+      return { fileName, mimeType, data: f.buffer, storageKey: `${tenantId}/${ticket.clientId}/${ticket.id}/${randomUUID()}` };
+    });
+
+    const stored: string[] = [];
+    try {
+      for (const p of prepared) {
+        await this.storage.put(ATTACHMENTS_BUCKET, p.storageKey, p.data, p.mimeType);
+        stored.push(p.storageKey);
+      }
+      await this.dataSource.transaction(async (manager) => {
+        for (const p of prepared) {
+          await manager.save(
+            manager.create(ClientTicketAttachment, {
+              tenantId,
+              ticketId: ticket.id,
+              commentId: comment?.id ?? null,
+              uploadedByUserId: caller.id,
+              fileName: p.fileName,
+              mimeType: p.mimeType,
+              sizeBytes: p.data.length,
+              storageKey: p.storageKey,
+              isInternal: comment?.isInternal ?? false,
+            }),
+          );
+        }
+        await manager.update(ClientTicket, { id: ticket.id, tenantId }, { lastActivityAt: new Date() });
+      });
+    } catch (err) {
+      // Don't leave orphaned files behind if storing or saving failed part-way.
+      for (const key of stored) await this.storage.remove(ATTACHMENTS_BUCKET, key).catch(() => undefined);
+      throw err;
+    }
+    return this.get(caller, tenantId, ticket.id);
+  }
+
+  // The file, only if the caller can see its ticket - and for client users
+  // only if it isn't team-only. Anything else is "not found".
+  async getAttachment(caller: PortalCaller, tenantId: number, attachmentId: number) {
+    const file = await this.attachmentsRepository.findOne({ where: { id: attachmentId, tenantId } });
+    if (!file || (file.isInternal && this.isClientCaller(caller))) throw new NotFoundException('Not found');
+    await this.findAccessible(caller, tenantId, file.ticketId);
+    const data = await this.storage.get(ATTACHMENTS_BUCKET, file.storageKey);
+    return { fileName: file.fileName, mimeType: file.mimeType, data };
   }
 
   // ---------- Helpers ----------

@@ -6,6 +6,7 @@ import Button from '../ui/Button';
 import Avatar from '../ui/Avatar';
 import { formatDateTime, formatRelativeTime } from '../../lib/formatDate';
 import { CATEGORY_BY_VALUE, SEVERITY_BY_VALUE, STATUSES, STEPS } from '../../lib/clientTickets';
+import { FileList, FilePicker } from './TicketFiles';
 import styles from '../../styles/portal.module.css';
 
 // Building blocks shared by the client portal (/portal) and the team's
@@ -64,8 +65,8 @@ function eventText(event, audience) {
 }
 
 // Replies and status changes in time order. `viewerId` marks the
-// viewer's own replies.
-export function Thread({ comments, events, viewerId, audience = 'client' }) {
+// viewer's own replies; `files` are shown under the reply they came with.
+export function Thread({ comments, events, files = [], viewerId, audience = 'client' }) {
   const items = [
     ...comments.map((c) => ({ kind: 'comment', at: c.createdAt, key: `c${c.id}`, c })),
     ...events.map((e) => ({ kind: 'event', at: e.createdAt, key: `e${e.id}`, e })),
@@ -103,6 +104,7 @@ export function Thread({ comments, events, viewerId, audience = 'client' }) {
                 <span> · <time dateTime={c.createdAt}>{formatDateTime(c.createdAt)}</time></span>
               </div>
               <p className={styles.messageText}>{c.body}</p>
+              <FileList files={files.filter((f) => f.commentId === c.id)} showUploader={false} />
             </div>
           </li>
         );
@@ -116,6 +118,7 @@ export function ReplyForm({ onSubmit, allowInternal = false, disabledReason = nu
   const id = useId();
   const [body, setBody] = useState('');
   const [internal, setInternal] = useState(false);
+  const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -130,10 +133,17 @@ export function ReplyForm({ onSubmit, allowInternal = false, disabledReason = nu
     setSaving(true);
     setError('');
     try {
-      await onSubmit({ body: body.trim(), isInternal: allowInternal && internal });
+      await onSubmit({ body: body.trim(), isInternal: allowInternal && internal, files });
       setBody('');
       setInternal(false);
+      setFiles([]);
     } catch (err) {
+      // The reply itself went through but its files didn't: clear the text
+      // (so it isn't sent twice) and keep the files to retry.
+      if (err.replySent) {
+        setBody('');
+        setFiles([]);
+      }
       setError(err.message);
     } finally {
       setSaving(false);
@@ -156,6 +166,7 @@ export function ReplyForm({ onSubmit, allowInternal = false, disabledReason = nu
         aria-describedby={error ? `${id}-error` : undefined}
       />
       {error && <p id={`${id}-error`} className={styles.fieldError} role="alert">{error}</p>}
+      <FilePicker files={files} onChange={setFiles} disabled={saving} />
       <div className={styles.replyActions}>
         {allowInternal && (
           <label className={styles.checkbox}>
@@ -192,6 +203,12 @@ export function TicketDetails({ ticket }) {
         <>
           <h3 className={styles.subheading}>Expected result</h3>
           <p className={styles.prewrap}>{ticket.expectedResult}</p>
+        </>
+      )}
+      {ticket.files?.some((f) => !f.commentId) && (
+        <>
+          <h3 className={styles.subheading}>Files</h3>
+          <FileList files={ticket.files.filter((f) => !f.commentId)} />
         </>
       )}
     </div>

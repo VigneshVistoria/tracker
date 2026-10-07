@@ -30,6 +30,7 @@ import { ClientTicket } from './client-portal/client-ticket.entity';
 import { ClientRequest } from './client-portal/client-request.entity';
 import { ClientTicketComment } from './client-portal/client-ticket-comment.entity';
 import { ClientTicketEvent } from './client-portal/client-ticket-event.entity';
+import { ClientTicketAttachment } from './client-portal/client-ticket-attachment.entity';
 import { ClientPortalModule } from './client-portal/client-portal.module';
 import { TimeEntry } from './time-sheets/time-entry.entity';
 import { IssueCategoryOption } from './issue-categories/issue-category.entity';
@@ -159,6 +160,7 @@ import { SearchModule } from './search/search.module';
           ClientRequest,
           ClientTicketComment,
           ClientTicketEvent,
+          ClientTicketAttachment,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.

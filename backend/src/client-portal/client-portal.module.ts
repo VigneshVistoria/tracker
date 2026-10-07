@@ -4,6 +4,8 @@ import { ClientTicket } from './client-ticket.entity';
 import { ClientRequest } from './client-request.entity';
 import { ClientTicketComment } from './client-ticket-comment.entity';
 import { ClientTicketEvent } from './client-ticket-event.entity';
+import { ClientTicketAttachment } from './client-ticket-attachment.entity';
+import { StorageModule } from '../storage/storage.module';
 import { ProjectModule } from '../modules/project-module.entity';
 import { User } from '../users/user.entity';
 import { ClientPortalCoreModule } from './client-portal-core.module';
@@ -17,7 +19,8 @@ import { GuardsModule } from '../common/guards.module';
 // for JwtAuthGuard's JwtService - leaving it out crash-loops the backend.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ClientTicket, ClientRequest, ClientTicketComment, ClientTicketEvent, ProjectModule, User]),
+    TypeOrmModule.forFeature([ClientTicket, ClientRequest, ClientTicketComment, ClientTicketEvent, ClientTicketAttachment, ProjectModule, User]),
+    StorageModule,
     ClientPortalCoreModule,
     UsersModule,
     GuardsModule,

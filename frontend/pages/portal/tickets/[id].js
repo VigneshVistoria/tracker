@@ -5,7 +5,7 @@ import { CategoryBadge, ReplyForm, SeverityBadge, StatusBadge, Stepper, Thread, 
 import Breadcrumbs from '../../../components/ui/Breadcrumbs';
 import LoadingState from '../../../components/ui/LoadingState';
 import { apiFetch } from '../../../lib/api';
-import { SEVERITY_BY_VALUE } from '../../../lib/clientTickets';
+import { SEVERITY_BY_VALUE, postReply } from '../../../lib/clientTickets';
 import styles from '../../../styles/portal.module.css';
 
 function ClientTicket({ user }) {
@@ -23,9 +23,13 @@ function ClientTicket({ user }) {
 
   useEffect(load, [load]);
 
-  const reply = async ({ body }) => {
-    const updated = await apiFetch(`/client-portal/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ body }) });
-    setTicket(updated);
+  const reply = async ({ body, files }) => {
+    try {
+      setTicket(await postReply(id, { body, files }, user.id));
+    } catch (err) {
+      if (err.ticket) setTicket(err.ticket);
+      throw err;
+    }
   };
 
   if (error) return <div className={styles.error} role="alert">{error}</div>;
@@ -53,7 +57,7 @@ function ClientTicket({ user }) {
         <div>
           <section className={styles.panel} aria-labelledby="conversation-heading">
             <h2 id="conversation-heading" className={styles.panelTitle}>Conversation</h2>
-            <Thread comments={ticket.comments} events={ticket.events} viewerId={user.id} audience="client" />
+            <Thread comments={ticket.comments} events={ticket.events} files={ticket.files} viewerId={user.id} audience="client" />
             <ReplyForm
               onSubmit={reply}
               disabledReason={ticket.status === 'closed' ? 'This ticket is closed. If the problem comes back, report a new issue.' : null}
