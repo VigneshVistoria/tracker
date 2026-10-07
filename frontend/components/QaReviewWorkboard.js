@@ -10,6 +10,7 @@ import ColHeader from './ColHeader';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import { isQaReviewOverdue } from '../lib/developerTaskStats';
+import { StatusLegend } from './taskViews/TaskSections';
 import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLabel, statusBadgeStyle, statusLabel } from '../lib/taskTableShared';
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
@@ -281,14 +282,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
 
       {activeCard && activeCardDef && (
         <>
-          <div className={styles.statusLegend}>
-            {(showDefectColumns ? DEFECT_LEGEND_ITEMS : QA_LEGEND_ITEMS).map((item) => (
-              <span key={item.label} className={styles.statusLegendItem}>
-                <span className={styles.statusLegendDot} style={{ background: item.swatch }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
+          <StatusLegend items={showDefectColumns ? DEFECT_LEGEND_ITEMS : QA_LEGEND_ITEMS} />
 
           <div className={styles.filterBar}>
             <div className={styles.filterGroup}>

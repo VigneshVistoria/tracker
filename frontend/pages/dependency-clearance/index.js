@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
-import { formatDate } from '../../lib/formatDate';
-import LoadingState from '../../components/ui/LoadingState';
+import DependencyTicketBoard from '../../components/taskViews/DependencyTicketBoard';
 
 const VIEW_ROLES = DEVELOPER_EQUIVALENT_ROLES;
 
@@ -52,28 +50,14 @@ export default function DependencyClearancePage() {
 
       {error && <div className={styles.error}>{error}</div>}
 
-      {loading && <LoadingState />}
-
-      {!loading && tickets.length === 0 && (
-        <div className={styles.card}>
-          <div className={styles.empty}>No dependency tickets are waiting on you right now.</div>
-        </div>
-      )}
-
-      {!loading && tickets.map((ticket) => (
-        <div key={ticket.id} className={styles.card} style={{ marginBottom: 'var(--space-3)' }}>
-          <p style={{ margin: 0, fontWeight: 600 }}>{ticket.title}</p>
-          <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
-          <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-            Filed by {ticket.createdByEmail} &middot; {formatDate(ticket.createdAt)}
-          </p>
-          <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-            <Link href={`/tasks/${ticket.parentTaskId}`} className={styles.backLink} target="_blank" rel="noopener noreferrer">
-              View parent task &rarr;
-            </Link>
-          </div>
-        </div>
-      ))}
+      <DependencyTicketBoard
+        tickets={tickets}
+        direction="outbound"
+        title="Waiting on you"
+        storageKey="dependencyClearanceTickets"
+        userId={user.id}
+        loading={loading}
+      />
     </AppShell>
   );
 }

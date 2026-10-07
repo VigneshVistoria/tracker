@@ -13,6 +13,16 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
   parentTaskTitle: string | null;
   parentTaskDueDate: string | null;
+  // Added 2026-10-07 for the Dashboard / Dependency Clearance ticket view
+  // (display names instead of emails, and the parent task's context).
+  // Read-only lookups of existing columns - no schema change.
+  createdByName: string | null;
+  ownerName: string | null;
+  parentTaskStatus: string | null;
+  parentTaskPriority: string | null;
+  parentTaskProjectName: string | null;
+  parentTaskModuleName: string | null;
+  parentTaskPhaseName: string | null;
 }
 
 @Injectable()
@@ -66,11 +76,26 @@ export class TaskDependencyTicketsService {
     const parentTaskIds = [...new Set(tickets.map((t) => t.parentTaskId))];
     const parentTasks = await this.tasksService.findManyByIds(parentTaskIds, tenantId);
     const parentTaskById = new Map(parentTasks.map((t) => [t.id, t]));
-    return tickets.map((ticket) => ({
-      ...ticket,
-      parentTaskTitle: parentTaskById.get(ticket.parentTaskId)?.title ?? null,
-      parentTaskDueDate: parentTaskById.get(ticket.parentTaskId)?.dueDate ?? null,
-    }));
+    // One batch lookup for every filer/owner on the list - only their
+    // full names leave this method, never the rest of the user row.
+    const userIds = [...new Set(tickets.flatMap((t) => [t.createdByUserId, t.ownerUserId]).filter((id) => id != null))];
+    const users = await this.usersService.findByIds(userIds, tenantId);
+    const nameById = new Map(users.map((u) => [u.id, u.fullName || null]));
+    return tickets.map((ticket) => {
+      const parent = parentTaskById.get(ticket.parentTaskId);
+      return {
+        ...ticket,
+        parentTaskTitle: parent?.title ?? null,
+        parentTaskDueDate: parent?.dueDate ?? null,
+        createdByName: nameById.get(ticket.createdByUserId) ?? null,
+        ownerName: nameById.get(ticket.ownerUserId) ?? null,
+        parentTaskStatus: parent?.status ?? null,
+        parentTaskPriority: parent?.priority ?? null,
+        parentTaskProjectName: parent?.projectName ?? null,
+        parentTaskModuleName: parent?.moduleName ?? null,
+        parentTaskPhaseName: parent?.phaseName ?? null,
+      };
+    });
   }
 
   async create(

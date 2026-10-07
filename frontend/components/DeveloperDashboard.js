@@ -7,8 +7,8 @@ import { apiFetch } from '../lib/api';
 
 const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
 
-// Developer-only Dashboard: shows the same 5 stat cards (My Tasks/
-// Rejected/Inbound/Outbound/Overdue) and collapsible task table as My
+// Developer-only Dashboard: shows the same summary tiles (Open tasks/
+// Rejected/You're waiting on/Waiting on you/Overdue tasks/Defects) and collapsible task table as My
 // Tasks (components/DeveloperTaskWorkboard.js), built from the same 3
 // fetches - My Tasks (/tasks/mine), Dependency Clearance's own
 // "Outbound" queue (/task-dependency-tickets/mine), and the mirror-image
@@ -49,6 +49,7 @@ export default function DeveloperDashboard({ user }) {
         inbound={inbound}
         loading={loading}
         storageKey={ACTIVE_CARD_STORAGE_KEY}
+        userId={user.id}
         hideEmptyCards
       />
     </AppShell>

@@ -37,11 +37,14 @@ export default function MyTasksPage() {
     }
     setUser(parsed);
     setLoading(true);
-    const isDeveloper = DEVELOPER_EQUIVALENT_ROLES.includes(parsed.role);
+    // Both ticket lists for every role (2026-10-07, same rules for all) -
+    // each endpoint only ever returns the caller's own tickets. Only
+    // Developer/Designer/DevOps can be a ticket's owner, so /mine is
+    // simply empty for everyone else.
     Promise.all([
       apiFetch('/tasks/mine'),
-      isDeveloper ? apiFetch('/task-dependency-tickets/mine') : Promise.resolve([]),
-      isDeveloper ? apiFetch('/task-dependency-tickets/created-by-me') : Promise.resolve([]),
+      apiFetch('/task-dependency-tickets/mine'),
+      apiFetch('/task-dependency-tickets/created-by-me'),
     ])
       .then(([taskList, outboundList, inboundList]) => {
         setTasks(taskList);
@@ -77,6 +80,7 @@ export default function MyTasksPage() {
           inbound={inbound}
           loading={loading}
           storageKey={ACTIVE_CARD_STORAGE_KEY}
+          userId={user.id}
           showCards={DEVELOPER_EQUIVALENT_ROLES.includes(user.role)}
         />
       )}

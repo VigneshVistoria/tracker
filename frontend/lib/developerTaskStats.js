@@ -43,17 +43,25 @@ export function isQaReviewOverdue(task, today = todayISO()) {
 // to act (status 'Failed'; once resubmitted a task moves to 'Re-Feedback'
 // and is back with QA, no longer actionable here).
 //
-// "Overdue" is two halves added together: isOverdueTask() above, plus
-// dependency tickets this Developer owns to clear (Outbound) whose *parent
-// task's* Due Date has passed - those tickets have no Due Date of their own.
+// "Overdue tasks" is only this Developer's own tasks (isOverdueTask()
+// above), so it can never exceed the Open tasks count. Dependency tickets
+// filed against them whose *parent task's* Due Date has passed are counted
+// separately (overdueOutbound), shown on the "Waiting on you" tile -
+// changed 2026-10-07 (confirmed with the user), when the two were summed
+// into one Overdue number larger than the task count.
+//
+// Only *open* tickets count: GET /task-dependency-tickets/mine and
+// /created-by-me return resolved tickets too.
+export const openTickets = (tickets) => tickets.filter((t) => t.status === 'open');
+
 export function computeDeveloperTaskStats(tasks, outbound, today = todayISO()) {
   const rejectedTasks = tasks.filter((t) => t.status === 'Failed');
   const overdueTasks = tasks.filter((t) => isOverdueTask(t, today));
-  const overdueOutbound = outbound.filter((t) => t.parentTaskDueDate && t.parentTaskDueDate < today);
+  const overdueOutbound = openTickets(outbound).filter((t) => t.parentTaskDueDate && t.parentTaskDueDate < today);
   return {
     rejectedTasks,
     overdueTasks,
     overdueOutbound,
-    overdueCount: overdueTasks.length + overdueOutbound.length,
+    overdueCount: overdueTasks.length,
   };
 }

@@ -48,20 +48,25 @@ export function statusLabel(status) {
   return STATUS_LABELS[status] || status;
 }
 
+// `swatch` is the light row tint; `dot` is the same status's solid hue
+// (the tile rail colour), which the legend draws as the visible dot with
+// the tint as a ring (StatusLegend in components/taskViews/TaskSections.js)
+// - the tints alone were too faint to see (2026-10-07). Junk gets a darker
+// grey than Development so the two dots can be told apart.
 export const LEGEND_ITEMS = [
-  { label: 'Development', swatch: 'var(--color-slate-tint)' },
-  { label: 'Feedback / Re-Feedback', swatch: 'var(--color-plum-tint)' },
-  { label: statusLabel('Escalated'), swatch: 'var(--color-amber-tint)' },
-  { label: 'Pass', swatch: 'var(--color-moss-tint)' },
-  { label: 'Failed / Released - With Showstoppers', swatch: 'var(--color-red-tint)' },
-  { label: 'Junk', swatch: 'var(--color-slate-tint)' },
-  { label: 'Released - No Showstoppers', swatch: 'var(--color-teal-tint)' },
+  { label: 'Development', swatch: 'var(--color-slate-tint)', dot: 'var(--color-slate)' },
+  { label: 'Feedback / Re-Feedback', swatch: 'var(--color-plum-tint)', dot: 'var(--color-plum)' },
+  { label: statusLabel('Escalated'), swatch: 'var(--color-amber-tint)', dot: 'var(--color-amber)' },
+  { label: 'Pass', swatch: 'var(--color-moss-tint)', dot: 'var(--color-moss)' },
+  { label: 'Failed / Released - With Showstoppers', swatch: 'var(--color-red-tint)', dot: 'var(--color-red)' },
+  { label: 'Junk', swatch: 'var(--color-slate-tint)', dot: 'var(--ds-color-gray-700)' },
+  { label: 'Released - No Showstoppers', swatch: 'var(--color-teal-tint)', dot: 'var(--color-teal)' },
   // Hold/Closed use --ds-* tokens directly rather than adding new legacy
   // --color-* aliases (STYLE.md: new values target --ds-* tokens, the
   // existing rowTint*/rail*/STATUS_BADGE_STYLE entries above are already
   // using every one of the 6 legacy hues this app has).
-  { label: 'Hold', swatch: 'var(--ds-color-info-tint)' },
-  { label: 'Closed', swatch: 'var(--ds-color-gray-300)' },
+  { label: 'Hold', swatch: 'var(--ds-color-info-tint)', dot: 'var(--ds-color-info)' },
+  { label: 'Closed', swatch: 'var(--ds-color-gray-300)', dot: 'var(--ds-color-gray-500)' },
 ];
 
 // Status is expressed as row background color in every task list except

@@ -851,11 +851,11 @@ td.empty::before,
 }
 
 .statusLegendDot {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 1px solid var(--color-border);
   flex-shrink: 0;
+  /* Solid hue + tint ring set inline by StatusLegend. */
 }
 
 /* ---------- Responsive (card-style rows used on dashboard/admin pages) ---------- */
@@ -942,7 +942,7 @@ td.empty::before,
 /* ---------- Team Tasks: tile/card view ---------- */
 .taskTileGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
   /* Grid defaults both of these to a stretch-like behavior: align-items
@@ -951,12 +951,19 @@ td.empty::before,
      container height (e.g. full screen mode's flex: 1 on this same
      element, via .fullScreenTableWrap). Pinning both to 'start' makes
      each tile size to its own content instead, with any leftover space
-     left blank below the grid rather than distributed into the tiles. */
-  align-items: start;
+     left blank below the grid rather than distributed into the tiles.
+     Team Tasks (2026-10-07): tiles in one row now stretch to the same
+     height (align-items: stretch) so rows line up; align-content stays
+     'start' so rows themselves never grow to fill full screen. */
+  align-items: stretch;
   align-content: start;
 }
 
 .taskTile {
+  display: flex;
+  flex-direction: column;
+  min-height: 9.5rem;
+  min-width: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-left: 4px solid var(--color-slate);
@@ -1057,6 +1064,7 @@ td.empty::before,
 }
 
 .taskTileMeta {
+  margin-top: auto;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
@@ -1358,8 +1366,44 @@ td.empty::before,
 
 .teamParentDue {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
+  line-height: 1.2;
+  color: var(--ds-text-secondary);
+}
+.teamParentDueLabel {
+  font-size: var(--ds-text-xs);
+  white-space: nowrap;
+}
+
+.teamAge {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tasks / Defects / Dependencies section headers (Table and Tiles). */
+.teamSection {
+  margin-bottom: var(--ds-space-4);
+}
+.teamSectionHeader {
+  display: flex;
+  align-items: baseline;
   gap: var(--ds-space-1);
+  margin: 0 0 var(--ds-space-3);
+  padding-bottom: var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-border);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+.teamSectionHeaderInTable {
+  margin: var(--ds-space-2) 0 0;
+  padding: var(--ds-space-1) 0 var(--ds-space-2);
+}
+.teamSectionHeaderInTable + .filedByHeaderInTable {
+  margin-top: var(--ds-space-2);
+}
+.teamSectionCount {
+  font-weight: var(--ds-weight-regular);
   color: var(--ds-text-secondary);
 }
 
@@ -1367,10 +1411,17 @@ td.empty::before,
    cleanly on small screens. */
 .teamFilterBar {
   align-items: flex-end;
-  gap: var(--ds-space-3) var(--ds-space-4);
+  gap: var(--ds-space-4);
 }
 .teamFilterBar .filterGroup {
   min-width: 0;
+}
+.teamFilterBar .filterSelect {
+  min-width: 160px;
+}
+/* Same 36px total height as the selects and the Hold/Closed chip. */
+.teamFilterBar .viewToggle {
+  padding: 2px;
 }
 
 /* Checkbox as a chip the same height as the selects beside it. */
@@ -1404,6 +1455,93 @@ td.empty::before,
    left-aligned and full width here rather than pushed to the right. */
 @media (max-width: 640px) {
   .teamFilterBar {
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+    gap: var(--ds-space-3);
   }
+  .teamFilterBar .filterSelect {
+    min-width: 0;
+    width: 100%;
+  }
+  /* View toggle gets its own full-width line. */
+  .teamFilterBar .filterGroup:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ---------- Dependency ticket view (taskViews/DependencyTicketBoard.js) ---------- */
+.ticketFromTo {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+}
+.taskTile .ticketFromTo {
+  margin-bottom: var(--ds-space-2);
+}
+.ticketParent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.ticketParentLink {
+  color: var(--ds-text-secondary);
+  text-decoration: none;
+}
+.ticketParentLink:hover {
+  color: var(--ds-text-primary);
+  text-decoration: underline;
+}
+.ticketParentMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-width: 0;
+}
+.ticketDue {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1.25;
+}
+.ticketDueInline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-1) var(--ds-space-2);
+}
+.ticketOverdueText {
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--color-red-dark);
+}
+.ticketNoDue,
+.ticketSubtle {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.ticketTileFooter {
+  margin-top: auto;
+  padding-top: var(--ds-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  font-size: 0.78rem;
+  color: var(--ds-text-secondary);
+}
+.ticketTileFooter > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-1);
+}
+.ticketArrow {
+  vertical-align: -2px;
+  color: var(--ds-text-secondary);
+}
+.ticketActivity {
+  color: var(--ds-text-secondary);
 }

@@ -1,71 +1,50 @@
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import {
-  Hash, CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, Flag,
-  ChevronDown, ChevronUp,
-  ListTodo,
-  XCircle,
-  ArrowDownLeft,
-  ArrowUpRight,
-  CalendarX,
-  Bug,
-} from 'lucide-react';
-import Table from './ui/Table';
-import Badge from './ui/Badge';
-import ColHeader from './ColHeader';
-import { TicketRow, CardList } from './TaskCardRows';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask } from '../lib/developerTaskStats';
+import { todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask, openTickets } from '../lib/developerTaskStats';
 import {
-  COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, selectableStatuses, statusLabel,
-  priorityRank, priorityTone, priorityLabel,
+  COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, selectableStatuses, statusLabel,
 } from '../lib/taskTableShared';
-import { formatDate } from '../lib/formatDate';
+import {
+  buildTaskColumns, useSectionSort, sortBySections, countSections, toDependencyRow,
+  TaskSectionsTable, TaskSectionsTiles, ViewToggle, StatusLegend,
+} from './taskViews/TaskSections';
+import DependencyTicketBoard from './taskViews/DependencyTicketBoard';
 import LoadingState from './ui/LoadingState';
 
 // Shared by the My Tasks page (pages/tasks/mine.js) and the Developer
-// Dashboard (components/DeveloperDashboard.js): the stat cards (My Tasks/
-// Rejected/Inbound/Outbound/Overdue), the collapsible icon-header/
-// sortable/filterable task table those cards expand into, and the
-// Outbound ticket list (Outbound tickets live on someone else's task, so
-// they don't fit as rows in this table - same as before).
+// Dashboard (components/DeveloperDashboard.js): the summary tiles, and the
+// collapsible Table | Tiles view they expand into. The table, tiles,
+// sections (Tasks, Defects, Dependencies) and View toggle are the exact
+// same components Team Tasks uses (components/taskViews/TaskSections.js,
+// confirmed with the user 2026-10-07) - everything here is client-side,
+// since one person's list is small and fetched in full.
 //
-// TASK_STATUSES/COMPLETED_STATUSES/LEGEND_ITEMS/row-tint mapping now live
-// in lib/taskTableShared.js, shared with TeamTaskWorkboard (Team Tasks) so
-// the two views can't visually drift apart from each other.
+// Dependencies = open tickets other people filed against this user
+// (GET /task-dependency-tickets/mine), grouped by who filed them. Tickets
+// this user filed against others (/created-by-me) show as each task's
+// expandable "Dependencies (n)" tree and on the "You're waiting on" tile.
 
-// Status is deliberately not its own column here (the 8-column spec has
-// no room for it) - it's expressed purely as row background color,
-// reusing the exact tint tokens the Status badge uses everywhere else so
-// the color language stays consistent. Development has no entry - it's
-// the neutral/no-highlight baseline.
 const ROW_TINT_CLASS = buildRowTintClass(styles);
+const ROW_RAIL_CLASS = buildRowRailClass(styles);
 
-const CARD_ICONS = {
-  myTasks: ListTodo,
-  rejected: XCircle,
-  inbound: ArrowDownLeft,
-  outbound: ArrowUpRight,
-  overdue: CalendarX,
-  defects: Bug,
-};
-// Cards whose non-zero count is a problem - their icon gets the error tint.
-const ALERT_CARDS = ['rejected', 'overdue'];
+// Tiles: what each one counts is spelled out in its label (renamed
+// 2026-10-07, confirmed with the user, so no tile can read as a subset of
+// another yet show a bigger number). `sections` is which rows clicking it
+// shows; 'tickets' tiles open the dependency ticket view instead
+// (taskViews/DependencyTicketBoard.js) in the given direction.
+const CARD_DEFS = [
+  { key: 'myTasks', label: 'Open tasks', sections: 'all' },
+  { key: 'rejected', label: 'Rejected', accent: 'danger', sections: 'tasks' },
+  { key: 'inbound', label: 'You’re waiting on', kind: 'tickets', direction: 'inbound' },
+  { key: 'outbound', label: 'Waiting on you', kind: 'tickets', direction: 'outbound' },
+  { key: 'overdue', label: 'Overdue tasks', accent: 'warning', sections: 'tasks' },
+  { key: 'defects', label: 'Defects', sections: 'tasks' },
+];
 
-function ProgressBar({ percent }) {
-  if (percent === null || percent === undefined) {
-    return <span className={styles.issueMeta}>—</span>;
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-      <div style={{ width: 80, height: 8, borderRadius: 4, background: 'var(--color-slate-tint)', overflow: 'hidden' }}>
-        <div style={{ width: `${percent}%`, height: '100%', background: 'var(--color-teal)' }} />
-      </div>
-      <span style={{ fontSize: '0.85rem', color: 'var(--color-ink-soft)' }}>{percent}%</span>
-    </div>
-  );
-}
+const noAssignee = null;
+const emailLabel = (email) => email || '—';
 
 export default function DeveloperTaskWorkboard({
   tasks,
@@ -73,12 +52,12 @@ export default function DeveloperTaskWorkboard({
   inbound,
   loading,
   storageKey,
+  userId,
   showCards = true,
   hideEmptyCards = false,
 }) {
-  // null = collapsed. Otherwise the key of whichever stat card is driving
-  // the expanded view below - every card shows the filtered task table
-  // (kind: 'table') except Outbound (kind: 'list').
+  // null = collapsed. Otherwise the key of whichever tile is driving the
+  // expanded view below.
   const [activeCard, setActiveCard] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState('All');
@@ -86,14 +65,22 @@ export default function DeveloperTaskWorkboard({
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [viewMode, setViewMode] = useState('table');
+  const [expandedTaskIds, setExpandedTaskIds] = useState(() => new Set());
 
   const showCompletedStorageKey = `${storageKey}ShowCompleted`;
+  // Per user, so two people sharing a browser each keep their own view.
+  // Browser storage only - no user setting/DB column (confirmed with the
+  // user 2026-10-07).
+  const viewModeStorageKey = `${storageKey}ViewMode:${userId}`;
 
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
-    if (stored) setActiveCard(stored);
+    if (stored && CARD_DEFS.some((c) => c.key === stored)) setActiveCard(stored);
     setShowCompleted(localStorage.getItem(showCompletedStorageKey) === 'true');
-    // storageKey is a static prop per page, not expected to change at runtime.
+    const storedViewMode = localStorage.getItem(viewModeStorageKey);
+    if (storedViewMode === 'table' || storedViewMode === 'tile') setViewMode(storedViewMode);
+    // storageKey/userId are static per page, not expected to change at runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -105,39 +92,58 @@ export default function DeveloperTaskWorkboard({
     if (!checked && COMPLETED_STATUSES.includes(statusFilter)) setStatusFilter('All');
   };
 
-  // The table's whole dataset - every other computation below (card
-  // counts, Rejected/Overdue, the filter bar) reads from this, not the
-  // raw `tasks` prop, so hiding completed tasks by default actually
-  // shrinks what "My Tasks" means rather than just hiding table rows.
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    localStorage.setItem(viewModeStorageKey, mode);
+  };
+
+  const toggleExpanded = (taskId) => {
+    setExpandedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  // Each task's own filed tickets (open and resolved, the full picture -
+  // same as Team Tasks' tree) for its expandable "Dependencies (n)".
+  const tasksWithTickets = useMemo(() => {
+    const byTask = new Map();
+    for (const tk of inbound) {
+      if (!byTask.has(tk.parentTaskId)) byTask.set(tk.parentTaskId, []);
+      byTask.get(tk.parentTaskId).push(tk);
+    }
+    return tasks.map((t) => (byTask.has(t.id) ? { ...t, dependencyTickets: byTask.get(t.id) } : t));
+  }, [tasks, inbound]);
+
+  // The whole task dataset - every count and filter below reads from
+  // this, so hiding completed tasks by default actually shrinks what
+  // "Open tasks" means rather than just hiding rows.
   const visibleTasks = useMemo(
-    () => (showCompleted ? tasks : tasks.filter((t) => !COMPLETED_STATUSES.includes(t.status))),
-    [tasks, showCompleted],
+    () => (showCompleted ? tasksWithTickets : tasksWithTickets.filter((t) => !COMPLETED_STATUSES.includes(t.status))),
+    [tasksWithTickets, showCompleted],
   );
 
-  const { rejectedTasks, overdueCount } = computeDeveloperTaskStats(visibleTasks, outbound, todayISO());
+  const openOutbound = useMemo(() => openTickets(outbound), [outbound]);
+  const openInbound = useMemo(() => openTickets(inbound), [inbound]);
+  const dependencyRows = useMemo(() => openOutbound.map(toDependencyRow), [openOutbound]);
 
-  const cards = useMemo(
-    () => [
-      { key: 'myTasks', label: 'My Tasks', count: visibleTasks.length, kind: 'table' },
-      { key: 'rejected', label: 'Rejected', count: rejectedTasks.length, kind: 'table' },
-      { key: 'inbound', label: 'Inbound', count: inbound.length, kind: 'table' },
-      {
-        key: 'outbound',
-        label: 'Outbound',
-        count: outbound.length,
-        kind: 'list',
-        content: (
-          <CardList
-            items={outbound.map((t) => <TicketRow key={t.id} ticket={t} subtitle={`Filed by ${t.createdByEmail}`} />)}
-            emptyText="No one is waiting on you to clear a dependency right now."
-          />
-        ),
-      },
-      { key: 'overdue', label: 'Overdue', count: overdueCount, kind: 'table' },
-      { key: 'defects', label: 'Defects', count: visibleTasks.filter((t) => t.isDefect).length, kind: 'table' },
-    ],
-    [visibleTasks, rejectedTasks, inbound, outbound, overdueCount],
-  );
+  const { rejectedTasks, overdueTasks, overdueOutbound } = computeDeveloperTaskStats(visibleTasks, outbound, todayISO());
+
+  const counts = {
+    myTasks: visibleTasks.length,
+    rejected: rejectedTasks.length,
+    inbound: openInbound.length,
+    outbound: openOutbound.length,
+    overdue: overdueTasks.length,
+    defects: visibleTasks.filter((t) => t.isDefect).length,
+  };
+  const cards = CARD_DEFS.map((c) => ({
+    ...c,
+    count: counts[c.key],
+    note: c.key === 'outbound' && overdueOutbound.length > 0 ? `${overdueOutbound.length} overdue` : null,
+  }));
 
   const visibleCards = hideEmptyCards ? (loading ? cards : cards.filter((c) => c.count > 0)) : cards;
   const allCaughtUp = hideEmptyCards && !loading && visibleCards.length === 0;
@@ -148,17 +154,10 @@ export default function DeveloperTaskWorkboard({
       localStorage.setItem(storageKey, next || '');
       return next;
     });
-    if (card.key === 'myTasks') {
-      setStatusFilter('All'); setDependencyFilter('All'); setDueFrom(''); setDueTo('');
-    } else if (card.key === 'rejected') {
-      setStatusFilter('Failed'); setDependencyFilter('All'); setDueFrom(''); setDueTo('');
-    } else if (card.key === 'inbound') {
-      setStatusFilter('All'); setDependencyFilter('Yes'); setDueFrom(''); setDueTo('');
-    } else if (card.key === 'overdue') {
-      setStatusFilter('All'); setDependencyFilter('All'); setDueFrom(''); setDueTo(yesterdayISO());
-    } else if (card.key === 'defects') {
-      setStatusFilter('All'); setDependencyFilter('All'); setDueFrom(''); setDueTo('');
-    }
+    setStatusFilter(card.key === 'rejected' ? 'Failed' : 'All');
+    setDependencyFilter('All');
+    setDueFrom('');
+    setDueTo(card.key === 'overdue' ? yesterdayISO() : '');
   };
 
   const handleGenericToggle = () => {
@@ -169,10 +168,9 @@ export default function DeveloperTaskWorkboard({
     });
   };
 
-  // "Overdue" excludes 'Pass' the same way computeDeveloperTaskStats does
-  // for its overdueTasks count - the dueTo=yesterday filter above only
-  // covers the date half, so this adds the same status exclusion back in
-  // when Overdue is the active card.
+  const activeCardDef = cards.find((c) => c.key === activeCard);
+  const taskOnlyFiltersActive = statusFilter !== 'All' || dependencyFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
+
   const filteredTasks = useMemo(() => {
     return visibleTasks.filter((task) => {
       if (statusFilter !== 'All' && task.status !== statusFilter) return false;
@@ -182,103 +180,52 @@ export default function DeveloperTaskWorkboard({
       }
       if (dueFrom && (!task.dueDate || task.dueDate < dueFrom)) return false;
       if (dueTo && (!task.dueDate || task.dueDate > dueTo)) return false;
-      if (activeCard === 'overdue' && (task.status === 'Pass' || task.status === 'Junk')) return false;
+      // Same rule as the tile's count (isOverdueTask also leaves out
+      // Pass/Junk/Hold/Closed), so the rows always match the number.
+      if (activeCard === 'overdue' && !isOverdueTask(task)) return false;
       if (activeCard === 'defects' && !task.isDefect) return false;
       return true;
     });
   }, [visibleTasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard]);
+
+  // Tickets carry no status/due date of their own to filter on, so while
+  // a task-only filter is set they're left out, with a note instead -
+  // same rule as Team Tasks.
+  const allSections = activeCardDef?.sections === 'all';
+  const includeDependencies = allSections && !taskOnlyFiltersActive;
+  const hiddenDependencyCount = allSections && taskOnlyFiltersActive ? dependencyRows.length : 0;
+
+  const rows = useMemo(
+    () => sortBySections(includeDependencies ? [...filteredTasks, ...dependencyRows] : filteredTasks),
+    [filteredTasks, dependencyRows, includeDependencies],
+  );
+  const sectionCounts = useMemo(() => countSections(rows), [rows]);
+  const filerCounts = useMemo(() => {
+    const m = new Map();
+    for (const r of rows) if (r.kind === 'dependency') m.set(r.createdByEmail, (m.get(r.createdByEmail) || 0) + 1);
+    return m;
+  }, [rows]);
+  const filerCount = (row) => filerCounts.get(row.createdByEmail) || 0;
+
+  const { displayRows, sort, handleSortChange } = useSectionSort(rows, emailLabel);
+
+  // No Assignee column/card line - every row here is this user's own.
+  const columns = useMemo(
+    () => buildTaskColumns({ assigneeLabel: noAssignee, labelForEmail: emailLabel, expandedTaskIds, toggleExpanded }),
+    [expandedTaskIds],
+  );
 
   // Only offer statuses that can actually appear in visibleTasks right now -
   // with completed tasks hidden, picking "Pass" from the dropdown would
   // otherwise always dead-end on an empty table.
   const statusOptions = selectableStatuses(showCompleted);
 
-  const columns = useMemo(
-    () => [
-      {
-        key: 'id',
-        header: <ColHeader icon={Hash} label="Ticket ID" />,
-        width: 70,
-        sortable: true,
-        render: (t) => (
-          <Link
-            href={`/tasks/${t.id}`}
-            className={styles.issueId}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            #{t.id}
-          </Link>
-        ),
-      },
-      {
-        key: 'createdAt',
-        header: <ColHeader icon={CalendarDays} label="Created Date" />,
-        sortable: true,
-        render: (t) => formatDate(t.createdAt),
-      },
-      {
-        key: 'title',
-        header: <ColHeader icon={FileText} label="Title" />,
-        sortable: true,
-        render: (t) => (
-          <span className={styles.descClamp} title={t.title}>
-            {t.title}
-          </span>
-        ),
-      },
-      {
-        key: 'priority',
-        header: <ColHeader icon={Flag} label="Priority" />,
-        sortable: true,
-        sortAccessor: (t) => priorityRank(t.priority),
-        render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
-      },
-      {
-        key: 'dueDate',
-        header: <ColHeader icon={CalendarClock} label="Due Date" />,
-        sortable: true,
-        render: (t) => (
-          <span className={isOverdueTask(t) ? styles.dueDateOverdue : undefined}>{formatDate(t.dueDate)}</span>
-        ),
-      },
-      {
-        key: 'estimatedHours',
-        header: <ColHeader icon={Clock} label="Estimated Hours" />,
-        sortable: true,
-        align: 'right',
-        // estimatedHours is a Postgres `decimal` column, which TypeORM
-        // returns as a string (e.g. "5.00") - compare numerically instead
-        // of falling into Table's default string sort, which would put
-        // "10.00" before "9.00".
-        sortAccessor: (t) => (t.estimatedHours == null ? null : Number(t.estimatedHours)),
-        render: (t) => (t.estimatedHours == null ? '—' : t.estimatedHours),
-      },
-      {
-        key: 'hasOpenDependency',
-        header: <ColHeader icon={Link2} label="Dependency" />,
-        sortable: true,
-        render: (t) => (t.hasOpenDependency ? 'Yes' : 'No'),
-      },
-      {
-        key: 'percentComplete',
-        header: <ColHeader icon={PercentCircle} label="Completed %" />,
-        sortable: true,
-        render: (t) => <ProgressBar percent={t.percentComplete} />,
-      },
-      {
-        key: 'ageingDays',
-        header: <ColHeader icon={Hourglass} label="Ageing" />,
-        sortable: true,
-        align: 'right',
-        render: (t) => `${t.ageingDays}d`,
-      },
-    ],
-    [],
-  );
-
-  const activeCardDef = cards.find((c) => c.key === activeCard);
+  const emptyState =
+    tasks.length === 0 && dependencyRows.length === 0
+      ? 'No tasks assigned to you yet.'
+      : visibleTasks.length === 0 && !includeDependencies
+        ? 'All caught up - your completed tasks are hidden. Check "Show completed tasks" above to see them.'
+        : 'No tasks match these filters.';
 
   if (allCaughtUp) {
     return (
@@ -291,30 +238,34 @@ export default function DeveloperTaskWorkboard({
   return (
     <>
       {showCards && (
-        <div className={`${dashboardStyles.statsGrid} ${dashboardStyles.statsGridCompact}`}>
+        <div className={dashboardStyles.statsStrip}>
           {visibleCards.map((card) => {
-            const Icon = CARD_ICONS[card.key];
-            const alert = ALERT_CARDS.includes(card.key) && card.count > 0;
+            const selected = activeCard === card.key;
             return (
               <button
                 key={card.key}
                 type="button"
-                className={dashboardStyles.statCardButton}
-                aria-expanded={activeCard === card.key}
+                className={`${dashboardStyles.statStripSegment} ${selected ? dashboardStyles.selected : ''}`}
+                aria-pressed={selected}
                 onClick={() => handleCardClick(card)}
               >
+                {/* Red/amber only for a real problem (non-zero); 0 stays neutral. */}
                 <div
-                  className={`${dashboardStyles.statCard} ${dashboardStyles.statCardCompact} ${activeCard === card.key ? dashboardStyles.expanded : ''}`}
+                  className={`${dashboardStyles.statStripValue} ${
+                    loading || !card.count
+                      ? dashboardStyles.statStripZero
+                      : card.accent === 'danger'
+                        ? dashboardStyles.accentDanger
+                        : card.accent === 'warning'
+                          ? dashboardStyles.accentWarning
+                          : ''
+                  }`}
                 >
-                  {Icon && (
-                    <span className={`${dashboardStyles.statCardIcon} ${alert ? dashboardStyles.statCardIconAlert : ''}`} aria-hidden="true">
-                      <Icon size={18} />
-                    </span>
-                  )}
-                  <div>
-                    <div className={`${dashboardStyles.statValue} ${dashboardStyles.statValueCompact}`}>{loading ? '–' : card.count}</div>
-                    <div className={`${dashboardStyles.statLabel} ${dashboardStyles.statLabelCompact}`}>{card.label}</div>
-                  </div>
+                  {loading ? '–' : card.count}
+                </div>
+                <div className={dashboardStyles.statStripLabel}>
+                  {card.label}
+                  {!loading && card.note && <span className={dashboardStyles.statStripNote}> · {card.note}</span>}
                 </div>
               </button>
             );
@@ -341,27 +292,23 @@ export default function DeveloperTaskWorkboard({
         {activeCard ? 'Hide detailed table' : 'Show detailed table'}
       </button>
 
-      {activeCard && activeCardDef?.kind === 'list' && (
-        <>
-          <div className={dashboardStyles.sectionHeader}>
-            <h2 className={dashboardStyles.sectionTitle}>{activeCardDef.label}</h2>
-          </div>
-          {loading ? <LoadingState /> : activeCardDef.content}
-        </>
+      {activeCard && activeCardDef?.kind === 'tickets' && (
+        <DependencyTicketBoard
+          key={activeCardDef.direction}
+          tickets={activeCardDef.direction === 'outbound' ? outbound : inbound}
+          direction={activeCardDef.direction}
+          title={activeCardDef.label}
+          storageKey={`${storageKey}Tickets`}
+          userId={userId}
+          loading={loading}
+        />
       )}
 
-      {activeCard && activeCardDef?.kind === 'table' && (
+      {activeCard && activeCardDef && activeCardDef.kind !== 'tickets' && (
         <>
-          <div className={styles.statusLegend}>
-            {LEGEND_ITEMS.map((item) => (
-              <span key={item.label} className={styles.statusLegendItem}>
-                <span className={styles.statusLegendDot} style={{ background: item.swatch }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
+          <StatusLegend items={LEGEND_ITEMS} />
 
-          <div className={styles.filterBar}>
+          <div className={`${styles.filterBar} ${styles.teamFilterBar}`}>
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="statusFilter">Status</label>
               <select
@@ -412,22 +359,45 @@ export default function DeveloperTaskWorkboard({
                 onChange={(e) => setDueTo(e.target.value)}
               />
             </div>
+
+            <ViewToggle id="myTasksViewLabel" value={viewMode} onChange={handleViewModeChange} />
           </div>
 
-          <Table
-            columns={columns}
-            rows={filteredTasks}
-            getRowId={(t) => t.id}
-            onRowClick={(t) => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
-            rowClassName={(t) => ROW_TINT_CLASS[t.status] || ''}
-            emptyState={
-              tasks.length === 0
-                ? 'No tasks assigned to you yet.'
-                : visibleTasks.length === 0
-                  ? "All caught up - your completed tasks are hidden. Check \"Show completed tasks\" above to see them."
-                  : 'No tasks match these filters.'
-            }
-          />
+          {hiddenDependencyCount > 0 && (
+            <p className={styles.issueMeta}>
+              {hiddenDependencyCount === 1 ? '1 dependency waiting on you is' : `${hiddenDependencyCount} dependencies waiting on you are`} hidden while Status, Dependency, or Due date filters are active.
+            </p>
+          )}
+
+          {loading ? (
+            <LoadingState />
+          ) : viewMode === 'tile' ? (
+            <TaskSectionsTiles
+              rows={displayRows}
+              sectionCounts={sectionCounts}
+              filerCount={filerCount}
+              labelForEmail={emailLabel}
+              assigneeLabel={noAssignee}
+              railClass={ROW_RAIL_CLASS}
+              expandedTaskIds={expandedTaskIds}
+              toggleExpanded={toggleExpanded}
+              emptyState={emptyState}
+            />
+          ) : (
+            <TaskSectionsTable
+              rows={displayRows}
+              columns={columns}
+              sort={sort}
+              onSortChange={handleSortChange}
+              sectionCounts={sectionCounts}
+              filerCount={filerCount}
+              labelForEmail={emailLabel}
+              rowTintClass={ROW_TINT_CLASS}
+              expandedTaskIds={expandedTaskIds}
+              emptyState={emptyState}
+              minWidth={900}
+            />
+          )}
         </>
       )}
     </>

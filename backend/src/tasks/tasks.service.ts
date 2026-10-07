@@ -81,7 +81,7 @@ export interface TeamTaskFilters {
 }
 
 export interface TeamTasksResult {
-  // ProjectTaskWithComputed rows, plus TeamDependencyRows (ahead of them)
+  // ProjectTaskWithComputed rows, plus TeamDependencyRows (after them)
   // when filters.includeDependencies - tell them apart by `kind`.
   tasks: Array<ProjectTaskWithComputed | TeamDependencyRow>;
   total: number;
@@ -103,6 +103,10 @@ export interface TeamTasksResult {
   // two pages still shows its full count. Empty unless
   // filters.includeDependencies.
   includedDependencyCountsByFiler: Record<string, number>;
+  // Row counts per section across all pages, for Team Tasks' "Tasks (n)",
+  // "Defects (n)" and "Dependencies (n)" headers - `tasks` is ordered in
+  // exactly that section order (see findTeam()).
+  sectionCounts: { tasks: number; defects: number; dependencies: number };
 }
 
 // An open dependency ticket shown as a row/card in Team Tasks' own grid,
@@ -194,6 +198,15 @@ const PRIORITY_RANK: Record<string, number> = {
   [TaskPriority.HIGH]: 1,
   [TaskPriority.MEDIUM]: 2,
 };
+
+// Date-only strings (YYYY-MM-DD) compare correctly as text; a missing due
+// date sorts after every real one.
+function compareDueDates(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a < b ? -1 : 1;
+}
 
 // Status while a QA review round is pending (Stage 4/5) - the task shows
 // up in the QA queue (findQaQueue() below) under either value, whether
@@ -896,9 +909,29 @@ export class TasksService {
       includedDependencyCountsByFiler[r.createdByEmail] = (includedDependencyCountsByFiler[r.createdByEmail] || 0) + 1;
     }
 
-    // Dependencies first, then tasks in their usual priority order -
-    // paginated as one list so page counts stay honest.
-    const combined: Array<TeamDependencyRow | ProjectTask> = [...includedDependencyRows, ...filtered];
+    // Sections in a fixed order - Tasks, then Defects, then Dependencies
+    // (confirmed with the user 2026-10-07) - paginated as one list so page
+    // counts stay honest. Within Tasks/Defects: due date soonest first (no
+    // due date last), then priority, then id. Dependencies keep their
+    // "Filed by" grouping, soonest parent-task due date first within each
+    // group.
+    const bySchedule = (a: ProjectTask, b: ProjectTask) =>
+      compareDueDates(a.dueDate, b.dueDate) ||
+      (PRIORITY_RANK[a.priority as string] ?? 3) - (PRIORITY_RANK[b.priority as string] ?? 3) ||
+      a.id - b.id;
+    const plainTasks = filtered.filter((t) => !t.isDefect).sort(bySchedule);
+    const defectTasks = filtered.filter((t) => t.isDefect).sort(bySchedule);
+    const filerRank = new Map<string, number>();
+    includedDependencyRows.forEach((r) => {
+      if (!filerRank.has(r.createdByEmail)) filerRank.set(r.createdByEmail, filerRank.size);
+    });
+    const orderedDependencyRows = [...includedDependencyRows].sort(
+      (a, b) =>
+        filerRank.get(a.createdByEmail)! - filerRank.get(b.createdByEmail)! ||
+        compareDueDates(a.dueDate, b.dueDate) ||
+        a.id - b.id,
+    );
+    const combined: Array<TeamDependencyRow | ProjectTask> = [...plainTasks, ...defectTasks, ...orderedDependencyRows];
     const total = combined.length;
     const start = (page - 1) * pageSize;
     const pageItems = filters.all ? combined : combined.slice(start, start + pageSize);
@@ -955,6 +988,7 @@ export class TasksService {
       dependenciesToClearCount: dependencyRows.length,
       includedDependencyCount: includedDependencyRows.length,
       includedDependencyCountsByFiler,
+      sectionCounts: { tasks: plainTasks.length, defects: defectTasks.length, dependencies: orderedDependencyRows.length },
     };
   }
 

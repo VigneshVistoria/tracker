@@ -1,20 +1,16 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import {
-  CalendarDays, FileText, CalendarClock, Clock, Link2, PercentCircle, Hourglass, User, Activity,
-  ChevronDown, ChevronRight, ChevronLeft, List, LayoutGrid, X, Users, Layers,
-} from 'lucide-react';
-import Table from './ui/Table';
-import Badge from './ui/Badge';
-import ColHeader from './ColHeader';
+import { ChevronRight, ChevronLeft, X } from 'lucide-react';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { yesterdayISO, isOverdueTask } from '../lib/developerTaskStats';
+import { yesterdayISO } from '../lib/developerTaskStats';
 import {
   buildRowTintClass, buildRowRailClass, visibleStatusTabs,
-  priorityTone, priorityLabel, priorityStripeColor, statusBadgeStyle, statusLabel,
+  priorityStripeColor, statusBadgeStyle,
   HOLD_CLOSED_STATUSES, STATUS_TAB_GROUPS,
 } from '../lib/taskTableShared';
+import {
+  buildTaskColumns, useSectionSort, TaskSectionsTable, TaskSectionsTiles, ViewToggle,
+} from './taskViews/TaskSections';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
 
@@ -39,7 +35,8 @@ import { apiFetch } from '../lib/api';
 // Table view and tile view share this exact same fetch/filter/pagination
 // state - the toggle only swaps which of the two render blocks below is
 // used for the current page's rows, so the two views can never drift out
-// of sync with each other.
+// of sync with each other. Both views' building blocks live in
+// components/taskViews/TaskSections.js, shared with My Tasks.
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const DEFAULT_PAGE_SIZE = 50;
@@ -132,227 +129,6 @@ function presetMatches(key, f) {
   );
 }
 
-// One "no value" mark for every empty cell, same muted colour everywhere
-// (centred by the column's own alignment).
-function EmptyValue() {
-  return (
-    <span className={styles.teamEmpty} aria-label="None">
-      —
-    </span>
-  );
-}
-
-function ProgressBar({ percent }) {
-  if (percent === null || percent === undefined) {
-    return <EmptyValue />;
-  }
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--ds-space-2)' }}>
-      <div
-        role="progressbar"
-        aria-valuenow={percent}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="Percent complete"
-        style={{
-          width: 44,
-          height: 8,
-          borderRadius: 'var(--ds-radius-full)',
-          background: 'var(--ds-bg-surface-sunken)',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ width: `${percent}%`, height: '100%', background: 'var(--ds-color-success)' }} />
-      </div>
-      <span style={{ fontSize: 'var(--ds-text-sm)', color: 'var(--ds-text-secondary)' }}>{percent}%</span>
-    </div>
-  );
-}
-
-// Dependency tree content - shared by the table view's expandable row
-// (Table's expandedContent prop) and the tile view's inline expansion.
-// Only ever rendered for a task that actually has dependency tickets
-// (see the callers below); defects are intentionally out of scope here -
-// there's no data linking a defect back to an originating task today.
-function DependencyTree({ tickets }) {
-  return (
-    <div className={styles.dependencyTree}>
-      {tickets.map((tk) => (
-        <div key={tk.id} className={styles.dependencyTreeItem}>
-          <Link2 size={13} aria-hidden="true" />
-          <span title={tk.description}>{tk.title}</span>
-          <span className={styles.dependencyTreeOwner}>{tk.ownerEmail}</span>
-          <Badge tone={tk.status === 'open' ? 'warning' : 'success'}>{tk.status === 'open' ? 'Open' : 'Resolved'}</Badge>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Open dependency tickets shown as rows/cards in the same grid as tasks
-// on the Development / Failed tab (TasksService.findTeamDependencyRows -
-// see TeamDependencyRow for which task fields they mirror). A ticket has
-// no page of its own - it lives on its parent task's page - so opening
-// one goes there, scrolled to and highlighting that ticket (confirmed
-// with the user 2026-10).
-const isDependencyRow = (row) => row.kind === 'dependency';
-const dependencyHref = (row) => `/tasks/${row.parentTaskId}#dependency-${row.id}`;
-const rowHref = (row) => (isDependencyRow(row) ? dependencyHref(row) : `/tasks/${row.id}`);
-
-// Backend-resolved filer name first (TeamDependencyRow.createdByName), so
-// the card line and its "Filed by X" group header always agree.
-const filerLabel = (row, labelForEmail) => row.createdByName || labelForEmail(row.createdByEmail);
-
-// Inside a "Filed by X" group (Tiles, or the unsorted Table) the group
-// header already names the filer, so the line drops it.
-function FiledByLine({ row, labelForEmail, grouped = false }) {
-  const parent = `#${row.parentTaskId}${row.parentTaskTitle ? ` ${row.parentTaskTitle}` : ''}`;
-  return grouped ? <>on {parent}</> : <>Filed by {filerLabel(row, labelForEmail)} on {parent}</>;
-}
-
-// "Filed by X (n)" band above each group of dependency cards (Tiles) or
-// rows (Table). `count` is the filer's total across all pages, from the
-// API, so a group split over two pages still shows its full size.
-function FiledByGroupHeader({ label, count, inTable }) {
-  return (
-    <div role="heading" aria-level={3} className={`${styles.filedByHeader} ${inTable ? styles.filedByHeaderInTable : ''}`}>
-      Filed by {label} ({count})
-    </div>
-  );
-}
-
-// Same layout as TaskTile below (ticket number + type tag + status tag,
-// Title headline, module/assignee/due meta line), with the dependency's
-// own differences: DEPENDENCY tag instead of TASK/DEFECT, no priority (a
-// ticket has none), the parent task's due date labeled "Task due", and a
-// "Filed by ... on #id Task" line so it's clear who is waiting. The long
-// description is deliberately left off the card.
-function DependencyTile({ row, assigneeLabel, labelForEmail }) {
-  const href = dependencyHref(row);
-  const open = () => window.open(href, '_blank', 'noopener,noreferrer');
-  return (
-    <div
-      className={`${styles.taskTile} ${styles.railDependency}`}
-      role="button"
-      tabIndex={0}
-      aria-label={`Open dependency #${row.id}: ${row.title}`}
-      onClick={open}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          open();
-        }
-      }}
-    >
-      <div className={styles.taskTileTop}>
-        <div className={styles.taskTileTopLeft}>
-          <Link
-            href={href}
-            className={styles.issueId}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            #{row.id}
-          </Link>
-          <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
-        </div>
-        <div className={styles.taskTileBadges}>
-          <Badge tone="warning">{row.status}</Badge>
-        </div>
-      </div>
-      <div className={styles.taskTileDesc} title={row.title}>
-        {row.title}
-      </div>
-      <div className={styles.taskTileMeta}>
-        <span title={row.projectName || undefined}><Layers size={12} aria-hidden="true" /> {row.moduleName || '—'}</span>
-        <span><User size={12} aria-hidden="true" /> {assigneeLabel}</span>
-        <span><CalendarClock size={12} aria-hidden="true" /> Task due {formatDate(row.dueDate)}</span>
-      </div>
-      <div className={`${styles.dependencyRaisedBy} ${styles.teamOneLine}`} title={`Filed by ${filerLabel(row, labelForEmail)} on #${row.parentTaskId}${row.parentTaskTitle ? ` ${row.parentTaskTitle}` : ''}`}>
-        <FiledByLine row={row} labelForEmail={labelForEmail} grouped />
-      </div>
-    </div>
-  );
-}
-
-function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand, onOpen }) {
-  const depCount = task.dependencyTickets?.length || 0;
-  const depOpenCount = task.dependencyTickets?.filter((tk) => tk.status === 'open').length || 0;
-  const depResolvedCount = depCount - depOpenCount;
-  return (
-    <div
-      className={`${styles.taskTile} ${railClass || ''}`}
-      role="button"
-      tabIndex={0}
-      aria-label={`Open task #${task.id}: ${task.title}`}
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        // Only the tile itself, not a nested link/button (which already
-        // handle their own Enter/Space), should trigger onOpen.
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-    >
-      <div className={styles.taskTileTop}>
-        <div className={styles.taskTileTopLeft}>
-          <Link
-            href={`/tasks/${task.id}`}
-            className={styles.issueId}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            #{task.id}
-          </Link>
-          <span className={`${styles.typeTag} ${task.isDefect ? styles.typeTagDefect : styles.typeTagTask}`}>
-            {task.isDefect ? 'Defect' : 'Task'}
-          </span>
-        </div>
-        <div className={styles.taskTileBadges}>
-          <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
-          <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status)}</span>
-        </div>
-      </div>
-      <div className={styles.taskTileDesc} title={task.title}>
-        {task.title}
-      </div>
-      <div className={styles.taskTileMeta}>
-        <span><Layers size={12} aria-hidden="true" /> {task.moduleName || '—'}</span>
-        <span><User size={12} aria-hidden="true" /> {assigneeLabel}</span>
-        <span className={isOverdueTask(task) ? styles.dueDateOverdue : undefined}>
-          <CalendarClock size={12} aria-hidden="true" /> {formatDate(task.dueDate)}
-        </span>
-      </div>
-      {depCount > 0 && (
-        <button
-          type="button"
-          className={styles.dependencyToggle}
-          style={{ marginTop: 'var(--space-3)' }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpand(task.id);
-          }}
-        >
-          {expanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-          Dependencies ({depCount})
-          <span className={styles.depCountOpen}>{depOpenCount}</span>
-          <span className={styles.depCountResolved}>{depResolvedCount}</span>
-        </button>
-      )}
-      {expanded && depCount > 0 && (
-        <div style={{ marginTop: 'var(--space-2)' }} onClick={(e) => e.stopPropagation()}>
-          <DependencyTree tickets={task.dependencyTickets} />
-        </div>
-      )}
-    </div>
-  );
-}
-
 // Workload view chip - status fill (same statusBadgeStyle used by the
 // Status column/badge elsewhere on this page) + a colored left-edge stripe
 // for Priority. Opens the task the same way every other click-to-open spot
@@ -430,6 +206,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   // see includeDependencies below), for the pagination footer.
   const [includedDependencyCount, setIncludedDependencyCount] = useState(0);
   const [dependencyCountsByFiler, setDependencyCountsByFiler] = useState({});
+  const [sectionCounts, setSectionCounts] = useState({ tasks: 0, defects: 0, dependencies: 0 });
   // Bumped whenever this browser tab regains focus, to re-fetch - a
   // ticket is usually resolved from its parent task page in another tab,
   // and its card should disappear (and the count drop) on return.
@@ -531,6 +308,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
         setDependenciesToClearCount(res.dependenciesToClearCount || 0);
         setIncludedDependencyCount(res.includedDependencyCount || 0);
         setDependencyCountsByFiler(res.includedDependencyCountsByFiler || {});
+        setSectionCounts(res.sectionCounts || { tasks: 0, defects: 0, dependencies: 0 });
         setError('');
       })
       .catch((err) => {
@@ -630,25 +408,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     return (email) => byEmail.get(email) || email || '—';
   }, [assignees]);
 
-  // Tiles view: this page's dependency cards split into "Filed by" groups
-  // (the API already orders them group by group - see
-  // findTeamDependencyRows), plus the task/defect cards, which stay
-  // ungrouped below them.
-  const { dependencyGroups, taskTiles } = useMemo(() => {
-    const groups = [];
-    const rest = [];
-    for (const t of tasks) {
-      if (!isDependencyRow(t)) {
-        rest.push(t);
-      } else if (groups.length > 0 && groups[groups.length - 1].email === t.createdByEmail) {
-        groups[groups.length - 1].rows.push(t);
-      } else {
-        groups.push({ email: t.createdByEmail, rows: [t] });
-      }
-    }
-    return { dependencyGroups: groups, taskTiles: rest };
-  }, [tasks]);
-
+  // "Filed by X (n)" uses the filer's total across all pages, from the API.
   const filerCount = (row) => dependencyCountsByFiler[row.createdByEmail] || 0;
 
   const workloadWeeks = useMemo(() => buildWorkloadWeeks(weekOffset), [weekOffset]);
@@ -720,182 +480,20 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
     if (next) applyCardPreset(next);
   };
 
-  // Fixed widths for every column except Title, which takes the rest
-  // (Table's fixedLayout). Priority has no column of its own - it's empty
-  // on most tasks, so it shows as a badge in the Title cell when set
-  // (confirmed with the user 2026-10-06). The Assignee column is dropped
-  // while a single assignee is selected, since every row would repeat it.
+  const assigneeLabel = useMemo(
+    () => (t) => assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail,
+    [assigneeLabelById],
+  );
+  const { displayRows, sort, handleSortChange } = useSectionSort(tasks, assigneeLabel);
+
+  // The Assignee column/card line is dropped while a single assignee is
+  // selected, since every row would repeat it.
+  const showAssignee = assigneeFilter === 'All';
   const columns = useMemo(
-    () => [
-      {
-        key: 'id',
-        header: <ColHeader label="#" tooltip="Ticket ID" showLabel />,
-        width: 64,
-        sortable: true,
-        render: (t) => (
-          <Link
-            href={rowHref(t)}
-            className={styles.teamTaskId}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-          >
-            #{t.id}
-          </Link>
-        ),
-      },
-      ...(assigneeFilter === 'All'
-        ? [
-            {
-              key: 'assigneeEmail',
-              header: <ColHeader icon={User} label="Assignee" showLabel />,
-              width: 140,
-              sortable: true,
-              render: (t) => {
-                const name = assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail;
-                return name ? <span className={styles.teamOneLine} title={name}>{name}</span> : <EmptyValue />;
-              },
-            },
-          ]
-        : []),
-      {
-        key: 'createdAt',
-        header: <ColHeader icon={CalendarDays} label="Created" tooltip="Created (dependency: date filed)" showLabel />,
-        width: 120,
-        align: 'center',
-        sortable: true,
-        render: (t) => (
-          <span className={styles.teamNowrap} title={isDependencyRow(t) ? 'Date this dependency was filed' : undefined}>
-            {formatDate(t.createdAt)}
-          </span>
-        ),
-      },
-      {
-        key: 'title',
-        header: <ColHeader icon={FileText} label="Title" showLabel />,
-        sortable: true,
-        render: (t, { grouped } = {}) => {
-          const badges = isDependencyRow(t) ? (
-            <span className={`${styles.typeTag} ${styles.typeTagDependency}`}>Dependency</span>
-          ) : (
-            <>
-              {t.isDefect && <span className={`${styles.typeTag} ${styles.typeTagDefect}`}>Defect</span>}
-              {t.priority && <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>}
-            </>
-          );
-          const hasBadges = isDependencyRow(t) || t.isDefect || t.priority;
-          const filedBy = isDependencyRow(t)
-            ? `Filed by ${filerLabel(t, labelForEmail)} on #${t.parentTaskId}${t.parentTaskTitle ? ` ${t.parentTaskTitle}` : ''}`
-            : null;
-          return (
-            <div className={styles.teamTitleCell}>
-              {hasBadges && <div className={styles.teamTitleBadges}>{badges}</div>}
-              <span className={styles.teamTitleClamp} title={t.title}>{t.title}</span>
-              {filedBy && (
-                <span className={`${styles.dependencyRaisedBy} ${styles.teamOneLine}`} title={filedBy}>
-                  <FiledByLine row={t} labelForEmail={labelForEmail} grouped={grouped} />
-                </span>
-              )}
-            </div>
-          );
-        },
-      },
-      {
-        key: 'status',
-        header: <ColHeader icon={Activity} label="Status" showLabel />,
-        width: 124,
-        align: 'center',
-        sortable: true,
-        render: (t) =>
-          isDependencyRow(t) ? (
-            <Badge tone="warning">{t.status}</Badge>
-          ) : (
-            <span className={`${styles.badge} ${styles.teamNowrap}`} style={statusBadgeStyle(t.status)}>{statusLabel(t.status)}</span>
-          ),
-      },
-      {
-        key: 'dueDate',
-        header: <ColHeader icon={CalendarClock} label="Due" tooltip="Due date (dependency: the parent task's due date)" showLabel />,
-        width: 120,
-        align: 'center',
-        sortable: true,
-        render: (t) => {
-          if (!t.dueDate) return <EmptyValue />;
-          if (isDependencyRow(t)) {
-            return (
-              <span className={`${styles.teamNowrap} ${styles.teamParentDue}`} title={`Due date of parent task #${t.parentTaskId}`}>
-                <Link2 size={12} aria-hidden="true" />
-                {formatDate(t.dueDate)}
-              </span>
-            );
-          }
-          return (
-            <span className={`${styles.teamNowrap} ${isOverdueTask(t) ? styles.dueDateOverdue : ''}`}>{formatDate(t.dueDate)}</span>
-          );
-        },
-      },
-      {
-        key: 'estimatedHours',
-        header: <ColHeader icon={Clock} label="Est. hrs" tooltip="Estimated hours" showLabel />,
-        width: 112,
-        align: 'center',
-        sortable: true,
-        sortAccessor: (t) => (t.estimatedHours == null ? null : Number(t.estimatedHours)),
-        render: (t) => (t.estimatedHours == null ? <EmptyValue /> : t.estimatedHours),
-      },
-      {
-        key: 'hasOpenDependency',
-        header: <ColHeader icon={Link2} label="Dependency" tooltip="Waiting on a dependency" showLabel />,
-        width: 136,
-        align: 'center',
-        sortable: true,
-        render: (t) => {
-          if (isDependencyRow(t)) return <EmptyValue />;
-          const depCount = t.dependencyTickets?.length || 0;
-          const label = t.hasOpenDependency ? 'Yes' : 'No';
-          if (depCount === 0) return label;
-          const isExpanded = expandedTaskIds.has(t.id);
-          return (
-            <button
-              type="button"
-              className={`${styles.dependencyToggle} ${styles.teamNowrap}`}
-              aria-expanded={isExpanded}
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleExpanded(t.id);
-              }}
-            >
-              {isExpanded ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-              {label} ({depCount})
-            </button>
-          );
-        },
-      },
-      {
-        key: 'percentComplete',
-        header: <ColHeader icon={PercentCircle} label="Done %" tooltip="Completed %" showLabel />,
-        width: 116,
-        align: 'center',
-        sortable: true,
-        render: (t) => <ProgressBar percent={t.percentComplete} />,
-      },
-      {
-        key: 'ageingDays',
-        header: (
-          <ColHeader
-            icon={Hourglass}
-            label="Age"
-            tooltip="Days since created (dependency: days since filed)"
-            showLabel
-          />
-        ),
-        width: 92,
-        align: 'right',
-        sortable: true,
-        render: (t) => <span className={styles.teamNowrap}>{t.ageingDays}d</span>,
-      },
-    ],
-    [expandedTaskIds, assigneeLabelById, labelForEmail, assigneeFilter],
+    () => buildTaskColumns({ assigneeLabel: showAssignee ? assigneeLabel : null, labelForEmail, expandedTaskIds, toggleExpanded }),
+    // toggleExpanded only calls a state setter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expandedTaskIds, assigneeLabel, labelForEmail, showAssignee],
   );
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
@@ -1066,35 +664,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
               </label>
             </div>
 
-            <div className={styles.filterGroup}>
-              <span className={styles.filterLabel} id="teamViewLabel">View</span>
-              <div className={styles.viewToggle} role="group" aria-labelledby="teamViewLabel">
-                <button
-                  type="button"
-                  className={`${styles.viewToggleButton} ${viewMode === 'table' ? styles.viewToggleActive : ''}`}
-                  aria-pressed={viewMode === 'table'}
-                  onClick={() => handleViewModeChange('table')}
-                >
-                  <List size={14} aria-hidden="true" /> Table
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.viewToggleButton} ${viewMode === 'tile' ? styles.viewToggleActive : ''}`}
-                  aria-pressed={viewMode === 'tile'}
-                  onClick={() => handleViewModeChange('tile')}
-                >
-                  <LayoutGrid size={14} aria-hidden="true" /> Tiles
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.viewToggleButton} ${viewMode === 'workload' ? styles.viewToggleActive : ''}`}
-                  aria-pressed={viewMode === 'workload'}
-                  onClick={() => handleViewModeChange('workload')}
-                >
-                  <Users size={14} aria-hidden="true" /> Workload
-                </button>
-              </div>
-            </div>
+            <ViewToggle id="teamViewLabel" value={viewMode} onChange={handleViewModeChange} modes={['table', 'tile', 'workload']} />
           </div>
 
           {onDevFailedTab && viewMode !== 'workload' && taskOnlyFiltersActive && dependenciesToClearCount > 0 && (
@@ -1170,61 +740,31 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
               </div>
             </>
           ) : viewMode === 'tile' ? (
-            <div className={fullScreen ? styles.fullScreenTableWrap : undefined}>
-              {dependencyGroups.map((g) => (
-                <section key={`filer-${g.email}`} className={styles.filedByGroup}>
-                  <FiledByGroupHeader label={filerLabel(g.rows[0], labelForEmail)} count={filerCount(g.rows[0])} />
-                  <div className={styles.taskTileGrid}>
-                    {g.rows.map((t) => (
-                      <DependencyTile
-                        key={`dep-${t.id}`}
-                        row={t}
-                        assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
-                        labelForEmail={labelForEmail}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ))}
-              <div className={styles.taskTileGrid}>
-                {tasks.length === 0 && (
-                  <div className={styles.card}>{loading ? 'Loading...' : 'No tasks match these filters.'}</div>
-                )}
-                {taskTiles.map((t) => (
-                  <TaskTile
-                    key={t.id}
-                    task={t}
-                    assigneeLabel={assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || '—'}
-                    railClass={ROW_RAIL_CLASS[t.status]}
-                    expanded={expandedTaskIds.has(t.id)}
-                    onToggleExpand={toggleExpanded}
-                    onOpen={() => window.open(`/tasks/${t.id}`, '_blank', 'noopener,noreferrer')}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <Table
-              columns={columns}
-              fixedLayout
-              minWidth={1240}
-              bodyVerticalAlign="middle"
-              groupHeader={(t, prev) =>
-                isDependencyRow(t) && !(prev && isDependencyRow(prev) && prev.createdByEmail === t.createdByEmail) ? (
-                  <FiledByGroupHeader label={filerLabel(t, labelForEmail)} count={filerCount(t)} inTable />
-                ) : null
-              }
-              rows={tasks}
-              getRowId={(t) => (isDependencyRow(t) ? `dep-${t.id}` : t.id)}
-              onRowClick={(t) => window.open(rowHref(t), '_blank', 'noopener,noreferrer')}
-              rowClassName={(t) => (isDependencyRow(t) ? '' : ROW_TINT_CLASS[t.status] || '')}
+            <TaskSectionsTiles
+              rows={displayRows}
+              sectionCounts={sectionCounts}
+              filerCount={filerCount}
+              labelForEmail={labelForEmail}
+              assigneeLabel={assigneeLabel}
+              railClass={ROW_RAIL_CLASS}
+              expandedTaskIds={expandedTaskIds}
+              toggleExpanded={toggleExpanded}
               emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
               className={fullScreen ? styles.fullScreenTableWrap : undefined}
-              expandedContent={(t) =>
-                !isDependencyRow(t) && expandedTaskIds.has(t.id) && t.dependencyTickets?.length > 0 ? (
-                  <DependencyTree tickets={t.dependencyTickets} />
-                ) : null
-              }
+            />
+          ) : (
+            <TaskSectionsTable
+              rows={displayRows}
+              columns={columns}
+              sort={sort}
+              onSortChange={handleSortChange}
+              sectionCounts={sectionCounts}
+              filerCount={filerCount}
+              labelForEmail={labelForEmail}
+              rowTintClass={ROW_TINT_CLASS}
+              expandedTaskIds={expandedTaskIds}
+              emptyState={loading ? 'Loading...' : 'No tasks match these filters.'}
+              className={fullScreen ? styles.fullScreenTableWrap : undefined}
             />
           )}
 

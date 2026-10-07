@@ -28,8 +28,9 @@ export default function Table({
   // Optional, additive - undefined for every existing caller except Team
   // Tasks. Called per row with the row before it; a non-null return value
   // renders as a full-width row directly above (Team Tasks' "Filed by X"
-  // dependency groups). Skipped while a column sort is active, since
-  // sorting scatters the group's rows.
+  // sections and "Filed by X" groups). Skipped while an uncontrolled
+  // column sort is active, since sorting scatters the group's rows; with
+  // onSortChange the caller sorts within its own groups, so they stay.
   groupHeader,
   // Optional, additive - merged onto the outer wrap div's className.
   // undefined for every existing caller except Team Tasks' full screen
@@ -85,7 +86,7 @@ export default function Table({
   // Passed to each column's render() as a second argument (existing
   // renderers ignore it): whether group header rows are currently shown,
   // so a cell can drop text the group header already says.
-  const grouped = Boolean(groupHeader) && !sortKey;
+  const grouped = Boolean(groupHeader) && (!sortKey || Boolean(onSortChange));
   const justifyFor = (align) => (align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start');
 
   return (
@@ -134,7 +135,7 @@ export default function Table({
           )}
           {sortedRows.map((row, i) => {
             const expanded = expandedContent ? expandedContent(row) : null;
-            const header = groupHeader && !sortKey ? groupHeader(row, i > 0 ? sortedRows[i - 1] : null) : null;
+            const header = grouped ? groupHeader(row, i > 0 ? sortedRows[i - 1] : null) : null;
             return (
               <Fragment key={getRowId(row)}>
                 {header && (

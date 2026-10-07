@@ -143,8 +143,13 @@
 .statStripSegment:first-child {
   border-left: none;
 }
-.statStripSegment:hover {
-  background: var(--ds-bg-surface-sunken);
+/* Hover only on devices with a real pointer - on touch screens :hover
+   sticks after a tap and made a tile look selected when it wasn't. Kept
+   lighter than .selected so the two never read the same. */
+@media (hover: hover) {
+  .statStripSegment:not(.selected):hover {
+    background: color-mix(in srgb, var(--ds-bg-surface-sunken) 50%, transparent);
+  }
 }
 .statStripSegment:focus-visible {
   outline: none;
@@ -181,6 +186,11 @@
   font-size: var(--ds-text-xs);
   color: var(--ds-text-secondary);
   margin-top: var(--ds-space-1);
+}
+/* Secondary fact after a tile's label, e.g. "Waiting on you · 2 overdue". */
+.statStripNote {
+  color: var(--color-amber-dark);
+  font-weight: var(--ds-weight-semibold);
 }
 
 .sectionHeader {

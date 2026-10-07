@@ -43,11 +43,11 @@ const ROLES = [
 ];
 
 const TILES = [
-  ['My Tasks', 'All tasks assigned to you, sorted by priority', 'Work top-down: Immediate, then High, then Medium'],
+  ['Open tasks', 'Your tasks that are not completed, shown as Tasks, Defects and Dependencies, soonest due date first', 'Work top-down: soonest due, then highest priority'],
   ['Rejected', 'Tasks QA or a peer reviewer sent back (status Failed)', 'Treat as top priority; fix and resubmit'],
-  ['Inbound', 'Dependency tickets you filed against another developer that are still open', 'Follow up with the owner'],
-  ['Outbound', 'Dependency tickets another developer filed against you that are still open', 'Resolve them promptly; they block someone else'],
-  ['Overdue', 'Your tasks past Due Date, plus Outbound tickets whose parent task is overdue', 'Clear these first; they hurt your KPI'],
+  ['You’re waiting on', 'Dependency tickets you filed against another developer that are still open', 'Follow up with the owner'],
+  ['Waiting on you', 'Dependency tickets another developer filed against you that are still open; also shows how many are past the parent task’s due date', 'Resolve them promptly; they block someone else'],
+  ['Overdue tasks', 'Your own tasks past their Due Date (dependency tickets are counted on Waiting on you instead)', 'Clear these first; they hurt your KPI'],
   ['Defects', 'Defects QA raised directly against you', 'Work them like any task'],
 ];
 
@@ -285,8 +285,8 @@ export default function TrackerSopPage() {
           <Section id="daily" number={5} title="Start of day">
             <ol className={g.steps}>
               <li>
-                Open the Dashboard. Clear <strong>Rejected</strong> and <strong>Overdue</strong> first, then{' '}
-                <strong>Outbound</strong> dependency tickets, then <strong>My Tasks</strong> in priority order.
+                Open the Dashboard. Clear <strong>Rejected</strong> and <strong>Overdue tasks</strong> first, then{' '}
+                <strong>Waiting on you</strong> dependency tickets, then <strong>Open tasks</strong> in order.
               </li>
               <li>
                 Open <Path>/tasks/peer-review</Path> and complete any peer reviews assigned to you.
@@ -324,7 +324,7 @@ export default function TrackerSopPage() {
               </li>
               <li>Describe exactly what you need, and pick the developer who owns that work.</li>
               <li>
-                The ticket appears in your <strong>Inbound</strong> tile and in their <strong>Outbound</strong> tile
+                The ticket appears in your <strong>You’re waiting on</strong> tile and in their <strong>Waiting on you</strong> tile
                 until they resolve it.
               </li>
               <li>
@@ -340,13 +340,13 @@ export default function TrackerSopPage() {
             <h3 className={g.subTitle}>When a ticket is filed against you</h3>
             <ol className={g.steps}>
               <li>
-                Find it in your <strong>Outbound</strong> tile or at <Path>/dependency-clearance</Path>.
+                Find it in your <strong>Waiting on you</strong> tile or at <Path>/dependency-clearance</Path>.
               </li>
               <li>
                 Deliver what was asked, then click <strong>Mark Resolved</strong>.
               </li>
             </ol>
-            <p>Outbound tickets that stay open past the parent task’s due date count against your KPI.</p>
+            <p>Tickets waiting on you that stay open past the parent task’s due date count against your KPI.</p>
           </Section>
 
           <Section id="submit" number={8} title="Submitting work">
