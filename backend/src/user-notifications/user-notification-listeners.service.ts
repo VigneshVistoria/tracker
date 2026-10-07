@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { Issue } from '../issues/issue.entity';
 import { TestCase } from '../test-cases/test-case.entity';
 import { ProjectTask } from '../tasks/project-task.entity';
+import { ClientTicketNotifyEvent } from '../client-portal/client-tickets.service';
 
 // Turns domain events into in-app notifications. "Personal only" scope
 // (confirmed with the user 2026-10-06): each notification goes to the one
@@ -226,6 +227,29 @@ export class UserNotificationListenersService {
   @OnEvent('issue.slaDueSoon')
   onIssueSlaDueSoon({ issue }: { issue: Issue }) {
     return this.issueToAssignee(issue, 'issue.slaDueSoon', `Issue #${issue.id} is due within the hour`);
+  }
+
+  // ---------- Client portal tickets (Stage 2) ----------
+  // ClientTicketsService has already picked the recipients (and never
+  // includes a client user on an internal note); this only delivers.
+  // Personal notifications only - nothing goes to the tenant-wide room.
+
+  @OnEvent('clientTicket.notify')
+  onClientTicketNotify(e: ClientTicketNotifyEvent) {
+    return this.safely(e.type, async () => {
+      for (const r of e.recipients) {
+        await this.notifications.create({
+          tenantId: e.tenantId,
+          userId: r.userId,
+          type: e.type,
+          title: e.title,
+          body: e.body,
+          link: r.link,
+          actorUserId: e.actorUserId,
+          actorName: await this.actorName(e.actorUserId, null, e.tenantId),
+        });
+      }
+    });
   }
 
   // ---------- Test cases (existing event) ----------

@@ -13,6 +13,8 @@ import {
   Link2,
   Clock,
   Bug,
+  LifeBuoy,
+  MessageSquare,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { getSocket } from '../lib/socket';
@@ -37,6 +39,12 @@ const TYPE_ICON = {
   'issue.slaDueSoon': Clock,
   'testCase.approved': ClipboardCheck,
   'testCase.rejected': XCircle,
+  'clientTicket.created': LifeBuoy,
+  'clientTicket.clientReplied': MessageSquare,
+  'clientTicket.teamReplied': MessageSquare,
+  'clientTicket.internalNote': MessageSquare,
+  'clientTicket.assigned': UserPlus,
+  'clientTicket.statusChanged': CheckCircle2,
 };
 
 const TYPE_TONE = {

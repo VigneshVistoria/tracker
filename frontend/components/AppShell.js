@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, Search, LogOut, Menu, X, SquarePlus } from 'lucide-react';
+import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
@@ -12,6 +12,7 @@ import { getSocket, disconnectSocket } from '../lib/socket';
 import { apiFetch } from '../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
 import { navSectionsFor, isNavItemActive } from '../lib/navigation';
+import { loadPortalMe, resetPortalMe } from '../lib/clientTickets';
 import { useTheme } from '../lib/theme';
 import ThemeToggle from './ui/ThemeToggle';
 
@@ -67,6 +68,8 @@ export default function AppShell({ children, fullScreen = false }) {
   const [isMac, setIsMac] = useState(false);
   // Sidebar count badges (e.g. "My Tasks 6"); null = not loaded, no badge.
   const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null });
+  // Client portal (Stage 2): whether to show Client tickets.
+  const [canSeeClientTickets, setCanSeeClientTickets] = useState(false);
   const pendingGo = useRef(null);
   // Stable so Modal's focus-trap effect (keyed on onClose) doesn't re-run
   // and steal focus on every AppShell re-render.
@@ -82,6 +85,15 @@ export default function AppShell({ children, fullScreen = false }) {
       return;
     }
     setUser(JSON.parse(storedUser));
+    // Users of a switched-on client portal never use the internal app -
+    // send them to /portal. Everyone else stays; staff on a client team
+    // get the Client tickets link.
+    loadPortalMe()
+      .then((me) => {
+        if (me.portalClient) router.replace('/portal');
+        else setCanSeeClientTickets(me.canSeeClientTickets);
+      })
+      .catch(() => {});
     const storedImpersonator = localStorage.getItem('impersonator');
     setImpersonator(storedImpersonator ? JSON.parse(storedImpersonator) : null);
     setCollapsedSections(readCollapsedSections());
@@ -103,6 +115,7 @@ export default function AppShell({ children, fullScreen = false }) {
 
   const handleLogout = useCallback(() => {
     disconnectSocket();
+    resetPortalMe();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');
     localStorage.removeItem('impersonator');
@@ -117,6 +130,7 @@ export default function AppShell({ children, fullScreen = false }) {
       localStorage.setItem('user', JSON.stringify(res.user));
       localStorage.removeItem('impersonator');
       disconnectSocket();
+      resetPortalMe();
       router.push('/admin/users');
     } catch (err) {
       // Session's stale or invalid either way - safest is to drop back to
@@ -128,7 +142,10 @@ export default function AppShell({ children, fullScreen = false }) {
   };
 
   const hideSidebar = !!user && DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
-  const sections = useMemo(() => (hideSidebar ? [] : navSectionsFor(user)), [user, hideSidebar]);
+  const sections = useMemo(
+    () => (hideSidebar ? [] : navSectionsFor(user, { clientTickets: canSeeClientTickets })),
+    [user, hideSidebar, canSeeClientTickets],
+  );
   const visibleItems = useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const availableHrefs = useMemo(() => new Set(visibleItems.map((i) => i.href)), [visibleItems]);
   const visibleCountKeys = useMemo(() => new Set(visibleItems.map((i) => i.countKey).filter(Boolean)), [visibleItems]);
@@ -284,6 +301,12 @@ export default function AppShell({ children, fullScreen = false }) {
               >
                 <SquarePlus size={18} aria-hidden="true" />
               </button>
+            )}
+            {/* Client portal tickets for client-team members (Stage 2). */}
+            {hideSidebar && canSeeClientTickets && (
+              <Link href="/client-tickets" className={styles.iconButton} aria-label="Client tickets" title="Client tickets">
+                <LifeBuoy size={18} aria-hidden="true" />
+              </Link>
             )}
           </div>
 

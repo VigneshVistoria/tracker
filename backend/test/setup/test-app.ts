@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module';
+import { createValidationPipe } from '../../src/validation-pipe';
 import { assertTestDatabase } from './test-db-config';
 
 // The real backend (AppModule, every module and guard), pointed at the
@@ -10,6 +11,7 @@ import { assertTestDatabase } from './test-db-config';
 export async function createTestApp() {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app: INestApplication = moduleRef.createNestApplication();
+  app.useGlobalPipes(createValidationPipe()); // same as main.ts
   const dataSource = app.get(DataSource);
   assertTestDatabase(dataSource.options as any);
   await app.init();

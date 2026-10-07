@@ -34,6 +34,10 @@ export class Client {
   @Column({ default: true })
   isActive: boolean;
 
+  // Shown before the client's ticket numbers, e.g. AM-12 (Stage 2).
+  @Column({ type: 'varchar', length: 10, default: 'CT' })
+  ticketPrefix: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

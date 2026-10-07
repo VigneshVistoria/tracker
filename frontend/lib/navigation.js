@@ -36,6 +36,7 @@ import {
   AlertOctagon,
   BookOpen,
   PackageCheck,
+  LifeBuoy,
 } from 'lucide-react';
 
 // Single source of truth for the sidebar and the command palette.
@@ -160,13 +161,21 @@ const PLATFORM_SECTION = {
   items: [{ href: '/platform/tenants', label: 'Platform Tenants', icon: Globe }],
 };
 
+// Client portal tickets (Stage 2). Not role-based: shown to Admin/PM and
+// to anyone on a client team, as reported by GET /client-portal/me
+// (`canSeeClientTickets`) - the backend scopes the tickets themselves.
+export const CLIENT_TICKETS_ITEM = { href: '/client-tickets', label: 'Client tickets', icon: LifeBuoy };
+
 // Sections (with their items filtered) visible to this user, empty
-// sections dropped.
-export function navSectionsFor(user) {
+// sections dropped. `clientTickets` adds the Client tickets entry to My Work.
+export function navSectionsFor(user, { clientTickets = false } = {}) {
   if (!user) return [];
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.roles.includes(user.role)),
+    items: [
+      ...section.items.filter((item) => item.roles.includes(user.role)),
+      ...(clientTickets && section.id === 'work' ? [CLIENT_TICKETS_ITEM] : []),
+    ],
   })).filter((section) => section.items.length > 0);
   if (user.isPlatformSuperadmin) sections.push(PLATFORM_SECTION);
   return sections;

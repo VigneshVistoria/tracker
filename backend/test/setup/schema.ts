@@ -4,7 +4,10 @@ import { DataSource } from 'typeorm';
 import { TEST_DB, assertTestDatabase } from './test-db-config';
 
 const SRC = path.resolve(__dirname, '../../src');
-const MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-client-portal-foundation.sql');
+// Applied in order, exactly as on production.
+const MIGRATIONS = ['2026-10-client-portal-foundation.sql', '2026-10-client-portal-tickets.sql'].map((f) =>
+  path.resolve(__dirname, '../../migrations', f),
+);
 const PORTAL_DIR = path.join(SRC, 'client-portal');
 
 function entityFiles(dir: string): string[] {
@@ -23,8 +26,8 @@ function dataSource(entities: string[]) {
 
 // Builds the test schema the way production got it: every existing table
 // from its entity, then the client portal tables from THE REAL MIGRATION
-// FILE (not from the entities), then checks the migration matches the
-// portal entities column for column - so the migration itself is tested.
+// FILES (not from the entities), then checks the migrations match the
+// portal entities column for column - so the migrations themselves are tested.
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter((f) => !f.startsWith(PORTAL_DIR));
@@ -34,13 +37,13 @@ export async function buildTestSchema() {
   await base.initialize();
   await base.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await base.synchronize();
-  await base.query(fs.readFileSync(MIGRATION, 'utf8'));
+  for (const file of MIGRATIONS) await base.query(fs.readFileSync(file, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
   await check.initialize();
   const problems: string[] = [];
-  const portalTables = ['clients', 'client_users', 'client_team_members', 'client_tickets', 'client_requests'];
+  const portalTables = ['clients', 'client_users', 'client_team_members', 'client_tickets', 'client_requests', 'client_ticket_comments', 'client_ticket_events'];
   const portalMetas = check.entityMetadatas.filter((m) => portalTables.includes(m.tableName));
   if (portalMetas.length !== portalTables.length || portal.length !== portalTables.length) {
     problems.push(`expected ${portalTables.length} portal entities, found ${portalMetas.length} (${portal.length} files)`);

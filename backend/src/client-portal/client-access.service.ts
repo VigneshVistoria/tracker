@@ -73,6 +73,11 @@ export class ClientAccessService {
     return Boolean(await this.portalMembership(userId, tenantId));
   }
 
+  // The switched-on client this user belongs to, or null.
+  async portalClientIdFor(userId: number, tenantId: number): Promise<number | null> {
+    return (await this.portalMembership(userId, tenantId))?.clientId ?? null;
+  }
+
   private async portalMembership(userId: number, tenantId: number): Promise<ClientUser | null> {
     return this.clientUsersRepository
       .createQueryBuilder('cu')

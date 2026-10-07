@@ -11,7 +11,7 @@ export const CLIENT_TICKET_STATUSES = ['submitted', 'in_progress', 'waiting_clie
 // A ticket a client raised through the portal. Its own table rather than
 // `issues`, so the portal's lifecycle never touches the existing issue
 // workflow (confirmed with the user 2026-10-07). Stage 1 holds the core
-// fields only; SLA, rating, attachments etc. arrive in later stages as
+// fields; Stage 2 added steps/expected/lastActivityAt. SLA, rating, attachments etc. arrive in later stages as
 // additive migrations.
 @Entity('client_tickets')
 export class ClientTicket {
@@ -49,6 +49,13 @@ export class ClientTicket {
   @Column({ type: 'text' })
   description: string;
 
+  // Bug tickets only (Stage 2).
+  @Column({ type: 'text', nullable: true })
+  stepsToReproduce: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  expectedResult: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'submitted' })
   status: string;
 
@@ -60,6 +67,10 @@ export class ClientTicket {
 
   @Column({ type: 'timestamp', nullable: true })
   closedAt: Date | null;
+
+  // Last reply or status/assignee change - lists sort by it (Stage 2).
+  @Column({ type: 'timestamp', default: () => 'now()' })
+  lastActivityAt: Date;
 
   @CreateDateColumn()
   createdAt: Date;

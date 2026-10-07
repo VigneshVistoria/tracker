@@ -3,6 +3,7 @@ import { useRouter } from 'next/router';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import Input from '../components/ui/Input';
 import styles from '../styles/login.module.css';
+import { loadPortalMe } from '../lib/clientTickets';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -46,7 +47,9 @@ export default function LoginPage() {
       localStorage.setItem('accessToken', data.accessToken);
       localStorage.setItem('user', JSON.stringify(data.user));
 
-      router.push('/dashboard');
+      // Users of a switched-on client portal start in /portal.
+      const portal = await loadPortalMe().catch(() => null);
+      router.push(portal?.portalClient ? '/portal' : '/dashboard');
     } catch (err) {
       setError(err.message);
     } finally {

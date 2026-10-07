@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { createValidationPipe } from './validation-pipe';
 import helmet from 'helmet';
 
 async function bootstrap() {
@@ -18,12 +18,7 @@ async function bootstrap() {
     credentials: true,
   });
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true, // strip properties that aren't in the DTO
-      transform: true,
-    }),
-  );
+  app.useGlobalPipes(createValidationPipe());
 
   const port = process.env.PORT || 3001;
   // Bind to loopback only - nginx is the sole intended entry point. Without

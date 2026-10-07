@@ -17,7 +17,7 @@ export interface FixtureUser {
 export async function seedFixtures(ds: DataSource) {
   const one = async (sql: string, params: any[] = []) => (await ds.query(sql, params))[0];
 
-  await ds.query(`TRUNCATE "client_requests", "client_tickets", "client_team_members", "client_users", "clients",
+  await ds.query(`TRUNCATE "client_ticket_events", "client_ticket_comments", "client_requests", "client_tickets", "client_team_members", "client_users", "clients",
     "user_projects", "modules", "projects", "users", "tenants" RESTART IDENTITY CASCADE`);
 
   const t1 = (await one(`INSERT INTO "tenants" ("name", "subdomain") VALUES ('Tenant One', 't1') RETURNING id`)).id;

@@ -3,21 +3,19 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Client } from './client.entity';
 import { ClientTeamMember } from './client-team-member.entity';
-import { ClientTicket } from './client-ticket.entity';
 import { ClientRequest } from './client-request.entity';
-import { ClientAccessService, PortalCaller } from './client-access.service';
+import { ALL_CLIENT_ROLES, ClientAccessService, PortalCaller } from './client-access.service';
 import { ProjectModule } from '../modules/project-module.entity';
 import { User, UserRole } from '../users/user.entity';
 
 // Read side of the client portal (Stage 1). Every method scopes through
 // ClientAccessService first; a record outside the caller's clients is
-// "not found". Writes arrive in Stage 2.
+// "not found". Tickets live in ClientTicketsService.
 @Injectable()
 export class ClientPortalService {
   constructor(
     @InjectRepository(Client) private clientsRepository: Repository<Client>,
     @InjectRepository(ClientTeamMember) private teamMembersRepository: Repository<ClientTeamMember>,
-    @InjectRepository(ClientTicket) private ticketsRepository: Repository<ClientTicket>,
     @InjectRepository(ClientRequest) private requestsRepository: Repository<ClientRequest>,
     @InjectRepository(ProjectModule) private modulesRepository: Repository<ProjectModule>,
     @InjectRepository(User) private usersRepository: Repository<User>,
@@ -31,6 +29,30 @@ export class ClientPortalService {
     if (ids === 'all') return { tenantId };
     if (ids.length === 0) return null;
     return { tenantId, clientId: In(ids) };
+  }
+
+  // What the frontend needs for routing and navigation (Stage 2):
+  //   portalClient - the caller's switched-on company (client users only);
+  //                  they always land on /portal
+  //   teamClients  - clients whose tickets the caller works (staff), which
+  //                  shows the "Client tickets" link
+  async me(caller: PortalCaller, tenantId: number) {
+    if (caller.role === UserRole.CLIENT) {
+      const clientId = await this.access.portalClientIdFor(caller.id, tenantId);
+      if (!clientId) return { portalClient: null, teamClients: [], canSeeClientTickets: false };
+      const client = await this.getClient(caller, tenantId, clientId);
+      return {
+        portalClient: { id: client.id, name: client.name, ticketPrefix: client.ticketPrefix, modules: client.modules },
+        teamClients: [],
+        canSeeClientTickets: false,
+      };
+    }
+    const teamClients = (await this.listClients(caller, tenantId)).filter((c) => c.isActive);
+    return {
+      portalClient: null,
+      teamClients: teamClients.map((c) => ({ id: c.id, name: c.name, portalEnabled: c.portalEnabled })),
+      canSeeClientTickets: ALL_CLIENT_ROLES.includes(caller.role) || teamClients.length > 0,
+    };
   }
 
   async listClients(caller: PortalCaller, tenantId: number) {
@@ -73,24 +95,6 @@ export class ClientPortalService {
     };
   }
 
-  async listTickets(caller: PortalCaller, tenantId: number, clientId?: number) {
-    const scope = await this.clientScope(caller, tenantId);
-    if (!scope) return [];
-    if (clientId !== undefined) {
-      if (!(await this.access.canAccessClient(caller, tenantId, clientId))) return [];
-      scope.clientId = clientId;
-    }
-    return this.ticketsRepository.find({ where: scope, order: { createdAt: 'DESC', id: 'DESC' } });
-  }
-
-  async getTicket(caller: PortalCaller, tenantId: number, id: number) {
-    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
-    if (!ticket || !(await this.access.canAccessClient(caller, tenantId, ticket.clientId))) {
-      throw new NotFoundException('Not found');
-    }
-    return ticket;
-  }
-
   async listRequests(caller: PortalCaller, tenantId: number, clientId?: number) {
     const scope = await this.clientScope(caller, tenantId);
     if (!scope) return [];
@@ -110,6 +114,6 @@ export class ClientPortalService {
   }
 
   private toClientSummary(c: Client) {
-    return { id: c.id, name: c.name, projectId: c.projectId, keyContactUserId: c.keyContactUserId, portalEnabled: c.portalEnabled, isActive: c.isActive };
+    return { id: c.id, name: c.name, ticketPrefix: c.ticketPrefix, projectId: c.projectId, keyContactUserId: c.keyContactUserId, portalEnabled: c.portalEnabled, isActive: c.isActive };
   }
 }
