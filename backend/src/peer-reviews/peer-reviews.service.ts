@@ -71,6 +71,8 @@ export class PeerReviewsService {
     if (!task.peerReviewEnabled) {
       throw new BadRequestException('Peer Review is not enabled for this task.');
     }
+    this.tasksService.assertPeerReviewAllowed(task);
+    this.tasksService.assertSubmittable(task);
     // Same guard as TaskQaReviewsService.submit() - an escalated task has
     // no 'pending' round (escalate() is QA-Feedback-only and terminal,
     // status 'escalated'), so without this check the Assignee could route
@@ -173,10 +175,16 @@ export class PeerReviewsService {
   ): Promise<PeerReviewWithQaArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
     this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReviewDecidable(task);
     const pending = await this.findPendingPeerRound(taskId, tenantId);
     if (currentUser.id !== pending.reviewerUserId) {
       throw new ForbiddenException('Only the assigned Peer Reviewer can approve this task.');
     }
+    // Approving closes the task outright (no QA step follows), so it must
+    // not pass while it's still waiting on another ticket. Submission
+    // stays unblocked - see TasksService.assertNoOpenDependencyTickets().
+    await this.tasksService.assertNoOpenDependencyTickets(taskId, tenantId, 'approve this Peer Review');
+    await this.tasksService.assertNoOpenLinkedDefects(taskId, tenantId, 'approve this Peer Review');
 
     pending.status = 'approved';
     // Optional, unlike reject's required comment - only set qaComment if
@@ -249,6 +257,7 @@ export class PeerReviewsService {
   ): Promise<PeerReviewWithQaArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
     this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReviewDecidable(task);
     const pending = await this.findPendingPeerRound(taskId, tenantId);
     if (currentUser.id !== pending.reviewerUserId) {
       throw new ForbiddenException('Only the assigned Peer Reviewer can reject this task.');

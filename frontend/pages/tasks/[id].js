@@ -661,7 +661,9 @@ export default function TaskDetailPage() {
   // Narrow exception to Admin's usual view-only access to tasks - Admin
   // may set/edit only the Peer Review checkbox (via its own dedicated
   // endpoint below), nothing else on this page.
-  const canManagePeerReviewFlag = (canManage || user.role === 'admin') && !isJunk;
+  // Backend mirror: TasksService.assertPeerReviewAllowed() - not offered on
+  // a defect, unless it's already on (so it can still be switched off).
+  const canManagePeerReviewFlag = (canManage || user.role === 'admin') && !isJunk && (!task.isDefect || !!task.peerReviewEnabled);
   // Backend mirror: ROLES_ALLOWED_TO_SET_HOLD_CLOSED (TasksController) -
   // Program Manager or Admin only, same narrow exception shape as
   // canManagePeerReviewFlag above.
@@ -680,15 +682,27 @@ export default function TaskDetailPage() {
   const latestQaReview = qaReviews[0];
   const hasPendingQaReview = latestQaReview?.status === 'pending';
   const isQa = user.role === 'qa';
+  // Backend mirror: TasksService.assertReviewDecidable() - a pending round
+  // on a Held or Closed task waits until the PM releases/reopens it.
+  const isReviewPaused = task.status === 'Hold' || task.status === 'Closed';
+  // Backend mirror: TasksService.assertSubmittable() - only a task still
+  // being worked on can be submitted for QA or Peer Review.
+  const canSubmitForReview = !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'].includes(task.status);
+  // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
+  // submit() - a defect always goes to QA, whatever its Peer Review flag.
+  const usesPeerReview = !!task.peerReviewEnabled && !task.isDefect;
   // Backend mirror: TaskQaReviewsService.approve()/reject()'s isDefect
   // check - a defect's QA panel is only actionable by whoever raised it,
-  // not any QA teammate.
-  const canActOnQaReview = isQa && (!task.isDefect || task.createdByUserId === user.id);
+  // not any QA teammate - and findPendingRound(), which refuses a pending
+  // Peer Review round (that belongs to its picked reviewer, never QA).
+  const canActOnQaReview =
+    isQa && latestQaReview?.reviewType !== 'peer' && !isReviewPaused && (!task.isDefect || task.createdByUserId === user.id);
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit()'s isEscalated guard - the Assignee can't resubmit either way
   // until PM reassigns it from the Escalations queue.
   const isEscalated = task.status === 'Escalated';
   const isPeerReviewer = latestQaReview?.reviewType === 'peer' && latestQaReview?.reviewerUserId === user.id;
+  const canActOnPeerReview = isPeerReviewer && !isReviewPaused;
   // "What needs me on this task" - mirrors the exact conditions of the
   // action cards below, so the banner can never point at a form that
   // isn't rendered for this user.
@@ -696,8 +710,11 @@ export default function TaskDetailPage() {
     if (canActOnQaReview && hasPendingQaReview) {
       return { tone: 'info', icon: ClipboardList, title: 'Waiting for your QA review', detail: 'Approve, reject or escalate this round.', cta: 'Review now', target: 'task-action-qa-review' };
     }
-    if (isPeerReviewer && hasPendingQaReview) {
+    if (canActOnPeerReview && hasPendingQaReview) {
       return { tone: 'info', icon: ClipboardList, title: 'Waiting for your peer review', detail: 'Approve or send this round back.', cta: 'Review now', target: 'task-action-peer-review' };
+    }
+    if (isPeerReviewer && hasPendingQaReview && isReviewPaused) {
+      return { tone: 'neutral', icon: CheckCircle2, title: 'Peer review paused', detail: `This task is ${task.status === 'Hold' ? 'on Hold' : 'Closed'} - you can review it once a Program Manager ${task.status === 'Hold' ? 'releases' : 'reopens'} it.` };
     }
     if (isAssignee && isEscalated) {
       return { tone: 'warning', icon: AlertTriangle, title: 'With the Program Manager', detail: 'This task was sent for a PM decision - nothing to do until it comes back.' };
@@ -710,9 +727,11 @@ export default function TaskDetailPage() {
     }
     return null;
   })();
-  // QA-only hard block (backend: TasksService.assertNoOpenDependencyTickets(),
-  // called from TaskQaReviewsService.submit()) - deliberately not consulted
-  // by the Peer Review submit form below, which stays reachable regardless.
+  // Hard block on QA submission (backend: TasksService.
+  // assertNoOpenDependencyTickets(), called from TaskQaReviewsService.
+  // submit()) - deliberately not consulted by the Peer Review submit form
+  // below, which stays reachable regardless, but it does block the Peer
+  // Reviewer's Approve (PeerReviewsService.approve()).
   const openDependencyTickets = tickets.filter((t) => t.status === 'open');
   // Backend mirror: TasksService.LINKED_DEFECT_RESOLVED_STATUSES /
   // assertNoOpenLinkedDefects() - coexists with openDependencyTickets
@@ -2390,7 +2409,7 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && !usesPeerReview && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
         <div id="task-action-submit" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
             Submit for QA Testing
@@ -2410,7 +2429,7 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {isAssignee && !hasPendingQaReview && !isEscalated && !task.peerReviewEnabled && openDependencyTickets.length === 0 && openLinkedDefects.length === 0 && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && !usesPeerReview && openDependencyTickets.length === 0 && openLinkedDefects.length === 0 && (
         <form id="task-action-submit" tabIndex={-1} onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
             Submit for QA Testing
@@ -2493,7 +2512,7 @@ export default function TaskDetailPage() {
         </form>
       )}
 
-      {isAssignee && !hasPendingQaReview && !isEscalated && task.peerReviewEnabled && (
+      {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && usesPeerReview && (
         <form id="task-action-submit" tabIndex={-1} onSubmit={handleSubmitForPeerReview} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
             Submit for Peer Review
@@ -2869,7 +2888,7 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {isPeerReviewer && hasPendingQaReview && (
+      {canActOnPeerReview && hasPendingQaReview && (
         <div id="task-action-peer-review" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
             Peer Review
@@ -2941,8 +2960,27 @@ export default function TaskDetailPage() {
                   onChange={setApproveComment}
                 />
               </div>
+              {/* Backend mirror: PeerReviewsService.approve()'s open
+                  dependency / linked defect check - Reject stays open. */}
+              {openDependencyTickets.length > 0 && (
+                <div className={styles.error} role="alert" style={{ marginTop: 'var(--space-2)' }}>
+                  Cannot approve this Peer Review - resolve the open dependency {openDependencyTickets.length === 1 ? 'ticket' : 'tickets'}{' '}
+                  {openDependencyTickets.map((t) => `#${t.id}`).join(', ')} first.
+                </div>
+              )}
+              {openLinkedDefects.length > 0 && (
+                <div className={styles.error} role="alert" style={{ marginTop: 'var(--space-2)' }}>
+                  Cannot approve this Peer Review - blocked by unresolved {openLinkedDefects.length === 1 ? 'Defect' : 'Defects'}{' '}
+                  {openLinkedDefects.map((d) => `#${d.id}`).join(', ')}. Resolve it first.
+                </div>
+              )}
               <div className={styles.actions}>
-                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handlePeerReviewApprove} disabled={qaActionBusy}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  onClick={handlePeerReviewApprove}
+                  disabled={qaActionBusy || openDependencyTickets.length > 0 || openLinkedDefects.length > 0}
+                >
                   {qaActionBusy ? 'Working...' : 'Approve'}
                 </button>
                 <button className={styles.button} type="button" onClick={() => setShowRejectForm(true)} disabled={qaActionBusy}>

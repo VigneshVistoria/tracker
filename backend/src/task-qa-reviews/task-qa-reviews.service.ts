@@ -121,6 +121,14 @@ export class TaskQaReviewsService {
     if (task.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the task Assignee can submit it for QA testing.');
     }
+    // The UI only offers the Peer Review form for these, but the endpoint
+    // never checked - so a QA-assigned task (always Peer Review, see
+    // requiresPeerReviewForAssignee()) could be sent here directly and
+    // reviewed by QA itself. A defect always goes to QA, whatever the flag.
+    if (task.peerReviewEnabled && !task.isDefect) {
+      throw new BadRequestException('Peer Review is enabled for this task - submit it for Peer Review instead of QA.');
+    }
+    this.tasksService.assertSubmittable(task);
     // An escalated task has no 'pending' round (the escalate() round is
     // terminal, status 'escalated') but must still block resubmission
     // until PM reassigns it - otherwise the Assignee could resubmit
@@ -201,6 +209,13 @@ export class TaskQaReviewsService {
     if (!pending) {
       throw new BadRequestException('There is no QA review round pending for this task.');
     }
+    // A pending Peer Review round belongs to its picked reviewer only
+    // (PeerReviewsService) - QA can't approve, reject or escalate it.
+    // Before 2026-10-12 this returned any pending round, so a QA user
+    // could decide a peer round from the task page.
+    if (pending.reviewType !== 'qa') {
+      throw new ForbiddenException('This task is in Peer Review - only its assigned Peer Reviewer can decide it, not QA.');
+    }
     return pending;
   }
 
@@ -221,6 +236,7 @@ export class TaskQaReviewsService {
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
     this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReviewDecidable(task);
     // A defect round routes back to the specific QA who raised it
     // (task.createdByUserId), not the shared QA queue - any other QA
     // hitting this endpoint on a defect task is blocked, same as a Peer
@@ -310,6 +326,7 @@ export class TaskQaReviewsService {
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
     this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReviewDecidable(task);
     // Same defect-routing lock as approve() above.
     if (task.isDefect && task.createdByUserId !== currentUser.id) {
       throw new ForbiddenException('Only the QA who raised this defect can reject it.');
@@ -420,13 +437,12 @@ export class TaskQaReviewsService {
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
     this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReviewDecidable(task);
     if (task.isDefect && task.createdByUserId !== currentUser.id) {
       throw new ForbiddenException('Only the QA who raised this defect can escalate it.');
     }
+    // findPendingRound() refuses a Peer Review round.
     const pending = await this.findPendingRound(taskId, tenantId);
-    if (pending.reviewType !== 'qa') {
-      throw new BadRequestException('Only a QA Feedback round can be escalated to PM - not Peer Review.');
-    }
 
     pending.status = 'escalated';
     pending.qaComment = sanitizeRichText(dto.comment);

@@ -378,6 +378,38 @@ export class TasksService {
     }
   }
 
+  // Submitting for QA or Peer Review only makes sense on a task that is
+  // still being worked on (2026-10-12, Peer Review Stage 1). Before this,
+  // both submit paths only refused Junk/Escalated, so the Assignee could
+  // submit a Held, Closed or already-Passed task and pull it straight
+  // back into review, around the PM.
+  assertSubmittable(task: ProjectTask): void {
+    if (task.status === 'Hold' || task.status === 'Closed') {
+      throw new BadRequestException(`Task #${task.id} is ${task.status === 'Hold' ? 'on Hold' : 'Closed'} - it cannot be submitted for review.`);
+    }
+    if (COMPLETED_STATUSES.includes(task.status)) {
+      throw new BadRequestException(`Task #${task.id} is already ${task.status} - it cannot be submitted for review again.`);
+    }
+  }
+
+  // A review round can't be decided while the PM has the task on Hold or
+  // Closed - the round stays pending and is decided once it's released
+  // or reopened. Applies to QA and Peer Review alike.
+  assertReviewDecidable(task: ProjectTask): void {
+    if (task.status === 'Hold' || task.status === 'Closed') {
+      throw new BadRequestException(`Task #${task.id} is ${task.status === 'Hold' ? 'on Hold' : 'Closed'} - the review can't be decided until a Program Manager ${task.status === 'Hold' ? 'releases' : 'reopens'} it.`);
+    }
+  }
+
+  // Peer Review is for tasks only - a defect always goes back to the QA
+  // who raised it (TaskQaReviewsService.approve()'s isDefect lock), so
+  // routing one to a peer would let it pass without that QA.
+  assertPeerReviewAllowed(task: ProjectTask): void {
+    if (task.isDefect) {
+      throw new BadRequestException(`Task #${task.id} is a Defect - Peer Review applies to tasks only. It goes back to the QA who raised it.`);
+    }
+  }
+
   // Validates the Project -> Module -> Phase chain against each other,
   // resolving the denormalized name fields server-side - same pattern as
   // IssuesService.update()'s moduleId/phaseId checks, extended one level
@@ -404,7 +436,10 @@ export class TasksService {
   // a QA assignee (create() above, assignTask()/reassignTeamTask() below,
   // and TasksBulkService.import()) so it can't be bypassed by using a
   // different assign path. Public so TasksBulkService can reuse the exact
-  // same rule for bulk-imported rows instead of re-deriving it.
+  // same rule for bulk-imported rows instead of re-deriving it. Never
+  // applied to a defect (assertPeerReviewAllowed() above) - a defect's
+  // round is locked to the QA who raised it, so there is no self-review
+  // risk to route around.
   requiresPeerReviewForAssignee(assigneeRole: UserRole | undefined): boolean {
     return assigneeRole === UserRole.QA;
   }
@@ -430,11 +465,13 @@ export class TasksService {
   }
 
   // Hard block, no role exception: a task with an open Dependency Ticket
-  // cannot be submitted for QA. Deliberately QA-only - called from
-  // TaskQaReviewsService.submit() alone, never from PeerReviewsService.submit()
+  // cannot be submitted for QA. Not called from PeerReviewsService.submit()
   // or from assertReadyForQaSubmission() above (which both submit paths
-  // share), so an open dependency ticket never blocks the Peer Review path.
-  async assertNoOpenDependencyTickets(taskId: number, tenantId: number): Promise<void> {
+  // share), so an open dependency ticket never blocks Peer Review
+  // *submission* - but PeerReviewsService.approve() does call it (Stage 1,
+  // 2026-10-12), so a peer can't close the task while it's still open.
+  // `action` only changes the wording of the message.
+  async assertNoOpenDependencyTickets(taskId: number, tenantId: number, action = 'submit for QA'): Promise<void> {
     const openTickets = await this.dependencyTicketsRepository.find({
       where: { parentTaskId: taskId, tenantId, status: 'open' },
     });
@@ -443,24 +480,24 @@ export class TasksService {
     }
     const label = openTickets.length === 1 ? 'ticket' : 'tickets';
     const ids = openTickets.map((t) => `#${t.id}`).join(', ');
-    throw new BadRequestException(`Cannot submit for QA - resolve the open dependency ${label} ${ids} first.`);
+    throw new BadRequestException(`Cannot ${action} - resolve the open dependency ${label} ${ids} first.`);
   }
 
   // Same shape as assertNoOpenDependencyTickets() above, and coexists
   // with it - either an open Dependency Ticket OR an open linked Defect
   // independently blocks resubmission. "Linked" covers both defects spun
   // off this task's QA rejection (parentTaskId) and existing defects QA/PM
-  // linked as blocking (TaskBlockingDefect). Deliberately QA-only for the
-  // same reason: called from TaskQaReviewsService.submit() alone, never
-  // from PeerReviewsService.submit() (confirmed with the user 2026-10).
-  async assertNoOpenLinkedDefects(taskId: number, tenantId: number): Promise<void> {
+  // linked as blocking (TaskBlockingDefect). Same split as above: never
+  // called from PeerReviewsService.submit() (confirmed with the user
+  // 2026-10), but called from PeerReviewsService.approve().
+  async assertNoOpenLinkedDefects(taskId: number, tenantId: number, action = 'submit for QA'): Promise<void> {
     const openDefects = await this.findOpenBlockingDefects(taskId, tenantId);
     if (openDefects.length === 0) {
       return;
     }
     const label = openDefects.length === 1 ? 'Defect' : 'Defects';
     const ids = openDefects.map((d) => `#${d.id}`).join(', ');
-    throw new BadRequestException(`Cannot submit for QA - blocked by unresolved ${label} ${ids}. Resolve it first.`);
+    throw new BadRequestException(`Cannot ${action} - blocked by unresolved ${label} ${ids}. Resolve it first.`);
   }
 
   private async findOpenBlockingDefects(taskId: number, tenantId: number): Promise<ProjectTask[]> {
@@ -730,11 +767,11 @@ export class TasksService {
   // at all (a task leaves Feedback/Re-Feedback for Pass/Failed the moment
   // QA decides it - see TaskQaReviewsService.approve()/reject()), so
   // loading either list means querying by that status directly instead of
-  // QA_PENDING_STATUSES. Deliberately not scoped to QA-decided tasks only -
-  // Pass/Failed can also come from the separate Peer Review path
-  // (PeerReviewsService), and this endpoint doesn't distinguish the two,
-  // same as the Status badge shown elsewhere never distinguishes them
-  // either. `isDefect: false` on every branch keeps defect tickets out of
+  // QA_PENDING_STATUSES. Scoped to QA-decided tasks only (2026-10-12,
+  // Peer Review Stage 1) - Pass/Failed can also come from the separate
+  // Peer Review path (PeerReviewsService), and those belong to the
+  // reviewer, not QA (qaDecidedTasksQuery() below). `isDefect: false` on
+  // every branch keeps defect tickets out of
   // this shared, pick-up-anything queue entirely - they only ever surface
   // in findDefectQueue() below, self-scoped to the QA who raised them.
   async findQaQueue(tenantId: number, status?: string): Promise<QaQueueResult> {
@@ -753,14 +790,14 @@ export class TasksService {
       // is needed here (contrast with the frontend's isQaReviewOverdue()
       // helper, which isn't scoped to a single status list up front).
       overdue: pendingTasks.filter((t) => t.qaReviewDueDate && t.qaReviewDueDate < today).length,
-      approved: await this.tasksRepository.count({ where: { tenantId, isDefect: false, status: 'Pass' } }),
-      rejected: await this.tasksRepository.count({ where: { tenantId, isDefect: false, status: 'Failed' } }),
+      approved: await this.qaDecidedTasksQuery(tenantId, 'Pass').getCount(),
+      rejected: await this.qaDecidedTasksQuery(tenantId, 'Failed').getCount(),
     };
 
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
       tasks = this.sortByPriority(
-        await this.tasksRepository.find({ where: { tenantId, isDefect: false, status }, order: { createdAt: 'DESC', id: 'DESC' } }),
+        await this.qaDecidedTasksQuery(tenantId, status).orderBy('t.createdAt', 'DESC').addOrderBy('t.id', 'DESC').getMany(),
       );
     } else if (status === 'Feedback' || status === 'Re-Feedback') {
       tasks = pendingTasks.filter((t) => t.status === status);
@@ -772,6 +809,26 @@ export class TasksService {
     const fullNameByUserId = await this.fullNameByUserId(tasks, tenantId);
     const withComputed = await Promise.all(tasks.map((t) => this.withComputedFields(t, tenantId, percentByStatus, fullNameByUserId)));
     return { tasks: withComputed, statCounts };
+  }
+
+  // Pass/Failed tasks QA decided, for findQaQueue()'s Approved/Rejected
+  // cards and lists. Who decided a task is its latest approved/rejected
+  // round: if that was a Peer Review round, the task is left out. Tasks
+  // with no decided round at all (older data) stay in, as before.
+  private qaDecidedTasksQuery(tenantId: number, status: 'Pass' | 'Failed') {
+    return this.tasksRepository
+      .createQueryBuilder('t')
+      .where('t.tenantId = :tenantId AND t.isDefect = false AND t.status = :status', { tenantId, status })
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1 FROM task_qa_reviews r
+          WHERE r."taskId" = t.id AND r."reviewType" = 'peer' AND r.status IN ('approved', 'rejected')
+            AND NOT EXISTS (
+              SELECT 1 FROM task_qa_reviews later
+              WHERE later."taskId" = t.id AND later.status IN ('approved', 'rejected') AND later."roundNumber" > r."roundNumber"
+            )
+        )`,
+      );
   }
 
   // Defect queue - the mirror image of findQaQueue() above. For QA it's
@@ -1403,7 +1460,7 @@ export class TasksService {
 
     task.assigneeUserId = assignee.id;
     task.assigneeEmail = assignee.email;
-    if (this.requiresPeerReviewForAssignee(assignee.role)) {
+    if (!task.isDefect && this.requiresPeerReviewForAssignee(assignee.role)) {
       task.peerReviewEnabled = true;
     }
     const saved = await this.tasksRepository.save(task);
@@ -1478,7 +1535,7 @@ export class TasksService {
       task.assigneeUserId = assignee.id;
       task.assigneeEmail = assignee.email;
       assigneeFullName = assignee.fullName;
-      if (this.requiresPeerReviewForAssignee(assignee.role)) {
+      if (!task.isDefect && this.requiresPeerReviewForAssignee(assignee.role)) {
         task.peerReviewEnabled = true;
       }
     }
@@ -2027,6 +2084,9 @@ export class TasksService {
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
     this.assertNotJunk(task);
+    // Turning it off on a defect stays allowed, so a flag set before this
+    // check existed can still be cleared.
+    if (peerReviewEnabled) this.assertPeerReviewAllowed(task);
     if (task.peerReviewEnabled === peerReviewEnabled) {
       return task;
     }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus } from 'lucide-react';
+import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
@@ -70,6 +70,8 @@ export default function AppShell({ children, fullScreen = false }) {
   const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null });
   // Client portal (Stage 2): whether to show Client tickets.
   const [canSeeClientTickets, setCanSeeClientTickets] = useState(false);
+  // Developer/Designer/DevOps header badge - peer reviews waiting on me.
+  const [peerReviewCount, setPeerReviewCount] = useState(null);
   const pendingGo = useRef(null);
   // Stable so Modal's focus-trap effect (keyed on onClose) doesn't re-run
   // and steal focus on every AppShell re-render.
@@ -190,6 +192,19 @@ export default function AppShell({ children, fullScreen = false }) {
     };
   }, [user, visibleCountKeys, router.pathname]);
 
+  // Same refetch-on-navigation as the sidebar badges above, for the
+  // Developer/Designer/DevOps header's Peer Reviews link.
+  useEffect(() => {
+    if (!user || !hideSidebar) return undefined;
+    let cancelled = false;
+    apiFetch('/tasks/peer-review-queue')
+      .then((queue) => !cancelled && setPeerReviewCount(queue.length))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user, hideSidebar, router.pathname]);
+
   // Global shortcuts (sidebar roles only - Developer/Designer/DevOps keep
   // their minimal header): Ctrl/⌘+K and "/" open the palette, "?" opens
   // the help sheet, "g" then a letter jumps to a page in the user's nav.
@@ -301,6 +316,23 @@ export default function AppShell({ children, fullScreen = false }) {
               >
                 <SquarePlus size={18} aria-hidden="true" />
               </button>
+            )}
+            {/* Peer reviews assigned to me (TasksService.findPeerReviewQueue()). */}
+            {hideSidebar && (
+              <Link
+                href="/tasks/peer-review"
+                className={`${styles.iconButton} ${styles.iconButtonWithBadge}`}
+                aria-label={peerReviewCount > 0 ? `Peer reviews, ${peerReviewCount} waiting` : 'Peer reviews'}
+                title="Peer reviews"
+                aria-current={router.pathname === '/tasks/peer-review' ? 'page' : undefined}
+              >
+                <UserCheck size={18} aria-hidden="true" />
+                {peerReviewCount > 0 && (
+                  <span className={styles.iconBadge} aria-hidden="true">
+                    {peerReviewCount > 99 ? '99+' : peerReviewCount}
+                  </span>
+                )}
+              </Link>
             )}
             {/* Client portal tickets for client-team members (Stage 2). */}
             {hideSidebar && canSeeClientTickets && (

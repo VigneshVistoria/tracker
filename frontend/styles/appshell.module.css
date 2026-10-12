@@ -214,6 +214,29 @@
   box-shadow: var(--ds-shadow-focus);
 }
 
+/* Count badge on a header icon link - same look as the notification
+   bell's badge (notificationBell.module.css .badge). */
+.iconButtonWithBadge {
+  position: relative;
+}
+.iconBadge {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--ds-radius-full);
+  border: 2px solid var(--ds-bg-surface);
+  background: var(--ds-color-danger-solid);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: var(--ds-weight-bold);
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .userMenuWrap {
   position: relative;
   margin-left: var(--ds-space-1);
