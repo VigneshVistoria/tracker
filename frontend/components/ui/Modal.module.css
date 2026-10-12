@@ -24,6 +24,8 @@
 .sm { max-width: 400px; }
 .md { max-width: 560px; }
 .lg { max-width: 800px; }
+/* Screenshot markup (components/ScreenshotMarkup.js) needs the room. */
+.xl { max-width: min(1200px, 95vw); }
 
 .header {
   display: flex;

@@ -3,12 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
 import { TaskBlockingDefect } from './task-blocking-defect.entity';
+import { TaskAttachment } from './task-attachment.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { ProjectModule as ProjectModuleEntity } from '../modules/project-module.entity';
 import { Phase } from '../phases/phase.entity';
 import { TasksService } from './tasks.service';
 import { TasksController } from './tasks.controller';
+import { TaskAttachmentsController } from './task-attachments.controller';
+import { TaskAttachmentsService } from './task-attachments.service';
 import { TasksBulkController } from './tasks-bulk.controller';
 import { TasksBulkService } from './tasks-bulk.service';
 import { TaskSpreadsheetService } from './spreadsheet/task-spreadsheet.service';
@@ -19,10 +22,11 @@ import { TaskStatusConfigModule } from '../task-status-config/task-status-config
 import { GuardsModule } from '../common/guards.module';
 import { AuditModule } from '../audit/audit.module';
 import { UsersModule } from '../users/users.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, ProjectModuleEntity, Phase]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, ProjectModuleEntity, Phase]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,
@@ -30,13 +34,15 @@ import { UsersModule } from '../users/users.module';
     GuardsModule,
     AuditModule,
     UsersModule,
+    StorageModule,
   ],
   // TasksBulkController registered first - it owns the more specific
   // `bulk-export`/`bulk-import`/`bulk-import-template` routes under the
   // shared `tasks` prefix, and must be matched before TasksController's
   // `:id` catch-all below (same ordering precedent as IssuesModule).
-  controllers: [TasksBulkController, TasksController],
-  providers: [TasksService, TasksBulkService, TaskSpreadsheetService],
+  // TaskAttachmentsController (defect screenshots) likewise goes first.
+  controllers: [TasksBulkController, TaskAttachmentsController, TasksController],
+  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService],
   exports: [TasksService],
 })
 export class TasksModule {}

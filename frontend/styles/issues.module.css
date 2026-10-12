@@ -347,6 +347,207 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   border-left-width: 4px;
 }
 
+/* Defect screenshots - Create Defect's paste/capture control
+   (components/ScreenshotAttach.js) and the read-only list on the defect
+   page (components/DefectScreenshots.js). */
+.screenshotAttach {
+  margin-bottom: var(--ds-space-4);
+}
+.screenshotControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+}
+.screenshotControls .helpText {
+  margin-top: 0;
+}
+.screenshotControls .buttonSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+.fieldErrorText {
+  color: var(--ds-color-error-dark);
+  font-size: var(--ds-text-sm);
+  margin: var(--ds-space-2) 0 0;
+}
+.screenshotList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  list-style: none;
+  padding: 0;
+  margin: var(--ds-space-3) 0 0;
+}
+.screenshotItem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  width: 140px;
+}
+.screenshotThumb {
+  display: block;
+  width: 140px;
+  height: 96px;
+  object-fit: cover;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface-sunken);
+}
+.screenshotName {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  overflow-wrap: anywhere;
+}
+.screenshotRemove {
+  position: absolute;
+  top: var(--ds-space-1);
+  right: var(--ds-space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: 999px;
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+}
+.screenshotRemove:hover { background: var(--ds-bg-surface-sunken); }
+.screenshotRemove:focus-visible,
+.screenshotOpen:focus-visible { outline: none; box-shadow: var(--ds-shadow-focus); }
+.screenshotOpen {
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--ds-radius-md);
+  cursor: zoom-in;
+}
+.screenshotPreview {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  margin: 0 auto;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+}
+
+/* Screenshot markup toolbar and canvas (components/ScreenshotMarkup.js). */
+.screenshotMarkUp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  align-self: flex-start;
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-xs);
+  cursor: pointer;
+}
+.screenshotMarkUp:hover { background: var(--ds-bg-surface-sunken); }
+.screenshotMarkUp:focus-visible { outline: none; box-shadow: var(--ds-shadow-focus); }
+/* Groups are set apart by space, not dividers - a divider would be left
+   dangling at the end of a row whenever the toolbar wraps. */
+.markupToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2) var(--ds-space-5);
+}
+.markupGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-1);
+}
+@media (max-width: 640px) {
+  .markupToolbar { gap: var(--ds-space-2); }
+}
+.markupButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  min-height: var(--ds-space-8);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  font-family: inherit;
+  cursor: pointer;
+}
+.markupButton:hover:not(:disabled) { background: var(--ds-bg-surface-sunken); }
+.markupButton:focus-visible { outline: none; box-shadow: var(--ds-shadow-focus); }
+.markupButton:disabled { opacity: 0.5; cursor: not-allowed; }
+.markupButtonActive,
+.markupButtonActive:hover:not(:disabled) {
+  background: var(--ds-color-info-tint);
+  border-color: var(--ds-color-info);
+  color: var(--ds-color-info-dark);
+  font-weight: var(--ds-weight-semibold);
+}
+.markupSwatch {
+  width: var(--ds-space-3);
+  height: var(--ds-space-3);
+  border-radius: var(--ds-radius-full);
+  border: 1px solid var(--ds-border-strong);
+}
+.markupLine {
+  display: inline-block;
+  width: var(--ds-space-4);
+  border-radius: var(--ds-radius-full);
+  background: currentColor;
+}
+.markupStage {
+  position: relative;
+  margin: 0 auto;
+  max-width: 100%;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  overflow: hidden;
+  background: var(--ds-bg-surface-sunken);
+}
+.markupCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.markupDrawLayer {
+  touch-action: none;
+}
+.markupTextInput {
+  position: absolute;
+  box-sizing: border-box;
+  width: 180px;
+  max-width: 100%;
+  padding: var(--ds-space-1);
+  border: 1px dashed var(--ds-border-focus);
+  border-radius: var(--ds-radius-sm);
+  background: #ffffff;
+  font-weight: var(--ds-weight-semibold);
+  font-family: system-ui, sans-serif;
+}
+.markupTextInputDark { background: #111111; }
+.markupTextInput::placeholder { color: #4b5563; }
+.markupTextInputDark::placeholder { color: #d1d5db; }
+.markupConfirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  width: 100%;
+  justify-content: flex-end;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+}
+.markupConfirm span { margin-right: auto; }
+
 /* Create Defect's "Restore your draft?" prompt and restore notes -
    info tone, same tint/dark token pair as the other banners. */
 .draftBanner {

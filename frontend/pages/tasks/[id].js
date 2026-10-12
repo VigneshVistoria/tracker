@@ -24,6 +24,7 @@ import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
 import Avatar from '../../components/ui/Avatar';
+import DefectScreenshots from '../../components/DefectScreenshots';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -1801,6 +1802,7 @@ export default function TaskDetailPage() {
             <QaArtifactIcons artifacts={defectArtifacts} />
           </div>
         )}
+        {task.isDefect && <DefectScreenshots taskId={task.id} />}
         {canEditDefectScope && !editingDefectFields && (
           <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
             <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDefectFields(true)}>

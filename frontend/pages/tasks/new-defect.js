@@ -3,12 +3,14 @@ import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
 import RichTextEditor from '../../components/ui/RichTextEditor';
+import ScreenshotAttach from '../../components/ScreenshotAttach';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { formatRelativeTime } from '../../lib/formatDate';
+import { uploadDefectScreenshots } from '../../lib/defectScreenshots';
 
 const VIEW_ROLES = ['qa'];
 
@@ -102,6 +104,16 @@ export default function NewDefectPage() {
   // submission artifacts.
   const [artifacts, setArtifacts] = useState([]);
   const [saving, setSaving] = useState(false);
+  // Pasted/captured screenshots ({ id, blob, name, url }) - uploaded once
+  // the defect exists. Never part of the draft. If the upload fails, the
+  // defect is already created: createdDefect + screenshotError offer a
+  // retry instead of a second Create (which would duplicate the defect).
+  const [screenshots, setScreenshots] = useState([]);
+  const [createdDefect, setCreatedDefect] = useState(null);
+  const [screenshotError, setScreenshotError] = useState('');
+  const screenshotsRef = useRef(screenshots);
+  screenshotsRef.current = screenshots;
+  const screenshotsUploadedRef = useRef(false);
   const [error, setError] = useState('');
   const [optionsLoaded, setOptionsLoaded] = useState(false);
 
@@ -218,7 +230,9 @@ export default function NewDefectPage() {
     const onBeforeUnload = (e) => {
       saveDraftNow();
       const { form: current, artifacts: currentArtifacts } = latestRef.current;
-      if (submittedRef.current || !hasDraftContent(current, currentArtifacts)) return;
+      const unsavedText = !submittedRef.current && hasDraftContent(current, currentArtifacts);
+      const unsentScreenshots = screenshotsRef.current.length > 0 && !screenshotsUploadedRef.current;
+      if (!unsavedText && !unsentScreenshots) return;
       e.preventDefault();
       e.returnValue = '';
     };
@@ -335,12 +349,33 @@ export default function NewDefectPage() {
       });
       submittedRef.current = true;
       if (draftKey) localStorage.removeItem(draftKey);
-      showToast('Defect created', 'success');
-      router.push(`/tasks/${created.id}`);
+      setCreatedDefect(created);
+      await finishWithScreenshots(created);
     } catch (err) {
       setError(err.message);
       setSaving(false);
     }
+  };
+
+  // Uploads the screenshots (if any) to the just-created defect, then
+  // opens it. On failure the defect stays created and the page offers
+  // Retry / continue without them.
+  const finishWithScreenshots = async (created) => {
+    const count = screenshotsRef.current.length;
+    if (count > 0) {
+      setScreenshotError('');
+      setSaving(true);
+      try {
+        await uploadDefectScreenshots(created.id, screenshotsRef.current);
+        screenshotsUploadedRef.current = true;
+      } catch (err) {
+        setScreenshotError(err.message);
+        setSaving(false);
+        return;
+      }
+    }
+    showToast(count > 0 ? `Defect created with ${count} screenshot${count > 1 ? 's' : ''}` : 'Defect created', 'success');
+    router.push(`/tasks/${created.id}`);
   };
 
   return (
@@ -493,14 +528,33 @@ export default function NewDefectPage() {
             </div>
           </div>
         ))}
-        <div className={styles.actions} style={{ marginBottom: 'var(--space-3)' }}>
+        <ScreenshotAttach screenshots={screenshots} onChange={setScreenshots} disabled={saving}>
           <button className={styles.buttonSecondary} type="button" onClick={addArtifactRow}>
             + Add Artifact
           </button>
-        </div>
+        </ScreenshotAttach>
+
+        {createdDefect && screenshotError && (
+          <div className={styles.error} role="alert">
+            Defect #{createdDefect.id} was created, but the screenshots weren&apos;t attached: {screenshotError}
+            <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+              <button
+                className={`${styles.button} ${styles.buttonAccent}`}
+                type="button"
+                onClick={() => finishWithScreenshots(createdDefect)}
+                disabled={saving}
+              >
+                {saving ? 'Uploading...' : 'Retry upload'}
+              </button>
+              <button className={styles.buttonSecondary} type="button" onClick={() => router.push(`/tasks/${createdDefect.id}`)}>
+                Go to the defect without them
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className={styles.actions}>
-          <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
+          <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving || !!createdDefect}>
             {saving ? 'Creating...' : 'Create Defect'}
           </button>
           <span className={styles.draftStatus} role="status" aria-live="polite">
