@@ -147,6 +147,7 @@ export default function ScreenshotAttach({ screenshots, onChange, disabled = fal
   // original instead would upload whatever Blur/Hide was meant to remove.
   const attachPreview = async () => {
     const { blob, replaceId } = preview;
+    setPreviewError('');
     let marked = null;
     try {
       marked = await markupRef.current?.flatten();

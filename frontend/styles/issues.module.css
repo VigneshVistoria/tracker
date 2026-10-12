@@ -536,6 +536,83 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
 .markupTextInputDark { background: #111111; }
 .markupTextInput::placeholder { color: #4b5563; }
 .markupTextInputDark::placeholder { color: #d1d5db; }
+/* Crop box over the screenshot (components/ScreenshotCropBox.js). The
+   area outside the box is dimmed by a shadow clipped to the image; the box
+   and handles aren't clipped (the stage stops clipping while cropping), so
+   handles on the image edge stay reachable. Handles are small to look at
+   but have a bigger hit area. */
+.markupStageCropping { overflow: visible; }
+.markupStageCropping .markupCanvas { border-radius: inherit; }
+.cropShadeClip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.cropShade {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+}
+.cropOverlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  cursor: crosshair;
+  touch-action: none;
+}
+/* The white edge is an inset shadow, not a border, so the handles (placed
+   in %) sit exactly on the crop corners. */
+.cropBox {
+  position: absolute;
+  box-shadow: inset 0 0 0 2px #ffffff;
+  outline: 1px solid rgba(0, 0, 0, 0.7);
+}
+.cropMove {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: move;
+}
+.cropMove:focus-visible {
+  outline: 3px solid var(--ds-border-focus);
+  outline-offset: -5px;
+}
+.cropHandle {
+  position: absolute;
+  box-sizing: border-box;
+  width: var(--ds-space-3);
+  height: var(--ds-space-3);
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 2px solid #111111;
+  border-radius: var(--ds-radius-full);
+  background: #ffffff;
+}
+.cropHandle::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--ds-space-2));
+}
+.cropHandle:focus-visible {
+  outline: 3px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+.cropHandle_nw, .cropHandle_se { cursor: nwse-resize; }
+.cropHandle_ne, .cropHandle_sw { cursor: nesw-resize; }
+.cropHandle_n, .cropHandle_s { cursor: ns-resize; }
+.cropHandle_e, .cropHandle_w { cursor: ew-resize; }
+.cropSize {
+  align-self: center;
+  margin-left: var(--ds-space-2);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+  font-variant-numeric: tabular-nums;
+}
 .markupConfirm {
   display: flex;
   align-items: center;

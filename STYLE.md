@@ -26,9 +26,9 @@ documented, and built under these same constraints.
   Enter/Space, in a sensible DOM order. No `onClick`-only `<div>`s.
   Known exception (2026-10-12): drawing on a screenshot in Create
   Defect's markup dialog (`components/ScreenshotMarkup.js`) needs a
-  pointer. The toolbar, Undo/Redo and Attach/Discard all work from the
-  keyboard, and markup is optional - a screenshot can always be
-  attached without it.
+  pointer. The toolbar, Undo/Redo, Crop (arrow keys move the box and
+  its handles) and Attach/Discard all work from the keyboard, and
+  markup is optional - a screenshot can always be attached without it.
 - **Focus states**: must be visible, not suppressed. Use
   `--ds-shadow-focus` / `--ds-border-focus` — don't ship
   `outline: none` without a replacement.
