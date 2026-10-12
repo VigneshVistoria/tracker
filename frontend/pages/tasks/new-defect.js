@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
@@ -8,6 +8,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
+import { formatRelativeTime } from '../../lib/formatDate';
 
 const VIEW_ROLES = ['qa'];
 
@@ -33,6 +34,53 @@ const ARTIFACT_TYPES = [
   'Sign-off / Acceptance Report',
 ];
 
+// In-progress form autosave - same idea as the QA-rejection draft on the
+// task detail page (qaRejectDraft:<taskId> in pages/tasks/[id].js), but
+// localStorage rather than sessionStorage so a draft also survives a
+// closed tab, a browser restart, or logging out and back in. Nothing here
+// ever reaches the server - a draft is not a ticket, so it can't show up
+// in My Defects, QA Review, counts, SLA, Daily Scrum or notifications.
+// Keyed per user so a different user on the same browser never sees it,
+// and kept on logout (that user gets it back when they log in again).
+// Skipped entirely while impersonating, so drafts never cross users.
+const DRAFT_SAVE_DELAY_MS = 2000;
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function draftKeyFor(userId) {
+  return `defectDraft:new:${userId}`;
+}
+
+// Only text the user actually typed counts - a bare Project/Assignee
+// pick on its own isn't worth a "Restore your draft?" prompt.
+function hasDraftContent(form, artifacts) {
+  return (
+    !!form.title.trim() ||
+    !!stripHtmlForPreview(form.description).trim() ||
+    artifacts.some((row) => row.type || row.url.trim())
+  );
+}
+
+function pickOption(option) {
+  return option ? { id: option.id, name: option.name } : null;
+}
+
+// Returns the saved draft, or null - dropping (not just ignoring) one
+// that's unreadable or older than DRAFT_MAX_AGE_MS.
+function loadDraft(key) {
+  try {
+    const draft = JSON.parse(localStorage.getItem(key) || 'null');
+    if (!draft) return null;
+    if (!draft.form || typeof draft.savedAt !== 'number' || Date.now() - draft.savedAt > DRAFT_MAX_AGE_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return draft;
+  } catch {
+    localStorage.removeItem(key);
+    return null;
+  }
+}
+
 // Create Defect - QA only, always category "Defect", assigned straight to
 // a Developer, no Task Backlog step and never linked to another ticket.
 // Project/Module/Phase stay required, same as every other task (needed
@@ -55,6 +103,58 @@ export default function NewDefectPage() {
   const [artifacts, setArtifacts] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
+
+  // Draft autosave state - see the comment on DRAFT_SAVE_DELAY_MS above.
+  // draftReady stays false while a saved draft is waiting on Restore /
+  // Discard, so typing in the meantime can't overwrite it.
+  const [draftKey, setDraftKey] = useState(null);
+  const [pendingDraft, setPendingDraft] = useState(null);
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftStatus, setDraftStatus] = useState('');
+  const [draftNotice, setDraftNotice] = useState('');
+  const latestRef = useRef({ form, artifacts });
+  latestRef.current = { form, artifacts };
+  const draftKeyRef = useRef(null);
+  draftKeyRef.current = draftReady ? draftKey : null;
+  const submittedRef = useRef(false);
+  // Only clear a stored draft this page itself wrote - otherwise an idle,
+  // empty Create Defect tab would wipe a draft saved from another tab
+  // just by being left or closed.
+  const wroteDraftRef = useRef(false);
+
+  const saveDraftNow = useCallback(() => {
+    const key = draftKeyRef.current;
+    if (!key || submittedRef.current) return;
+    const { form: current, artifacts: currentArtifacts } = latestRef.current;
+    try {
+      if (!hasDraftContent(current, currentArtifacts)) {
+        if (wroteDraftRef.current) localStorage.removeItem(key);
+        wroteDraftRef.current = false;
+        setDraftStatus('');
+        return;
+      }
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          savedAt: Date.now(),
+          form: {
+            project: pickOption(current.project),
+            module: pickOption(current.module),
+            phase: pickOption(current.phase),
+            title: current.title,
+            description: current.description,
+            assignee: pickOption(current.assignee),
+          },
+          artifacts: currentArtifacts,
+        }),
+      );
+      wroteDraftRef.current = true;
+      setDraftStatus('saved');
+    } catch {
+      setDraftStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -68,8 +168,17 @@ export default function NewDefectPage() {
       return;
     }
     setUser(parsed);
-    apiFetch('/projects').then(setProjects).catch(() => {});
-    apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map(userToOption))).catch(() => {});
+    Promise.all([
+      apiFetch('/projects').then(setProjects).catch(() => {}),
+      apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map(userToOption))).catch(() => {}),
+    ]).then(() => setOptionsLoaded(true));
+    if (parsed.id && !localStorage.getItem('impersonator')) {
+      const key = draftKeyFor(parsed.id);
+      setDraftKey(key);
+      const draft = loadDraft(key);
+      if (draft) setPendingDraft(draft);
+      else setDraftReady(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
@@ -89,7 +198,88 @@ export default function NewDefectPage() {
     apiFetch(`/phases?moduleId=${form.module.id}`).then(setPhases).catch(() => setPhases([]));
   }, [form.module]);
 
+  // Debounced autosave - DRAFT_SAVE_DELAY_MS after the last change.
+  useEffect(() => {
+    if (!draftKey || !draftReady || submittedRef.current) return undefined;
+    if (!hasDraftContent(form, artifacts)) {
+      saveDraftNow();
+      return undefined;
+    }
+    setDraftStatus('saving');
+    const timer = setTimeout(saveDraftNow, DRAFT_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [draftKey, draftReady, form, artifacts, saveDraftNow]);
+
+  // Leaving the page: in-app navigation (incl. Log out) just saves the
+  // draft straight away - it can be restored, so no need to block. A
+  // refresh/tab close also saves, and shows the browser's own "leave
+  // site?" prompt while there's typed text that hasn't been submitted.
+  useEffect(() => {
+    const onBeforeUnload = (e) => {
+      saveDraftNow();
+      const { form: current, artifacts: currentArtifacts } = latestRef.current;
+      if (submittedRef.current || !hasDraftContent(current, currentArtifacts)) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    router.events.on('routeChangeStart', saveDraftNow);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      router.events.off('routeChangeStart', saveDraftNow);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [router.events, saveDraftNow]);
+
   if (!user) return null;
+
+  // Restores the saved draft, re-matching Project/Module/Phase/Assignee
+  // against what's currently selectable - anything deleted or
+  // deactivated since (and whatever sits below it) is left blank with a
+  // note, instead of submitting a stale id.
+  const restoreDraft = async () => {
+    const saved = pendingDraft.form;
+    const missing = [];
+    const project = saved.project ? projects.find((p) => p.id === saved.project.id) || null : null;
+    if (saved.project && !project) missing.push(`Project "${saved.project.name}"`);
+    let module = null;
+    if (project && saved.module) {
+      const moduleOptions = await apiFetch(`/modules?projectId=${project.id}`).catch(() => []);
+      module = moduleOptions.find((m) => m.id === saved.module.id) || null;
+      if (!module) missing.push(`Module "${saved.module.name}"`);
+    }
+    let phase = null;
+    if (module && saved.phase) {
+      const phaseOptions = await apiFetch(`/phases?moduleId=${module.id}`).catch(() => []);
+      phase = phaseOptions.find((ph) => ph.id === saved.phase.id) || null;
+      if (!phase) missing.push(`Phase "${saved.phase.name}"`);
+    }
+    const assignee = saved.assignee ? developers.find((d) => d.id === saved.assignee.id) || null : null;
+    if (saved.assignee && !assignee) missing.push(`Assignee "${saved.assignee.name}"`);
+
+    setForm({
+      project,
+      module,
+      phase,
+      title: saved.title || '',
+      description: saved.description || '',
+      assignee,
+    });
+    setArtifacts(Array.isArray(pendingDraft.artifacts) ? pendingDraft.artifacts : []);
+    setDraftNotice(
+      missing.length > 0
+        ? `${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} no longer available, so ${missing.length > 1 ? 'they were' : 'it was'} cleared (along with any fields below). Please reselect.`
+        : '',
+    );
+    wroteDraftRef.current = true;
+    setPendingDraft(null);
+    setDraftReady(true);
+  };
+
+  const discardDraft = () => {
+    localStorage.removeItem(draftKey);
+    setPendingDraft(null);
+    setDraftReady(true);
+  };
 
   const addArtifactRow = () => {
     setArtifacts((prev) => [...prev, { type: '', url: '' }]);
@@ -143,6 +333,8 @@ export default function NewDefectPage() {
           artifacts: payloadArtifacts,
         }),
       });
+      submittedRef.current = true;
+      if (draftKey) localStorage.removeItem(draftKey);
       showToast('Defect created', 'success');
       router.push(`/tasks/${created.id}`);
     } catch (err) {
@@ -162,6 +354,38 @@ export default function NewDefectPage() {
           </p>
         </div>
       </div>
+
+      {pendingDraft && (
+        <div className={styles.draftBanner} role="region" aria-label="Unsaved draft">
+          <span>
+            Restore your draft? You have an unsaved defect from {formatRelativeTime(pendingDraft.savedAt)}.
+          </span>
+          <div className={styles.draftBannerActions}>
+            <button
+              className={`${styles.button} ${styles.buttonAccent}`}
+              type="button"
+              onClick={restoreDraft}
+              disabled={!optionsLoaded}
+            >
+              Restore
+            </button>
+            <button className={styles.buttonSecondary} type="button" onClick={discardDraft}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {draftNotice && (
+        <div className={styles.draftBanner} role="status">
+          <span>{draftNotice}</span>
+          <div className={styles.draftBannerActions}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setDraftNotice('')}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && <div className={styles.error}>{error}</div>}
 
@@ -279,6 +503,11 @@ export default function NewDefectPage() {
           <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
             {saving ? 'Creating...' : 'Create Defect'}
           </button>
+          <span className={styles.draftStatus} role="status" aria-live="polite">
+            {draftStatus === 'saving' && 'Saving draft...'}
+            {draftStatus === 'saved' && 'Draft saved'}
+            {draftStatus === 'error' && "Draft couldn't be saved (browser storage is full or disabled)"}
+          </span>
         </div>
       </form>
     </AppShell>

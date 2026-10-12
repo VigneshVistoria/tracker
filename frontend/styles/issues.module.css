@@ -347,6 +347,33 @@ tbody tr.rowRejected td { background: var(--color-red-tint); color: var(--color-
   border-left-width: 4px;
 }
 
+/* Create Defect's "Restore your draft?" prompt and restore notes -
+   info tone, same tint/dark token pair as the other banners. */
+.draftBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  background: var(--ds-color-info-tint);
+  color: var(--ds-color-info-dark);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  margin-bottom: var(--ds-space-4);
+  border: 1px solid var(--ds-color-info);
+  border-left-width: 4px;
+}
+.draftBannerActions {
+  display: flex;
+  gap: var(--ds-space-2);
+}
+.draftStatus {
+  align-self: center;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
 .empty {
   text-align: center;
   color: var(--ds-text-secondary);
