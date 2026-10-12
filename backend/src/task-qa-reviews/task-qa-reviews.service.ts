@@ -117,6 +117,7 @@ export class TaskQaReviewsService {
     tenantId: number,
   ): Promise<TaskQaReviewWithArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     if (task.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the task Assignee can submit it for QA testing.');
     }
@@ -219,6 +220,7 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only QA can approve a task under review.');
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     // A defect round routes back to the specific QA who raised it
     // (task.createdByUserId), not the shared QA queue - any other QA
     // hitting this endpoint on a defect task is blocked, same as a Peer
@@ -307,6 +309,7 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only QA can reject a task under review.');
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     // Same defect-routing lock as approve() above.
     if (task.isDefect && task.createdByUserId !== currentUser.id) {
       throw new ForbiddenException('Only the QA who raised this defect can reject it.');
@@ -416,6 +419,7 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only QA can escalate a task under review.');
     }
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     if (task.isDefect && task.createdByUserId !== currentUser.id) {
       throw new ForbiddenException('Only the QA who raised this defect can escalate it.');
     }

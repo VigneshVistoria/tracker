@@ -121,6 +121,28 @@ export class ProjectTask {
   @Column({ nullable: true })
   priorStatus: string | null;
 
+  // Junk (2026-10, confirmed with the user): a ticket created by mistake.
+  // Hidden from Developer/QA everywhere and excluded from every count and
+  // measure, but never deleted - Program Manager can restore it. Set only
+  // by TasksService.markJunk()/closeAsJunk() and cleared by restoreJunk().
+  // statusBeforeJunk is kept apart from priorStatus so a Held task can be
+  // junked and restored straight back to Hold without losing what Hold
+  // itself resumes to.
+  @Column({ type: 'varchar', nullable: true })
+  statusBeforeJunk: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  junkReason: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  junkedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  junkedByUserId: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  junkedByEmail: string | null;
+
   // Program Manager only (see TasksService.update()'s PRIORITY_MUTATE_ROLES
   // check) - never auto-assigned, including on task creation, so existing
   // and new tasks alike sit at null ("Not Set") until a PM reviews and sets

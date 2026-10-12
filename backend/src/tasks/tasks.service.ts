@@ -168,6 +168,16 @@ const COMPLETED_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers', 'Relea
 // overdue or drag down KPI while nobody's expected to be acting on it.
 export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
 
+// Junk (widened 2026-10-09, confirmed with the user): a ticket created by
+// mistake. Program Manager can junk any ticket from any status with a
+// reason (markJunk(), including in bulk) and restore it to exactly where
+// it was (restoreJunk()). Unlike Hold/Closed it is not just "hidden by
+// default": it is left out of every list and count for every role, and
+// Developer/QA cannot open it at all (canView()). The one place it shows
+// is the Junk list (findJunk()), for Program Manager and Admin, plus the
+// task page for leadership. Nothing is deleted.
+export const JUNK_STATUS = 'Junk';
+
 // Full tenant-wide *view* access (findAllForUser/canView) - Admin and
 // Executive both get this, but it's read-only: neither is in
 // MUTATE_ROLES below, so neither can create/assign/edit/change-status a
@@ -293,6 +303,9 @@ export class TasksService {
     if (LEADERSHIP_ROLES.includes(user.role)) {
       return true;
     }
+    if (task.status === JUNK_STATUS) {
+      return false;
+    }
     if (task.assigneeUserId === user.id || task.createdByUserId === user.id) {
       return true;
     }
@@ -333,6 +346,10 @@ export class TasksService {
   // workflow needs. Admin/Executive are deliberately excluded - they get
   // read access via canView()/LEADERSHIP_ROLES but not edit access.
   canEdit(task: ProjectTask, user: { id: number; role: UserRole }): boolean {
+    // A Junk ticket is frozen for everyone - Restore is the only way back.
+    if (task.status === JUNK_STATUS) {
+      return false;
+    }
     if (MUTATE_ROLES.includes(user.role)) {
       return true;
     }
@@ -345,6 +362,20 @@ export class TasksService {
       return true;
     }
     return task.assigneeUserId === user.id;
+  }
+
+  // Who sees Junk tickets at all (task page, linked-ticket lists) - the
+  // same leadership roles canView() lets through.
+  canSeeJunk(user: { role: UserRole }): boolean {
+    return LEADERSHIP_ROLES.includes(user.role);
+  }
+
+  // Every action on a task refuses a Junk one - public so the QA/Peer
+  // Review and dependency-ticket services apply the same rule.
+  assertNotJunk(task: ProjectTask): void {
+    if (task.status === JUNK_STATUS) {
+      throw new BadRequestException(`Task #${task.id} is in Junk - a Program Manager must restore it first.`);
+    }
   }
 
   // Validates the Project -> Module -> Phase chain against each other,
@@ -451,8 +482,10 @@ export class TasksService {
   // Same visibility rule as the parent task itself, enforced by the
   // caller (TasksController.findLinkedDefects) via canView(), same
   // pattern as TaskDependencyTicketsService.findForTask().
-  findLinkedDefectsForTask(parentTaskId: number, tenantId: number): Promise<ProjectTask[]> {
-    return this.tasksRepository.find({ where: { parentTaskId, tenantId }, order: { createdAt: 'DESC', id: 'DESC' } });
+  findLinkedDefectsForTask(parentTaskId: number, tenantId: number, includeJunk = false): Promise<ProjectTask[]> {
+    const where: Record<string, any> = { parentTaskId, tenantId };
+    if (!includeJunk) where.status = Not(JUNK_STATUS);
+    return this.tasksRepository.find({ where, order: { createdAt: 'DESC', id: 'DESC' } });
   }
 
   private isInAssignedProject(task: ProjectTask, user: UserWithProjects): boolean {
@@ -469,9 +502,9 @@ export class TasksService {
 
   // Defects QA/PM manually linked as blocking this task (not the
   // parentTaskId spun-off ones - those come from findLinkedDefectsForTask()).
-  async findBlockingDefectsForTask(taskId: number, tenantId: number) {
+  async findBlockingDefectsForTask(taskId: number, tenantId: number, includeJunk = false) {
     const links = await this.blockingDefectsRepository.find({ where: { taskId, tenantId }, order: { createdAt: 'DESC', id: 'DESC' } });
-    const defects = await this.findManyByIds(links.map((l) => l.defectId), tenantId);
+    const defects = (await this.findManyByIds(links.map((l) => l.defectId), tenantId)).filter((d) => includeJunk || d.status !== JUNK_STATUS);
     const defectById = new Map(defects.map((d) => [d.id, d]));
     return links
       .filter((l) => defectById.has(l.defectId))
@@ -491,13 +524,13 @@ export class TasksService {
   // Reverse view for a defect's own page ("Blocks Task #70") - the task it
   // was spun off (parentTaskId, if any) plus every task it's been
   // manually linked to.
-  async findTasksBlockedByDefect(defect: ProjectTask, tenantId: number) {
+  async findTasksBlockedByDefect(defect: ProjectTask, tenantId: number, includeJunk = false) {
     const links = await this.blockingDefectsRepository.find({ where: { defectId: defect.id, tenantId } });
     const taskIds = links.map((l) => l.taskId);
     if (defect.parentTaskId) {
       taskIds.push(defect.parentTaskId);
     }
-    const tasks = await this.findManyByIds([...new Set(taskIds)], tenantId);
+    const tasks = (await this.findManyByIds([...new Set(taskIds)], tenantId)).filter((t) => includeJunk || t.status !== JUNK_STATUS);
     return tasks
       .sort((a, b) => a.id - b.id)
       .map((t) => ({
@@ -527,6 +560,7 @@ export class TasksService {
   async linkBlockingDefect(taskId: number, defectId: number, user: UserWithProjects, tenantId: number): Promise<TaskBlockingDefect> {
     const task = await this.findOne(taskId, tenantId);
     const defect = await this.findOne(defectId, tenantId);
+    this.assertNotJunk(task);
     if (task.isDefect) {
       throw new BadRequestException('A blocking defect can only be linked to a regular task, not to another defect.');
     }
@@ -620,9 +654,11 @@ export class TasksService {
   // never show a task this list wouldn't.
   async findVisibleToUser(currentUser: { id: number; role: UserRole }, tenantId: number): Promise<ProjectTask[]> {
     const isLeadership = LEADERSHIP_ROLES.includes(currentUser.role);
+    // Junk is left out for every role - the Junk list is where it lives.
+    const where = { tenantId, status: Not(JUNK_STATUS) };
     return isLeadership
-      ? this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } })
-      : this.tasksRepository.find({ where: { tenantId }, order: { createdAt: 'DESC', id: 'DESC' } }).then((all) =>
+      ? this.tasksRepository.find({ where, order: { createdAt: 'DESC', id: 'DESC' } })
+      : this.tasksRepository.find({ where, order: { createdAt: 'DESC', id: 'DESC' } }).then((all) =>
           all.filter((t) => t.assigneeUserId === currentUser.id || t.createdByUserId === currentUser.id),
         );
   }
@@ -642,9 +678,7 @@ export class TasksService {
   // never in a COMPLETED_STATUSES status in practice (it hasn't started).
   async findBacklog(tenantId: number, showHoldClosed?: boolean): Promise<ProjectTaskWithComputed[]> {
     const where: Record<string, any> = { tenantId, assigneeUserId: IsNull() };
-    if (!showHoldClosed) {
-      where.status = Not(In(HOLD_CLOSED_STATUSES));
-    }
+    where.status = Not(In(showHoldClosed ? [JUNK_STATUS] : [...HOLD_CLOSED_STATUSES, JUNK_STATUS]));
     const tasks = this.sortByPriority(
       await this.tasksRepository.find({
         where,
@@ -813,7 +847,7 @@ export class TasksService {
   async findMine(currentUser: { id: number }, tenantId: number): Promise<ProjectTaskWithComputed[]> {
     const tasks = this.sortByPriority(
       await this.tasksRepository.find({
-        where: { tenantId, assigneeUserId: currentUser.id },
+        where: { tenantId, assigneeUserId: currentUser.id, status: Not(JUNK_STATUS) },
         order: { createdAt: 'DESC', id: 'DESC' },
       }),
     );
@@ -854,10 +888,14 @@ export class TasksService {
   // Kept as its own method so findTeam()'s two call sites (the paginated
   // row fetch and the stat-card scope) and findBacklog() below can't drift
   // apart from each other.
+  // Junk is always in the list, whatever the toggles say.
   private defaultHiddenStatuses(filters: { showCompleted?: boolean; showHoldClosed?: boolean }): string[] {
     return [
-      ...(filters.showCompleted ? [] : COMPLETED_STATUSES),
-      ...(filters.showHoldClosed ? [] : HOLD_CLOSED_STATUSES),
+      ...new Set([
+        JUNK_STATUS,
+        ...(filters.showCompleted ? [] : COMPLETED_STATUSES),
+        ...(filters.showHoldClosed ? [] : HOLD_CLOSED_STATUSES),
+      ]),
     ];
   }
 
@@ -867,11 +905,11 @@ export class TasksService {
 
     const where: Record<string, any> = { tenantId, assigneeUserId: Not(IsNull()) };
     if (filters.status && filters.status !== 'All') {
-      const statusList = filters.status.split(',').map((s) => s.trim()).filter(Boolean);
+      // An explicit status filter can never bring Junk back.
+      const statusList = filters.status.split(',').map((s) => s.trim()).filter((s) => s && s !== JUNK_STATUS);
       where.status = In(statusList);
     } else {
-      const hidden = this.defaultHiddenStatuses(filters);
-      if (hidden.length > 0) where.status = Not(In(hidden));
+      where.status = Not(In(this.defaultHiddenStatuses(filters)));
     }
     if (filters.assigneeUserId) {
       where.assigneeUserId = filters.assigneeUserId;
@@ -955,10 +993,7 @@ export class TasksService {
     const tasks = pageItems.map((item) => (isDependencyRow(item) ? item : computedById.get(item.id)));
 
     const cardWhere: Record<string, any> = { tenantId, assigneeUserId: filters.assigneeUserId || Not(IsNull()) };
-    const cardHidden = this.defaultHiddenStatuses(filters);
-    if (cardHidden.length > 0) {
-      cardWhere.status = Not(In(cardHidden));
-    }
+    cardWhere.status = Not(In(this.defaultHiddenStatuses(filters)));
     const cardScopeTasks = await this.tasksRepository.find({ where: cardWhere });
     const cardOpenDependencyIds = await this.findOpenDependencyTaskIds(cardScopeTasks.map((t) => t.id));
     const today = new Date().toISOString().slice(0, 10);
@@ -1006,10 +1041,15 @@ export class TasksService {
   private async findTeamDependencyRows(tenantId: number, ownerUserId?: number): Promise<TeamDependencyRow[]> {
     const where: Record<string, any> = { tenantId, status: 'open' };
     if (ownerUserId) where.ownerUserId = ownerUserId;
-    const tickets = await this.dependencyTicketsRepository.find({ where, order: { createdAt: 'ASC', id: 'ASC' } });
-    if (tickets.length === 0) return [];
-    const parentTasks = await this.findManyByIds([...new Set(tickets.map((t) => t.parentTaskId))], tenantId);
+    const allTickets = await this.dependencyTicketsRepository.find({ where, order: { createdAt: 'ASC', id: 'ASC' } });
+    if (allTickets.length === 0) return [];
+    const allParents = await this.findManyByIds([...new Set(allTickets.map((t) => t.parentTaskId))], tenantId);
+    // A ticket raised on a Junk task is hidden with it (and counted again
+    // if the task is restored) - the one parent status that does hide it.
+    const parentTasks = allParents.filter((t) => t.status !== JUNK_STATUS);
     const parentById = new Map(parentTasks.map((t) => [t.id, t]));
+    const tickets = allTickets.filter((t) => parentById.has(t.parentTaskId));
+    if (tickets.length === 0) return [];
     const filers = await this.usersService.findByIds([...new Set(tickets.map((t) => t.createdByUserId))], tenantId);
     const filerNameById = new Map(filers.map((u) => [u.id, u.fullName]));
     const filerCounts = new Map<string, number>();
@@ -1355,6 +1395,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     const assignee = await this.usersService.findByIdAndTenant(assigneeUserId, tenantId);
     if (!assignee) {
       throw new NotFoundException(`User #${assigneeUserId} not found`);
@@ -1421,6 +1462,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask & { assigneeFullName?: string }> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     const previousAssigneeUserId = task.assigneeUserId;
     const previousAssigneeEmail = task.assigneeEmail;
     let assigneeFullName: string | undefined;
@@ -1511,13 +1553,12 @@ export class TasksService {
     return saved;
   }
 
-  // PM Escalation queue, option (b): close as Junk - a distinct, terminal
-  // status from Pass/Failed, fully excluded from KPI (KpiService.
-  // computeMetrics()'s `Not('Junk')` filters), since an escalated ticket
-  // being closed this way means it was never a real issue in the first
-  // place.
+  // PM Escalation queue, option (b): close as Junk - same Junk as
+  // markJunk() below (reason required, restorable), just limited to an
+  // escalated ticket since that is what the Interventions page offers.
   async closeAsJunk(
     id: number,
+    reason: string,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
   ): Promise<ProjectTask> {
@@ -1525,22 +1566,129 @@ export class TasksService {
     if (task.status !== 'Escalated') {
       throw new BadRequestException('Only an escalated task can be closed as Junk this way.');
     }
-
-    task.status = 'Junk';
-    const saved = await this.tasksRepository.save(task);
-
-    await this.auditLogService.record({
-      userId: currentUser.id,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
-      action: AuditActions.TASK_ESCALATION_CLOSED_JUNK,
-      tenantId,
-      entityType: 'ProjectTask',
-      entityId: saved.id,
-      details: {},
-    });
-
+    const [saved] = await this.markJunk([id], reason, currentUser, tenantId, 'interventions');
     return saved;
+  }
+
+  // Program Manager junks one or more tickets (role gate in the
+  // controller). All-or-nothing: every id is checked first and the status
+  // change happens in one transaction, so a bad id leaves nothing half
+  // done. One audit entry per ticket (who, when, reason, old -> new
+  // status). Any status can be junked - the status it had is kept in
+  // statusBeforeJunk for restoreJunk(); priorStatus (Hold/Closed's resume
+  // target) is left exactly as it is.
+  async markJunk(
+    taskIds: number[],
+    reason: string,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+    source: 'single' | 'bulk' | 'interventions' = taskIds.length > 1 ? 'bulk' : 'single',
+  ): Promise<ProjectTask[]> {
+    const trimmedReason = (reason || '').trim();
+    if (!trimmedReason) {
+      throw new BadRequestException('A reason is required to mark a ticket as Junk.');
+    }
+    const ids = [...new Set(taskIds)];
+    const saved = await this.tasksRepository.manager.transaction(async (em) => {
+      const repo = em.getRepository(ProjectTask);
+      const tasks = await repo.find({ where: { id: In(ids), tenantId }, lock: { mode: 'pessimistic_write' } });
+      const missing = ids.filter((id) => !tasks.some((t) => t.id === id));
+      if (missing.length > 0) {
+        throw new NotFoundException(`Task ${missing.map((id) => `#${id}`).join(', ')} not found.`);
+      }
+      const already = tasks.filter((t) => t.status === JUNK_STATUS);
+      if (already.length > 0) {
+        throw new BadRequestException(
+          `Already in Junk: ${already.map((t) => `#${t.id}`).join(', ')}. Nothing was changed - remove ${already.length === 1 ? 'it' : 'them'} from the selection.`,
+        );
+      }
+      const now = new Date();
+      for (const t of tasks) {
+        t.statusBeforeJunk = t.status;
+        t.status = JUNK_STATUS;
+        t.junkReason = trimmedReason;
+        t.junkedAt = now;
+        t.junkedByUserId = currentUser.id;
+        t.junkedByEmail = currentUser.email;
+      }
+      const result = await repo.save(tasks);
+      for (const t of result) {
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: AuditActions.TASK_MARKED_JUNK,
+          tenantId,
+          entityType: 'ProjectTask',
+          entityId: t.id,
+          details: { reason: trimmedReason, previousStatus: t.statusBeforeJunk, newStatus: JUNK_STATUS, source, batchSize: result.length },
+        });
+      }
+      return result;
+    });
+    return saved.sort((a, b) => a.id - b.id);
+  }
+
+  // Undoes markJunk(): back to the exact status (and so the same bucket /
+  // queue) it had, with every review round, link and audit entry it ever
+  // had untouched. From here on it counts again like any other ticket.
+  // Program Manager only (controller). The junk columns are cleared - the
+  // audit trail keeps the history.
+  async restoreJunk(
+    id: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    if (task.status !== JUNK_STATUS) {
+      throw new BadRequestException('Only a ticket in Junk can be restored.');
+    }
+    // Every Junk row has statusBeforeJunk (markJunk() sets it; the
+    // 2026-10-task-junk migration backfilled the older escalation ones,
+    // which could only come from Escalated).
+    const restoredStatus = task.statusBeforeJunk || 'Escalated';
+    const reason = task.junkReason;
+    return this.tasksRepository.manager.transaction(async (em) => {
+      // Guarded update so two PMs restoring at once can't both succeed.
+      const result = await em.getRepository(ProjectTask).update(
+        { id: task.id, tenantId, status: JUNK_STATUS },
+        { status: restoredStatus, statusBeforeJunk: null, junkReason: null, junkedAt: null, junkedByUserId: null, junkedByEmail: null },
+      );
+      if (!result.affected) {
+        throw new BadRequestException('Only a ticket in Junk can be restored.');
+      }
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: AuditActions.TASK_RESTORED_FROM_JUNK,
+        tenantId,
+        entityType: 'ProjectTask',
+        entityId: task.id,
+        details: { reason, previousStatus: JUNK_STATUS, newStatus: restoredStatus },
+      });
+      return em.getRepository(ProjectTask).findOneOrFail({ where: { id: task.id, tenantId } });
+    });
+  }
+
+  // The Junk list (Program Manager and Admin - gated in the controller):
+  // every Junk ticket, most recently junked first, with who/when/why and
+  // the status it will go back to.
+  async findJunk(tenantId: number): Promise<ProjectTask[]> {
+    return this.tasksRepository.find({
+      where: { tenantId, status: JUNK_STATUS },
+      order: { junkedAt: { direction: 'DESC', nulls: 'LAST' }, id: 'DESC' },
+    });
+  }
+
+  // Junk/restore history for one ticket's page - read from the audit log
+  // so earlier rounds stay visible after a restore clears the columns.
+  async findJunkHistory(taskId: number, tenantId: number) {
+    return this.auditLogService.findForEntity(tenantId, 'ProjectTask', taskId, [
+      AuditActions.TASK_MARKED_JUNK,
+      AuditActions.TASK_RESTORED_FROM_JUNK,
+      AuditActions.TASK_ESCALATION_CLOSED_JUNK,
+    ]);
   }
 
   // Program Manager or Admin can pause any task, from any current status,
@@ -1556,6 +1704,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     if (task.status === 'Hold') {
       throw new BadRequestException('This task is already on Hold.');
     }
@@ -1629,6 +1778,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     if (task.status === 'Closed') {
       throw new BadRequestException('This task is already Closed.');
     }
@@ -1718,6 +1868,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     if (!this.canEdit(task, currentUser)) {
       throw new ForbiddenException('You do not have access to edit this task.');
     }
@@ -1875,6 +2026,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     if (task.peerReviewEnabled === peerReviewEnabled) {
       return task;
     }
@@ -1912,6 +2064,7 @@ export class TasksService {
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
     if (task.qaReviewDueDate === qaReviewDueDate) {
       return task;
     }

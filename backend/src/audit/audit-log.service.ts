@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { AuditLog } from './audit-log.entity';
 
 // Known action strings, kept as constants (not a Postgres enum - see the
@@ -86,6 +86,10 @@ export const AuditActions = {
   TASK_QA_ESCALATED: 'task_qa_escalated',
   TASK_ESCALATION_REASSIGNED: 'task_escalation_reassigned',
   TASK_ESCALATION_CLOSED_JUNK: 'task_escalation_closed_junk',
+  // details: { reason, previousStatus, newStatus: 'Junk', bulk }
+  TASK_MARKED_JUNK: 'task_marked_junk',
+  // details: { reason (the one it was junked with), previousStatus: 'Junk', newStatus }
+  TASK_RESTORED_FROM_JUNK: 'task_restored_from_junk',
   TASK_HELD: 'task_held',
   TASK_RELEASED_FROM_HOLD: 'task_released_from_hold',
   TASK_CLOSED: 'task_closed',
@@ -149,6 +153,44 @@ export class AuditLogService {
     } catch (err: any) {
       this.logger.error(`Failed to write audit log entry (action=${input.action}): ${err.message}`);
     }
+  }
+
+  // Same entry as record(), but written through the caller's transaction
+  // and NOT error-swallowing - for changes that must never happen without
+  // their audit row (Junk mark/restore): if the audit insert fails, the
+  // whole change rolls back.
+  async recordWithin(em: EntityManager, input: RecordAuditEntryInput): Promise<void> {
+    const repo = em.getRepository(AuditLog);
+    await repo.save(
+      repo.create({
+        userId: input.userId ?? null,
+        userEmail: input.userEmail ?? null,
+        userRole: input.userRole ?? null,
+        action: input.action,
+        entityType: input.entityType ?? null,
+        entityId: input.entityId ?? null,
+        details: input.details ? JSON.stringify(input.details) : null,
+        tenantId: input.tenantId,
+      }),
+    );
+  }
+
+  // Entries for one entity, oldest first, limited to the given actions,
+  // with `details` parsed (null if it doesn't parse).
+  async findForEntity(tenantId: number, entityType: string, entityId: number, actions: string[]) {
+    const rows = await this.auditLogRepository.find({
+      where: { tenantId, entityType, entityId, action: In(actions) },
+      order: { id: 'ASC' },
+    });
+    return rows.map((r) => {
+      let details: Record<string, unknown> | null = null;
+      try {
+        details = r.details ? JSON.parse(r.details) : null;
+      } catch {
+        details = null;
+      }
+      return { id: r.id, action: r.action, userEmail: r.userEmail, userRole: r.userRole, createdAt: r.createdAt, details };
+    });
   }
 
   // Parsed `details` of the most recent entry for one action on one

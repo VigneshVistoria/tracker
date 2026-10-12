@@ -69,6 +69,7 @@ export class ReleaseLogsService {
       .select(['t.id', 't.title'])
       .where('t.tenantId = :tenantId', { tenantId })
       .andWhere('t.projectId = :projectId', { projectId })
+      .andWhere("t.status <> 'Junk'")
       .andWhere('EXISTS (SELECT 1 FROM task_qa_reviews r WHERE r."taskId" = t.id AND r."tenantId" = :tenantId)', { tenantId })
       .orderBy('t.id', 'DESC')
       .getMany();
@@ -164,6 +165,9 @@ export class ReleaseLogsService {
     const task = await this.tasksRepository.findOne({ where: { id: taskId, tenantId } });
     if (!task) {
       throw new NotFoundException(`Ticket #${taskId} not found`);
+    }
+    if (task.status === 'Junk') {
+      throw new BadRequestException(`Ticket #${taskId} is in Junk - it can't go into a Release.`);
     }
     if (task.projectId !== release.projectId) {
       throw new BadRequestException(`Ticket #${taskId} belongs to ${task.projectName}, not ${release.projectName}.`);

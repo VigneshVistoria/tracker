@@ -33,6 +33,7 @@ import {
   LayoutGrid,
   Bug,
   AlertTriangle,
+  ArchiveX,
   AlertOctagon,
   BookOpen,
   PackageCheck,
@@ -83,6 +84,8 @@ export const NAV_SECTIONS = [
       // Admin is view-only on the backlog and interventions; PM acts.
       { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox, roles: [ADMIN, PM] },
       { href: '/tasks/escalations', label: 'Interventions', icon: AlertTriangle, roles: [ADMIN, PM] },
+      // Matches TasksController.ROLES_ALLOWED_TO_VIEW_JUNK - PM restores, Admin views.
+      { href: '/tasks/junk', label: 'Junk', icon: ArchiveX, roles: [ADMIN, PM] },
       // Matches TasksController.ROLES_ALLOWED_TO_VIEW_QA_QUEUE.
       { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical, roles: [ADMIN, PM, EXEC, QA], countKey: 'qaReview' },
       { href: '/issues', label: 'Issues', icon: Ticket, roles: [ADMIN, PM, QA] },

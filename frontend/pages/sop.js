@@ -67,7 +67,7 @@ const STATUSES = [
   ['Failed', 'Rejected by QA or peer reviewer', 'You'],
   ['Intervention', 'QA sent the round to the PM instead of deciding', 'PM'],
   ['Pass', 'Approved; task complete', 'Nobody'],
-  ['Junk', 'PM closed a task sent for intervention as not a real issue; does not count against you', 'Nobody'],
+  ['Junk', 'PM marked the ticket as created by mistake or not a real issue - it is hidden from you and does not count against you. PM can restore it', 'Nobody'],
   ['Hold', 'Paused by PM/Admin', 'PM/Admin (to release)'],
   ['Closed', 'Closed by PM/Admin', 'PM/Admin (to reopen)'],
 ];

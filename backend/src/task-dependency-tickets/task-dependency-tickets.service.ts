@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
-import { TasksService } from '../tasks/tasks.service';
+import { TasksService, JUNK_STATUS } from '../tasks/tasks.service';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
@@ -70,12 +70,16 @@ export class TaskDependencyTicketsService {
   }
 
   private async withParentTaskFields(
-    tickets: TaskDependencyTicket[],
+    allTickets: TaskDependencyTicket[],
     tenantId: number,
   ): Promise<TaskDependencyTicketWithParent[]> {
+    let tickets = allTickets;
     const parentTaskIds = [...new Set(tickets.map((t) => t.parentTaskId))];
     const parentTasks = await this.tasksService.findManyByIds(parentTaskIds, tenantId);
     const parentTaskById = new Map(parentTasks.map((t) => [t.id, t]));
+    // Tickets raised on a Junk task are hidden with it (Outbound and
+    // Inbound cards alike) until the task is restored.
+    tickets = tickets.filter((t) => parentTaskById.get(t.parentTaskId)?.status !== JUNK_STATUS);
     // One batch lookup for every filer/owner on the list - only their
     // full names leave this method, never the rest of the user row.
     const userIds = [...new Set(tickets.flatMap((t) => [t.createdByUserId, t.ownerUserId]).filter((id) => id != null))];
@@ -104,6 +108,7 @@ export class TaskDependencyTicketsService {
     tenantId: number,
   ): Promise<TaskDependencyTicket> {
     const task = await this.tasksService.findOne(dto.parentTaskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     if (task.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the task Assignee can create a Dependency Ticket for this task.');
     }

@@ -16,8 +16,9 @@ import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
 import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel, statusBadgeStyle } from '../../lib/taskTableShared';
-import { formatDate } from '../../lib/formatDate';
-import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { formatDate, formatDateTime } from '../../lib/formatDate';
+import JunkReasonModal from '../../components/JunkReasonModal';
+import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
@@ -30,6 +31,9 @@ const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...
 // is Program Manager only (plus the task's own Assignee, handled
 // separately below via isAssignee).
 const MANAGE_ROLES = ['program_manager'];
+// Backend mirror: TasksService.canSeeJunk() (task page and junk history)
+// and ROLES_ALLOWED_TO_MANAGE_JUNK (mark/restore - Program Manager only).
+const JUNK_VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 
 // Status is fully auto-computed by task events (create, QA submit/
 // approve/reject) for every value except Hold/Closed, which Program
@@ -371,6 +375,9 @@ export default function TaskDetailPage() {
   const [savingPeerReviewFlag, setSavingPeerReviewFlag] = useState(false);
   // Hold/Close/Release panel - see handleHold/handleRelease/handleClose.
   const [savingHoldClosed, setSavingHoldClosed] = useState(false);
+  const [junkModalOpen, setJunkModalOpen] = useState(false);
+  const [junkHistory, setJunkHistory] = useState([]);
+  const [restoringJunk, setRestoringJunk] = useState(false);
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
@@ -511,6 +518,11 @@ export default function TaskDetailPage() {
   }, [editingModulePhase, moduleDraftId]);
 
   useEffect(() => {
+    if (!user || !id || !JUNK_VIEW_ROLES.includes(user.role)) return;
+    apiFetch(`/tasks/${id}/junk-history`).then(setJunkHistory).catch(() => setJunkHistory([]));
+  }, [user, id, task?.status]);
+
+  useEffect(() => {
     if (!user || !id) return;
     setLoading(true);
     setError('');
@@ -633,9 +645,15 @@ export default function TaskDetailPage() {
     );
   }
 
-  const canManage = MANAGE_ROLES.includes(user.role);
+  // A Junk ticket is frozen for everyone (the backend refuses every
+  // change) - only the Junk card's Restore is offered.
+  const isJunk = task.status === 'Junk';
+  // The backend refuses link/unlink on a Junk ticket (assertNotJunk).
+  const canChangeBlockingLinks = canLinkBlocking && !isJunk;
+  const isProgramManager = MANAGE_ROLES.includes(user.role);
+  const canManage = isProgramManager && !isJunk;
   const isAssignee = task.assigneeUserId === user.id;
-  const canEditFields = canManage || isAssignee;
+  const canEditFields = (canManage || isAssignee) && !isJunk;
   const estimatedHoursLocked = task.estimatedHours != null && !canManage;
   // Due Date: one-time entry for the Assignee, same lock pattern as
   // E.Hrs - Program Manager can always re-edit it, no lock applies to PM.
@@ -643,21 +661,21 @@ export default function TaskDetailPage() {
   // Narrow exception to Admin's usual view-only access to tasks - Admin
   // may set/edit only the Peer Review checkbox (via its own dedicated
   // endpoint below), nothing else on this page.
-  const canManagePeerReviewFlag = canManage || user.role === 'admin';
+  const canManagePeerReviewFlag = (canManage || user.role === 'admin') && !isJunk;
   // Backend mirror: ROLES_ALLOWED_TO_SET_HOLD_CLOSED (TasksController) -
   // Program Manager or Admin only, same narrow exception shape as
   // canManagePeerReviewFlag above.
-  const canManageHoldClosed = canManage || user.role === 'admin';
+  const canManageHoldClosed = (canManage || user.role === 'admin') && !isJunk;
   // Backend mirror: ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE
   // (TasksController) - QA, Program Manager, or Admin only.
-  const canEditQaReviewDueDate = user.role === 'qa' || canManage || user.role === 'admin';
+  const canEditQaReviewDueDate = (user.role === 'qa' || canManage || user.role === 'admin') && !isJunk;
   // Backend mirror: TasksService.canEdit()'s isDefect/createdByUserId
   // branch - only Program Manager or the QA who raised this defect may
   // edit its Project/Module/Phase/Description.
   // Description: PM, or a Developer/Designer/DevOps assigned to the task
   // (mirrors the isDeveloperAssignee exception in TasksService.update()).
-  const canEditDescription = canManage || (isAssignee && DEVELOPER_EQUIVALENT_ROLES.includes(user.role));
-  const canEditDefectScope = task.isDefect && (canManage || task.createdByUserId === user.id);
+  const canEditDescription = !isJunk && (canManage || (isAssignee && DEVELOPER_EQUIVALENT_ROLES.includes(user.role)));
+  const canEditDefectScope = !isJunk && task.isDefect && (canManage || task.createdByUserId === user.id);
 
   const latestQaReview = qaReviews[0];
   const hasPendingQaReview = latestQaReview?.status === 'pending';
@@ -998,6 +1016,32 @@ export default function TaskDetailPage() {
       setError(err.message);
     } finally {
       setSavingHoldClosed(false);
+    }
+  };
+
+  const submitJunk = async (reason) => {
+    const updated = await apiFetch(`/tasks/${task.id}/junk`, { method: 'PATCH', body: JSON.stringify({ reason }) });
+    setJunkModalOpen(false);
+    setTask((prev) => ({ ...prev, ...updated }));
+    showToast(`Task #${task.id} marked as Junk`, 'success');
+  };
+
+  const handleRestoreJunk = async () => {
+    if (!await confirmAction({
+      title: 'Restore from Junk?',
+      message: `Task #${task.id} goes back to ${statusLabel(task.statusBeforeJunk || 'Escalated')} and counts again from now on. Its history is kept.`,
+      confirmLabel: 'Restore',
+    })) return;
+    setError('');
+    setRestoringJunk(true);
+    try {
+      const updated = await apiFetch(`/tasks/${task.id}/restore-junk`, { method: 'PATCH' });
+      setTask((prev) => ({ ...prev, ...updated }));
+      showToast(`Task restored as ${statusLabel(updated.status)}`, 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRestoringJunk(false);
     }
   };
 
@@ -1922,6 +1966,81 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {(isJunk || isProgramManager || junkHistory.length > 0) && JUNK_VIEW_ROLES.includes(user.role) && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-junk">
+          <h2 className={styles.cardTitle}>Junk</h2>
+          {isJunk ? (
+            <>
+              <dl style={{ margin: '0 0 var(--ds-space-3)', display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 'var(--ds-space-1) var(--ds-space-4)' }}>
+                <dt className={styles.issueMeta}>Marked by</dt>
+                <dd style={{ margin: 0 }}>{task.junkedByEmail || 'Unknown'}</dd>
+                <dt className={styles.issueMeta}>When</dt>
+                <dd style={{ margin: 0 }}>{task.junkedAt ? formatDateTime(task.junkedAt) : 'Unknown'}</dd>
+                <dt className={styles.issueMeta}>Reason</dt>
+                <dd style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{task.junkReason || '—'}</dd>
+                <dt className={styles.issueMeta}>Previous status</dt>
+                <dd style={{ margin: 0 }}>{statusLabel(task.statusBeforeJunk || 'Escalated')}</dd>
+              </dl>
+              {isProgramManager ? (
+                <div className={styles.actions}>
+                  <button
+                    className={`${styles.button} ${styles.buttonAccent}`}
+                    type="button"
+                    disabled={restoringJunk}
+                    onClick={handleRestoreJunk}
+                  >
+                    {restoringJunk ? 'Restoring...' : 'Restore'}
+                  </button>
+                </div>
+              ) : (
+                <p className={styles.helpText}>Hidden from Developers and QA. Only a Program Manager can restore it.</p>
+              )}
+            </>
+          ) : isProgramManager ? (
+            <>
+              <p className={styles.helpText}>
+                Created by mistake? Junk hides this ticket from Developers and QA and leaves it out of every count and report.
+                Nothing is deleted - you can restore it from the Junk list.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.buttonSecondary} type="button" onClick={() => setJunkModalOpen(true)}>
+                  Mark as Junk
+                </button>
+              </div>
+            </>
+          ) : null}
+          {junkHistory.length > 0 && (
+            <>
+              <h3 className={styles.issueMeta} style={{ margin: 'var(--ds-space-4) 0 var(--ds-space-2)' }}>History</h3>
+              <ul style={{ margin: 0, paddingLeft: 'var(--ds-space-5)', lineHeight: 'var(--ds-leading-normal)' }}>
+                {junkHistory.map((h) => (
+                  <li key={h.id}>
+                    {formatDateTime(h.createdAt)} - {h.action === 'task_restored_from_junk' ? 'Restored' : 'Marked as Junk'} by {h.userEmail || 'Unknown'}
+                    {h.details?.previousStatus && h.details?.newStatus
+                      ? (
+                        <>
+                          {' ('}{statusLabel(h.details.previousStatus)}{' '}
+                          {/* Icon, not a → character - the app font has no arrow glyph. */}
+                          <ArrowRight size={13} aria-hidden="true" style={{ verticalAlign: 'middle' }} />
+                          <span className="sr-only">to</span>{' '}{statusLabel(h.details.newStatus)})
+                        </>
+                      )
+                      : ''}
+                    {h.action !== 'task_restored_from_junk' && h.details?.reason ? `: ${h.details.reason}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <JunkReasonModal
+            open={junkModalOpen}
+            tasks={[{ id: task.id, title: task.title, status: task.status }]}
+            onClose={() => setJunkModalOpen(false)}
+            submit={submitJunk}
+          />
+        </div>
+      )}
+
       {canManageHoldClosed && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
@@ -2202,7 +2321,7 @@ export default function TaskDetailPage() {
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               {t.linkType === 'spun-off' ? 'Raised from this task\'s QA rejection' : 'Linked as blocking'}
             </p>
-            {canLinkBlocking && t.linkType === 'manual' && (
+            {canChangeBlockingLinks && t.linkType === 'manual' && (
               <button
                 className={styles.buttonSecondary}
                 type="button"
@@ -2223,7 +2342,7 @@ export default function TaskDetailPage() {
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Assignee: {d.assigneeEmail} &middot; Linked by {d.linkedByEmail} &middot; {formatDate(d.linkedAt)}
             </p>
-            {canLinkBlocking && (
+            {canChangeBlockingLinks && (
               <button
                 className={styles.buttonSecondary}
                 type="button"
@@ -2236,7 +2355,7 @@ export default function TaskDetailPage() {
             )}
           </div>
         ))}
-        {canLinkBlocking && (
+        {canChangeBlockingLinks && (
           <div style={{ marginTop: 'var(--space-3)' }}>
             <SearchSelectField
               label={task.isDefect ? 'Link Blocked Task' : 'Link Blocking Defect'}

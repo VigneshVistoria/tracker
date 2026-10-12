@@ -13,6 +13,9 @@ import {
 } from './taskViews/TaskSections';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
+import { useToast } from '../lib/toast';
+import JunkReasonModal from './JunkReasonModal';
+import Button from './ui/Button';
 
 // Team Tasks - every team member's assigned tasks in one place, for
 // Admin/Executive/Program Manager. Modeled directly on
@@ -166,7 +169,15 @@ function WorkloadCell({ tasks }) {
   );
 }
 
-export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
+// `canMarkJunk` (Program Manager only - the backend enforces the same
+// rule) adds a checkbox column to the Table view and a "Mark as Junk" bar
+// for the selection. The selection is kept by id across pages, tabs and
+// filters until it's cleared or acted on, so tickets spread over several
+// views can be handled in one go.
+export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canMarkJunk = false }) {
+  const { showToast } = useToast();
+  const [selected, setSelected] = useState(() => new Map());
+  const [junkOpen, setJunkOpen] = useState(false);
   const [activeCard, setActiveCard] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState('All');
@@ -489,12 +500,66 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
   // The Assignee column/card line is dropped while a single assignee is
   // selected, since every row would repeat it.
   const showAssignee = assigneeFilter === 'All';
-  const columns = useMemo(
+  const selectableRows = displayRows.filter((t) => t.kind !== 'dependency');
+  const allOnPageSelected = selectableRows.length > 0 && selectableRows.every((t) => selected.has(t.id));
+  const toggleSelected = (t) =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(t.id)) next.delete(t.id);
+      else next.set(t.id, { id: t.id, title: t.title, status: t.status });
+      return next;
+    });
+  const togglePage = () =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (allOnPageSelected) selectableRows.forEach((t) => next.delete(t.id));
+      else selectableRows.forEach((t) => next.set(t.id, { id: t.id, title: t.title, status: t.status }));
+      return next;
+    });
+
+  const baseColumns = useMemo(
     () => buildTaskColumns({ assigneeLabel: showAssignee ? assigneeLabel : null, labelForEmail, expandedTaskIds, toggleExpanded }),
     // toggleExpanded only calls a state setter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [expandedTaskIds, assigneeLabel, labelForEmail, showAssignee],
   );
+  const columns = canMarkJunk
+    ? [
+        {
+          key: 'select',
+          width: 44,
+          header: (
+            <input
+              type="checkbox"
+              checked={allOnPageSelected}
+              disabled={selectableRows.length === 0}
+              onChange={togglePage}
+              aria-label="Select all tasks on this page"
+            />
+          ),
+          render: (t) =>
+            t.kind === 'dependency' ? null : (
+              <input
+                type="checkbox"
+                checked={selected.has(t.id)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={() => toggleSelected(t)}
+                aria-label={`Select task #${t.id}`}
+              />
+            ),
+        },
+        ...baseColumns,
+      ]
+    : baseColumns;
+
+  const submitJunk = async (reason) => {
+    const taskIds = [...selected.keys()];
+    await apiFetch('/tasks/bulk-junk', { method: 'PATCH', body: JSON.stringify({ taskIds, reason }) });
+    setJunkOpen(false);
+    setSelected(new Map());
+    setRefreshKey((k) => k + 1);
+    showToast(taskIds.length === 1 ? `Task #${taskIds[0]} marked as Junk` : `${taskIds.length} tasks marked as Junk`, 'success');
+  };
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -666,6 +731,26 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false }) {
 
             <ViewToggle id="teamViewLabel" value={viewMode} onChange={handleViewModeChange} modes={['table', 'tile', 'workload']} />
           </div>
+
+          {canMarkJunk && selected.size > 0 && (
+            <div
+              className={styles.card}
+              role="region"
+              aria-label="Selected tasks"
+              style={{ marginBottom: 'var(--ds-space-4)', display: 'flex', gap: 'var(--ds-space-3)', alignItems: 'center', flexWrap: 'wrap' }}
+            >
+              <strong>{selected.size} selected</strong>
+              <Button variant="danger" size="sm" onClick={() => setJunkOpen(true)}>
+                Mark as Junk
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setSelected(new Map())}>
+                Clear selection
+              </Button>
+              {viewMode !== 'table' && <span className={styles.issueMeta}>Switch to Table view to change the selection.</span>}
+            </div>
+          )}
+
+          <JunkReasonModal open={junkOpen} tasks={[...selected.values()]} onClose={() => setJunkOpen(false)} submit={submitJunk} />
 
           {onDevFailedTab && viewMode !== 'workload' && taskOnlyFiltersActive && dependenciesToClearCount > 0 && (
             <p className={styles.issueMeta}>

@@ -23,10 +23,12 @@ import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeor
 // 'Escalated' - QA Feedback escalated to PM instead of Approve/Reject
 // (TaskQaReviewsService.escalate()) - in-flight, not terminal, still
 // counts as "due, not completed" for KPI same as Feedback/Development.
-// 'Junk' - PM closed an escalated ticket as not a real issue
-// (TasksService.closeAsJunk()) - terminal, and unlike every other
-// status, fully excluded from KPI (KpiService.computeMetrics()'
-// `Not('Junk')` filters) rather than just scored as incomplete/rejected.
+// 'Junk' - a ticket created by mistake / not a real issue. Program
+// Manager can junk any ticket (TasksService.markJunk(), with a reason,
+// also in bulk) or an escalated one from Interventions (closeAsJunk()),
+// and restore it (restoreJunk()). Hidden from every list and count for
+// every role and fully excluded from KPI and every other measure - see
+// JUNK_STATUS in tasks.service.ts.
 // 'Hold'/'Closed' (added 2026-09, confirmed with the user) are the one
 // exception to "status is fully auto-computed" above - Program Manager
 // or Admin can force either one from any current status via the

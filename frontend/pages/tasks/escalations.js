@@ -6,8 +6,8 @@ import SearchSelectField from '../../components/SearchSelectField';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
-import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
+import JunkReasonModal from '../../components/JunkReasonModal';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -19,7 +19,6 @@ function userToOption(u) {
 // Program Manager can Reassign (to any Developer) or Close as Junk;
 // Admin can view but not act, same view/mutate split as Task Backlog.
 export default function EscalationsPage() {
-  const confirmAction = useConfirm();
   const router = useRouter();
   const { showToast } = useToast();
 
@@ -32,6 +31,7 @@ export default function EscalationsPage() {
   const [reassigningId, setReassigningId] = useState(null);
   const [reassignee, setReassignee] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [junkTask, setJunkTask] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -88,19 +88,14 @@ export default function EscalationsPage() {
     }
   };
 
-  const handleCloseAsJunk = async (task) => {
-    if (!await confirmAction({ title: 'Close as Junk?', message: `Close task #${task.id} as Junk? This is a final status and cannot be undone.`, confirmLabel: 'Close as Junk', danger: true })) return;
-    setBusyId(task.id);
-    setError('');
-    try {
-      await apiFetch(`/tasks/${task.id}/escalation-junk`, { method: 'PATCH' });
-      showToast(`Task #${task.id} closed as Junk`, 'success');
-      load();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusyId(null);
-    }
+  // Same reason dialog as every other way into Junk - restorable from the
+  // Junk list, back to this queue.
+  const submitCloseAsJunk = async (reason) => {
+    const task = junkTask;
+    await apiFetch(`/tasks/${task.id}/escalation-junk`, { method: 'PATCH', body: JSON.stringify({ reason }) });
+    setJunkTask(null);
+    showToast(`Task #${task.id} closed as Junk`, 'success');
+    load();
   };
 
   return (
@@ -116,6 +111,14 @@ export default function EscalationsPage() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      <JunkReasonModal
+        open={!!junkTask}
+        title="Close as Junk"
+        tasks={junkTask ? [{ id: junkTask.id, title: junkTask.title, status: junkTask.status }] : []}
+        onClose={() => setJunkTask(null)}
+        submit={submitCloseAsJunk}
+      />
 
       {loading && <LoadingState />}
 
@@ -189,7 +192,7 @@ export default function EscalationsPage() {
                             className={styles.button}
                             type="button"
                             disabled={busyId === task.id}
-                            onClick={() => handleCloseAsJunk(task)}
+                            onClick={() => setJunkTask(task)}
                           >
                             Close as Junk
                           </button>

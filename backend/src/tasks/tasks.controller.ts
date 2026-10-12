@@ -24,6 +24,7 @@ import { BulkAssignTasksDto } from './dto/bulk-assign-tasks.dto';
 import { SetPeerReviewFlagDto } from './dto/set-peer-review-flag.dto';
 import { SetQaReviewDueDateDto } from './dto/set-qa-review-due-date.dto';
 import { LinkBlockingDefectDto } from './dto/link-blocking-defect.dto';
+import { BulkMarkJunkDto, JunkReasonDto } from './dto/mark-junk.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
@@ -82,6 +83,13 @@ const ROLES_ALLOWED_TO_SET_HOLD_CLOSED: UserRole[] = [UserRole.PROGRAM_MANAGER, 
 // on any task opened from this screen still go through the general
 // canEdit()/MUTATE_ROLES check on the task detail page, unchanged - this
 // array only controls who can load the Team Tasks list itself.
+// Junk (2026-10-09, confirmed with the user): marking and restoring are
+// Program Manager only - the same rule as every other task change
+// (MUTATE_ROLES) and as the earlier escalation-only Junk action. Admin
+// can see the Junk list (same view-only split as Backlog/Interventions);
+// Executive cannot.
+const ROLES_ALLOWED_TO_MANAGE_JUNK: UserRole[] = [UserRole.PROGRAM_MANAGER];
+const ROLES_ALLOWED_TO_VIEW_JUNK: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_TEAM_TASKS: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
 
 @Controller('tasks')
@@ -107,6 +115,17 @@ export class TasksController {
       throw new ForbiddenException('Only Admin and Program Manager can view the Task Backlog.');
     }
     return this.tasksService.findBacklog(req.user.tenantId, showHoldClosed === 'true');
+  }
+
+  // Junk list - declared before ':id' for the same routing reason as
+  // 'backlog' above.
+  @Get('junk')
+  async findJunk(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_VIEW_JUNK.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin and Program Manager can view the Junk list.');
+    }
+    return this.tasksService.findJunk(req.user.tenantId);
   }
 
   // QA Review queue - tasks with a QA review round pending by default, or
@@ -254,7 +273,7 @@ export class TasksController {
     if (!(await this.tasksService.canView(task, currentUser))) {
       throw new ForbiddenException('You do not have access to this task.');
     }
-    return this.tasksService.findLinkedDefectsForTask(id, req.user.tenantId);
+    return this.tasksService.findLinkedDefectsForTask(id, req.user.tenantId, this.tasksService.canSeeJunk(currentUser));
   }
 
   // Existing defects QA/PM linked as blocking this task - same view gate
@@ -266,7 +285,7 @@ export class TasksController {
     if (!(await this.tasksService.canView(task, currentUser))) {
       throw new ForbiddenException('You do not have access to this task.');
     }
-    return this.tasksService.findBlockingDefectsForTask(id, req.user.tenantId);
+    return this.tasksService.findBlockingDefectsForTask(id, req.user.tenantId, this.tasksService.canSeeJunk(currentUser));
   }
 
   // Reverse of the above, for a defect's own page ("Blocks Task #70").
@@ -280,7 +299,18 @@ export class TasksController {
     if (!defect.isDefect) {
       return [];
     }
-    return this.tasksService.findTasksBlockedByDefect(defect, req.user.tenantId);
+    return this.tasksService.findTasksBlockedByDefect(defect, req.user.tenantId, this.tasksService.canSeeJunk(currentUser));
+  }
+
+  // Junk/restore history from the audit trail - for whoever can see Junk.
+  @Get(':id/junk-history')
+  async findJunkHistory(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!this.tasksService.canSeeJunk(currentUser)) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    await this.tasksService.findOne(id, req.user.tenantId);
+    return this.tasksService.findJunkHistory(id, req.user.tenantId);
   }
 
   @Post(':id/blocking-defects')
@@ -328,6 +358,17 @@ export class TasksController {
       throw new ForbiddenException('Only QA can create a defect ticket.');
     }
     return this.tasksService.createDefect(dto, currentUser, req.user.tenantId);
+  }
+
+  // Mark several tickets as Junk at once, one shared reason. Program
+  // Manager only; all-or-nothing (TasksService.markJunk()).
+  @Patch('bulk-junk')
+  async bulkMarkJunk(@Body() dto: BulkMarkJunkDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_MANAGE_JUNK.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager can mark tickets as Junk.');
+    }
+    return this.tasksService.markJunk(dto.taskIds, dto.reason, currentUser, req.user.tenantId);
   }
 
   // Bulk assign - declared before ':id' so 'bulk-assign' isn't swallowed by
@@ -384,13 +425,35 @@ export class TasksController {
   }
 
   // PM Escalation queue, option (b) - close as Junk, Program Manager only.
+  // Needs a reason, like every other way into Junk.
   @Patch(':id/escalation-junk')
-  async closeAsJunk(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+  async closeAsJunk(@Param('id', ParseIntPipe) id: number, @Body() dto: JunkReasonDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (!ROLES_ALLOWED_TO_ACT_ON_ESCALATIONS.includes(currentUser.role)) {
       throw new ForbiddenException('Only Program Manager can close an escalated task as Junk.');
     }
-    return this.tasksService.closeAsJunk(id, currentUser, req.user.tenantId);
+    return this.tasksService.closeAsJunk(id, dto.reason, currentUser, req.user.tenantId);
+  }
+
+  // Mark one ticket as Junk (any status) - Program Manager only.
+  @Patch(':id/junk')
+  async markJunk(@Param('id', ParseIntPipe) id: number, @Body() dto: JunkReasonDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_MANAGE_JUNK.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager can mark a ticket as Junk.');
+    }
+    const [saved] = await this.tasksService.markJunk([id], dto.reason, currentUser, req.user.tenantId);
+    return saved;
+  }
+
+  // Restore a Junk ticket to the status it had - Program Manager only.
+  @Patch(':id/restore-junk')
+  async restoreJunk(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_MANAGE_JUNK.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Program Manager can restore a Junk ticket.');
+    }
+    return this.tasksService.restoreJunk(id, currentUser, req.user.tenantId);
   }
 
   // Program Manager or Admin puts any task on Hold, from any current

@@ -278,7 +278,10 @@ export class KpiService {
   private async loadParentTasks(tickets: TaskDependencyTicket[], tenantId: number): Promise<Map<number, ProjectTask>> {
     const parentIds = [...new Set(tickets.map((t) => t.parentTaskId))];
     if (parentIds.length === 0) return new Map();
-    const parents = await this.tasksRepository.find({ where: { id: In(parentIds), tenantId } });
+    // A Junk parent is left out, so its dependency tickets drop out of
+    // the outbound penalty and the inbound count (they only count for a
+    // parent found here).
+    const parents = await this.tasksRepository.find({ where: { id: In(parentIds), tenantId, status: Not('Junk') } });
     return new Map(parents.map((t) => [t.id, t]));
   }
 
@@ -300,7 +303,8 @@ export class KpiService {
     const endStr = this.toDateOnly(range.end);
 
     const dueTasks = await this.tasksRepository.find({
-      where: { tenantId, dueDate: Between(startStr, endStr), assigneeUserId: Not(IsNull()) },
+      // Junk is no one's work - it must not create a KPI row on its own.
+      where: { tenantId, dueDate: Between(startStr, endStr), assigneeUserId: Not(IsNull()), status: Not('Junk') },
     });
 
     const pairs = new Map<string, { projectId: number; projectName: string; assigneeUserId: number; assigneeEmail: string }>();

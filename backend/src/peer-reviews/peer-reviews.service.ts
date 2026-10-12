@@ -64,6 +64,7 @@ export class PeerReviewsService {
     tenantId: number,
   ): Promise<PeerReviewWithArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     if (task.assigneeUserId !== currentUser.id) {
       throw new ForbiddenException('Only the task Assignee can submit it for Peer Review.');
     }
@@ -171,6 +172,7 @@ export class PeerReviewsService {
     tenantId: number,
   ): Promise<PeerReviewWithQaArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     const pending = await this.findPendingPeerRound(taskId, tenantId);
     if (currentUser.id !== pending.reviewerUserId) {
       throw new ForbiddenException('Only the assigned Peer Reviewer can approve this task.');
@@ -246,6 +248,7 @@ export class PeerReviewsService {
     tenantId: number,
   ): Promise<PeerReviewWithQaArtifacts> {
     const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
     const pending = await this.findPendingPeerRound(taskId, tenantId);
     if (currentUser.id !== pending.reviewerUserId) {
       throw new ForbiddenException('Only the assigned Peer Reviewer can reject this task.');

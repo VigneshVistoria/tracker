@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, IsNull, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { ProjectModule } from '../modules/project-module.entity';
 import { Phase } from '../phases/phase.entity';
@@ -8,7 +8,7 @@ import { BulkImportTasksDto, BulkSpreadsheetFormat } from './dto/bulk-import-tas
 import { TaskSpreadsheetService, RawTaskRow } from './spreadsheet/task-spreadsheet.service';
 import { TaskPriority } from './task-priority.enum';
 import { TASK_TITLE_MAX_LENGTH } from './task-title.constants';
-import { TasksService } from './tasks.service';
+import { TasksService, JUNK_STATUS } from './tasks.service';
 import { UsersService } from '../users/users.service';
 import { UserRole, User } from '../users/user.entity';
 import { ProjectsService } from '../projects/projects.service';
@@ -98,7 +98,7 @@ export class TasksBulkService {
   // to round-trip through a spreadsheet.
   async export(tenantId: number, format: BulkSpreadsheetFormat): Promise<{ buffer: Buffer; filename: string }> {
     const tasks = await this.tasksRepository.find({
-      where: { tenantId, assigneeUserId: IsNull() },
+      where: { tenantId, assigneeUserId: IsNull(), status: Not(JUNK_STATUS) },
       order: { id: 'ASC' },
     });
     return this.spreadsheetService.buildExport(tasks, format);

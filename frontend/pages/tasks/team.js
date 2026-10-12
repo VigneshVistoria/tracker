@@ -61,7 +61,7 @@ export default function TeamTasksPage() {
         </button>
       </div>
 
-      <TeamTaskWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} fullScreen={fullScreen} />
+      <TeamTaskWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} fullScreen={fullScreen} canMarkJunk={user.role === 'program_manager'} />
     </AppShell>
   );
 }

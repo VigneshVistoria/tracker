@@ -52,16 +52,28 @@ export class UserNotificationsService {
     }
   }
 
+  // Notifications that link to a Junk task are left out of the bell (list
+  // and unread badge) for everyone - they come back if it's restored. The
+  // rows themselves are untouched.
+  private visibleQuery(userId: number, tenantId: number) {
+    return this.notificationsRepository
+      .createQueryBuilder('n')
+      .where('n."userId" = :userId AND n."tenantId" = :tenantId', { userId, tenantId })
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM "project_tasks" t WHERE t."tenantId" = n."tenantId" AND t."status" = 'Junk' AND n."link" = '/tasks/' || t."id")`,
+      );
+  }
+
   findForUser(userId: number, tenantId: number, limit = 30): Promise<UserNotification[]> {
-    return this.notificationsRepository.find({
-      where: { userId, tenantId },
-      order: { createdAt: 'DESC', id: 'DESC' },
-      take: Math.min(Math.max(limit, 1), MAX_LIST),
-    });
+    return this.visibleQuery(userId, tenantId)
+      .orderBy('n.createdAt', 'DESC')
+      .addOrderBy('n.id', 'DESC')
+      .take(Math.min(Math.max(limit, 1), MAX_LIST))
+      .getMany();
   }
 
   countUnread(userId: number, tenantId: number): Promise<number> {
-    return this.notificationsRepository.count({ where: { userId, tenantId, readAt: IsNull() } });
+    return this.visibleQuery(userId, tenantId).andWhere('n."readAt" IS NULL').getCount();
   }
 
   async markRead(id: number, userId: number, tenantId: number): Promise<UserNotification> {

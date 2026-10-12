@@ -39,6 +39,12 @@ export const COMPLETED_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers',
 // hand, same as COMPLETED_STATUSES.
 export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
 
+// Junk (2026-10-09): a ticket created by mistake. The backend leaves it
+// out of every list and count for every role (JUNK_STATUS in
+// TasksService); it only shows on the Junk list page (/tasks/junk) and on
+// the task page for leadership.
+export const JUNK_STATUS = 'Junk';
+
 // Display text for a task status. The stored/API value stays 'Escalated'
 // (filters, colors, backend checks all key off it) - only what users read
 // is "Intervention" (renamed 2026-10, label-only per the user).
@@ -150,7 +156,6 @@ export const STATUS_TAB_GROUPS = [
   { key: 'Feedback', label: 'QA', statuses: ['Feedback', 'Re-Feedback'] },
   { key: 'Escalated', label: statusLabel('Escalated'), statuses: ['Escalated'] },
   { key: 'Pass', label: 'Pass', statuses: ['Pass'] },
-  { key: 'Junk', label: 'Junk', statuses: ['Junk'] },
   { key: 'ReleasedNoShowstoppers', label: 'Released - No Showstoppers', statuses: ['Released - No Showstoppers'] },
   { key: 'Hold', label: 'Hold', statuses: ['Hold'] },
   { key: 'Closed', label: 'Closed', statuses: ['Closed'] },
@@ -174,9 +179,14 @@ export function visibleStatusTabs(showCompleted, showHoldClosed) {
 // Only offer statuses that can actually appear once completed/Hold/Closed
 // tasks are hidden - picking "Pass" from the dropdown would otherwise
 // always dead-end on an empty table.
+// Junk is never offered - the backend leaves it out of every list, so
+// filtering to it would always be empty (it lives on the Junk list page).
 export function selectableStatuses(showCompleted, showHoldClosed) {
   return TASK_STATUSES.filter(
-    (s) => (showCompleted || !COMPLETED_STATUSES.includes(s)) && (showHoldClosed || !HOLD_CLOSED_STATUSES.includes(s)),
+    (s) =>
+      s !== JUNK_STATUS &&
+      (showCompleted || !COMPLETED_STATUSES.includes(s)) &&
+      (showHoldClosed || !HOLD_CLOSED_STATUSES.includes(s)),
   );
 }
 

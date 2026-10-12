@@ -9,6 +9,7 @@ const MIGRATIONS = ['2026-10-client-portal-foundation.sql', '2026-10-client-port
   path.resolve(__dirname, '../../migrations', f),
 );
 const PORTAL_DIR = path.join(SRC, 'client-portal');
+const JUNK_COLUMNS = ['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -38,6 +39,13 @@ export async function buildTestSchema() {
   await base.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await base.synchronize();
   for (const file of MIGRATIONS) await base.query(fs.readFileSync(file, 'utf8'));
+  // Junk columns on the existing project_tasks table: drop what synchronize
+  // created from the entity and add them back with THE REAL MIGRATION, so
+  // it is checked against the entity below like the portal tables.
+  await base.query(
+    `ALTER TABLE "project_tasks" ${JUNK_COLUMNS.map((c) => `DROP COLUMN "${c}"`).join(', ')}`,
+  );
+  await base.query(fs.readFileSync(path.resolve(__dirname, '../../migrations/2026-10-task-junk.sql'), 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -79,6 +87,22 @@ export async function buildTestSchema() {
     }
     for (const extra of byName.keys()) problems.push(`${meta.tableName}.${extra}: in migration, missing from entity`);
   }
+  const taskMeta = check.entityMetadatas.find((m) => m.tableName === 'project_tasks')!;
+  const taskCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
+    `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = 'project_tasks'`,
+  );
+  for (const name of JUNK_COLUMNS) {
+    const col = taskMeta.columns.find((c) => c.databaseName === name);
+    const db = taskCols.find((c) => c.column_name === name);
+    if (!col || !db) {
+      problems.push(`project_tasks.${name}: missing from ${col ? 'migration' : 'entity'}`);
+      continue;
+    }
+    if (db.is_nullable !== 'YES' || !col.isNullable) problems.push(`project_tasks.${name}: must be nullable in both`);
+    if (check.driver.normalizeType(col) !== db.data_type) {
+      problems.push(`project_tasks.${name}: type mismatch (entity ${check.driver.normalizeType(col)}, db ${db.data_type})`);
+    }
+  }
   await check.destroy();
-  if (problems.length) throw new Error(`Client portal migration does not match the entities:\n  ${problems.join('\n  ')}`);
+  if (problems.length) throw new Error(`Migrations do not match the entities:\n  ${problems.join('\n  ')}`);
 }
