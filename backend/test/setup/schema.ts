@@ -9,8 +9,12 @@ const MIGRATIONS = ['2026-10-client-portal-foundation.sql', '2026-10-client-port
   path.resolve(__dirname, '../../migrations', f),
 );
 const PORTAL_DIR = path.join(SRC, 'client-portal');
-// Defect screenshots (task_attachments) - created from its real
+// The team_settings table (Daily Scrum, QA summary) - created from its real
 // migration, like the portal tables, and checked against its entity.
+const TEAM_SETTINGS_DIR = path.join(SRC, 'team-settings');
+const DAILY_SCRUM_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-daily-scrum-settings.sql');
+// Defect screenshots (task_attachments) - same: real migration, checked
+// against the entity.
 const TASK_ATTACHMENT_ENTITY = path.join(SRC, 'tasks', 'task-attachment.entity.ts');
 const TASK_ATTACHMENTS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-task-attachments.sql');
 const JUNK_COLUMNS = ['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
@@ -35,7 +39,7 @@ function dataSource(entities: string[]) {
 // portal entities column for column - so the migrations themselves are tested.
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
-  const existing = all.filter((f) => !f.startsWith(PORTAL_DIR) && f !== TASK_ATTACHMENT_ENTITY);
+  const existing = all.filter((f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY);
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
   const base = dataSource(existing);
@@ -50,6 +54,7 @@ export async function buildTestSchema() {
     `ALTER TABLE "project_tasks" ${JUNK_COLUMNS.map((c) => `DROP COLUMN "${c}"`).join(', ')}`,
   );
   await base.query(fs.readFileSync(path.resolve(__dirname, '../../migrations/2026-10-task-junk.sql'), 'utf8'));
+  await base.query(fs.readFileSync(DAILY_SCRUM_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(TASK_ATTACHMENTS_MIGRATION, 'utf8'));
   await base.destroy();
 
@@ -61,9 +66,11 @@ export async function buildTestSchema() {
   if (portalMetas.length !== portalTables.length || portal.length !== portalTables.length) {
     problems.push(`expected ${portalTables.length} portal entities, found ${portalMetas.length} (${portal.length} files)`);
   }
+  const scrumMeta = check.entityMetadatas.find((m) => m.tableName === 'team_settings');
+  if (!scrumMeta) problems.push('team_settings: entity missing');
   const taskAttachmentMeta = check.entityMetadatas.find((m) => m.tableName === 'task_attachments');
   if (!taskAttachmentMeta) problems.push('task_attachments: entity missing');
-  for (const meta of [...portalMetas, ...(taskAttachmentMeta ? [taskAttachmentMeta] : [])]) {
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : [])]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

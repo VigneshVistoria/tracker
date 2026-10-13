@@ -8,6 +8,7 @@ import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { ProjectModule as ProjectModuleEntity } from '../modules/project-module.entity';
 import { Phase } from '../phases/phase.entity';
+import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TasksService } from './tasks.service';
 import { QaSummaryService } from './qa-summary.service';
 import { TasksController } from './tasks.controller';
@@ -27,7 +28,7 @@ import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, ProjectModuleEntity, Phase]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, ProjectModuleEntity, Phase, TeamSettings]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,

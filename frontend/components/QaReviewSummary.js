@@ -16,21 +16,34 @@ import { apiFetch } from '../lib/api';
 // and row comes from GET /tasks/qa-summary(/items), which build both from
 // the same lists (QaSummaryService) - so a tile always equals its rows.
 // Read-only, and separate from QaReviewWorkboard below it, which is
-// unchanged.
+// unchanged. The server turns the Period into dates in the team's time
+// zone (team_settings) and sends them back as summary.range - this page
+// never works out a boundary from the browser's own clock (2026-10-13).
 
 const PERIODS = [
-  { value: 'week', label: 'This week' },
-  { value: 'month', label: 'This month' },
-  { value: 'last30', label: 'Last 30 days' },
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'this_week', label: 'This week' },
+  { value: 'last_week', label: 'Last week' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'last_month', label: 'Last month' },
+  { value: 'last_3_months', label: 'Last 3 months' },
+  { value: 'last_6_months', label: 'Last 6 months' },
+  { value: 'this_year', label: 'This year' },
+  { value: 'last_12_months', label: 'Last 12 months' },
   { value: 'custom', label: 'Custom' },
 ];
+
+// Same limit as the server (qa-summary-period.ts) - checked here too so
+// the reason shows before any request is made.
+const MAX_CUSTOM_DAYS = 366;
 
 const TILES = [
   { key: 'defectsRaised', label: 'Defects raised', when: 'Raised', defectsOnly: true },
   { key: 'approved', label: 'Approved', when: 'Approved' },
   { key: 'rejected', label: 'Rejected', when: 'Last rejected', accent: 'danger' },
-  { key: 'waiting', label: 'Waiting for QA', when: 'Submitted', rightNow: true, accent: 'warning' },
-  { key: 'refeedback', label: 'Re-feedback', when: 'Resubmitted', rightNow: true, accent: 'warning' },
+  { key: 'waiting', label: 'Waiting for QA', when: 'Submitted', rightNow: true, accent: 'warning', hint: 'Includes Re-feedback' },
+  { key: 'refeedback', label: 'Re-feedback', when: 'Resubmitted', rightNow: true, accent: 'warning', hint: 'Part of Waiting for QA' },
 ];
 
 const LEADERSHIP_ROLES = ['admin', 'program_manager', 'executive'];
@@ -44,36 +57,23 @@ function withSelected(options, selected) {
   return [...list, { id: Number(selected), name: `#${selected}` }];
 }
 
-function startOfDay(d) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+// Why a Custom range can't be used yet, or '' when it can.
+function customProblem(from, to) {
+  if (!from || !to) return 'Pick a start and end date';
+  if (to < from) return 'The end date must be on or after the start date';
+  const days = (Date.parse(to) - Date.parse(from)) / 86400000 + 1;
+  if (days > MAX_CUSTOM_DAYS) return `A custom period can be at most ${MAX_CUSTOM_DAYS} days`;
+  return '';
 }
 
-function addDays(d, n) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-}
-
-// The period as [from, to) in the viewer's own time zone - "to" is the
-// start of the day after the last one included. Weeks start on Monday,
-// same as KPI. Returns null for an incomplete/invalid Custom range.
-function resolvePeriod(period, customFrom, customTo) {
-  const today = startOfDay(new Date());
-  if (period === 'week') {
-    const offset = (today.getDay() + 6) % 7;
-    const from = addDays(today, -offset);
-    return { from, to: addDays(from, 7) };
-  }
-  if (period === 'last30') return { from: addDays(today, -29), to: addDays(today, 1) };
-  if (period === 'custom') {
-    if (!customFrom || !customTo || customTo < customFrom) return null;
-    return { from: new Date(`${customFrom}T00:00:00`), to: addDays(new Date(`${customTo}T00:00:00`), 1) };
-  }
-  const from = new Date(today.getFullYear(), today.getMonth(), 1);
-  return { from, to: new Date(today.getFullYear(), today.getMonth() + 1, 1) };
+// "Africa/Addis_Ababa" -> "Addis Ababa".
+function zoneLabel(timeZone) {
+  return timeZone.split('/').pop().replace(/_/g, ' ');
 }
 
 export default function QaReviewSummary({ user }) {
   const isLeadership = LEADERSHIP_ROLES.includes(user.role);
-  const [period, setPeriod] = useState('month');
+  const [period, setPeriod] = useState('this_month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [qaUserId, setQaUserId] = useState('all');
@@ -87,16 +87,20 @@ export default function QaReviewSummary({ user }) {
   const [rowsLoading, setRowsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const range = useMemo(() => resolvePeriod(period, customFrom, customTo), [period, customFrom, customTo]);
+  const customError = period === 'custom' ? customProblem(customFrom, customTo) : '';
 
   const query = useMemo(() => {
-    if (!range) return null;
-    const params = new URLSearchParams({ from: range.from.toISOString(), to: range.to.toISOString() });
+    if (customError) return null;
+    const params = new URLSearchParams({ period });
+    if (period === 'custom') {
+      params.set('from', customFrom);
+      params.set('to', customTo);
+    }
     if (isLeadership && qaUserId !== 'all') params.set('qaUserId', qaUserId);
     if (projectId !== 'all') params.set('projectId', projectId);
     if (developerUserId !== 'all') params.set('developerUserId', developerUserId);
     return params.toString();
-  }, [range, isLeadership, qaUserId, projectId, developerUserId]);
+  }, [period, customFrom, customTo, customError, isLeadership, qaUserId, projectId, developerUserId]);
 
   useEffect(() => {
     if (!query) return undefined;
@@ -137,12 +141,17 @@ export default function QaReviewSummary({ user }) {
 
   const visibleTiles = TILES.filter((t) => !t.defectsOnly || summary?.includeDefects !== false);
   const activeDef = TILES.find((t) => t.key === activeTile);
-  const periodText = range ? `${formatDate(range.from)} – ${formatDate(addDays(range.to, -1))}` : 'Pick a start and end date';
+  // summary.range is the server's answer for the current query, so the
+  // label always matches the numbers (and can't drift with the browser).
+  const range = !customError && summary?.range?.period === period ? summary.range : null;
+  const periodText = customError || (range ? `${formatDate(range.from)} – ${formatDate(range.to)}` : '–');
+  const timeZone = range?.timeZone;
   const counts = summary?.counts;
 
   const columns = useMemo(() => {
     const showRounds = activeTile === 'waiting' || activeTile === 'refeedback';
     const showRejections = activeTile === 'rejected' || activeTile === 'refeedback';
+    const showApprovals = activeTile === 'approved';
     return [
       {
         key: 'id',
@@ -190,7 +199,7 @@ export default function QaReviewSummary({ user }) {
         key: 'happenedAt',
         header: <ColHeader icon={CalendarClock} label={activeDef?.when || 'When'} />,
         sortable: true,
-        render: (r) => formatDateTime(r.happenedAt),
+        render: (r) => formatDateTime(r.happenedAt, timeZone),
       },
       {
         key: 'status',
@@ -204,8 +213,11 @@ export default function QaReviewSummary({ user }) {
       ...(showRejections
         ? [{ key: 'rejections', header: <ColHeader icon={Repeat} label="Rejections" />, width: 100, sortable: true, render: (r) => r.rejections ?? '—' }]
         : []),
+      ...(showApprovals
+        ? [{ key: 'approvals', header: <ColHeader icon={Repeat} label="Approvals" />, width: 100, sortable: true, render: (r) => r.approvals ?? '—' }]
+        : []),
     ];
-  }, [activeTile, activeDef]);
+  }, [activeTile, activeDef, timeZone]);
 
   const decided = counts ? counts.approved + counts.rejected : 0;
 
@@ -213,7 +225,10 @@ export default function QaReviewSummary({ user }) {
     <section className={styles.card} aria-labelledby="qaSummaryTitle">
       <div className={summaryStyles.header}>
         <h2 id="qaSummaryTitle" className={summaryStyles.title}>Summary</h2>
-        <span className={summaryStyles.periodLabel}>{periodText}</span>
+        <span className={summaryStyles.periodLabel}>
+          {periodText}
+          {timeZone && ` · ${zoneLabel(timeZone)} time`}
+        </span>
       </div>
 
       <div className={styles.filterBar}>
@@ -298,6 +313,7 @@ export default function QaReviewSummary({ user }) {
               <div className={dashboardStyles.statStripLabel}>
                 {tile.label}
                 {tile.rightNow && <span> · right now</span>}
+                {tile.hint && <span className={summaryStyles.tileHint}>{tile.hint}</span>}
               </div>
             </button>
           );
@@ -305,7 +321,11 @@ export default function QaReviewSummary({ user }) {
       </div>
 
       <div className={summaryStyles.passRate}>
-        {!loading && decided === 0 && <span>No approvals or rejections in this period.</span>}
+        {!loading && decided === 0 && (
+          <span>
+            Pass rate <span className={summaryStyles.passRateValue}>—</span> · no approvals or rejections in this period
+          </span>
+        )}
         {!loading && decided > 0 && (
           <>
             <span>
@@ -326,6 +346,9 @@ export default function QaReviewSummary({ user }) {
             <span>
               <span className={`${summaryStyles.legendDot} ${summaryStyles.barRejected}`} aria-hidden="true" />
               {counts.rejected} rejected
+            </span>
+            <span className={summaryStyles.passRateHint}>
+              Counted per ticket: one rejected and later approved in the period is in both.
             </span>
           </>
         )}

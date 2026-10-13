@@ -92,6 +92,7 @@ import { Release } from './release-logs/release.entity';
 import { ReleaseItem } from './release-logs/release-item.entity';
 import { ReleaseLogsModule } from './release-logs/release-logs.module';
 import { StatusReviewModule } from './status-review/status-review.module';
+import { TeamSettings } from './team-settings/team-settings.entity';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { UserNotification } from './user-notifications/user-notification.entity';
 import { UserNotificationsModule } from './user-notifications/user-notifications.module';
@@ -163,6 +164,7 @@ import { SearchModule } from './search/search.module';
           ClientTicketEvent,
           ClientTicketAttachment,
           TaskAttachment,
+          TeamSettings,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.

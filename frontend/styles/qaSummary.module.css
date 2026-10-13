@@ -89,6 +89,18 @@
   border-radius: var(--ds-radius-sm);
 }
 
+.tileHint {
+  display: block;
+  margin-top: var(--ds-space-1);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.passRateHint {
+  flex-basis: 100%;
+  font-size: var(--ds-text-xs);
+}
+
 .anyQa {
   color: var(--ds-text-secondary);
 }

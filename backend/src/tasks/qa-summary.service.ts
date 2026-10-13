@@ -6,6 +6,9 @@ import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { TasksService } from './tasks.service';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
+import { TeamSettings } from '../team-settings/team-settings.entity';
+import { isValidTimeZone, TEAM_SETTINGS_DEFAULTS } from '../team-settings/time-zone';
+import { resolveQaSummaryPeriod, ResolvedPeriod } from './qa-summary-period';
 
 // QA Review summary (2026-10-13) - the five tiles at the top of the QA
 // Review page and the drill-down list behind each one. Read-only: it only
@@ -27,18 +30,18 @@ import { UserRole } from '../users/user.entity';
 //   same as the list's existing Resubmissions card.
 // - QA sees only their own numbers. Admin/PM/Executive pick one QA or All.
 //   Executive stays tasks-only, same as the QA Review list.
+// - The period is resolved here, in the team's time zone (team_settings),
+//   not in the viewer's browser - see qa-summary-period.ts (2026-10-13).
 
 export const QA_SUMMARY_TILES = ['defectsRaised', 'approved', 'rejected', 'waiting', 'refeedback'] as const;
 export type QaSummaryTile = (typeof QA_SUMMARY_TILES)[number];
 
 const VIEW_ROLES: UserRole[] = [UserRole.QA, UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE];
 const EXCLUDED_STATUSES = ['Junk', 'Hold'];
-// Longest Custom range accepted - well beyond any preset, just a guard
-// against an accidental "since the beginning of time" query.
-const MAX_RANGE_DAYS = 400;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface QaSummaryQuery {
+  period?: string;
+  // Custom only: YYYY-MM-DD, both included.
   from?: string;
   to?: string;
   qaUserId?: string;
@@ -65,10 +68,13 @@ export interface QaSummaryRow {
   // Rejected: rejections by the QA in the period. Waiting/Re-feedback:
   // every earlier QA rejection. Otherwise null.
   rejections: number | null;
+  // Approved: approvals by the QA in the period, else null.
+  approvals: number | null;
 }
 
 interface Scope {
   tenantId: number;
+  range: ResolvedPeriod;
   from: Date;
   to: Date;
   // null = All QAs.
@@ -94,10 +100,12 @@ export class QaSummaryService {
     private qaReviewsRepository: Repository<TaskQaReview>,
     private tasksService: TasksService,
     private usersService: UsersService,
+    @InjectRepository(TeamSettings)
+    private teamSettingsRepository: Repository<TeamSettings>,
   ) {}
 
   async summary(query: QaSummaryQuery, currentUser: { id: number; role: UserRole }, tenantId: number) {
-    const scope = this.resolveScope(query, currentUser, tenantId);
+    const scope = await this.resolveScope(query, currentUser, tenantId);
     const { tiles, projects, developers } = await this.buildTiles(scope, currentUser);
     const counts = Object.fromEntries(QA_SUMMARY_TILES.map((t) => [t, tiles[t].length])) as Record<QaSummaryTile, number>;
     const decided = counts.approved + counts.rejected;
@@ -110,6 +118,7 @@ export class QaSummaryService {
     return {
       counts,
       passRate: decided === 0 ? null : Math.round((counts.approved / decided) * 100),
+      range: { period: scope.range.period, from: scope.range.fromDate, to: scope.range.toDate, timeZone: scope.range.timeZone },
       includeDefects: scope.includeDefects,
       qas,
       projects,
@@ -121,24 +130,18 @@ export class QaSummaryService {
     if (!QA_SUMMARY_TILES.includes(tile as QaSummaryTile)) {
       throw new BadRequestException(`tile must be one of: ${QA_SUMMARY_TILES.join(', ')}.`);
     }
-    const scope = this.resolveScope(query, currentUser, tenantId);
+    const scope = await this.resolveScope(query, currentUser, tenantId);
     const { tiles } = await this.buildTiles(scope, currentUser);
     return tiles[tile as QaSummaryTile];
   }
 
-  private resolveScope(query: QaSummaryQuery, currentUser: { id: number; role: UserRole }, tenantId: number): Scope {
+  private async resolveScope(query: QaSummaryQuery, currentUser: { id: number; role: UserRole }, tenantId: number): Promise<Scope> {
     if (!VIEW_ROLES.includes(currentUser.role)) {
       throw new ForbiddenException('Only QA, Admin, Executive, or Program Manager can view the QA summary.');
     }
-    const from = new Date(query.from || '');
-    const to = new Date(query.to || '');
-    if (!query.from || !query.to || isNaN(from.getTime()) || isNaN(to.getTime())) {
-      throw new BadRequestException('from and to are required dates.');
-    }
-    if (to <= from) throw new BadRequestException('to must be after from.');
-    if (to.getTime() - from.getTime() > MAX_RANGE_DAYS * MS_PER_DAY) {
-      throw new BadRequestException(`The period can be at most ${MAX_RANGE_DAYS} days.`);
-    }
+    const settings = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    const timeZone = isValidTimeZone(settings?.timeZone) ? settings!.timeZone : TEAM_SETTINGS_DEFAULTS.timeZone;
+    const range = resolveQaSummaryPeriod(query, new Date(), timeZone);
 
     let qaUserId = optionalId(query.qaUserId, 'qaUserId');
     if (currentUser.role === UserRole.QA) {
@@ -149,8 +152,9 @@ export class QaSummaryService {
     }
     return {
       tenantId,
-      from,
-      to,
+      range,
+      from: range.from,
+      to: range.to,
       qaUserId,
       includeDefects: currentUser.role !== UserRole.EXECUTIVE,
       projectId: optionalId(query.projectId, 'projectId'),
@@ -241,6 +245,7 @@ export class QaSummaryService {
         qaUserId: r.reviewedByUserId,
         happenedAt: r.reviewedAt,
         rejections: decision === 'rejected' ? decisions.get(t.id)! : null,
+        approvals: decision === 'approved' ? decisions.get(t.id)! : null,
       });
     });
   }
@@ -283,7 +288,14 @@ export class QaSummaryService {
 
   private row(
     t: ProjectTask,
-    extra: { developerUserId: number | null; qaUserId: number | null; happenedAt: Date; round?: number | null; rejections?: number | null },
+    extra: {
+      developerUserId: number | null;
+      qaUserId: number | null;
+      happenedAt: Date;
+      round?: number | null;
+      rejections?: number | null;
+      approvals?: number | null;
+    },
   ): QaSummaryRow {
     return {
       id: t.id,
@@ -300,6 +312,7 @@ export class QaSummaryService {
       status: t.status,
       round: extra.round ?? null,
       rejections: extra.rejections ?? null,
+      approvals: extra.approvals ?? null,
     };
   }
 

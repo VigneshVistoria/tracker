@@ -23,11 +23,13 @@ export function formatDate(value) {
 }
 
 // Same date format plus a time, for timestamps where the time matters (e.g.
-// "Sep 13, 2026, 02:30 PM").
-export function formatDateTime(value) {
+// "Sep 13, 2026, 02:30 PM"). Pass an IANA timeZone to show the time on a
+// fixed clock (e.g. the team's) instead of the viewer's browser.
+export function formatDateTime(value, timeZone) {
   if (!value) return '—';
   return toDate(value).toLocaleString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    ...(timeZone ? { timeZone } : {}),
   });
 }
 
