@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Hash, User, FolderKanban, FileText, Flag, Activity, CalendarDays, CalendarClock,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Tag,
 } from 'lucide-react';
 import Table from './ui/Table';
 import Badge from './ui/Badge';
@@ -66,9 +66,20 @@ const DEFECT_CARD_DEFS = [
   ...CARD_DEFS.slice(1),
 ];
 
-export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue', showDefectColumns = false }) {
+// includeDefects (QA Review page only, 2026-10-13): asks the backend for
+// defects waiting on this QA's retest too (?include=defects - see
+// TasksService.findQaQueue()), labels every row Task or Defect, and adds
+// a Type filter. My Defects doesn't pass it, so it's unchanged.
+const TYPE_FILTERS = [
+  { value: 'All', label: 'All' },
+  { value: 'Tasks', label: 'Tasks' },
+  { value: 'Defects', label: 'Defects' },
+];
+
+export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue', showDefectColumns = false, includeDefects = false }) {
   const [activeCard, setActiveCard] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
+  const [typeFilter, setTypeFilter] = useState('All');
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
@@ -93,6 +104,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
   useEffect(() => {
     const params = new URLSearchParams();
     if (statusFilter !== 'All') params.set('status', statusFilter);
+    if (includeDefects) params.set('include', 'defects');
 
     let cancelled = false;
     setLoading(true);
@@ -112,7 +124,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, endpoint]);
+  }, [statusFilter, endpoint, includeDefects]);
 
   // Distinct list of assignees among the tasks currently loaded, for the
   // Assignee filter - rebuilds whenever the loaded set changes (e.g.
@@ -159,12 +171,14 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       if (assigneeFilter !== 'All' && task.assigneeEmail !== assigneeFilter) return false;
+      if (typeFilter === 'Tasks' && task.isDefect) return false;
+      if (typeFilter === 'Defects' && !task.isDefect) return false;
       if (dueFrom && (!task.dueDate || task.dueDate < dueFrom)) return false;
       if (dueTo && (!task.dueDate || task.dueDate > dueTo)) return false;
       if (onlyReviewOverdue && !isQaReviewOverdue(task)) return false;
       return true;
     });
-  }, [tasks, assigneeFilter, dueFrom, dueTo, onlyReviewOverdue]);
+  }, [tasks, assigneeFilter, typeFilter, dueFrom, dueTo, onlyReviewOverdue]);
 
   const columns = useMemo(
     () => [
@@ -179,6 +193,17 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
           </Link>
         ),
       },
+      ...(includeDefects
+        ? [
+            {
+              key: 'isDefect',
+              header: <ColHeader icon={Tag} label="Type" />,
+              width: 90,
+              sortable: true,
+              render: (t) => <Badge tone={t.isDefect ? 'warning' : 'info'}>{t.isDefect ? 'Defect' : 'Task'}</Badge>,
+            },
+          ]
+        : []),
       {
         key: 'assigneeEmail',
         header: <ColHeader icon={User} label="Assignee" />,
@@ -242,7 +267,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
         render: (t) => <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>,
       },
     ],
-    [showDefectColumns],
+    [showDefectColumns, includeDefects],
   );
 
   const activeCardDef = cards.find((c) => c.key === activeCard);
@@ -285,6 +310,22 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
           <StatusLegend items={showDefectColumns ? DEFECT_LEGEND_ITEMS : QA_LEGEND_ITEMS} />
 
           <div className={styles.filterBar}>
+            {includeDefects && (
+              <div className={styles.filterGroup}>
+                <label className={styles.filterLabel} htmlFor="qaTypeFilter">Type</label>
+                <select
+                  id="qaTypeFilter"
+                  className={styles.filterSelect}
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                >
+                  {TYPE_FILTERS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="qaAssigneeFilter">Assignee</label>
               <select

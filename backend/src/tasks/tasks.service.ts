@@ -771,16 +771,35 @@ export class TasksService {
   // Peer Review Stage 1) - Pass/Failed can also come from the separate
   // Peer Review path (PeerReviewsService), and those belong to the
   // reviewer, not QA (qaDecidedTasksQuery() below). `isDefect: false` on
-  // every branch keeps defect tickets out of
-  // this shared, pick-up-anything queue entirely - they only ever surface
-  // in findDefectQueue() below, self-scoped to the QA who raised them.
-  async findQaQueue(tenantId: number, status?: string): Promise<QaQueueResult> {
+  // every branch keeps defect tickets out of this shared, pick-up-anything
+  // queue by default - they surface in findDefectQueue() below, self-scoped
+  // to the QA who raised them, and in QA Review only via `defectsFor`.
+  //
+  // `defectsFor` (2026-10-13) opts the QA Review page into also listing
+  // defects waiting on a QA retest (Feedback/Re-Feedback), plus the
+  // defects that QA passed or failed on the Approved/Rejected cards. Same
+  // scoping as findDefectQueue(): a QA sees only the defects they raised
+  // (they're the only one who can decide them), Admin/Program Manager see
+  // all. Defects can never go to Peer Review (assertPeerReviewAllowed()),
+  // so their Pass/Failed always came from QA. Left undefined, the result
+  // is exactly the tasks-only queue above.
+  async findQaQueue(tenantId: number, status?: string, defectsFor?: { id: number; role: UserRole }): Promise<QaQueueResult> {
+    const defectWhere = defectsFor
+      ? defectsFor.role === UserRole.QA
+        ? { tenantId, isDefect: true, createdByUserId: defectsFor.id }
+        : { tenantId, isDefect: true }
+      : null;
+    const taskWhere = { tenantId, isDefect: false, status: In(QA_PENDING_STATUSES) };
     const pendingTasks = this.sortByPriority(
       await this.tasksRepository.find({
-        where: { tenantId, isDefect: false, status: In(QA_PENDING_STATUSES) },
+        where: defectWhere ? [taskWhere, { ...defectWhere, status: In(QA_PENDING_STATUSES) }] : taskWhere,
         order: { createdAt: 'DESC', id: 'DESC' },
       }),
     );
+    const decidedDefects = (decided: 'Pass' | 'Failed') =>
+      defectWhere ? this.tasksRepository.find({ where: { ...defectWhere, status: decided } }) : Promise.resolve([] as ProjectTask[]);
+    const countDecidedDefects = (decided: 'Pass' | 'Failed') =>
+      defectWhere ? this.tasksRepository.count({ where: { ...defectWhere, status: decided } }) : Promise.resolve(0);
     const today = new Date().toISOString().slice(0, 10);
     const statCounts = {
       pending: pendingTasks.length,
@@ -790,15 +809,20 @@ export class TasksService {
       // is needed here (contrast with the frontend's isQaReviewOverdue()
       // helper, which isn't scoped to a single status list up front).
       overdue: pendingTasks.filter((t) => t.qaReviewDueDate && t.qaReviewDueDate < today).length,
-      approved: await this.qaDecidedTasksQuery(tenantId, 'Pass').getCount(),
-      rejected: await this.qaDecidedTasksQuery(tenantId, 'Failed').getCount(),
+      approved: (await this.qaDecidedTasksQuery(tenantId, 'Pass').getCount()) + (await countDecidedDefects('Pass')),
+      rejected: (await this.qaDecidedTasksQuery(tenantId, 'Failed').getCount()) + (await countDecidedDefects('Failed')),
     };
 
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
-      tasks = this.sortByPriority(
-        await this.qaDecidedTasksQuery(tenantId, status).orderBy('t.createdAt', 'DESC').addOrderBy('t.id', 'DESC').getMany(),
-      );
+      const decided = [
+        ...(await this.qaDecidedTasksQuery(tenantId, status).orderBy('t.createdAt', 'DESC').addOrderBy('t.id', 'DESC').getMany()),
+        ...(await decidedDefects(status)),
+      ];
+      if (defectWhere) {
+        decided.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id);
+      }
+      tasks = this.sortByPriority(decided);
     } else if (status === 'Feedback' || status === 'Re-Feedback') {
       tasks = pendingTasks.filter((t) => t.status === status);
     } else {

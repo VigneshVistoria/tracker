@@ -35,12 +35,12 @@ export default function QaReviewQueuePage() {
         <div>
           <h1 className={styles.pageTitle}>QA Review</h1>
           <p className={styles.pageSubtitle}>
-            Tasks the Assignee has submitted for QA testing, waiting on your review.
+            Tasks the Assignee has submitted for QA testing, plus defects you raised that are back for your retest.
           </p>
         </div>
       </div>
 
-      <QaReviewWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} />
+      <QaReviewWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} includeDefects />
     </AppShell>
   );
 }

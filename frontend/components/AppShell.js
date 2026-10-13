@@ -176,7 +176,8 @@ export default function AppShell({ children, fullScreen = false }) {
         .catch(() => {});
     }
     if (visibleCountKeys.has('qaReview')) {
-      apiFetch('/tasks/qa-queue')
+      // Same ?include=defects as the QA Review page, so badge and list match.
+      apiFetch('/tasks/qa-queue?include=defects')
         .then((queue) => !cancelled && setNavCounts((prev) => ({ ...prev, qaReview: queue.statCounts.pending })))
         .catch(() => {});
     }

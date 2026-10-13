@@ -132,13 +132,20 @@ export class TasksController {
   // (via ?status=) already-decided tasks the queue's Approved/Rejected
   // stat cards filter into. Declared before ':id' for the same routing
   // reason as 'backlog'/'mine' above.
+  //
+  // ?include=defects (QA Review page + its sidebar badge only, 2026-10-13)
+  // also returns defects waiting on a QA retest, scoped exactly like the
+  // Defect queue below - so it's ignored for Executive, who can't see the
+  // Defect queue either. Without it the response is unchanged, which keeps
+  // the Dashboard's QA numbers as they were.
   @Get('qa-queue')
-  async findQaQueue(@Query('status') status: string | undefined, @Req() req: any) {
+  async findQaQueue(@Query('status') status: string | undefined, @Query('include') include: string | undefined, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     if (!ROLES_ALLOWED_TO_VIEW_QA_QUEUE.includes(currentUser.role)) {
       throw new ForbiddenException('Only QA, Admin, Executive, or Program Manager can view the QA Review queue.');
     }
-    return this.tasksService.findQaQueue(req.user.tenantId, status);
+    const defectsFor = include === 'defects' && ROLES_ALLOWED_TO_VIEW_DEFECT_QUEUE.includes(currentUser.role) ? currentUser : undefined;
+    return this.tasksService.findQaQueue(req.user.tenantId, status, defectsFor);
   }
 
   // Peer Review queue - tasks with a Peer Review round pending, assigned
