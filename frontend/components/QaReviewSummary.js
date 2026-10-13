@@ -147,6 +147,7 @@ export default function QaReviewSummary({ user }) {
   const periodText = customError || (range ? `${formatDate(range.from)} – ${formatDate(range.to)}` : '–');
   const timeZone = range?.timeZone;
   const counts = summary?.counts;
+  const soleQaName = summary?.soleQaName || null;
 
   const columns = useMemo(() => {
     // Waiting is first submissions only, so every row there is round 1.
@@ -194,7 +195,8 @@ export default function QaReviewSummary({ user }) {
         key: 'qaName',
         header: <ColHeader icon={FlaskConical} label="QA" />,
         sortable: true,
-        render: (r) => r.qaName || <span className={summaryStyles.anyQa}>Any QA</span>,
+        // soleQaName: the only QA-role user, if there is exactly one.
+        render: (r) => r.qaName || soleQaName || <span className={summaryStyles.anyQa}>Any QA</span>,
       },
       {
         key: 'happenedAt',
@@ -218,7 +220,7 @@ export default function QaReviewSummary({ user }) {
         ? [{ key: 'approvals', header: <ColHeader icon={Repeat} label="Approvals" />, width: 100, sortable: true, render: (r) => r.approvals ?? '—' }]
         : []),
     ];
-  }, [activeTile, activeDef, timeZone]);
+  }, [activeTile, activeDef, timeZone, soleQaName]);
 
   const decided = counts ? counts.approved + counts.rejected : 0;
 

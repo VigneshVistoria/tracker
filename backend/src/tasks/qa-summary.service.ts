@@ -112,18 +112,24 @@ export class QaSummaryService {
     const { tiles, projects, developers } = await this.buildTiles(scope, currentUser);
     const counts = Object.fromEntries(QA_SUMMARY_TILES.map((t) => [t, tiles[t].length])) as Record<QaSummaryTile, number>;
     const decided = counts.approved + counts.rejected;
+    const qaUsers = await this.usersService.findByRole(UserRole.QA, tenantId);
     const qas =
       currentUser.role === UserRole.QA
         ? []
-        : (await this.usersService.findByRole(UserRole.QA, tenantId))
-            .map((u) => ({ id: u.id, name: u.fullName || u.email }))
-            .sort((a, b) => a.name.localeCompare(b.name));
+        : qaUsers.map((u) => ({ id: u.id, name: u.fullName || u.email })).sort((a, b) => a.name.localeCompare(b.name));
+    // Display only (2026-10-13): with exactly one QA-role user, the
+    // drill-down shows their name instead of "Any QA" on tasks nobody has
+    // picked up - the shared queue is that one person's queue. Users have
+    // no active flag, so every QA-role user in the tenant counts. Rows,
+    // routing and qaUserId are unchanged.
+    const soleQaName = qaUsers.length === 1 ? qaUsers[0].fullName || qaUsers[0].email : null;
     return {
       counts,
       passRate: decided === 0 ? null : Math.round((counts.approved / decided) * 100),
       range: { period: scope.range.period, from: scope.range.fromDate, to: scope.range.toDate, timeZone: scope.range.timeZone },
       includeDefects: scope.includeDefects,
       qas,
+      soleQaName,
       projects,
       developers,
     };

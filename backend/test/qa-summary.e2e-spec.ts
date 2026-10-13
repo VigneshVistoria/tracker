@@ -244,6 +244,19 @@ describe('QA Review summary (e2e)', () => {
     }
   });
 
+  it('soleQaName is the only QA-role user, or null when there are two or more', async () => {
+    for (const u of [f.users.pm, f.users.qaB]) expect((await summary(u)).soleQaName).toBeNull();
+    await ds.query(`UPDATE users SET role = 'developer' WHERE id = $1`, [qaOther.id]);
+    try {
+      for (const u of [f.users.pm, f.users.qaB]) expect((await summary(u)).soleQaName).toBe('Name qaB');
+      // Display only - the waiting rows still have no QA.
+      const rows = await items(f.users.pm, 'waiting');
+      expect(rows.filter((r: any) => !r.isDefect).every((r: any) => r.qaUserId === null && r.qaName === null)).toBe(true);
+    } finally {
+      await ds.query(`UPDATE users SET role = 'qa' WHERE id = $1`, [qaOther.id]);
+    }
+  });
+
   it('Executive sees All, tasks only', async () => {
     const s = await summary(f.users.exec);
     expect(s.includeDefects).toBe(false);
