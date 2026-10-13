@@ -84,6 +84,8 @@ export const AuditActions = {
   TASK_QA_APPROVED: 'task_qa_approved',
   TASK_QA_REJECTED: 'task_qa_rejected',
   TASK_QA_ESCALATED: 'task_qa_escalated',
+  // PM/Admin undid a mistaken QA approve/reject (2026-10-13).
+  TASK_QA_DECISION_REVERTED: 'task_qa_decision_reverted',
   TASK_ESCALATION_REASSIGNED: 'task_escalation_reassigned',
   TASK_ESCALATION_CLOSED_JUNK: 'task_escalation_closed_junk',
   // details: { reason, previousStatus, newStatus: 'Junk', bulk }

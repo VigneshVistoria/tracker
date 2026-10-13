@@ -4,6 +4,8 @@ import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
 import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
+import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
+import { UserRole } from '../users/user.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
@@ -14,6 +16,10 @@ import { UsersService } from '../users/users.service';
 // TasksController's own ':id'/'backlog'/'mine' routes) - keeps the QA
 // review endpoints under the Task resource URL shape the workflow spec
 // asked for, while keeping the round-tracking logic in its own module.
+// Who may undo a mistaken QA decision - the same Program Manager + Admin
+// pair as Hold/Release/Close/Reopen (confirmed with the user 2026-10-13).
+const ROLES_ALLOWED_TO_REVERT_QA_DECISION: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
 export class TaskQaReviewsController {
@@ -55,5 +61,14 @@ export class TaskQaReviewsController {
   async escalate(@Param('id', ParseIntPipe) id: number, @Body() dto: QaEscalateTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.qaReviewsService.escalate(id, dto, currentUser, req.user.tenantId);
+  }
+
+  @Patch(':id/qa-revert')
+  async revertDecision(@Param('id', ParseIntPipe) id: number, @Body() dto: QaRevertDecisionDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_REVERT_QA_DECISION.includes(currentUser.role)) {
+      throw new ForbiddenException('Only a Program Manager or Admin can revert a QA decision.');
+    }
+    return this.qaReviewsService.revertDecision(id, dto, currentUser, req.user.tenantId);
   }
 }

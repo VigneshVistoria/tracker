@@ -272,7 +272,10 @@ export class NonComplianceReportService {
       // the same table/roundNumber sequence "on purpose" per
       // TaskQaReview's own comment, so a peer rejection counts exactly
       // like a QA one here too.
-      const devReviews = devTasks.flatMap((t) => reviewsByTaskId.get(t.id) ?? []);
+      // A reverted round (TaskQaReviewsService.revertDecision()) is the
+      // same submission as the pending round that replaced it - leave it
+      // out so it isn't a second submission or a rejection.
+      const devReviews = devTasks.flatMap((t) => reviewsByTaskId.get(t.id) ?? []).filter((r) => r.status !== 'reverted');
       const submissionsInRange = devReviews.filter((r) => inRange(toDateOnly(r.submittedAt), from, to));
       const rejectionsInRange = submissionsInRange.filter((r) => r.status === 'rejected');
       const submissions = submissionsInRange.length;

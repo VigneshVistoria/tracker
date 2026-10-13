@@ -37,6 +37,18 @@ export interface TaskReviewDecidedEvent {
   reviewType: 'qa' | 'peer';
 }
 
+// TaskQaReviewsService.revertDecision() (2026-10-13).
+export interface TaskQaDecisionRevertedEvent {
+  tenantId: number;
+  taskId: number;
+  title: string;
+  assigneeUserId: number | null;
+  qaUserId: number | null;
+  actorUserId: number;
+  actorEmail: string;
+  decision: 'approved' | 'rejected';
+}
+
 export interface TaskPeerReviewRequestedEvent {
   tenantId: number;
   taskId: number;
@@ -112,6 +124,31 @@ export class UserNotificationListenersService {
         actorUserId: e.actorUserId,
         actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
       });
+    });
+  }
+
+  // The developer and the QA who decided both hear that the decision was
+  // undone and the task is back with QA.
+  @OnEvent('task.qaDecisionReverted')
+  onTaskQaDecisionReverted(e: TaskQaDecisionRevertedEvent) {
+    return this.safely('task.qaDecisionReverted', async () => {
+      const actorName = await this.actorName(e.actorUserId, e.actorEmail, e.tenantId);
+      const what = e.decision === 'approved' ? 'approval' : 'rejection';
+      const recipients = [...new Set([e.assigneeUserId, e.qaUserId].filter((id): id is number => !!id && id !== e.actorUserId))];
+      await Promise.all(
+        recipients.map((userId) =>
+          this.notifications.create({
+            tenantId: e.tenantId,
+            userId,
+            type: 'task.reviewReverted',
+            title: `QA ${what} on task #${e.taskId} was reverted - it is back with QA`,
+            body: e.title,
+            link: `/tasks/${e.taskId}`,
+            actorUserId: e.actorUserId,
+            actorName,
+          }),
+        ),
+      );
     });
   }
 

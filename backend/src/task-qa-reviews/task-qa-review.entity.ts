@@ -22,7 +22,13 @@ export enum TaskArtifactType {
 // the same qaComment field reject() uses for its reason - just a
 // different terminal outcome, not a rejection, so it never touches
 // KpiService's rejection-count query (status: 'rejected' only).
-export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated';
+// 'reverted' (2026-10-13) - a QA approve/reject a Program Manager or
+// Admin undid as a mistake (TaskQaReviewsService.revertDecision()). The
+// row keeps the QA's decision fields as history, revertedBy/At/Reason say
+// who undid it, and a fresh 'pending' round re-opens the same submission.
+// Every count keys off 'approved'/'rejected', so a reverted round no
+// longer counts anywhere (KPI, Summary tiles, rejection rate).
+export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated' | 'reverted';
 
 // 'qa' (default) is a round any QA teammate can pick up from the tenant-
 // wide QA queue - reviewerUserId/Email stay null. 'peer' is a Peer Review
@@ -96,6 +102,22 @@ export class TaskQaReview {
 
   @Column({ type: 'text', nullable: true })
   qaComment: string;
+
+  // Set only on a 'reverted' round - see TaskQaReviewStatus above
+  // (migrations/2026-10-qa-decision-revert.sql).
+  @Column({ type: 'int', nullable: true })
+  revertedByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  revertedAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  revertReason: string | null;
+
+  // The decision that was undone ('approved' | 'rejected') - status itself
+  // now says 'reverted', so the history needs this to say what QA did.
+  @Column({ type: 'varchar', nullable: true })
+  revertedDecision: 'approved' | 'rejected' | null;
 
   // Set asynchronously, after the row is created, by NoteQualityService's
   // free-tier Gemini call (fire-and-forget from

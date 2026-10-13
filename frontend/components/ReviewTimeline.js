@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Send, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Clock, Send, XCircle, AlertTriangle, Undo2 } from 'lucide-react';
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
 import { statusLabel } from '../lib/taskTableShared';
@@ -10,6 +10,9 @@ const OUTCOME = {
   approved: { icon: CheckCircle2, tone: styles.approved, text: 'Approved' },
   rejected: { icon: XCircle, tone: styles.rejected, text: 'Sent back' },
   escalated: { icon: AlertTriangle, tone: styles.escalated, text: statusLabel('Escalated') },
+  // A QA decision a PM/Admin undid as a mistake - the decision is still
+  // shown, followed by who reverted it and why.
+  reverted: { icon: Undo2, tone: styles.reverted, text: 'Reverted' },
 };
 
 // Review rounds (QA and Peer) as a vertical timeline, oldest first - the
@@ -24,6 +27,9 @@ export default function ReviewTimeline({ reviews }) {
     <ol className={styles.timeline}>
       {rounds.map((r) => {
         const outcome = OUTCOME[r.status] || { icon: Clock, tone: styles.pending, text: statusLabel(r.status) };
+        // For a reverted round, the "Reviewed by" line still shows what QA
+        // actually decided (approved / sent back).
+        const decided = r.status === 'reverted' ? OUTCOME[r.revertedDecision] || outcome : outcome;
         const comment = stripHtmlForPreview(r.qaComment);
         const resolution = stripHtmlForPreview(r.resolution);
         return (
@@ -36,7 +42,9 @@ export default function ReviewTimeline({ reviews }) {
                 <span className={styles.title}>
                   Round {r.roundNumber} · {r.reviewType === 'peer' ? 'Peer review' : 'QA review'}
                 </span>
-                <span className={`${styles.outcome} ${outcome.tone}`}>{outcome.text}</span>
+                <span className={`${styles.outcome} ${outcome.tone}`}>
+                  {r.status === 'reverted' && OUTCOME[r.revertedDecision] ? `${OUTCOME[r.revertedDecision].text}, then reverted` : outcome.text}
+                </span>
               </div>
               <p className={styles.meta}>
                 <Send size={12} aria-hidden="true" />
@@ -45,12 +53,20 @@ export default function ReviewTimeline({ reviews }) {
               {resolution && <p className={styles.text}>{resolution}</p>}
               {r.status !== 'pending' && (
                 <p className={styles.meta}>
-                  <outcome.icon size={12} aria-hidden="true" />
+                  <decided.icon size={12} aria-hidden="true" />
                   Reviewed by <Avatar name={r.reviewedByFullName} size="xs" /> {r.reviewedByFullName || 'Unknown'}
                   {r.reviewedAt ? ` · ${formatDate(r.reviewedAt)}` : ''}
                 </p>
               )}
               {comment && <blockquote className={styles.comment}>{comment}</blockquote>}
+              {r.status === 'reverted' && (
+                <p className={styles.meta}>
+                  <Undo2 size={12} aria-hidden="true" />
+                  Reverted by <Avatar name={r.revertedByFullName} size="xs" /> {r.revertedByFullName || 'Unknown'}
+                  {r.revertedAt ? ` · ${formatDate(r.revertedAt)}` : ''}
+                  {r.revertReason ? `: ${r.revertReason}` : ''}
+                </p>
+              )}
             </div>
           </li>
         );

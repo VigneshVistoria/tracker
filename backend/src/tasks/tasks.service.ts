@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { Between, EntityManager, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
 import { TaskBlockingDefect } from './task-blocking-defect.entity';
@@ -177,6 +177,8 @@ export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
 // is the Junk list (findJunk()), for Program Manager and Admin, plus the
 // task page for leadership. Nothing is deleted.
 export const JUNK_STATUS = 'Junk';
+// Where a Junk came from, for its audit entry.
+export type JunkSource = 'single' | 'bulk' | 'interventions' | 'qa-revert';
 
 // Full tenant-wide *view* access (findAllForUser/canView) - Admin and
 // Executive both get this, but it's read-only: neither is in
@@ -1683,7 +1685,7 @@ export class TasksService {
     reason: string,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-    source: 'single' | 'bulk' | 'interventions' = taskIds.length > 1 ? 'bulk' : 'single',
+    source: JunkSource = taskIds.length > 1 ? 'bulk' : 'single',
   ): Promise<ProjectTask[]> {
     const trimmedReason = (reason || '').trim();
     if (!trimmedReason) {
@@ -1703,31 +1705,47 @@ export class TasksService {
           `Already in Junk: ${already.map((t) => `#${t.id}`).join(', ')}. Nothing was changed - remove ${already.length === 1 ? 'it' : 'them'} from the selection.`,
         );
       }
-      const now = new Date();
-      for (const t of tasks) {
-        t.statusBeforeJunk = t.status;
-        t.status = JUNK_STATUS;
-        t.junkReason = trimmedReason;
-        t.junkedAt = now;
-        t.junkedByUserId = currentUser.id;
-        t.junkedByEmail = currentUser.email;
-      }
-      const result = await repo.save(tasks);
-      for (const t of result) {
-        await this.auditLogService.recordWithin(em, {
-          userId: currentUser.id,
-          userEmail: currentUser.email,
-          userRole: currentUser.role,
-          action: AuditActions.TASK_MARKED_JUNK,
-          tenantId,
-          entityType: 'ProjectTask',
-          entityId: t.id,
-          details: { reason: trimmedReason, previousStatus: t.statusBeforeJunk, newStatus: JUNK_STATUS, source, batchSize: result.length },
-        });
-      }
-      return result;
+      return this.junkWithin(em, tasks, trimmedReason, currentUser, tenantId, source);
     });
     return saved.sort((a, b) => a.id - b.id);
+  }
+
+  // The status change + audit half of markJunk(), inside the caller's
+  // transaction - also used by TaskQaReviewsService.revertDecision() to
+  // junk the defects a reverted rejection created, in the same
+  // transaction as the revert itself. `tasks` must already be loaded
+  // (and locked) through `em` and not be Junk.
+  async junkWithin(
+    em: EntityManager,
+    tasks: ProjectTask[],
+    reason: string,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+    source: JunkSource,
+  ): Promise<ProjectTask[]> {
+    const now = new Date();
+    for (const t of tasks) {
+      t.statusBeforeJunk = t.status;
+      t.status = JUNK_STATUS;
+      t.junkReason = reason;
+      t.junkedAt = now;
+      t.junkedByUserId = currentUser.id;
+      t.junkedByEmail = currentUser.email;
+    }
+    const result = await em.getRepository(ProjectTask).save(tasks);
+    for (const t of result) {
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: AuditActions.TASK_MARKED_JUNK,
+        tenantId,
+        entityType: 'ProjectTask',
+        entityId: t.id,
+        details: { reason, previousStatus: t.statusBeforeJunk, newStatus: JUNK_STATUS, source, batchSize: result.length },
+      });
+    }
+    return result;
   }
 
   // Undoes markJunk(): back to the exact status (and so the same bucket /

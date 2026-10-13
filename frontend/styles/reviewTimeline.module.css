@@ -37,6 +37,7 @@
 .approved { --tone-bg: var(--ds-color-success-tint); --tone-fg: var(--ds-color-success-dark); }
 .rejected { --tone-bg: var(--ds-color-error-tint); --tone-fg: var(--ds-color-error-dark); }
 .escalated { --tone-bg: var(--ds-color-warning-tint); --tone-fg: var(--ds-color-warning-dark); }
+.reverted { --tone-bg: var(--color-slate-tint); --tone-fg: var(--ds-text-primary); }
 
 .body {
   flex: 1;

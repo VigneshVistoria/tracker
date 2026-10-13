@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { In, Repository } from 'typeorm';
+import { In, LessThan, Not, Repository } from 'typeorm';
 import { TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
@@ -9,6 +9,7 @@ import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
 import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
+import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { UserRole } from '../users/user.entity';
@@ -28,6 +29,7 @@ export type TaskQaReviewWithQaArtifacts = TaskQaReview & { qaArtifacts: TaskQaRe
 export type TaskQaReviewForDisplay = TaskQaReviewWithArtifacts & {
   submittedByFullName: string;
   reviewedByFullName: string | null;
+  revertedByFullName: string | null;
   qaArtifacts: TaskQaReviewQaArtifact[];
 };
 
@@ -88,6 +90,7 @@ export class TaskQaReviewsService {
     for (const review of reviews) {
       userIds.add(review.submittedByUserId);
       if (review.reviewedByUserId) userIds.add(review.reviewedByUserId);
+      if (review.revertedByUserId) userIds.add(review.revertedByUserId);
     }
     const users = await this.usersService.findByIds([...userIds], tenantId);
     const nameByUserId = new Map(users.map((u) => [u.id, u.fullName || u.email]));
@@ -100,6 +103,7 @@ export class TaskQaReviewsService {
       reviewedByFullName: review.reviewedByUserId
         ? nameByUserId.get(review.reviewedByUserId) || review.reviewedByEmail
         : null,
+      revertedByFullName: review.revertedByUserId ? nameByUserId.get(review.revertedByUserId) || null : null,
     }));
   }
 
@@ -473,5 +477,199 @@ export class TaskQaReviewsService {
     });
 
     return savedReview;
+  }
+
+  // Program Manager / Admin undoes a QA approve or reject made by mistake
+  // (2026-10-13, confirmed with the user; role gate in the controller).
+  // Only the latest round, only a QA round, and only while the task is
+  // still exactly where that decision left it - once the developer has
+  // resubmitted or the task has moved on there is nothing to undo.
+  //
+  // The decided round is kept as history and marked 'reverted' (who, when,
+  // why), and a fresh pending round re-opens the same submission - same
+  // resolution, artifacts, submitter and submit time - so the task is back
+  // in the QA queue as if the decision never happened. Every count keys
+  // off 'approved'/'rejected', so the reverted decision stops counting
+  // (KPI, QA Summary, rejection rate). Defects created by a reverted
+  // rejection are junked, not unlinked: Junk takes them out of every list
+  // and count and keeps them restorable, while an unlinked defect would
+  // stay live and assigned. A reverted round can't be reverted again.
+  async revertDecision(
+    taskId: number,
+    dto: QaRevertDecisionDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<{ task: ProjectTask; revertedRound: TaskQaReview; newRound: TaskQaReview; junkedDefectIds: number[] }> {
+    const reason = (dto.reason || '').trim();
+    const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
+
+    const latest = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId }, order: { roundNumber: 'DESC', id: 'DESC' } });
+    if (!latest) {
+      throw new BadRequestException(`Task #${taskId} has no QA decision to revert.`);
+    }
+    if (latest.status === 'pending') {
+      throw new BadRequestException(`Task #${taskId} is waiting for review (round ${latest.roundNumber}) - there is no decision to revert.`);
+    }
+    if (latest.status === 'reverted') {
+      throw new BadRequestException(`The latest decision on task #${taskId} was already reverted.`);
+    }
+    if (latest.reviewType !== 'qa') {
+      throw new BadRequestException(`The latest decision on task #${taskId} was a Peer Review - only a QA decision can be reverted.`);
+    }
+    if (latest.status === 'escalated') {
+      throw new BadRequestException(`Task #${taskId} was escalated to PM, not approved or rejected - handle it from Interventions.`);
+    }
+    const decision = latest.status;
+    const leftAt = decision === 'approved' ? 'Pass' : 'Failed';
+    if (task.status !== leftAt) {
+      throw new BadRequestException(
+        `Task #${taskId} has moved on since QA ${decision === 'approved' ? 'approved' : 'rejected'} it (it is now ${task.status}) - the decision can no longer be reverted.`,
+      );
+    }
+    if (decision === 'approved') {
+      const [{ n }] = await this.qaReviewsRepository.query(`SELECT count(*)::int AS n FROM release_items WHERE "tenantId" = $1 AND "taskId" = $2`, [tenantId, taskId]);
+      if (n > 0) {
+        throw new BadRequestException(`Task #${taskId} is already in a release log - remove it from the release before reverting the approval.`);
+      }
+    }
+
+    // Defects this rejection created, from its own audit entry - the only
+    // record that ties a linked defect to one specific round.
+    let defectIds: number[] = [];
+    if (decision === 'rejected') {
+      const entries: Array<{ details: string | null }> = await this.qaReviewsRepository.query(
+        `SELECT details FROM audit_logs WHERE "tenantId" = $1 AND action = $2 AND "entityType" = 'ProjectTask' AND "entityId" = $3 ORDER BY id DESC`,
+        [tenantId, AuditActions.TASK_QA_REJECTED, taskId],
+      );
+      for (const e of entries) {
+        let details: any = null;
+        try {
+          details = e.details ? JSON.parse(e.details) : null;
+        } catch {
+          details = null;
+        }
+        if (details?.roundNumber === latest.roundNumber) {
+          defectIds = Array.isArray(details.linkedDefectIds) ? details.linkedDefectIds : [];
+          break;
+        }
+      }
+    }
+    const defects = defectIds.length > 0 ? await this.tasksRepository.find({ where: { tenantId, id: In(defectIds) } }) : [];
+    const liveDefects = defects.filter((d) => d.status !== 'Junk');
+    if (liveDefects.length > 0) {
+      const started = await this.qaReviewsRepository.find({ where: { tenantId, taskId: In(liveDefects.map((d) => d.id)) } });
+      const moved = liveDefects.filter((d) => d.status !== 'Development' || started.some((r) => r.taskId === d.id));
+      if (moved.length > 0) {
+        throw new BadRequestException(
+          `Defect ${moved.map((d) => `#${d.id}`).join(', ')} raised from this rejection is already being worked on - the rejection can no longer be reverted.`,
+        );
+      }
+    }
+
+    // Feedback if no earlier round still stands as a decision, else
+    // Re-Feedback - the same first-time/resubmission split submit() makes.
+    const earlierDecided = await this.qaReviewsRepository.count({
+      where: { taskId, tenantId, roundNumber: LessThan(latest.roundNumber), status: Not(In(['pending', 'reverted'])) },
+    });
+    const newStatus = earlierDecided === 0 ? 'Feedback' : 'Re-Feedback';
+    const now = new Date();
+
+    const result = await this.qaReviewsRepository.manager.transaction(async (em) => {
+      // Guarded updates: two PMs reverting at once, or QA/the developer
+      // acting in the meantime, can't both succeed.
+      const roundUpdate = await em.update(
+        TaskQaReview,
+        { id: latest.id, tenantId, status: decision },
+        { status: 'reverted', revertedByUserId: currentUser.id, revertedAt: now, revertReason: reason, revertedDecision: decision },
+      );
+      if (!roundUpdate.affected) {
+        throw new BadRequestException(`The latest decision on task #${taskId} changed while you were reverting it - reload and try again.`);
+      }
+      const taskUpdate = await em.update(
+        ProjectTask,
+        { id: taskId, tenantId, status: leftAt },
+        decision === 'approved' ? { status: newStatus, completedAt: null } : { status: newStatus },
+      );
+      if (!taskUpdate.affected) {
+        throw new BadRequestException(`Task #${taskId} changed while you were reverting it - reload and try again.`);
+      }
+      const roundCount = await em.count(TaskQaReview, { where: { taskId, tenantId } });
+      const newRound = await em.save(
+        TaskQaReview,
+        em.create(TaskQaReview, {
+          tenantId,
+          taskId,
+          roundNumber: roundCount + 1,
+          resolution: latest.resolution,
+          submittedByUserId: latest.submittedByUserId,
+          submittedByEmail: latest.submittedByEmail,
+          status: 'pending',
+          reviewType: 'qa',
+          noteQualityFlagged: latest.noteQualityFlagged,
+          noteQualityReason: latest.noteQualityReason,
+        }),
+      );
+      // Same submission, so the same submit time (the QA review SLA and
+      // the Waiting list's "Submitted" keep their real date).
+      await em.update(TaskQaReview, { id: newRound.id }, { submittedAt: latest.submittedAt });
+      newRound.submittedAt = latest.submittedAt;
+      const submitted = await em.find(TaskQaReviewArtifact, { where: { taskQaReviewId: latest.id } });
+      if (submitted.length > 0) {
+        await em.save(
+          TaskQaReviewArtifact,
+          submitted.map((a) => em.create(TaskQaReviewArtifact, { taskQaReviewId: newRound.id, type: a.type, url: a.url })),
+        );
+      }
+
+      let junked: ProjectTask[] = [];
+      if (liveDefects.length > 0) {
+        const locked = await em.getRepository(ProjectTask).find({
+          where: { tenantId, id: In(liveDefects.map((d) => d.id)), status: 'Development' },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (locked.length !== liveDefects.length) {
+          throw new BadRequestException('A defect raised from this rejection changed while you were reverting it - reload and try again.');
+        }
+        junked = await this.tasksService.junkWithin(em, locked, `QA rejection of task #${taskId} reverted: ${reason}`, currentUser, tenantId, 'qa-revert');
+      }
+
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: AuditActions.TASK_QA_DECISION_REVERTED,
+        tenantId,
+        entityType: 'ProjectTask',
+        entityId: taskId,
+        details: {
+          reason,
+          roundNumber: latest.roundNumber,
+          revertedDecision: decision,
+          decidedByUserId: latest.reviewedByUserId,
+          decidedAt: latest.reviewedAt,
+          qaComment: latest.qaComment,
+          statusFrom: leftAt,
+          statusTo: newStatus,
+          newRoundNumber: newRound.roundNumber,
+          junkedDefectIds: junked.map((d) => d.id),
+        },
+      });
+      return { newRound, junkedDefectIds: junked.map((d) => d.id) };
+    });
+
+    const revertedRound = await this.qaReviewsRepository.findOneOrFail({ where: { id: latest.id } });
+    const savedTask = await this.tasksService.findOne(taskId, tenantId);
+    this.eventEmitter.emit('task.qaDecisionReverted', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      qaUserId: latest.reviewedByUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      decision,
+    });
+    return { task: savedTask, revertedRound, newRound: result.newRound, junkedDefectIds: result.junkedDefectIds };
   }
 }

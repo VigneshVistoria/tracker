@@ -18,6 +18,7 @@ import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependenc
 import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel, statusBadgeStyle } from '../../lib/taskTableShared';
 import { formatDate, formatDateTime } from '../../lib/formatDate';
 import JunkReasonModal from '../../components/JunkReasonModal';
+import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
@@ -377,6 +378,7 @@ export default function TaskDetailPage() {
   // Hold/Close/Release panel - see handleHold/handleRelease/handleClose.
   const [savingHoldClosed, setSavingHoldClosed] = useState(false);
   const [junkModalOpen, setJunkModalOpen] = useState(false);
+  const [revertModalOpen, setRevertModalOpen] = useState(false);
   const [junkHistory, setJunkHistory] = useState([]);
   const [restoringJunk, setRestoringJunk] = useState(false);
 
@@ -669,6 +671,15 @@ export default function TaskDetailPage() {
   // Program Manager or Admin only, same narrow exception shape as
   // canManagePeerReviewFlag above.
   const canManageHoldClosed = (canManage || user.role === 'admin') && !isJunk;
+  // Backend mirror: TaskQaReviewsService.revertDecision() + the controller's
+  // ROLES_ALLOWED_TO_REVERT_QA_DECISION - PM/Admin, latest round only, a
+  // QA approve/reject, and the task still exactly where it left it.
+  const latestRound = qaReviews[0];
+  const canRevertQaDecision =
+    ['program_manager', 'admin'].includes(user.role) &&
+    !isJunk &&
+    latestRound?.reviewType === 'qa' &&
+    ((latestRound.status === 'rejected' && task.status === 'Failed') || (latestRound.status === 'approved' && task.status === 'Pass'));
   // Backend mirror: ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE
   // (TasksController) - QA, Program Manager, or Admin only.
   const canEditQaReviewDueDate = (user.role === 'qa' || canManage || user.role === 'admin') && !isJunk;
@@ -758,7 +769,15 @@ export default function TaskDetailPage() {
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
     { key: 'reviewType', header: 'Type', width: 72, render: (r) => (r.reviewType === 'peer' ? 'Peer' : 'QA') },
-    { key: 'status', header: 'Status', width: 96, render: (r) => statusLabel(r.status.charAt(0).toUpperCase() + r.status.slice(1)) },
+    {
+      key: 'status',
+      header: 'Status',
+      width: 96,
+      render: (r) =>
+        r.status === 'reverted' && r.revertedDecision
+          ? `${r.revertedDecision === 'approved' ? 'Approved' : 'Rejected'}, reverted`
+          : statusLabel(r.status.charAt(0).toUpperCase() + r.status.slice(1)),
+    },
     { key: 'resolution', header: 'Description', render: (r) => stripHtmlForPreview(r.resolution) },
     { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
     { key: 'qaArtifacts', header: 'QA Artifact', width: 100, render: (r) => <QaArtifactIcons artifacts={r.qaArtifacts} /> },
@@ -784,7 +803,22 @@ export default function TaskDetailPage() {
         </div>
       ),
     },
-    { key: 'qaComment', header: 'Comment', render: (r) => stripHtmlForPreview(r.qaComment) || null },
+    {
+      key: 'qaComment',
+      header: 'Comment',
+      render: (r) => (
+        <>
+          {stripHtmlForPreview(r.qaComment) || null}
+          {r.status === 'reverted' && (
+            <div style={{ fontSize: 12, color: 'var(--ds-text-muted)', marginTop: 2 }}>
+              Reverted by {r.revertedByFullName || 'Unknown'}
+              {r.revertedAt ? ` · ${formatDate(r.revertedAt)}` : ''}
+              {r.revertReason ? `: ${r.revertReason}` : ''}
+            </div>
+          )}
+        </>
+      ),
+    },
   ];
 
   const handleSaveFields = async (e) => {
@@ -1050,6 +1084,20 @@ export default function TaskDetailPage() {
     setJunkModalOpen(false);
     setTask((prev) => ({ ...prev, ...updated }));
     showToast(`Task #${task.id} marked as Junk`, 'success');
+  };
+
+  const submitRevertQaDecision = async (reason) => {
+    const what = latestRound?.status === 'approved' ? 'approval' : 'rejection';
+    const result = await apiFetch(`/tasks/${task.id}/qa-revert`, { method: 'PATCH', body: JSON.stringify({ reason }) });
+    setRevertModalOpen(false);
+    const [refreshedTask, refreshedReviews] = await Promise.all([apiFetch(`/tasks/${task.id}`), apiFetch(`/tasks/${task.id}/qa-reviews`)]);
+    setTask(refreshedTask);
+    setQaReviews(refreshedReviews);
+    const junked = result.junkedDefectIds || [];
+    showToast(
+      `QA ${what} reverted - back to ${statusLabel(refreshedTask.status)}${junked.length ? `; ${junked.map((d) => `#${d}`).join(', ')} moved to Junk` : ''}`,
+      'success',
+    );
   };
 
   const handleRestoreJunk = async () => {
@@ -2064,6 +2112,32 @@ export default function TaskDetailPage() {
             tasks={[{ id: task.id, title: task.title, status: task.status }]}
             onClose={() => setJunkModalOpen(false)}
             submit={submitJunk}
+          />
+        </div>
+      )}
+
+      {canRevertQaDecision && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
+            QA decision
+          </h2>
+          <p className={styles.helpText}>
+            {latestRound.reviewedByFullName || 'QA'} {latestRound.status === 'approved' ? 'approved' : 'rejected'} round {latestRound.roundNumber}
+            {latestRound.reviewedAt ? ` on ${formatDate(latestRound.reviewedAt)}` : ''}. Made by mistake? Revert it and the task goes back to
+            waiting for QA with the same submission.
+          </p>
+          <div className={styles.actions}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setRevertModalOpen(true)}>
+              Revert QA decision
+            </button>
+          </div>
+          <RevertQaDecisionModal
+            open={revertModalOpen}
+            taskId={task.id}
+            decision={latestRound.status}
+            decidedBy={latestRound.reviewedByFullName}
+            onClose={() => setRevertModalOpen(false)}
+            submit={submitRevertQaDecision}
           />
         </div>
       )}
