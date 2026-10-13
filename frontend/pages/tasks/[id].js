@@ -688,7 +688,13 @@ export default function TaskDetailPage() {
   const isReviewPaused = task.status === 'Hold' || task.status === 'Closed';
   // Backend mirror: TasksService.assertSubmittable() - only a task still
   // being worked on can be submitted for QA or Peer Review.
-  const canSubmitForReview = !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'].includes(task.status);
+  // Backend mirror: TasksService.assertNotAlreadyApproved() - once the
+  // latest decided round (QA or Peer Review) is approved, the task can't
+  // be resubmitted whatever its status; a re-check needs a PM/QA reopen.
+  const latestDecidedReview = qaReviews.find((r) => r.status !== 'pending');
+  const isAlreadyApproved = latestDecidedReview?.status === 'approved';
+  const canSubmitForReview =
+    !isAlreadyApproved && !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'].includes(task.status);
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit() - a defect always goes to QA, whatever its Peer Review flag.
   const usesPeerReview = !!task.peerReviewEnabled && !task.isDefect;
@@ -2398,6 +2404,17 @@ export default function TaskDetailPage() {
           </div>
         )}
       </div>
+
+      {isAssignee && !hasPendingQaReview && isAlreadyApproved && !isJunk && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <p style={{ margin: 0 }}>
+            Approved {latestDecidedReview.reviewType === 'peer' ? 'in Peer Review' : 'by QA'}
+            {latestDecidedReview.reviewedByFullName ? ` by ${latestDecidedReview.reviewedByFullName}` : ''}
+            {latestDecidedReview.reviewedAt ? ` on ${formatDate(latestDecidedReview.reviewedAt)}` : ''}. Need a re-check? Ask a
+            Program Manager or QA to reopen it.
+          </p>
+        </div>
+      )}
 
       {isAssignee && isEscalated && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>

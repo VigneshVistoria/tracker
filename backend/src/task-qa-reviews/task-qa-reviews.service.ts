@@ -148,6 +148,7 @@ export class TaskQaReviewsService {
     if (existingPending) {
       throw new BadRequestException('This task already has a QA review round pending - it cannot be resubmitted until QA acts on it.');
     }
+    await this.tasksService.assertNotAlreadyApproved(task, tenantId);
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
 

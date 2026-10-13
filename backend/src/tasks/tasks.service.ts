@@ -392,6 +392,26 @@ export class TasksService {
     }
   }
 
+  // A second guard next to assertSubmittable(), keyed off the review
+  // history instead of the status (2026-10-13, after #57/#120 were
+  // resubmitted on 2026-10-08 while already Pass): if the latest decided
+  // round - QA or Peer Review - was approved, the task is done and can't
+  // go back into review, whatever its status says. A re-check needs a
+  // PM/QA reopen (planned), not a resubmit. Call it after the pending-
+  // round check so a task already in review keeps that clearer message.
+  async assertNotAlreadyApproved(task: ProjectTask, tenantId: number): Promise<void> {
+    const latestDecided = await this.qaReviewsRepository.findOne({
+      where: { taskId: task.id, tenantId, status: Not('pending') },
+      order: { roundNumber: 'DESC' },
+    });
+    if (latestDecided?.status === 'approved') {
+      const by = latestDecided.reviewType === 'peer' ? 'in Peer Review' : 'by QA';
+      throw new BadRequestException(
+        `Task #${task.id} was already approved ${by} (round ${latestDecided.roundNumber}) - it can't be resubmitted. Ask a Program Manager or QA to reopen it for a re-check.`,
+      );
+    }
+  }
+
   // A review round can't be decided while the PM has the task on Hold or
   // Closed - the round stays pending and is decided once it's released
   // or reopened. Applies to QA and Peer Review alike.

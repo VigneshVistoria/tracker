@@ -97,6 +97,21 @@ describe('Peer Review Stage 1 (e2e)', () => {
     await task('closed', { status: 'Closed', priorStatus: 'Development' });
     await task('defect', { isDefect: true, createdByUserId: f.users.qaB.id, createdByEmail: f.users.qaB.email });
     await task('flaggedDefect', { isDefect: true, peerReviewEnabled: true, createdByUserId: f.users.qaB.id, createdByEmail: f.users.qaB.email });
+    // Approved, but the status drifted off Pass (the #57/#120 shape) -
+    // assertNotAlreadyApproved() must still refuse a resubmit.
+    await task('approvedDriftQa', { status: 'Development' });
+    await decidedRound(ids.approvedDriftQa, 1, 'approved', 'qa');
+    await task('approvedDriftPeer', { status: 'Development', peerReviewEnabled: true });
+    await decidedRound(ids.approvedDriftPeer, 1, 'rejected', 'qa');
+    await decidedRound(ids.approvedDriftPeer, 2, 'approved', 'peer');
+    // Latest decision is not an approval - resubmit stays allowed.
+    await task('qaFailed', { status: 'Failed' });
+    await decidedRound(ids.qaFailed, 1, 'rejected', 'qa');
+    await task('approvedThenRejected', { status: 'Failed' });
+    await decidedRound(ids.approvedThenRejected, 1, 'approved', 'qa');
+    await decidedRound(ids.approvedThenRejected, 2, 'rejected', 'qa');
+    await task('escalatedReassigned', { status: 'Development' });
+    await decidedRound(ids.escalatedReassigned, 1, 'escalated', 'qa');
   });
 
   afterAll(async () => {
@@ -117,6 +132,31 @@ describe('Peer Review Stage 1 (e2e)', () => {
       expect((await peerSubmit(f.users.devA, ids.peerPassedAfterQa, f.users.devNone).expect(400)).body.message).toMatch(/already Pass/);
       for (const key of ['held', 'closed', 'qaPassed', 'peerPassedAfterQa']) expect(await pendingRounds(ids[key])).toBe(0);
       expect((await taskRow(ids.qaPassed)).status).toBe('Pass');
+    });
+
+    it('a task whose latest decision is an approval cannot be resubmitted, whatever its status', async () => {
+      const qa = await qaSubmit(f.users.devA, ids.approvedDriftQa).expect(400);
+      expect(qa.body.message).toMatch(/already approved by QA \(round 1\).*reopen it for a re-check/);
+      const peer = await peerSubmit(f.users.devA, ids.approvedDriftPeer, f.users.devNone).expect(400);
+      expect(peer.body.message).toMatch(/already approved in Peer Review \(round 2\)/);
+      for (const key of ['approvedDriftQa', 'approvedDriftPeer']) {
+        expect(await pendingRounds(ids[key])).toBe(0);
+        expect((await taskRow(ids[key])).status).toBe('Development');
+      }
+    });
+
+    it('a rejection or an escalation as the latest decision still allows a resubmit', async () => {
+      await qaSubmit(f.users.devA, ids.qaFailed).expect(201);
+      expect((await taskRow(ids.qaFailed)).status).toBe('Re-Feedback');
+      await qaSubmit(f.users.devA, ids.approvedThenRejected).expect(201);
+      expect((await taskRow(ids.approvedThenRejected)).status).toBe('Re-Feedback');
+      await qaSubmit(f.users.devA, ids.escalatedReassigned).expect(201);
+      expect((await taskRow(ids.escalatedReassigned)).status).toBe('Re-Feedback');
+    });
+
+    it('a task already in review keeps the pending-round message', async () => {
+      const res = await qaSubmit(f.users.devA, ids.qaFailed).expect(400);
+      expect(res.body.message).toMatch(/already has a QA review round pending/);
     });
 
     it('a rejected (Failed) peer task can still be resubmitted', async () => {
