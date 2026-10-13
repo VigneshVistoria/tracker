@@ -8,6 +8,7 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { effectiveDueDate, isPastEffectiveDue } from '../tasks/pm-review';
 
 // Only status a task can be scored as "done" against - see the gap
 // analysis: the two Released statuses are deliberately, permanently dead
@@ -192,11 +193,13 @@ export class KpiService {
     const blockedTaskIds = new Set(inboundOpenTickets.map((t) => t.parentTaskId));
 
     const openTasks = dueTasks.filter((t) => t.status !== COMPLETED_STATUS);
-    const overdueTasks = openTasks.filter((t) => t.dueDate && t.dueDate < todayStr && !blockedTaskIds.has(t.id));
+    // Judged against the effective due date (dueDate + working days spent
+    // waiting for a PM) and never while waiting for one - PM review gate.
+    const overdueTasks = openTasks.filter((t) => isPastEffectiveDue(t, todayStr) && !blockedTaskIds.has(t.id));
     const overduePercent = ticketsDue > 0 ? (overdueTasks.length / ticketsDue) * 100 : 0;
 
     const lateCompletedTasks = completedTasks.filter(
-      (t) => t.completedAt && t.dueDate && this.toDateOnly(new Date(t.completedAt)) > t.dueDate && !blockedTaskIds.has(t.id),
+      (t) => t.completedAt && t.dueDate && this.toDateOnly(new Date(t.completedAt)) > effectiveDueDate(t)! && !blockedTaskIds.has(t.id),
     );
     const targetMissPercent = ticketsCompleted > 0 ? (lateCompletedTasks.length / ticketsCompleted) * 100 : 0;
 
@@ -218,7 +221,9 @@ export class KpiService {
     const qaRejections =
       allTaskIds.length > 0
         ? await this.qaReviewsRepository.find({
-            where: { tenantId, taskId: In(allTaskIds), status: 'rejected', reviewedAt: Between(range.start, range.end) },
+            // A PM send-back (reviewType 'pm', PM review gate) is not a
+            // QA rejection and never counts here.
+            where: { tenantId, taskId: In(allTaskIds), status: 'rejected', reviewType: Not('pm'), reviewedAt: Between(range.start, range.end) },
           })
         : [];
     const qaRejectionCount = qaRejections.length;

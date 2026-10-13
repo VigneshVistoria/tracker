@@ -6,6 +6,7 @@ import { TaskBlockingDefect } from '../tasks/task-blocking-defect.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { UsersService } from '../users/users.service';
 import { computeStatusReview, StatusReviewSummary, WORK_ITEM_STATUSES } from './status-review.compute';
+import { effectiveDueDate } from '../tasks/pm-review';
 
 // Same "resolved" set TasksService.findOpenBlockingDefects() uses - kept as
 // a copy rather than importing/changing TasksService, since Status Review
@@ -45,7 +46,7 @@ export class StatusReviewService {
         title: t.title,
         status: t.status,
         assigneeUserId: t.assigneeUserId,
-        dueDate: t.dueDate,
+        dueDate: effectiveDueDate(t),
         isDefect: t.isDefect,
         priority: t.priority,
         projectName: t.projectName,

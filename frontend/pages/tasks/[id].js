@@ -64,6 +64,9 @@ const STATUS_COLOR = {
   // that file's STATUS_BADGE_STYLE - keep both in sync by hand.
   Hold: { bg: 'var(--ds-color-info-tint)', fg: 'var(--ds-color-info-dark)' },
   Closed: { bg: 'var(--ds-color-gray-300)', fg: 'var(--ds-text-primary)' },
+  // PM review gate (2026-10-13). Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
+  'Pending PM Review': { bg: 'var(--ds-color-warning-tint)', fg: 'var(--ds-color-warning-dark)' },
+  'PM Feedback': { bg: 'var(--ds-color-error-tint)', fg: 'var(--ds-color-error-dark)' },
 };
 
 function StatusBadge({ status }) {
@@ -366,6 +369,11 @@ export default function TaskDetailPage() {
   const [escalateComment, setEscalateComment] = useState('');
   const [showEscalateForm, setShowEscalateForm] = useState(false);
   const [qaActionBusy, setQaActionBusy] = useState(false);
+  // PM review gate (2026-10-13).
+  const [pmToQaComment, setPmToQaComment] = useState('');
+  const [pmSendBackComment, setPmSendBackComment] = useState('');
+  const [showPmSendBack, setShowPmSendBack] = useState(false);
+  const [pmBusy, setPmBusy] = useState(false);
   // QA's own evidence artifacts - optional, shared between Approve and
   // Reject since only one of those actions is taken per round.
   const [qaArtifacts, setQaArtifacts] = useState([]);
@@ -702,7 +710,8 @@ export default function TaskDetailPage() {
   // Backend mirror: TasksService.assertNotAlreadyApproved() - once the
   // latest decided round (QA or Peer Review) is approved, the task can't
   // be resubmitted whatever its status; a re-check needs a PM/QA reopen.
-  const latestDecidedReview = qaReviews.find((r) => r.status !== 'pending');
+  // PM review rounds are a gate before QA, never the task's verdict.
+  const latestDecidedReview = qaReviews.find((r) => r.status !== 'pending' && r.reviewType !== 'pm');
   const isAlreadyApproved = latestDecidedReview?.status === 'approved';
   const canSubmitForReview =
     !isAlreadyApproved && !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'].includes(task.status);
@@ -714,7 +723,16 @@ export default function TaskDetailPage() {
   // not any QA teammate - and findPendingRound(), which refuses a pending
   // Peer Review round (that belongs to its picked reviewer, never QA).
   const canActOnQaReview =
-    isQa && latestQaReview?.reviewType !== 'peer' && !isReviewPaused && (!task.isDefect || task.createdByUserId === user.id);
+    isQa && latestQaReview?.reviewType === 'qa' && !isReviewPaused && (!task.isDefect || task.createdByUserId === user.id);
+  // PM review gate (2026-10-13). Backend mirror: PmReviewsController's
+  // PM_REVIEW_ROLES + PmReviewsService.loadDecidable() - PM/Admin, a
+  // pending 'pm' round, the task waiting for it, not Hold/Closed.
+  const isPmRound = latestQaReview?.reviewType === 'pm';
+  const canActOnPmReview =
+    ['program_manager', 'admin'].includes(user.role) && isPmRound && hasPendingQaReview && task.status === 'Pending PM Review' && !isReviewPaused;
+  // The PM's latest send-back, shown to the developer while the task is
+  // in PM Feedback.
+  const latestPmSendBack = task.status === 'PM Feedback' ? qaReviews.find((r) => r.reviewType === 'pm' && r.status === 'rejected') : null;
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit()'s isEscalated guard - the Assignee can't resubmit either way
   // until PM reassigns it from the Escalations queue.
@@ -725,6 +743,15 @@ export default function TaskDetailPage() {
   // action cards below, so the banner can never point at a form that
   // isn't rendered for this user.
   const pendingAction = (() => {
+    if (canActOnPmReview) {
+      return { tone: 'info', icon: ClipboardList, title: 'Waiting for PM review', detail: 'Send it to QA, or back to the developer with feedback.', cta: 'Review now', target: 'pm-review' };
+    }
+    if (isAssignee && latestPmSendBack) {
+      return { tone: 'error', icon: AlertTriangle, title: 'PM feedback', detail: 'The Program Manager sent this back - see their feedback below, refine it, and submit again.', cta: 'See feedback', target: 'task-pm-feedback' };
+    }
+    if (isAssignee && hasPendingQaReview && isPmRound) {
+      return { tone: 'neutral', icon: CheckCircle2, title: 'With the Program Manager', detail: 'A PM reviews it before QA - you\'ll see the outcome here.' };
+    }
     if (canActOnQaReview && hasPendingQaReview) {
       return { tone: 'info', icon: ClipboardList, title: 'Waiting for your QA review', detail: 'Approve, reject or escalate this round.', cta: 'Review now', target: 'task-action-qa-review' };
     }
@@ -768,7 +795,7 @@ export default function TaskDetailPage() {
 
   const qaReviewColumns = [
     { key: 'roundNumber', header: 'Round', width: 72, render: (r) => r.roundNumber },
-    { key: 'reviewType', header: 'Type', width: 72, render: (r) => (r.reviewType === 'peer' ? 'Peer' : 'QA') },
+    { key: 'reviewType', header: 'Type', width: 72, render: (r) => (r.reviewType === 'peer' ? 'Peer' : r.reviewType === 'pm' ? 'PM' : 'QA') },
     {
       key: 'status',
       header: 'Status',
@@ -776,7 +803,9 @@ export default function TaskDetailPage() {
       render: (r) =>
         r.status === 'reverted' && r.revertedDecision
           ? `${r.revertedDecision === 'approved' ? 'Approved' : 'Rejected'}, reverted`
-          : statusLabel(r.status.charAt(0).toUpperCase() + r.status.slice(1)),
+          : r.reviewType === 'pm' && r.status !== 'pending'
+            ? r.status === 'approved' ? 'Sent to QA' : 'Sent back'
+            : statusLabel(r.status.charAt(0).toUpperCase() + r.status.slice(1)),
     },
     { key: 'resolution', header: 'Description', render: (r) => stripHtmlForPreview(r.resolution) },
     { key: 'artifacts', header: 'Artifact', width: 100, render: (r) => <ArtifactIcons artifacts={r.artifacts} /> },
@@ -1264,6 +1293,49 @@ export default function TaskDetailPage() {
     setLinkedDefectArtifacts([]);
   };
 
+  const refreshAfterPmDecision = async () => {
+    const [refreshedTask, refreshedReviews] = await Promise.all([apiFetch(`/tasks/${task.id}`), apiFetch(`/tasks/${task.id}/qa-reviews`)]);
+    setTask(refreshedTask);
+    setQaReviews(refreshedReviews);
+  };
+
+  const handlePmSendToQa = async () => {
+    setError('');
+    setPmBusy(true);
+    try {
+      const comment = stripHtmlForPreview(pmToQaComment).trim() ? pmToQaComment : undefined;
+      await apiFetch(`/pm-review/tasks/${task.id}/send-to-qa`, { method: 'PATCH', body: JSON.stringify(comment ? { comment } : {}) });
+      setPmToQaComment('');
+      await refreshAfterPmDecision();
+      showToast(`Task #${task.id} sent to QA`, 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPmBusy(false);
+    }
+  };
+
+  const handlePmSendBack = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!stripHtmlForPreview(pmSendBackComment).trim()) {
+      setError('Feedback for the developer is required to send it back.');
+      return;
+    }
+    setPmBusy(true);
+    try {
+      await apiFetch(`/pm-review/tasks/${task.id}/send-back`, { method: 'PATCH', body: JSON.stringify({ comment: pmSendBackComment }) });
+      setPmSendBackComment('');
+      setShowPmSendBack(false);
+      await refreshAfterPmDecision();
+      showToast(`Task #${task.id} sent back to the developer`, 'success');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPmBusy(false);
+    }
+  };
+
   const handleSubmitForQa = async (e) => {
     e.preventDefault();
     setError('');
@@ -1274,7 +1346,7 @@ export default function TaskDetailPage() {
     }
     setSubmittingQa(true);
     try {
-      await apiFetch(`/tasks/${task.id}/qa-submit`, {
+      const submitted = await apiFetch(`/tasks/${task.id}/qa-submit`, {
         method: 'POST',
         body: JSON.stringify({
           resolution,
@@ -1282,7 +1354,7 @@ export default function TaskDetailPage() {
           artifacts: artifacts.map((row) => ({ type: row.type, url: row.url.trim() })),
         }),
       });
-      showToast('Submitted for QA testing', 'success');
+      showToast(submitted?.reviewType === 'pm' ? 'Submitted - a Program Manager reviews it before QA' : 'Submitted for QA testing', 'success');
       setResolution('');
       setArtifacts([{ type: '', url: '' }]);
       setActualHours('');
@@ -1996,7 +2068,9 @@ export default function TaskDetailPage() {
               <p className={styles.helpText}>
                 {latestQaReview.reviewType === 'peer'
                   ? 'A Peer Review round is pending - status is controlled by the reviewer\'s Approve/Reject.'
-                  : 'A QA review round is pending - status is controlled by QA Approve/Reject.'}
+                  : latestQaReview.reviewType === 'pm'
+                    ? 'Waiting for PM review - a Program Manager sends it to QA or back to the developer.'
+                    : 'A QA review round is pending - status is controlled by QA Approve/Reject.'}
               </p>
             )}
           </div>
@@ -2490,6 +2564,24 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {latestPmSendBack && (
+        <div id="task-pm-feedback" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
+          <h2 className={styles.cardTitle}>
+            PM feedback
+          </h2>
+          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
+            From {latestPmSendBack.reviewedByFullName || 'the Program Manager'}
+            {latestPmSendBack.reviewedAt ? ` · ${formatDate(latestPmSendBack.reviewedAt)}` : ''}
+          </p>
+          <RichTextDisplay value={latestPmSendBack.qaComment} />
+          {isAssignee && (
+            <p className={styles.helpText} style={{ marginBottom: 0 }}>
+              Refine the task, then submit it again below - it goes back to the Program Manager. This is not a QA rejection.
+            </p>
+          )}
+        </div>
+      )}
+
       {isAssignee && isEscalated && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
@@ -2696,6 +2788,67 @@ export default function TaskDetailPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {canActOnPmReview && (
+        <div id="pm-review" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
+            PM review
+          </h2>
+          <p className={styles.helpText} style={{ marginTop: 0 }}>
+            Check the description above and the resolution and evidence below, then send it to QA or back to the developer. Time
+            waiting here never counts against the developer.
+          </p>
+          <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
+          <RichTextDisplay value={latestQaReview.resolution} />
+          {latestQaReview.artifacts.map((artifact) => (
+            <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Evidence: {artifact.type} &middot;{' '}
+              <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
+            </p>
+          ))}
+          <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+            Submitted by {latestQaReview.submittedByFullName || latestQaReview.submittedByEmail} &middot; {formatDate(latestQaReview.submittedAt)}
+            {' '}&middot; PM round {qaReviews.filter((r) => r.reviewType === 'pm').length}
+          </p>
+
+          {!showPmSendBack ? (
+            <>
+              <div className={styles.field} style={{ marginTop: 'var(--space-3)' }}>
+                <label className={styles.label} htmlFor="tdPmToQaComment">Note for QA (optional)</label>
+                <RichTextEditor id="tdPmToQaComment" placeholder="Anything QA should know" value={pmToQaComment} onChange={setPmToQaComment} />
+              </div>
+              <div className={styles.actions}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={handlePmSendToQa} disabled={pmBusy}>
+                  {pmBusy ? 'Working...' : 'Send to QA'}
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowPmSendBack(true)} disabled={pmBusy}>
+                  Send back to developer
+                </button>
+              </div>
+            </>
+          ) : (
+            <form onSubmit={handlePmSendBack} style={{ marginTop: 'var(--space-3)' }}>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="tdPmSendBackComment">Feedback for the developer (required)</label>
+                <RichTextEditor
+                  id="tdPmSendBackComment"
+                  placeholder="What should the developer refine before this goes to QA?"
+                  value={pmSendBackComment}
+                  onChange={setPmSendBackComment}
+                />
+              </div>
+              <div className={styles.actions}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={pmBusy}>
+                  {pmBusy ? 'Working...' : 'Confirm send back'}
+                </button>
+                <button className={styles.button} type="button" onClick={() => setShowPmSendBack(false)} disabled={pmBusy}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       )}
 
       {canActOnQaReview && hasPendingQaReview && (

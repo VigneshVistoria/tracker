@@ -17,6 +17,12 @@ export class Project {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  // PM review gate (2026-10-13): when on, a developer's task submission
+  // waits for a PM before QA (backend/src/tasks/pm-review.ts). Admin
+  // switches it per project; default off.
+  @Column({ default: false })
+  pmReviewEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

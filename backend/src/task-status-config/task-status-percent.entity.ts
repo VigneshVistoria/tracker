@@ -45,6 +45,9 @@ export const TASK_STATUSES = [
   'Re-Feedback',
   'Peer Review',
   'Re-Peer-Review',
+  // PM review gate (2026-10-13) - see backend/src/tasks/pm-review.ts.
+  'Pending PM Review',
+  'PM Feedback',
   'Escalated',
   'Failed',
   'Pass',
@@ -65,6 +68,8 @@ export const TASK_STATUS_PERCENT_DEFAULTS: Record<TaskStatus, number> = {
   'Re-Feedback': 50,
   'Peer Review': 50,
   'Re-Peer-Review': 50,
+  'Pending PM Review': 50,
+  'PM Feedback': 0,
   Escalated: 50,
   Failed: 0,
   Pass: 100,

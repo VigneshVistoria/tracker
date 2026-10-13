@@ -39,7 +39,12 @@ export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalate
 // retest counter and the KPI QA-rejection penalty
 // (KpiService.computeMetrics) count a peer rejection exactly like a QA
 // one with no extra code.
-export type TaskQaReviewType = 'qa' | 'peer';
+// 'pm' (2026-10-13) - the PM review gate before QA (backend/src/tasks/
+// pm-review.ts): approved = sent to QA (a fresh 'qa' round is opened),
+// rejected = sent back to the developer as PM Feedback. Never a QA
+// decision - every QA count, the retest counter and the KPI rejection
+// count leave 'pm' rounds out.
+export type TaskQaReviewType = 'qa' | 'peer' | 'pm';
 
 // One row per QA review round on a Task (Stage 4/5/6). The Assignee's
 // "Ready for Feedback" submission creates a new pending row; QA's
@@ -118,6 +123,14 @@ export class TaskQaReview {
   // now says 'reverted', so the history needs this to say what QA did.
   @Column({ type: 'varchar', nullable: true })
   revertedDecision: 'approved' | 'rejected' | null;
+
+  // 'pm' rounds only - when the waiting-too-long reminder went to the PMs
+  // / to the Admins, so each goes out once.
+  @Column({ type: 'timestamp', nullable: true })
+  reminderSentAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  adminReminderSentAt: Date | null;
 
   // Set asynchronously, after the row is created, by NoteQualityService's
   // free-tier Gemini call (fire-and-forget from

@@ -22,6 +22,7 @@ import { TaskStatusConfigService } from '../task-status-config/task-status-confi
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
 import { addBusinessDays, toDateOnlyString } from '../common/business-days';
+import { isPastEffectiveDue } from './pm-review';
 
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
@@ -321,7 +322,9 @@ export class TasksService {
       return true;
     }
     if (user.role === UserRole.QA) {
-      const qaReview = await this.qaReviewsRepository.findOne({ where: { taskId: task.id } });
+      // A PM review round (reviewType 'pm') is not a QA round - it grants
+      // no QA view access on its own.
+      const qaReview = await this.qaReviewsRepository.findOne({ where: { taskId: task.id, reviewType: Not('pm') } });
       if (qaReview) {
         return true;
       }
@@ -403,7 +406,8 @@ export class TasksService {
   // round check so a task already in review keeps that clearer message.
   async assertNotAlreadyApproved(task: ProjectTask, tenantId: number): Promise<void> {
     const latestDecided = await this.qaReviewsRepository.findOne({
-      where: { taskId: task.id, tenantId, status: Not('pending') },
+      // PM review rounds are a gate before QA, never the task's verdict.
+      where: { taskId: task.id, tenantId, status: Not('pending'), reviewType: In(['qa', 'peer']) },
       order: { roundNumber: 'DESC' },
     });
     if (latestDecided?.status === 'approved') {
@@ -1109,7 +1113,7 @@ export class TasksService {
       // paused or force-closed never counts as overdue, even if
       // showHoldClosed is on and it's sitting in cardScopeTasks.
       overdue: cardScopeTasks.filter(
-        (t) => t.dueDate && t.dueDate < today && !COMPLETED_STATUSES.includes(t.status) && !HOLD_CLOSED_STATUSES.includes(t.status),
+        (t) => isPastEffectiveDue(t, today) && !COMPLETED_STATUSES.includes(t.status) && !HOLD_CLOSED_STATUSES.includes(t.status),
       ).length,
       defects: cardScopeTasks.filter((t) => t.isDefect).length,
     };

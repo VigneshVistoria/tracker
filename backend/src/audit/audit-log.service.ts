@@ -86,6 +86,13 @@ export const AuditActions = {
   TASK_QA_ESCALATED: 'task_qa_escalated',
   // PM/Admin undid a mistaken QA approve/reject (2026-10-13).
   TASK_QA_DECISION_REVERTED: 'task_qa_decision_reverted',
+  // PM review gate (2026-10-13): developer submitted into PM review;
+  // PM sent it on to QA / back to the developer; the gate was switched
+  // on/off for a project.
+  TASK_PM_REVIEW_SUBMITTED: 'task_pm_review_submitted',
+  TASK_PM_SENT_TO_QA: 'task_pm_sent_to_qa',
+  TASK_PM_SENT_BACK: 'task_pm_sent_back',
+  PROJECT_PM_REVIEW_SWITCHED: 'project_pm_review_switched',
   TASK_ESCALATION_REASSIGNED: 'task_escalation_reassigned',
   TASK_ESCALATION_CLOSED_JUNK: 'task_escalation_closed_junk',
   // details: { reason, previousStatus, newStatus: 'Junk', bulk }

@@ -15,6 +15,8 @@ const OUTCOME = {
   reverted: { icon: Undo2, tone: styles.reverted, text: 'Reverted' },
 };
 
+const PM_OUTCOME_TEXT = { pending: 'Waiting for PM', approved: 'Sent to QA', rejected: 'Sent back by PM' };
+
 // Review rounds (QA and Peer) as a vertical timeline, oldest first - the
 // same data as the Review History table, read as a story. Outcome is
 // always icon + text, never colour alone.
@@ -26,7 +28,9 @@ export default function ReviewTimeline({ reviews }) {
   return (
     <ol className={styles.timeline}>
       {rounds.map((r) => {
-        const outcome = OUTCOME[r.status] || { icon: Clock, tone: styles.pending, text: statusLabel(r.status) };
+        const base = OUTCOME[r.status] || { icon: Clock, tone: styles.pending, text: statusLabel(r.status) };
+        // PM review gate rounds read as the PM's decision, not a QA verdict.
+        const outcome = r.reviewType === 'pm' ? { ...base, text: PM_OUTCOME_TEXT[r.status] || base.text } : base;
         // For a reverted round, the "Reviewed by" line still shows what QA
         // actually decided (approved / sent back).
         const decided = r.status === 'reverted' ? OUTCOME[r.revertedDecision] || outcome : outcome;
@@ -40,7 +44,7 @@ export default function ReviewTimeline({ reviews }) {
             <div className={styles.body}>
               <div className={styles.head}>
                 <span className={styles.title}>
-                  Round {r.roundNumber} · {r.reviewType === 'peer' ? 'Peer review' : 'QA review'}
+                  Round {r.roundNumber} · {r.reviewType === 'peer' ? 'Peer review' : r.reviewType === 'pm' ? 'PM review' : 'QA review'}
                 </span>
                 <span className={`${styles.outcome} ${outcome.tone}`}>
                   {r.status === 'reverted' && OUTCOME[r.revertedDecision] ? `${OUTCOME[r.revertedDecision].text}, then reverted` : outcome.text}

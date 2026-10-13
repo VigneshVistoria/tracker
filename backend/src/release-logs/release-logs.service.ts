@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Release } from './release.entity';
 import { ReleaseItem } from './release-item.entity';
 import { CreateReleaseDto } from './dto/create-release.dto';
@@ -155,7 +155,8 @@ export class ReleaseLogsService {
   // submitted most recently is the Resolution that actually shipped.
   private latestReview(taskId: number, tenantId: number): Promise<TaskQaReview | null> {
     return this.qaReviewsRepository.findOne({
-      where: { taskId, tenantId },
+      // QA/Peer only - a PM review round is never what shipped.
+      where: { taskId, tenantId, reviewType: In(['qa', 'peer']) },
       order: { roundNumber: 'DESC', id: 'DESC' },
     });
   }

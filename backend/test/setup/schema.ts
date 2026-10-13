@@ -22,6 +22,14 @@ const JUNK_COLUMNS = ['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUse
 // Junk columns: re-added by the real migration and checked against the entity.
 const QA_REVERT_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-qa-decision-revert.sql');
 const QA_REVERT_COLUMNS = ['revertedByUserId', 'revertedAt', 'revertReason', 'revertedDecision'];
+// PM review gate columns - same: dropped from what synchronize made, re-
+// added by the real migration (after team_settings exists), then checked.
+const PM_REVIEW_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-pm-review-gate.sql');
+const PM_REVIEW_COLUMNS: Record<string, string[]> = {
+  projects: ['pmReviewEnabled'],
+  project_tasks: ['pmWaitWorkingDays'],
+  task_qa_reviews: ['reminderSentAt', 'adminReminderSentAt'],
+};
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -62,6 +70,10 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(QA_REVERT_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(DAILY_SCRUM_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(TASK_ATTACHMENTS_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(PM_REVIEW_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(PM_REVIEW_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -127,6 +139,25 @@ export async function buildTestSchema() {
   const reviewCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
     `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = 'task_qa_reviews'`,
   );
+  for (const [table, cols] of Object.entries(PM_REVIEW_COLUMNS)) {
+    const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
+    const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
+      `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,
+      [table],
+    );
+    for (const name of cols) {
+      const col = meta.columns.find((c) => c.databaseName === name);
+      const db = dbCols.find((c) => c.column_name === name);
+      if (!col || !db) {
+        problems.push(`${table}.${name}: missing from ${col ? 'migration' : 'entity'}`);
+        continue;
+      }
+      if ((db.is_nullable === 'YES') !== col.isNullable) problems.push(`${table}.${name}: nullable mismatch`);
+      if (check.driver.normalizeType(col) !== db.data_type) {
+        problems.push(`${table}.${name}: type mismatch (entity ${check.driver.normalizeType(col)}, db ${db.data_type})`);
+      }
+    }
+  }
   for (const name of QA_REVERT_COLUMNS) {
     const col = reviewMeta.columns.find((c) => c.databaseName === name);
     const db = reviewCols.find((c) => c.column_name === name);

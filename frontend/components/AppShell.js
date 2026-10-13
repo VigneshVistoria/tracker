@@ -67,7 +67,7 @@ export default function AppShell({ children, fullScreen = false }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
   // Sidebar count badges (e.g. "My Tasks 6"); null = not loaded, no badge.
-  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null });
+  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null, pmReview: null });
   // Client portal (Stage 2): whether to show Client tickets.
   const [canSeeClientTickets, setCanSeeClientTickets] = useState(false);
   // Developer/Designer/DevOps header badge - peer reviews waiting on me.
@@ -183,6 +183,11 @@ export default function AppShell({ children, fullScreen = false }) {
     }
     // statCounts.pending is the same "open" definition QaReviewWorkboard's
     // Pending card uses - self-scoped for QA, tenant-wide for Admin/PM.
+    if (visibleCountKeys.has('pmReview')) {
+      apiFetch('/pm-review/queue')
+        .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, pmReview: res.statCounts.pending })))
+        .catch(() => {});
+    }
     if (visibleCountKeys.has('myDefects')) {
       apiFetch('/tasks/defect-queue')
         .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, myDefects: res.statCounts.pending })))

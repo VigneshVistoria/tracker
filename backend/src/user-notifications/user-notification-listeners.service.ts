@@ -49,6 +49,17 @@ export interface TaskQaDecisionRevertedEvent {
   decision: 'approved' | 'rejected';
 }
 
+// PmReviewsService (PM review gate, 2026-10-13).
+export interface TaskPmReviewDecidedEvent {
+  tenantId: number;
+  taskId: number;
+  title: string;
+  assigneeUserId: number | null;
+  actorUserId: number;
+  actorEmail: string;
+  decision: 'sent_to_qa' | 'sent_back';
+}
+
 export interface TaskPeerReviewRequestedEvent {
   tenantId: number;
   taskId: number;
@@ -149,6 +160,25 @@ export class UserNotificationListenersService {
           }),
         ),
       );
+    });
+  }
+
+  // The developer hears what the PM decided: on to QA, or back with
+  // feedback to refine (the comment is on the task page).
+  @OnEvent('task.pmReviewDecided')
+  onTaskPmReviewDecided(e: TaskPmReviewDecidedEvent) {
+    return this.safely('task.pmReviewDecided', async () => {
+      if (!e.assigneeUserId) return;
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.assigneeUserId,
+        type: e.decision === 'sent_back' ? 'task.pmSentBack' : 'task.pmSentToQa',
+        title: e.decision === 'sent_back' ? `PM sent back task #${e.taskId} with feedback` : `PM sent task #${e.taskId} on to QA`,
+        body: e.title,
+        link: `/tasks/${e.taskId}`,
+        actorUserId: e.actorUserId,
+        actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
+      });
     });
   }
 

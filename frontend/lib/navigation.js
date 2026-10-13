@@ -38,6 +38,7 @@ import {
   BookOpen,
   PackageCheck,
   LifeBuoy,
+  UserCheck,
 } from 'lucide-react';
 
 // Single source of truth for the sidebar and the command palette.
@@ -83,6 +84,8 @@ export const NAV_SECTIONS = [
       { href: '/tasks/team', label: 'Team Tasks', icon: ListChecks, roles: [ADMIN, PM, EXEC] },
       // Admin is view-only on the backlog and interventions; PM acts.
       { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox, roles: [ADMIN, PM] },
+      // PM review gate (2026-10-13) - matches PmReviewsController's PM_REVIEW_ROLES.
+      { href: '/tasks/pm-review', label: 'PM Review', icon: UserCheck, roles: [ADMIN, PM], countKey: 'pmReview' },
       { href: '/tasks/escalations', label: 'Interventions', icon: AlertTriangle, roles: [ADMIN, PM] },
       // Matches TasksController.ROLES_ALLOWED_TO_VIEW_JUNK - PM restores, Admin views.
       { href: '/tasks/junk', label: 'Junk', icon: ArchiveX, roles: [ADMIN, PM] },

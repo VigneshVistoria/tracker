@@ -34,3 +34,19 @@ export function addBusinessDays(from: Date, days: number): Date {
 export function toDateOnlyString(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
+
+// How many business days passed between two moments, same convention as
+// addBusinessDays(): `from`'s own day is not counted, `to`'s day is. Same
+// day (or `to` before `from`) = 0. Used for the PM review wait
+// (ProjectTask.pmWaitWorkingDays).
+export function businessDaysBetween(from: Date, to: Date): number {
+  const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+  const end = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  let days = 0;
+  while (cursor.getTime() < end) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    const dayOfWeek = cursor.getUTCDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) days += 1;
+  }
+  return days;
+}

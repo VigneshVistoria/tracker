@@ -19,8 +19,10 @@ export type StatusBucket = 'failed' | 'development' | 'qa' | 'intervention';
 
 export const BUCKET_STATUSES: Record<StatusBucket, string[]> = {
   failed: ['Failed', 'Released - With Showstoppers'],
-  development: ['Development'],
-  qa: ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'],
+  // 'PM Feedback': the PM sent it back - the developer is working on it.
+  development: ['Development', 'PM Feedback'],
+  // 'Pending PM Review' (PM review gate) is with a reviewer too.
+  qa: ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'],
   intervention: ['Escalated'],
 };
 
@@ -190,7 +192,9 @@ export function computeStatusReview(input: ComputeInput): StatusReviewSummary {
       priority: t.priority,
       projectName: t.projectName,
       moduleName: t.moduleName,
-      overdue: !!t.dueDate && t.dueDate < today,
+      // Never while waiting for a PM (PM review gate); the service passes
+      // the effective due date (dueDate + PM wait) as dueDate.
+      overdue: t.status !== 'Pending PM Review' && !!t.dueDate && t.dueDate < today,
       blocked: blocked.has(t.id),
       dueSoon: !!t.dueDate && t.dueDate >= today && t.dueDate <= dueSoonUntil,
       waitingOn: [],

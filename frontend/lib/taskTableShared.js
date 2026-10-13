@@ -133,6 +133,9 @@ const STATUS_BADGE_STYLE = {
   // STYLE.md - see the LEGEND_ITEMS comment above.
   Hold: { background: 'var(--ds-color-info-tint)', color: 'var(--ds-color-info-dark)' },
   Closed: { background: 'var(--ds-color-gray-300)', color: 'var(--ds-text-primary)' },
+  // PM review gate (2026-10-13) - mirrored in tasks/[id].js's STATUS_COLOR.
+  'Pending PM Review': { background: 'var(--ds-color-warning-tint)', color: 'var(--ds-color-warning-dark)' },
+  'PM Feedback': { background: 'var(--ds-color-error-tint)', color: 'var(--ds-color-error-dark)' },
 };
 
 export function statusBadgeStyle(status) {

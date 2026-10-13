@@ -11,6 +11,8 @@ import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
+import { Project } from '../projects/project.entity';
+import { PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { TasksService } from '../tasks/tasks.service';
 import { UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
@@ -44,6 +46,8 @@ export class TaskQaReviewsService {
     private qaArtifactsRepository: Repository<TaskQaReviewQaArtifact>,
     @InjectRepository(ProjectTask)
     private tasksRepository: Repository<ProjectTask>,
+    @InjectRepository(Project)
+    private projectsRepository: Repository<Project>,
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
@@ -150,11 +154,22 @@ export class TaskQaReviewsService {
 
     const existingPending = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId, status: 'pending' } });
     if (existingPending) {
-      throw new BadRequestException('This task already has a QA review round pending - it cannot be resubmitted until QA acts on it.');
+      throw new BadRequestException(
+        existingPending.reviewType === 'pm'
+          ? 'This task is already waiting for PM review - it cannot be resubmitted until the PM acts on it.'
+          : 'This task already has a QA review round pending - it cannot be resubmitted until QA acts on it.',
+      );
     }
     await this.tasksService.assertNotAlreadyApproved(task, tenantId);
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
+    // PM review gate (2026-10-13): a task (never a defect - those go back
+    // to the QA who raised them) in a project with the gate on waits for a
+    // PM first. Peer Review tasks never get here (refused above).
+    const viaPm = !task.isDefect && (await this.pmGateOn(task.projectId, tenantId));
+    // First submission vs resubmission for QA - PM rounds don't make a
+    // task a QA resubmission.
+    const priorQaRounds = priorRounds === 0 ? 0 : await this.qaReviewsRepository.count({ where: { taskId, tenantId, reviewType: Not('pm') } });
 
     // Review row + its artifact rows are saved together in a transaction
     // so a submission can never land with a round but no artifacts (or
@@ -168,6 +183,7 @@ export class TaskQaReviewsService {
         submittedByUserId: currentUser.id,
         submittedByEmail: currentUser.email,
         status: 'pending',
+        reviewType: viaPm ? 'pm' : 'qa',
       });
       const savedReview = await manager.save(TaskQaReview, review);
 
@@ -183,23 +199,32 @@ export class TaskQaReviewsService {
       return { savedReview, savedArtifacts };
     });
 
-    task.status = priorRounds === 0 ? 'Feedback' : 'Re-Feedback';
     task.actualHours = dto.actualHours;
-    // Reset fresh on every submission (first or a resubmission alike) -
-    // never tied back to an earlier round's date.
-    task.qaReviewDueDate = this.tasksService.computeQaReviewDueDate(new Date());
+    if (viaPm) {
+      task.status = PM_REVIEW_STATUS;
+      // QA's clock starts when the PM sends it on (PmReviewsService).
+      task.qaReviewDueDate = null as any;
+    } else {
+      task.status = priorQaRounds === 0 ? 'Feedback' : 'Re-Feedback';
+      // Reset fresh on every submission (first or a resubmission alike) -
+      // never tied back to an earlier round's date.
+      task.qaReviewDueDate = this.tasksService.computeQaReviewDueDate(new Date());
+    }
     await this.tasksRepository.save(task);
 
     await this.auditLogService.record({
       userId: currentUser.id,
       userEmail: currentUser.email,
       userRole: currentUser.role,
-      action: AuditActions.TASK_QA_SUBMITTED,
+      action: viaPm ? AuditActions.TASK_PM_REVIEW_SUBMITTED : AuditActions.TASK_QA_SUBMITTED,
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
       details: { roundNumber: savedReview.roundNumber, artifactTypes: dto.artifacts.map((a) => a.type) },
     });
+    if (viaPm) {
+      this.eventEmitter.emit('task.pmReviewRequested', { tenantId, taskId, title: task.title, actorUserId: currentUser.id, actorEmail: currentUser.email });
+    }
 
     // Fire-and-forget - never awaited, so a slow/failed/rate-limited
     // Gemini call can't add latency to or fail this submission. See
@@ -218,6 +243,9 @@ export class TaskQaReviewsService {
     // (PeerReviewsService) - QA can't approve, reject or escalate it.
     // Before 2026-10-12 this returned any pending round, so a QA user
     // could decide a peer round from the task page.
+    if (pending.reviewType === 'pm') {
+      throw new ForbiddenException('This task is waiting for PM review - QA can act once a Program Manager sends it to QA.');
+    }
     if (pending.reviewType !== 'qa') {
       throw new ForbiddenException('This task is in Peer Review - only its assigned Peer Reviewer can decide it, not QA.');
     }
@@ -479,6 +507,12 @@ export class TaskQaReviewsService {
     return savedReview;
   }
 
+  // Is the PM review gate on for this task's project?
+  private async pmGateOn(projectId: number, tenantId: number): Promise<boolean> {
+    const project = await this.projectsRepository.findOne({ where: { id: projectId, tenantId }, select: ['id', 'pmReviewEnabled'] });
+    return !!project?.pmReviewEnabled;
+  }
+
   // Program Manager / Admin undoes a QA approve or reject made by mistake
   // (2026-10-13, confirmed with the user; role gate in the controller).
   // Only the latest round, only a QA round, and only while the task is
@@ -504,7 +538,13 @@ export class TaskQaReviewsService {
     const task = await this.tasksService.findOne(taskId, tenantId);
     this.tasksService.assertNotJunk(task);
 
-    const latest = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId }, order: { roundNumber: 'DESC', id: 'DESC' } });
+    // PM review rounds (the gate before QA) are not decisions this undoes -
+    // look at the latest QA/Peer round; a task that has since gone back to
+    // the PM fails the "still where the decision left it" check below.
+    const latest = await this.qaReviewsRepository.findOne({
+      where: { taskId, tenantId, reviewType: Not('pm') },
+      order: { roundNumber: 'DESC', id: 'DESC' },
+    });
     if (!latest) {
       throw new BadRequestException(`Task #${taskId} has no QA decision to revert.`);
     }
@@ -570,7 +610,7 @@ export class TaskQaReviewsService {
     // Feedback if no earlier round still stands as a decision, else
     // Re-Feedback - the same first-time/resubmission split submit() makes.
     const earlierDecided = await this.qaReviewsRepository.count({
-      where: { taskId, tenantId, roundNumber: LessThan(latest.roundNumber), status: Not(In(['pending', 'reverted'])) },
+      where: { taskId, tenantId, roundNumber: LessThan(latest.roundNumber), status: Not(In(['pending', 'reverted'])), reviewType: Not('pm') },
     });
     const newStatus = earlierDecided === 0 ? 'Feedback' : 'Re-Feedback';
     const now = new Date();

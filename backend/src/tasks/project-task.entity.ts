@@ -105,6 +105,12 @@ export class ProjectTask {
   @Column({ type: 'timestamp', nullable: true })
   completedAt: Date;
 
+  // Working days this task has spent waiting for a PM (PM review gate,
+  // 2026-10-13) - added to dueDate wherever overdue/late is judged, so PM
+  // time never counts against the developer. See tasks/pm-review.ts.
+  @Column({ type: 'int', default: 0 })
+  pmWaitWorkingDays: number;
+
   // One of TASK_STATUSES (task-status-config/task-status-percent.entity).
   // Fully auto-computed by task events, never manually set - see
   // TasksService.create() (default 'Development') and

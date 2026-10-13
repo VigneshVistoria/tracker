@@ -5,6 +5,7 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
+import { effectiveDueDate, isPastEffectiveDue } from '../tasks/pm-review';
 
 // A task in one of these is done and can no longer be "missed" - mirrors
 // COMPLETED_STATUSES in TasksService/DeveloperTaskWorkboard.js exactly
@@ -222,9 +223,12 @@ export class NonComplianceReportService {
       // Date), which is two distinct problems, not a duplicate.
       const missedSlaItems: MissedSlaItem[] = [];
       for (const task of devTasks) {
-        if (task.completedAt && task.dueDate) {
+        // Effective due date: dueDate + working days spent waiting for a
+        // PM (PM review gate) - PM time never counts against the developer.
+        const dueBy = effectiveDueDate(task);
+        if (task.completedAt && dueBy) {
           const completedDate = toDateOnly(task.completedAt);
-          if (completedDate > task.dueDate && inRange(completedDate, from, to)) {
+          if (completedDate > dueBy && inRange(completedDate, from, to)) {
             missedSlaItems.push({
               taskId: task.id,
               title: task.title,
@@ -237,7 +241,7 @@ export class NonComplianceReportService {
         }
         if (
           task.dueDate &&
-          task.dueDate < today &&
+          isPastEffectiveDue(task, today) &&
           !TERMINAL_TASK_STATUSES.includes(task.status) &&
           inRange(task.dueDate, from, to)
         ) {
@@ -275,7 +279,9 @@ export class NonComplianceReportService {
       // A reverted round (TaskQaReviewsService.revertDecision()) is the
       // same submission as the pending round that replaced it - leave it
       // out so it isn't a second submission or a rejection.
-      const devReviews = devTasks.flatMap((t) => reviewsByTaskId.get(t.id) ?? []).filter((r) => r.status !== 'reverted');
+      // PM review rounds (the gate before QA) aren't QA/Peer submissions or
+      // rejections either - the QA round the PM opens is the submission.
+      const devReviews = devTasks.flatMap((t) => reviewsByTaskId.get(t.id) ?? []).filter((r) => r.status !== 'reverted' && r.reviewType !== 'pm');
       const submissionsInRange = devReviews.filter((r) => inRange(toDateOnly(r.submittedAt), from, to));
       const rejectionsInRange = submissionsInRange.filter((r) => r.status === 'rejected');
       const submissions = submissionsInRange.length;

@@ -24,6 +24,15 @@ export class TeamSettings {
   @Column({ type: 'varchar', length: 5, default: '15:30' })
   workdayEnd: string;
 
+  // PM review gate reminders (2026-10-13): a ticket waiting for the PM
+  // longer than this many working days reminds the PMs, and at twice that
+  // the Admins too when pmReminderToAdmin is on.
+  @Column({ type: 'int', default: 2 })
+  pmReminderWorkingDays: number;
+
+  @Column({ default: true })
+  pmReminderToAdmin: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 
