@@ -24,10 +24,13 @@ import { resolveQaSummaryPeriod, ResolvedPeriod } from './qa-summary-period';
 // - Approved / Rejected: tickets with at least one QA-round approval /
 //   rejection by the QA in the period (Peer Review rounds never count).
 //   Escalations to PM are not rejections and are left out.
-// - Waiting / Re-feedback (right now, no dates): exactly the QA Review
-//   list (TasksService.findQaQueue() with defects), so they always match
-//   the page and its sidebar badge. Re-feedback is the Re-Feedback subset,
-//   same as the list's existing Resubmissions card.
+// - Waiting / Re-feedback (right now, no dates): the QA Review list
+//   (TasksService.findQaQueue() with defects) split by status, so they
+//   never overlap and together equal the page and its sidebar badge.
+//   Waiting = Feedback (first submission), Re-feedback = Re-Feedback (any
+//   later round, same as the list's Resubmissions card - this includes a
+//   ticket sent back to QA after an approval, not only after a rejection).
+//   Split confirmed with the user 2026-10-13 (option A).
 // - QA sees only their own numbers. Admin/PM/Executive pick one QA or All.
 //   Executive stays tasks-only, same as the QA Review list.
 // - The period is resolved here, in the team's time zone (team_settings),
@@ -176,7 +179,7 @@ export class QaSummaryService {
       defectsRaised,
       approved,
       rejected,
-      waiting: waitingAll,
+      waiting: waitingAll.filter((r) => r.status === 'Feedback'),
       refeedback: waitingAll.filter((r) => r.status === 'Re-Feedback'),
     };
     await this.fillNames(Object.values(unfiltered).flat(), scope.tenantId);

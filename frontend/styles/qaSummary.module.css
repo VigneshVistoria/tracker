@@ -20,6 +20,13 @@
   color: var(--ds-text-secondary);
 }
 
+.totalWaiting {
+  margin: calc(-1 * var(--ds-space-2)) 0 var(--ds-space-3);
+  text-align: right;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
 .passRate {
   display: flex;
   flex-wrap: wrap;

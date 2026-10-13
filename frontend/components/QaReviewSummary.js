@@ -42,8 +42,8 @@ const TILES = [
   { key: 'defectsRaised', label: 'Defects raised', when: 'Raised', defectsOnly: true },
   { key: 'approved', label: 'Approved', when: 'Approved' },
   { key: 'rejected', label: 'Rejected', when: 'Last rejected', accent: 'danger' },
-  { key: 'waiting', label: 'Waiting for QA', when: 'Submitted', rightNow: true, accent: 'warning', hint: 'Includes Re-feedback' },
-  { key: 'refeedback', label: 'Re-feedback', when: 'Resubmitted', rightNow: true, accent: 'warning', hint: 'Part of Waiting for QA' },
+  { key: 'waiting', label: 'Waiting for QA', when: 'Submitted', rightNow: true, accent: 'warning', hint: 'First-time submissions' },
+  { key: 'refeedback', label: 'Re-feedback', when: 'Resubmitted', rightNow: true, accent: 'warning', hint: 'Resubmitted after an earlier QA round' },
 ];
 
 const LEADERSHIP_ROLES = ['admin', 'program_manager', 'executive'];
@@ -149,7 +149,8 @@ export default function QaReviewSummary({ user }) {
   const counts = summary?.counts;
 
   const columns = useMemo(() => {
-    const showRounds = activeTile === 'waiting' || activeTile === 'refeedback';
+    // Waiting is first submissions only, so every row there is round 1.
+    const showRounds = activeTile === 'refeedback';
     const showRejections = activeTile === 'rejected' || activeTile === 'refeedback';
     const showApprovals = activeTile === 'approved';
     return [
@@ -318,6 +319,12 @@ export default function QaReviewSummary({ user }) {
             </button>
           );
         })}
+      </div>
+
+      {/* Waiting and Re-feedback never overlap, so their sum is everything
+          waiting for QA - the same total as the QA Review badge. */}
+      <div className={summaryStyles.totalWaiting}>
+        Total waiting for QA: {loading || !counts ? '–' : counts.waiting + counts.refeedback}
       </div>
 
       <div className={summaryStyles.passRate}>

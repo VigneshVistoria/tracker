@@ -179,14 +179,14 @@ describe('QA Review summary (e2e)', () => {
 
   it("QA: their own numbers, each tile equal to its list", async () => {
     const s = await summary(f.users.qaB);
-    expect(s.counts).toEqual({ defectsRaised: 2, approved: 2, rejected: 3, waiting: 3, refeedback: 1 });
+    expect(s.counts).toEqual({ defectsRaised: 2, approved: 2, rejected: 3, waiting: 2, refeedback: 1 });
     expect(s.passRate).toBe(40);
     expect(s.qas).toEqual([]);
     expect(s.range).toEqual({ period: 'custom', from: '2026-10-01', to: '2026-10-31', timeZone: 'Africa/Addis_Ababa' });
     expect(idsOf(await items(f.users.qaB, 'defectsRaised'))).toEqual(keys('D1', 'D2'));
     expect(idsOf(await items(f.users.qaB, 'approved'))).toEqual(keys('T1', 'T10'));
     expect(idsOf(await items(f.users.qaB, 'rejected'))).toEqual(keys('T1', 'T2', 'D3'));
-    expect(idsOf(await items(f.users.qaB, 'waiting'))).toEqual(keys('T2', 'T3', 'D2'));
+    expect(idsOf(await items(f.users.qaB, 'waiting'))).toEqual(keys('T3', 'D2'));
     expect(idsOf(await items(f.users.qaB, 'refeedback'))).toEqual(keys('T2'));
     // Even asking for "All", a QA gets only their own.
     expect((await summary(f.users.qaB, '&qaUserId=all')).counts).toEqual(s.counts);
@@ -205,23 +205,30 @@ describe('QA Review summary (e2e)', () => {
 
   it('Waiting/Re-feedback show the round, earlier rejections, and "Any QA" for tasks', async () => {
     const rows = await items(f.users.qaB, 'waiting');
-    expect(rows.find((r: any) => r.id === ids.T2)).toMatchObject({ round: 2, rejections: 1, qaUserId: null, status: 'Re-Feedback' });
+    const refeedback = await items(f.users.qaB, 'refeedback');
+    expect(refeedback.find((r: any) => r.id === ids.T2)).toMatchObject({ round: 2, rejections: 1, qaUserId: null, status: 'Re-Feedback' });
     expect(rows.find((r: any) => r.id === ids.T3)).toMatchObject({ round: 1, rejections: 0, qaUserId: null });
     expect(rows.find((r: any) => r.id === ids.D2)).toMatchObject({ round: 1, isDefect: true, qaUserId: f.users.qaB.id });
   });
 
-  it('Waiting equals the QA Review list and its badge, for QA and for All', async () => {
+  it('Waiting + Re-feedback never overlap and together equal the QA Review list and its badge', async () => {
     for (const u of [f.users.qaB, f.users.pm]) {
       const queue = (await get(u, '/tasks/qa-queue?include=defects').expect(200)).body;
       const waiting = await items(u, 'waiting');
-      expect(idsOf(waiting)).toEqual(idsOf(queue.tasks));
-      expect((await summary(u)).counts.waiting).toBe(queue.statCounts.pending);
+      const refeedback = await items(u, 'refeedback');
+      expect(waiting.every((r: any) => r.status === 'Feedback')).toBe(true);
+      expect(refeedback.every((r: any) => r.status === 'Re-Feedback')).toBe(true);
+      expect(idsOf(waiting).filter((id: number) => idsOf(refeedback).includes(id))).toEqual([]);
+      expect([...idsOf(waiting), ...idsOf(refeedback)].sort((a: number, b: number) => a - b)).toEqual([...idsOf(queue.tasks)].sort((a: number, b: number) => a - b));
+      const s = await summary(u);
+      expect(s.counts.waiting + s.counts.refeedback).toBe(queue.statCounts.pending);
+      expect(s.counts.refeedback).toBe(queue.statCounts.resubmissions);
     }
   });
 
   it('the other QA, picked by PM, gets only their decisions and the shared tasks', async () => {
     const s = await summary(f.users.pm, `&qaUserId=${qaOther.id}`);
-    expect(s.counts).toEqual({ defectsRaised: 0, approved: 1, rejected: 0, waiting: 2, refeedback: 1 });
+    expect(s.counts).toEqual({ defectsRaised: 0, approved: 1, rejected: 0, waiting: 1, refeedback: 1 });
     expect(s.passRate).toBe(100);
     expect(idsOf(await items(f.users.pm, 'approved', `&qaUserId=${qaOther.id}`))).toEqual(keys('T4'));
     expect((await summary(qaOther)).counts).toEqual(s.counts);
@@ -230,7 +237,7 @@ describe('QA Review summary (e2e)', () => {
   it('PM and Admin see All, with the QA picker list', async () => {
     for (const u of [f.users.pm, f.users.admin]) {
       const s = await summary(u);
-      expect(s.counts).toEqual({ defectsRaised: 2, approved: 3, rejected: 3, waiting: 3, refeedback: 1 });
+      expect(s.counts).toEqual({ defectsRaised: 2, approved: 3, rejected: 3, waiting: 2, refeedback: 1 });
       expect(s.passRate).toBe(50);
       expect(s.qas.map((q: any) => q.id).sort()).toEqual([f.users.qaB.id, qaOther.id].sort());
       for (const tile of TILES) expect((await items(u, tile)).length).toBe(s.counts[tile]);
@@ -240,7 +247,7 @@ describe('QA Review summary (e2e)', () => {
   it('Executive sees All, tasks only', async () => {
     const s = await summary(f.users.exec);
     expect(s.includeDefects).toBe(false);
-    expect(s.counts).toEqual({ defectsRaised: 0, approved: 3, rejected: 2, waiting: 2, refeedback: 1 });
+    expect(s.counts).toEqual({ defectsRaised: 0, approved: 3, rejected: 2, waiting: 1, refeedback: 1 });
     expect(idsOf(await items(f.users.exec, 'rejected'))).toEqual(keys('T1', 'T2'));
   });
 
