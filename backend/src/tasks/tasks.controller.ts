@@ -14,6 +14,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { TasksService, ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS } from './tasks.service';
+import { QaSummaryService, QaSummaryQuery } from './qa-summary.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { CreateDefectTaskDto } from './dto/create-defect-task.dto';
 import { ReassignEscalatedTaskDto } from './dto/reassign-escalated-task.dto';
@@ -98,6 +99,7 @@ export class TasksController {
   constructor(
     private tasksService: TasksService,
     private usersService: UsersService,
+    private qaSummaryService: QaSummaryService,
   ) {}
 
   @Get()
@@ -146,6 +148,22 @@ export class TasksController {
     }
     const defectsFor = include === 'defects' && ROLES_ALLOWED_TO_VIEW_DEFECT_QUEUE.includes(currentUser.role) ? currentUser : undefined;
     return this.tasksService.findQaQueue(req.user.tenantId, status, defectsFor);
+  }
+
+  // QA Review summary tiles and their drill-down rows - read-only, see
+  // QaSummaryService for the rules. Role checks live in the service
+  // (QA forced to their own numbers). Declared before ':id' for the same
+  // routing reason as 'qa-queue' above.
+  @Get('qa-summary')
+  async qaSummary(@Query() query: QaSummaryQuery, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.qaSummaryService.summary(query, currentUser, req.user.tenantId);
+  }
+
+  @Get('qa-summary/items')
+  async qaSummaryItems(@Query('tile') tile: string | undefined, @Query() query: QaSummaryQuery, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.qaSummaryService.items(tile, query, currentUser, req.user.tenantId);
   }
 
   // Peer Review queue - tasks with a Peer Review round pending, assigned

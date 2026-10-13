@@ -1,0 +1,94 @@
+/* QA Review summary (components/QaReviewSummary.js) - tokens only. */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-3);
+}
+
+.title {
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-weight-semibold);
+  margin: 0;
+}
+
+.periodLabel {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.passRate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.passRateValue {
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+
+.bar {
+  display: flex;
+  flex: 1;
+  min-width: 160px;
+  max-width: 360px;
+  height: 10px;
+  border-radius: var(--ds-radius-sm);
+  overflow: hidden;
+  background: var(--ds-bg-surface-sunken);
+}
+
+.barApproved {
+  background: var(--ds-color-success);
+}
+
+.barRejected {
+  background: var(--ds-color-error);
+}
+
+.legendDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: var(--ds-space-1);
+}
+
+.drillHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  margin: var(--ds-space-4) 0 var(--ds-space-3);
+}
+
+.drillTitle {
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  margin: 0;
+}
+
+.clearLink {
+  all: unset;
+  cursor: pointer;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-color-primary-600);
+  text-decoration: underline;
+}
+.clearLink:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+  border-radius: var(--ds-radius-sm);
+}
+
+.anyQa {
+  color: var(--ds-text-secondary);
+}

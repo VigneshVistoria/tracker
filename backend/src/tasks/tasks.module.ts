@@ -9,6 +9,7 @@ import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { ProjectModule as ProjectModuleEntity } from '../modules/project-module.entity';
 import { Phase } from '../phases/phase.entity';
 import { TasksService } from './tasks.service';
+import { QaSummaryService } from './qa-summary.service';
 import { TasksController } from './tasks.controller';
 import { TaskAttachmentsController } from './task-attachments.controller';
 import { TaskAttachmentsService } from './task-attachments.service';
@@ -42,7 +43,7 @@ import { StorageModule } from '../storage/storage.module';
   // `:id` catch-all below (same ordering precedent as IssuesModule).
   // TaskAttachmentsController (defect screenshots) likewise goes first.
   controllers: [TasksBulkController, TaskAttachmentsController, TasksController],
-  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService],
+  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService],
   exports: [TasksService],
 })
 export class TasksModule {}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import QaReviewWorkboard from '../../components/QaReviewWorkboard';
+import QaReviewSummary from '../../components/QaReviewSummary';
 import styles from '../../styles/issues.module.css';
 
 const ACTIVE_CARD_STORAGE_KEY = 'qaReviewActiveCard';
@@ -39,6 +40,8 @@ export default function QaReviewQueuePage() {
           </p>
         </div>
       </div>
+
+      <QaReviewSummary user={user} />
 
       <QaReviewWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} includeDefects />
     </AppShell>
