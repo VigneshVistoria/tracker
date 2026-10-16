@@ -109,3 +109,10 @@ export function formatFor(fileName) {
   if (ext === 'xlsx') return 'xlsx';
   return null;
 }
+
+// Shifts a YYYY-MM-DD date by whole days (UTC, so no time-zone drift).
+export function addDaysIso(iso, days) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}

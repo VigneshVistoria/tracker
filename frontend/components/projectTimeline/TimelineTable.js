@@ -4,7 +4,7 @@ import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import styles from '../../styles/projectTimeline.module.css';
 import { formatDate } from '../../lib/formatDate';
-import { STATUS_TONE, TIMELINE_STATUSES, dateRange, groupByModule, isOverdue, rowErrors, rowWarnings } from '../../lib/projectTimeline';
+import { STATUS_TONE, TIMELINE_STATUSES, dateRange, groupByModule, isOverdue, nameKey, rowErrors, rowWarnings } from '../../lib/projectTimeline';
 
 const ADD_TEAM = '__add_team__';
 
@@ -92,8 +92,36 @@ function EditableCell({ kind, value, display, label, canEdit, onCommit, options,
 // The plan grouped by Module (collapsible), every column editable inline
 // for PM/Admin; Executive gets the same table read-only. Flags: red
 // Overdue chip (To Do + end date passed), amber warnings, overlap note.
-export default function TimelineTable({ rows, teams, today, canEdit, overlaps, dirtyKeys, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
+// canReorder is false while the table is filtered - moving a row past
+// rows you can't see would be confusing. revealKey (from the Summary's
+// "Go to row") opens that row's module, scrolls to it and focuses it.
+export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
+  const [flashKey, setFlashKey] = useState(null);
+
+  useEffect(() => {
+    if (!revealKey) return;
+    const row = rows.find((r) => r.key === revealKey);
+    if (!row) return;
+    const groupKey = nameKey(row.module) || '';
+    setCollapsed((prev) => {
+      if (!prev.has(groupKey)) return prev;
+      const next = new Set(prev);
+      next.delete(groupKey);
+      return next;
+    });
+    // After the module opens: scroll, focus the row, highlight it briefly.
+    const t = setTimeout(() => {
+      const el = document.getElementById(`timeline-row-${revealKey}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.focus({ preventScroll: true });
+      }
+      setFlashKey(revealKey);
+      onRevealed?.();
+    }, 50);
+    return () => clearTimeout(t);
+  }, [revealKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const groups = groupByModule(rows);
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const teamOptions = [
@@ -112,7 +140,7 @@ export default function TimelineTable({ rows, teams, today, canEdit, overlaps, d
     });
 
   if (rows.length === 0) {
-    return <p className={styles.muted}>This project has no plan yet.{canEdit ? ' Import a file, or add a module.' : ''}</p>;
+    return <p className={styles.muted}>{emptyText || `This project has no plan yet.${canEdit ? ' Import a file, or add a module.' : ''}`}</p>;
   }
 
   return groups.map((group) => {
@@ -170,7 +198,12 @@ export default function TimelineTable({ rows, teams, today, canEdit, overlaps, d
                   const label = (field) => `${field} for ${r.module || 'new row'} – ${r.phase || 'new phase'}`;
                   const set = (patch) => onChange(r.key, patch);
                   return (
-                    <tr key={r.key} className={dirtyKeys.has(r.key) ? styles.rowDirty : ''}>
+                    <tr
+                      key={r.key}
+                      id={`timeline-row-${r.key}`}
+                      tabIndex={-1}
+                      className={`${dirtyKeys.has(r.key) ? styles.rowDirty : ''} ${flashKey === r.key ? styles.rowFlash : ''}`}
+                    >
                       <td>
                         <EditableCell kind="text" wide value={r.module} label={label('Module')} canEdit={canEdit} onCommit={(v) => set({ module: v })} />
                       </td>
@@ -231,15 +264,15 @@ export default function TimelineTable({ rows, teams, today, canEdit, overlaps, d
                       {canEdit && (
                         <td>
                           <div className={styles.rowActions}>
-                            <button type="button" className={styles.iconButton} aria-label={`Move ${r.phase || 'row'} up`} title="Move up" disabled={i === 0} onClick={() => onMove(r.key, -1)}>
+                            <button type="button" className={styles.iconButton} aria-label={`Move ${r.phase || 'row'} up`} title={canReorder ? 'Move up' : 'Clear filters to reorder'} disabled={!canReorder || i === 0} onClick={() => onMove(r.key, -1)}>
                               <ArrowUp size={16} aria-hidden="true" />
                             </button>
                             <button
                               type="button"
                               className={styles.iconButton}
                               aria-label={`Move ${r.phase || 'row'} down`}
-                              title="Move down"
-                              disabled={i === group.rows.length - 1}
+                              title={canReorder ? 'Move down' : 'Clear filters to reorder'}
+                              disabled={!canReorder || i === group.rows.length - 1}
                               onClick={() => onMove(r.key, 1)}
                             >
                               <ArrowDown size={16} aria-hidden="true" />

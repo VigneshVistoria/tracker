@@ -8,6 +8,8 @@ import LoadingState from '../../components/ui/LoadingState';
 import ProjectPicker from '../../components/projectTimeline/ProjectPicker';
 import ImportPanel from '../../components/projectTimeline/ImportPanel';
 import TimelineTable from '../../components/projectTimeline/TimelineTable';
+import TimelineSummary from '../../components/projectTimeline/TimelineSummary';
+import TimelineFilters from '../../components/projectTimeline/TimelineFilters';
 import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
 import { apiFetch } from '../../lib/api';
@@ -15,6 +17,7 @@ import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import { formatDate } from '../../lib/formatDate';
 import { isOverdue, matchKeyFor, nameKey, overlapsByRow, rowErrors, tidyName } from '../../lib/projectTimeline';
+import { EMPTY_FILTERS, computeSummary, isFiltering, matchesFilters, summaryText } from '../../lib/projectTimelineSummary';
 
 // Backend mirror: ProjectTimelineController's VIEW_ROLES / EDIT_ROLES.
 const VIEW_ROLES = ['admin', 'program_manager', 'executive'];
@@ -44,6 +47,8 @@ export default function ProjectTimelinePage() {
   const [saving, setSaving] = useState(false);
   const [teamModal, setTeamModal] = useState(null); // { rowKey } while adding a team
   const [teamName, setTeamName] = useState('');
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [revealKey, setRevealKey] = useState(null);
   const canEdit = !!user && EDIT_ROLES.includes(user.role);
 
   useEffect(() => {
@@ -81,6 +86,7 @@ export default function ProjectTimelinePage() {
     if (!projectId) return;
     setPlan(null);
     setImporting(false);
+    setFilters(EMPTY_FILTERS);
     apiFetch(`/project-timeline/projects/${projectId}`)
       .then(applyPlan)
       .catch((err) => setError(err.message));
@@ -169,10 +175,9 @@ export default function ProjectTimelinePage() {
   const update = (key, patch) => setDraft((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
   const addRow = (module) => {
-    setDraft((prev) => [
-      ...prev,
-      { key: `new-${++tempSeq}`, id: null, version: null, module, phase: '', teamId: null, status: 'To Do', startDate: null, endDate: null, sortOrder: nextOrder() },
-    ]);
+    const row = { key: `new-${++tempSeq}`, id: null, version: null, module, phase: '', teamId: null, status: 'To Do', startDate: null, endDate: null, sortOrder: nextOrder() };
+    setDraft((prev) => [...prev, row]);
+    reveal(row);
   };
 
   // The copy goes directly under the original: the rows after it in the
@@ -180,10 +185,50 @@ export default function ProjectTimelinePage() {
   const duplicate = (key) => {
     const src = draft.find((r) => r.key === key);
     const sameModule = (r) => !r.deleted && nameKey(r.module) === nameKey(src.module);
+    const copy = { ...src, key: `new-${++tempSeq}`, id: null, version: null, phase: `${src.phase} (copy)`, sortOrder: src.sortOrder + 1 };
     setDraft((prev) => [
       ...prev.map((r) => (r.key !== src.key && sameModule(r) && r.sortOrder > src.sortOrder ? { ...r, sortOrder: r.sortOrder + 1 } : r)),
-      { ...src, key: `new-${++tempSeq}`, id: null, version: null, phase: `${src.phase} (copy)`, sortOrder: src.sortOrder + 1 },
+      copy,
     ]);
+    reveal(copy);
+  };
+
+  // Scroll to a row (Summary "Go to row", or a row just added). If the
+  // filters hide it, they are cleared first - with a note saying so.
+  const reveal = (row) => {
+    if (isFiltering(filters) && !matchesFilters(row, filters, new Map((plan?.teams || []).map((t) => [t.id, t.name])), plan?.today)) {
+      setFilters(EMPTY_FILTERS);
+      showToast('Filters cleared to show the row.', 'info');
+    }
+    setRevealKey(row.key);
+  };
+
+  const applyFilters = (next) => {
+    setFilters(next);
+    setTimeout(() => document.getElementById('timeline-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const copySummary = async () => {
+    const text = summaryText(summary, project.name);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Older browsers / no clipboard permission: the hidden-textarea fallback.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      if (!ok) {
+        showToast('Could not copy - your browser blocked the clipboard.', 'error');
+        return;
+      }
+    }
+    showToast('Summary copied - paste it into Teams.', 'success');
   };
 
   const remove = async (key) => {
@@ -263,6 +308,14 @@ export default function ProjectTimelinePage() {
   const { byRow: overlaps, pairs: overlapPairs } = useMemo(() => overlapsByRow(live), [live]);
   const sortedLive = useMemo(() => [...live].sort((a, b) => a.sortOrder - b.sortOrder || (a.id ?? Infinity) - (b.id ?? Infinity)), [live]);
   const moduleCount = new Set(live.map((r) => tidyName(r.module).toLowerCase())).size;
+  const summary = useMemo(() => (plan ? computeSummary(sortedLive, plan.teams, plan.today) : null), [sortedLive, plan]);
+  const filtering = isFiltering(filters);
+  const shownRows = useMemo(() => {
+    if (!plan || !filtering) return sortedLive;
+    const names = new Map(plan.teams.map((t) => [t.id, t.name]));
+    return sortedLive.filter((r) => matchesFilters(r, filters, names, plan.today));
+  }, [sortedLive, filters, filtering, plan]);
+  const hiddenChanges = filtering ? [...changes.dirtyKeys].filter((k) => !shownRows.some((r) => r.key === k)).length : 0;
 
   if (!user) return null;
 
@@ -351,8 +404,37 @@ export default function ProjectTimelinePage() {
               </div>
               <p className={styles.muted}>Today in the team time zone ({plan.timeZone}): {formatDate(today)}.</p>
 
+              {summary && live.length > 0 && (
+                <TimelineSummary
+                  summary={summary}
+                  projectName={project.name}
+                  unsaved={dirty}
+                  onFilter={applyFilters}
+                  onJump={(key) => reveal(sortedLive.find((r) => r.key === key))}
+                  onCopy={copySummary}
+                />
+              )}
+
+              <div id="timeline-table">
+                {live.length > 0 && (
+                  <TimelineFilters
+                    filters={filters}
+                    onChange={setFilters}
+                    modules={summary.modules}
+                    teams={plan.teams}
+                    hasNoTeam={live.some((r) => r.teamId == null)}
+                    shown={shownRows.length}
+                    total={live.length}
+                  />
+                )}
+              </div>
+
               <TimelineTable
-                rows={sortedLive}
+                rows={shownRows}
+                canReorder={!filtering}
+                revealKey={revealKey}
+                onRevealed={() => setRevealKey(null)}
+                emptyText={filtering ? 'No phases match these filters.' : undefined}
                 teams={plan.teams}
                 today={today}
                 canEdit={canEdit}
@@ -376,6 +458,7 @@ export default function ProjectTimelinePage() {
                       {changes.count} unsaved change{changes.count === 1 ? '' : 's'}
                     </strong>{' '}
                     ({changes.creates.length} added, {changes.updates.length} edited, {changes.deletes.length} deleted)
+                    {hiddenChanges > 0 && <span> – {hiddenChanges} of them in rows hidden by the filters</span>}
                     {problems.length > 0 && (
                       <span className={styles.issueError} role="alert">
                         {' '}

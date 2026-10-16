@@ -476,3 +476,373 @@
     width: 72px;
   }
 }
+
+/* ---------- Summary (2026-10-16) ---------- */
+.summary {
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-4);
+  margin-bottom: var(--ds-space-5);
+}
+
+.summaryHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-3);
+}
+
+.subTitle {
+  font-size: var(--ds-text-base);
+  font-weight: var(--ds-weight-semibold);
+  margin: var(--ds-space-5) 0 var(--ds-space-2);
+}
+
+.overall {
+  display: grid;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-3);
+  font-size: var(--ds-text-md);
+}
+
+.overallBig {
+  font-size: var(--ds-text-2xl);
+  font-weight: var(--ds-weight-bold);
+}
+
+.segBar {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: var(--ds-radius-full);
+  overflow: hidden;
+  background: var(--ds-color-gray-100);
+}
+
+.segBar > span {
+  display: block;
+  min-width: 3px;
+}
+
+.segCompleted { background: var(--ds-color-success); }
+.segInProgress { background: var(--ds-color-info); }
+.segToDo { background: var(--ds-color-gray-300); }
+/* Striped, so Delayed never relies on colour alone (In Progress is also warm in the warm theme). */
+.segDelayed {
+  background: repeating-linear-gradient(135deg, var(--ds-color-error) 0 4px, var(--ds-color-error-dark) 4px 7px);
+}
+.segOnHold { background: var(--ds-color-warning); }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--ds-radius-sm);
+}
+
+.healthRules {
+  margin: var(--ds-space-2) 0;
+  padding-left: var(--ds-space-4);
+  display: grid;
+  gap: var(--ds-space-1);
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--ds-space-3);
+}
+
+.sumCard {
+  display: grid;
+  gap: var(--ds-space-2);
+  align-content: start;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-3);
+  background: var(--ds-bg-canvas);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+}
+
+.cardTitle {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--ds-radius-sm);
+}
+
+.cardTitle:hover {
+  text-decoration: underline;
+}
+
+.cardLine {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.numRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+
+.numButton {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 64px;
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  font: inherit;
+  cursor: pointer;
+  color: var(--ds-text-primary);
+}
+
+.numButton:hover {
+  border-color: var(--ds-border-strong);
+}
+
+.numValue {
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.numLabel {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.numError .numValue {
+  color: var(--ds-color-error-dark);
+}
+
+.cardTitle:focus-visible,
+.numButton:focus-visible,
+.gridCell:focus-visible,
+.mtName:focus-visible,
+.statButton:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.gridTable th[scope='row'] {
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-primary);
+  background: none;
+  white-space: nowrap;
+}
+
+.gridCell {
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: var(--ds-weight-semibold);
+  color: inherit;
+  cursor: pointer;
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  width: 100%;
+  text-align: left;
+}
+
+.heatLow {
+  background: var(--ds-color-warning-tint);
+  color: var(--ds-color-warning-dark);
+}
+
+.heatHigh {
+  background: var(--ds-color-error-tint);
+  color: var(--ds-color-error-dark);
+}
+
+.miniTimeline {
+  display: grid;
+  gap: var(--ds-space-1);
+}
+
+.mtRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  align-items: center;
+  gap: var(--ds-space-3);
+}
+
+.mtName {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--ds-radius-sm);
+}
+
+.mtName:hover {
+  text-decoration: underline;
+}
+
+.mtTrack,
+.mtAxis {
+  position: relative;
+  height: 18px;
+}
+
+.mtTrack {
+  background: var(--ds-bg-surface-sunken);
+  border-radius: var(--ds-radius-full);
+}
+
+.mtPhase {
+  position: absolute;
+  top: 4px;
+  height: 10px;
+  min-width: 2px;
+  border-radius: var(--ds-radius-sm);
+  box-shadow: 0 0 0 1px var(--ds-bg-surface);
+}
+
+.mtMonth,
+.mtTodayLabel {
+  position: absolute;
+  top: 0;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.mtTodayLabel {
+  transform: translateX(-50%);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-color-error-dark);
+}
+
+.mtToday {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--ds-color-error-dark);
+}
+
+.attention {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--ds-space-2);
+}
+
+.attention li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+}
+
+.totals {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  margin: var(--ds-space-4) 0 0;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-color-success-dark);
+}
+
+.filtersPanel {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
+  background: var(--ds-bg-surface);
+}
+
+.filterGrid {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1.2fr) repeat(2, 1fr);
+  gap: var(--ds-space-3);
+}
+
+.filterFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-2);
+}
+
+.statButton {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowFlash td {
+  animation: rowFlash 2s ease-out;
+}
+
+@keyframes rowFlash {
+  from { background: var(--ds-color-primary-100); }
+  to { background: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowFlash td {
+    animation: none;
+    background: var(--ds-color-primary-50);
+  }
+}
+
+@media (max-width: 1024px) {
+  .filterGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .filterGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mtRow {
+    grid-template-columns: 96px 1fr;
+  }
+
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+}
