@@ -16,6 +16,7 @@ import {
   TrendingUp,
   SlidersHorizontal,
   CalendarClock,
+  CalendarCheck,
   Globe,
   FileSpreadsheet,
   Layers,
@@ -75,6 +76,11 @@ export const NAV_SECTIONS = [
       // (TasksService.findDefectQueue()).
       { href: '/tasks/my-defects', label: 'My Defects', icon: Bug, roles: [ADMIN, PM, QA], countKey: 'myDefects' },
       { href: '/daily-update', label: 'Daily Update', icon: ClipboardEdit, roles: [ADMIN, PM, QA] },
+      // Daily Scrum - QA gets their own summary (Developer/Designer/DevOps
+      // get it in their minimal header); PM/Executive/Admin get the Team and
+      // Individual tabs (Stage 3). Matches DailyScrumController's
+      // ROLES_ALLOWED_TO_VIEW_OWN_SCRUM + ROLES_ALLOWED_TO_VIEW_TEAM_SCRUM.
+      { href: '/daily-scrum', label: 'Daily Scrum', icon: CalendarCheck, roles: [ADMIN, PM, EXEC, QA] },
       // QA has no involvement in Time Sheets; Executive gets the report-only view.
       { href: '/time-sheets', label: 'Time Sheets', icon: Timer, roles: [ADMIN, PM, EXEC] },
     ],

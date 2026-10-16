@@ -46,3 +46,10 @@ export function formatRelativeTime(value, now = Date.now()) {
   if (abs < 7 * 86400) return relativeFormatter.format(Math.round(seconds / 86400), 'day');
   return formatDate(value);
 }
+
+// "Thursday, Oct 15" - for a plain day where the weekday matters (e.g.
+// Daily Scrum's "since last working day"). Locale pinned like formatDate().
+export function formatWeekdayDate(value) {
+  if (!value) return '—';
+  return toDate(value).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}

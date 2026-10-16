@@ -13,6 +13,10 @@ const PORTAL_DIR = path.join(SRC, 'client-portal');
 // migration, like the portal tables, and checked against its entity.
 const TEAM_SETTINGS_DIR = path.join(SRC, 'team-settings');
 const DAILY_SCRUM_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-daily-scrum-settings.sql');
+// Daily Scrum Stage 3 (scrum_external_waits) - same: real migration,
+// checked against the entity.
+const EXTERNAL_WAIT_ENTITY = path.join(SRC, 'daily-scrum', 'scrum-external-wait.entity.ts');
+const EXTERNAL_WAITS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-daily-scrum-external-waits.sql');
 // Defect screenshots (task_attachments) - same: real migration, checked
 // against the entity.
 const TASK_ATTACHMENT_ENTITY = path.join(SRC, 'tasks', 'task-attachment.entity.ts');
@@ -56,7 +60,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && !f.startsWith(TIMELINE_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && !f.startsWith(TIMELINE_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -81,6 +85,7 @@ export async function buildTestSchema() {
   }
   await base.query(fs.readFileSync(PM_REVIEW_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(TIMELINE_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(EXTERNAL_WAITS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -97,7 +102,9 @@ export async function buildTestSchema() {
   if (!taskAttachmentMeta) problems.push('task_attachments: entity missing');
   const timelineMetas = check.entityMetadatas.filter((m) => ['project_timeline_rows', 'project_timeline_teams'].includes(m.tableName));
   if (timelineMetas.length !== 2) problems.push('project_timeline_rows/_teams: entity missing');
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas]) {
+  const externalWaitMeta = check.entityMetadatas.find((m) => m.tableName === 'scrum_external_waits');
+  if (!externalWaitMeta) problems.push('scrum_external_waits: entity missing');
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : [])]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

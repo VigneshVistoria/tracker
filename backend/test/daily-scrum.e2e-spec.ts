@@ -25,6 +25,7 @@ describe('Daily Scrum (e2e)', () => {
   const auth = (u: FixtureUser) => ({ Authorization: `Bearer ${tokenFor(u)}` });
   const get = (u: FixtureUser, url: string) => http().get(url).set(auth(u));
   const patch = (u: FixtureUser, url: string, body: any = {}) => http().patch(url).set(auth(u)).send(body);
+  const post = (u: FixtureUser, url: string, body: any = {}) => http().post(url).set(auth(u)).send(body);
 
   const task = async (key: string, values: Record<string, any>) => {
     const row = {
@@ -79,7 +80,7 @@ describe('Daily Scrum (e2e)', () => {
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
     await ds.query(
-      `TRUNCATE project_tasks, task_qa_reviews, task_dependency_tickets, task_blocking_defects, audit_logs, test_executions, test_cases, team_settings RESTART IDENTITY CASCADE`,
+      `TRUNCATE project_tasks, task_qa_reviews, task_dependency_tickets, task_blocking_defects, audit_logs, test_executions, test_cases, team_settings, scrum_external_waits RESTART IDENTITY CASCADE`,
     );
     phaseId = (
       await ds.query(
@@ -169,12 +170,15 @@ describe('Daily Scrum (e2e)', () => {
     await app?.close();
   });
 
-  const ENDPOINTS: Array<['get' | 'patch', string]> = [
+  const ENDPOINTS: Array<['get' | 'patch' | 'post', string]> = [
     ['get', '/daily-scrum/me'],
     ['get', '/daily-scrum/team'],
     ['get', '/daily-scrum/people/1'],
     ['get', '/daily-scrum/settings'],
     ['patch', '/daily-scrum/settings'],
+    ['get', '/daily-scrum/external-waits'],
+    ['post', '/daily-scrum/external-waits'],
+    ['patch', '/daily-scrum/external-waits/1'],
   ];
 
   describe('who can call what', () => {
@@ -322,12 +326,13 @@ describe('Daily Scrum (e2e)', () => {
         (SELECT count(*)::int FROM task_dependency_tickets WHERE status = 'open') open_deps,
         (SELECT count(*)::int FROM audit_logs) audits, (SELECT count(*)::int FROM user_notifications) notifications,
         (SELECT count(*)::int FROM kpi_period_score) kpi, (SELECT count(*)::int FROM sla_configs) sla,
-        (SELECT count(*)::int FROM test_executions) runs, (SELECT count(*)::int FROM team_settings) settings`);
+        (SELECT count(*)::int FROM test_executions) runs, (SELECT count(*)::int FROM team_settings) settings,
+        (SELECT count(*)::int FROM scrum_external_waits) waits`);
 
     it('calling every GET as every role changes nothing anywhere - not even a settings row', async () => {
       const before = await snapshot();
       for (const u of [f.users.devA, f.users.devNone, f.users.qaB, f.users.pm, f.users.exec, f.users.admin]) {
-        for (const url of ['/daily-scrum/me', '/daily-scrum/team', `/daily-scrum/people/${f.users.devA.id}`, '/daily-scrum/settings']) await get(u, url);
+        for (const url of ['/daily-scrum/me', '/daily-scrum/team', `/daily-scrum/people/${f.users.devA.id}`, '/daily-scrum/settings', '/daily-scrum/external-waits?status=all']) await get(u, url);
       }
       expect(await snapshot()).toEqual(before);
       expect(before[0].settings).toBe(0);
@@ -363,6 +368,94 @@ describe('Daily Scrum (e2e)', () => {
       expect((await ds.query(`SELECT count(*)::int n FROM audit_logs WHERE action = 'daily_scrum_settings_updated'`))[0].n).toBe(2);
       const otherTenant = (await get(f.users.pmT2, '/daily-scrum/settings').expect(200)).body;
       expect(otherTenant).toMatchObject({ timeZone: 'Africa/Addis_Ababa', isDefault: true });
+    });
+  });
+
+  // Stage 3 (2026-10-16): "Waiting on the city office" - a hand-kept list.
+  describe('external waits', () => {
+    const URL = '/daily-scrum/external-waits';
+    const base = { title: 'Building permit stamp', requestedOn: '2026-10-12' };
+
+    it('PM/Executive/Admin can list; only Admin and PM can add or change; Developer and QA get 403', async () => {
+      for (const u of [f.users.pm, f.users.exec, f.users.admin]) await get(u, URL).expect(200);
+      for (const u of [f.users.devA, f.users.qaB]) await get(u, URL).expect(403);
+      for (const u of [f.users.devA, f.users.qaB, f.users.exec]) {
+        await post(u, URL, base).expect(403);
+        await patch(u, `${URL}/1`, { status: 'resolved' }).expect(403);
+      }
+      expect((await ds.query(`SELECT count(*)::int n FROM scrum_external_waits`))[0].n).toBe(0);
+    });
+
+    it('refuses a missing title or date, a ticket or person from another tenant, and expected before requested', async () => {
+      await post(f.users.pm, URL, { requestedOn: '2026-10-12' }).expect(400);
+      await post(f.users.pm, URL, { title: '   ', requestedOn: '2026-10-12' }).expect(400);
+      await post(f.users.pm, URL, { title: 'x' }).expect(400);
+      await post(f.users.pm, URL, { ...base, taskId: 999999 }).expect(400);
+      await post(f.users.pm, URL, { ...base, followUpUserId: f.users.pmT2.id }).expect(400);
+      await post(f.users.pm, URL, { ...base, followUpUserId: f.users.clientA.id }).expect(400);
+      expect((await post(f.users.pm, URL, { ...base, expectedBy: '2026-10-01' }).expect(400)).body.message).toMatch(/before/);
+      await get(f.users.pm, `${URL}?status=bogus`).expect(400);
+      expect((await ds.query(`SELECT count(*)::int n FROM scrum_external_waits`))[0].n).toBe(0);
+    });
+
+    it('PM adds one (City office by default), it is audited, and shows with ticket and names', async () => {
+      const created = (
+        await post(f.users.pm, URL, { ...base, taskId: ids.waiting, followUpUserId: f.users.devA.id, expectedBy: '2026-10-20', note: '  call Tuesday  ' }).expect(201)
+      ).body;
+      expect(created).toMatchObject({
+        title: 'Building permit stamp',
+        party: 'City office',
+        taskId: ids.waiting,
+        taskTitle: 'Task waiting',
+        followUpUserId: f.users.devA.id,
+        followUpName: 'Name devA',
+        requestedOn: '2026-10-12',
+        expectedBy: '2026-10-20',
+        note: 'call Tuesday',
+        status: 'open',
+        createdByName: 'Name pm',
+      });
+      const audit = (await ds.query(`SELECT * FROM audit_logs WHERE action = 'daily_scrum_external_wait_created'`))[0];
+      expect(audit).toMatchObject({ userId: f.users.pm.id, entityType: 'ScrumExternalWait', entityId: created.id });
+      expect(JSON.parse(audit.details).after.title).toBe('Building permit stamp');
+      const list = (await get(f.users.exec, URL).expect(200)).body;
+      expect(list.map((w: any) => w.id)).toEqual([created.id]);
+      expect((await get(f.users.pmT2, URL).expect(200)).body).toEqual([]);
+    });
+
+    it('Admin edits and resolves it; resolved ones leave the open list; reopen works; each change audited', async () => {
+      const id = (await get(f.users.pm, URL).expect(200)).body[0].id;
+      const edited = (await patch(f.users.admin, `${URL}/${id}`, { party: 'Sub-city office', expectedBy: null }).expect(200)).body;
+      expect(edited).toMatchObject({ party: 'Sub-city office', expectedBy: null, status: 'open' });
+      const upd = (await ds.query(`SELECT details FROM audit_logs WHERE action = 'daily_scrum_external_wait_updated'`))[0];
+      expect(JSON.parse(upd.details)).toEqual({ before: { party: 'City office', expectedBy: '2026-10-20' }, after: { party: 'Sub-city office', expectedBy: null } });
+
+      const resolved = (await patch(f.users.admin, `${URL}/${id}`, { status: 'resolved' }).expect(200)).body;
+      expect(resolved.status).toBe('resolved');
+      expect(resolved.resolvedByName).toBe('Name admin');
+      expect(resolved.resolvedAt).toBeTruthy();
+      expect((await get(f.users.pm, URL).expect(200)).body).toEqual([]);
+      expect((await get(f.users.pm, `${URL}?status=resolved`).expect(200)).body.map((w: any) => w.id)).toEqual([id]);
+
+      const reopened = (await patch(f.users.pm, `${URL}/${id}`, { status: 'open' }).expect(200)).body;
+      expect(reopened).toMatchObject({ status: 'open', resolvedAt: null, resolvedByName: null });
+      const actions = (await ds.query(`SELECT action FROM audit_logs WHERE "entityType" = 'ScrumExternalWait' ORDER BY id`)).map((r: any) => r.action);
+      expect(actions).toEqual([
+        'daily_scrum_external_wait_created',
+        'daily_scrum_external_wait_updated',
+        'daily_scrum_external_wait_resolved',
+        'daily_scrum_external_wait_reopened',
+      ]);
+    });
+
+    it('a no-change save writes no audit row; another tenant gets 404; never touches a ticket', async () => {
+      const id = (await get(f.users.pm, URL).expect(200)).body[0].id;
+      const before = await ds.query(`SELECT count(*)::int a FROM audit_logs`);
+      const taskBefore = await ds.query(`SELECT status, "updatedAt" FROM project_tasks WHERE id = $1`, [ids.waiting]);
+      await patch(f.users.pm, `${URL}/${id}`, { party: 'Sub-city office' }).expect(200);
+      expect(await ds.query(`SELECT count(*)::int a FROM audit_logs`)).toEqual(before);
+      await patch(f.users.pmT2, `${URL}/${id}`, { status: 'resolved' }).expect(404);
+      expect(await ds.query(`SELECT status, "updatedAt" FROM project_tasks WHERE id = $1`, [ids.waiting])).toEqual(taskBefore);
     });
   });
 });

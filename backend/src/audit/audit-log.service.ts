@@ -122,6 +122,13 @@ export const AuditActions = {
   TASK_PEER_REVIEW_REJECTED: 'task_peer_review_rejected',
   // details: { before: {timeZone, workdayStart, workdayEnd}, after: {...} }
   DAILY_SCRUM_SETTINGS_UPDATED: 'daily_scrum_settings_updated',
+  // Daily Scrum "Waiting on the city office" (scrum_external_waits).
+  // details: { after } on create; { before, after } with only the changed
+  // fields otherwise.
+  DAILY_SCRUM_EXTERNAL_WAIT_CREATED: 'daily_scrum_external_wait_created',
+  DAILY_SCRUM_EXTERNAL_WAIT_UPDATED: 'daily_scrum_external_wait_updated',
+  DAILY_SCRUM_EXTERNAL_WAIT_RESOLVED: 'daily_scrum_external_wait_resolved',
+  DAILY_SCRUM_EXTERNAL_WAIT_REOPENED: 'daily_scrum_external_wait_reopened',
   ROLLBACK_TRIGGERED: 'rollback_triggered',
   EVIDENCE_SUBMITTED: 'evidence_submitted',
   IMPERSONATION_STARTED: 'impersonation_started',
