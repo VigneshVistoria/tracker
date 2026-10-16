@@ -47,6 +47,13 @@ export function formatRelativeTime(value, now = Date.now()) {
   return formatDate(value);
 }
 
+// "Oct 15" - a short date for tight spots (Daily Scrum's compact cards).
+// Locale pinned like formatDate().
+export function formatMonthDay(value) {
+  if (!value) return '—';
+  return toDate(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 // "Thursday, Oct 15" - for a plain day where the weekday matters (e.g.
 // Daily Scrum's "since last working day"). Locale pinned like formatDate().
 export function formatWeekdayDate(value) {

@@ -150,89 +150,88 @@ export default function ExternalWaitsBox({ waits, today, canEdit, people, showRe
     const days = daysBetween(w.requestedOn, today);
     const late = w.status === 'open' && w.expectedBy && w.expectedBy < today;
     return (
-      <li key={w.id} className={styles.ticket}>
-        <div className={styles.ticketMain}>
+      <li key={w.id} className={`${styles.card} ${styles.cardCompact}`}>
+        <div className={styles.waitHead}>
           <span className={styles.waitTitle}>{w.title}</span>
-          <p className={styles.ticketMeta}>
-            {w.party} · asked {formatDate(w.requestedOn)}
-            {w.expectedBy ? ` · expected ${formatDate(w.expectedBy)}` : ''}
-            {w.followUpName ? ` · follow-up ${w.followUpName}` : ''}
-            {w.taskId != null && (
-              <>
-                {' · '}
-                <Link href={`/tasks/${w.taskId}`} className={styles.ticketLink}>
-                  #{w.taskId} {w.taskTitle}
-                </Link>
-              </>
-            )}
-          </p>
-          {w.note && <p className={styles.ticketMeta}>{w.note}</p>}
-          {w.status === 'resolved' && (
-            <p className={styles.ticketMeta}>
-              Resolved {formatDate(w.resolvedAt)}
-              {w.resolvedByName ? ` by ${w.resolvedByName}` : ''}
-            </p>
-          )}
-        </div>
-        <div className={styles.ticketTags}>
           {w.status === 'open' ? (
             <Badge tone={late ? 'error' : days >= 5 ? 'warning' : 'neutral'}>{waitingLabel(w.requestedOn, today)}</Badge>
           ) : (
             <Badge tone="success">Resolved</Badge>
           )}
-          {late && (
-            <Badge tone="error" dot>
-              Past expected date
-            </Badge>
-          )}
-          {canEdit && (
-            <span className={styles.rowActions}>
-              {w.status === 'open' && (
-                <Button type="button" size="sm" variant="ghost" leftIcon={Pencil} onClick={() => setEditing(w)} aria-label={`Edit ${w.title}`}>
-                  Edit
-                </Button>
-              )}
-              {w.status === 'open' ? (
-                <Button type="button" size="sm" variant="secondary" leftIcon={CheckCircle2} loading={busyId === w.id} onClick={() => setStatus(w, 'resolved')} aria-label={`Mark ${w.title} resolved`}>
-                  Resolve
-                </Button>
-              ) : (
-                <Button type="button" size="sm" variant="ghost" leftIcon={RotateCcw} loading={busyId === w.id} onClick={() => setStatus(w, 'open')} aria-label={`Reopen ${w.title}`}>
-                  Reopen
-                </Button>
-              )}
-            </span>
-          )}
         </div>
+        <p className={styles.cardMeta}>
+          {w.party} · asked {formatDate(w.requestedOn)}
+          {w.expectedBy ? ` · expected ${formatDate(w.expectedBy)}` : ''}
+          {w.followUpName ? ` · follow-up ${w.followUpName}` : ''}
+        </p>
+        {w.taskId != null && (
+          <p className={styles.cardMeta}>
+            <Link href={`/tasks/${w.taskId}`} className={styles.link}>
+              #{w.taskId} {w.taskTitle}
+            </Link>
+          </p>
+        )}
+        {w.note && <p className={styles.cardMeta}>{w.note}</p>}
+        {w.status === 'resolved' && (
+          <p className={styles.cardMeta}>
+            Resolved {formatDate(w.resolvedAt)}
+            {w.resolvedByName ? ` by ${w.resolvedByName}` : ''}
+          </p>
+        )}
+        {(late || canEdit) && (
+          <div className={styles.waitFoot}>
+            {late && (
+              <Badge tone="error" dot>
+                Past expected date
+              </Badge>
+            )}
+            {canEdit && (
+              <span className={styles.rowActions}>
+                {w.status === 'open' && (
+                  <Button type="button" size="sm" variant="ghost" leftIcon={Pencil} onClick={() => setEditing(w)} aria-label={`Edit ${w.title}`}>
+                    Edit
+                  </Button>
+                )}
+                {w.status === 'open' ? (
+                  <Button type="button" size="sm" variant="ghost" leftIcon={CheckCircle2} loading={busyId === w.id} onClick={() => setStatus(w, 'resolved')} aria-label={`Mark ${w.title} resolved`}>
+                    Resolve
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" variant="ghost" leftIcon={RotateCcw} loading={busyId === w.id} onClick={() => setStatus(w, 'open')} aria-label={`Reopen ${w.title}`}>
+                    Reopen
+                  </Button>
+                )}
+              </span>
+            )}
+          </div>
+        )}
       </li>
     );
   };
 
   return (
-    <section className={styles.section} aria-labelledby="scrum-external">
-      <h2 id="scrum-external" className={styles.sectionTitle}>
+    <section className={styles.panel} aria-labelledby="scrum-external">
+      <h2 id="scrum-external" className={styles.panelTitle}>
         <Building2 size={16} aria-hidden="true" />
         <span>Waiting on the city office</span>
-        <span className={styles.sectionCount}>{open.length}</span>
-      </h2>
-      {open.length === 0 ? <p className={styles.empty}>The team isn&apos;t waiting on anything outside.</p> : <ul className={styles.tickets}>{open.map(row)}</ul>}
-      {showResolved && resolved.length > 0 && (
-        <>
-          <h3 className={styles.subHeading}>Resolved</h3>
-          <ul className={styles.tickets}>{resolved.map(row)}</ul>
-        </>
-      )}
-      {showResolved && resolved.length === 0 && <p className={styles.empty}>Nothing resolved yet.</p>}
-      <div className={styles.boxActions}>
-        <Button type="button" size="sm" variant="ghost" onClick={onToggleResolved} aria-pressed={showResolved}>
-          {showResolved ? 'Hide resolved' : 'Show resolved'}
-        </Button>
+        <span className={styles.count}>{open.length}</span>
         {canEdit && (
-          <Button type="button" size="sm" variant="secondary" leftIcon={Plus} onClick={() => setEditing('new')}>
+          <Button type="button" size="sm" variant="secondary" leftIcon={Plus} onClick={() => setEditing('new')} className={styles.panelAction}>
             Add
           </Button>
         )}
-      </div>
+      </h2>
+      {open.length === 0 ? <p className={styles.empty}>The team isn&apos;t waiting on anything outside.</p> : <ul className={styles.cards}>{open.map(row)}</ul>}
+      {showResolved && resolved.length > 0 && (
+        <>
+          <h3 className={styles.subHeading}>Resolved</h3>
+          <ul className={styles.cards}>{resolved.map(row)}</ul>
+        </>
+      )}
+      {showResolved && resolved.length === 0 && <p className={styles.empty}>Nothing resolved yet.</p>}
+      <button type="button" className={styles.textButton} onClick={onToggleResolved} aria-pressed={showResolved}>
+        {showResolved ? 'Hide resolved' : 'Show resolved'}
+      </button>
       {editing && (
         <WaitForm
           wait={editing === 'new' ? null : editing}

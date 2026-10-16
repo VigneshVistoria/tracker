@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Pause, Play, RotateCcw, X } from 'lucide-react';
-import Badge from '../ui/Badge';
+import Avatar from '../ui/Avatar';
 import { formatDate, formatWeekdayDate } from '../../lib/formatDate';
 import { waitingLabel } from '../../lib/dailyScrumText';
 import { roleLabel } from '../../lib/status';
-import { REASON_LABELS, eventLabel } from './ScrumPersonView';
+import { eventLabel } from './ScrumPersonView';
+import { ReasonChips } from './TicketCard';
 import styles from '../../styles/dailyScrum.module.css';
 
 // Daily Scrum Stage 3 - Present mode: full screen, one person per slide
@@ -17,22 +18,22 @@ import styles from '../../styles/dailyScrum.module.css';
 export const SLOT_SECONDS = 120;
 // Longer lists are cut on a slide - the full list is on the Team tab.
 const SLIDE_LIMIT = 6;
-const REASON_TONE = { sent_back: 'error', blocking_defect: 'error', overdue: 'error', waiting_on_dependency: 'warning', intervention: 'warning' };
+const SINCE_LIMIT = 4;
 
 function clock(seconds) {
   const abs = Math.abs(seconds);
   return `${seconds < 0 ? '+' : ''}${Math.floor(abs / 60)}:${String(abs % 60).padStart(2, '0')}`;
 }
 
-function Column({ title, items, render, empty }) {
+function Column({ title, items, render, empty, tone }) {
   const shown = items.slice(0, SLIDE_LIMIT);
   return (
-    <section className={styles.slideColumn}>
+    <section className={`${styles.slideColumn} ${tone ? styles[`column_${tone}`] : ''}`}>
       <h3 className={styles.slideColumnTitle}>
-        {title} <span className={styles.sectionCount}>{items.length}</span>
+        {title} <span className={styles.count}>{items.length}</span>
       </h3>
       {items.length === 0 ? (
-        <p className={styles.empty}>{empty}</p>
+        <p className={styles.slideEmpty}>{empty}</p>
       ) : (
         <ul className={styles.slideList}>
           {shown.map(render)}
@@ -48,11 +49,7 @@ const ticket = (item) => (
     <span className={styles.ticketId}>#{item.taskId}</span> {item.title}
     {item.reasons.length > 0 && (
       <span className={styles.slideChips}>
-        {item.reasons.map((r) => (
-          <Badge key={r} tone={REASON_TONE[r] || 'neutral'} dot>
-            {REASON_LABELS[r] || r}
-          </Badge>
-        ))}
+        <ReasonChips reasons={item.reasons} />
       </span>
     )}
   </li>
@@ -60,31 +57,40 @@ const ticket = (item) => (
 
 function PersonSlide({ person }) {
   const c = person.counts;
+  const since = person.since.slice(0, SINCE_LIMIT);
   return (
     <>
       <header className={styles.slideHeader}>
-        <h2 id="present-slide-title" className={styles.slideTitle}>
-          {person.name}
-        </h2>
-        <p className={styles.slideSubtitle}>
-          {roleLabel(person.role)} · Today {c.today} · Blockers {c.blockers} · With reviewers {c.withReviewers}
-        </p>
+        <Avatar name={person.name} size="lg" />
+        <div>
+          <h2 id="present-slide-title" className={styles.slideTitle}>
+            {person.name}
+          </h2>
+          <p className={styles.slideSubtitle}>
+            {roleLabel(person.role)} · Today {c.today} · Blockers {c.blockers} · With reviewers {c.withReviewers}
+          </p>
+        </div>
       </header>
+      <section className={styles.slideSince} aria-label="Since last working day">
+        <h3 className={styles.slideSinceTitle}>Since last working day</h3>
+        {since.length === 0 ? (
+          <p className={styles.slideEmpty}>Nothing recorded.</p>
+        ) : (
+          <ul className={styles.slideSinceList}>
+            {since.map((e, i) => (
+              <li key={`${e.kind}-${e.taskId}-${i}`}>
+                <strong>{eventLabel(e.kind, false)}</strong>
+                {e.taskId != null ? ` · #${e.taskId} ${e.title}` : ''}
+              </li>
+            ))}
+            {person.since.length > since.length && <li className={styles.slideMore}>+{person.since.length - since.length} more</li>}
+          </ul>
+        )}
+      </section>
       <div className={styles.slideGrid}>
-        <Column
-          title="Since last working day"
-          items={person.since}
-          empty="Nothing recorded."
-          render={(e, i) => (
-            <li key={`${e.kind}-${e.taskId}-${i}`}>
-              <strong>{eventLabel(e.kind, false)}</strong>
-              {e.taskId != null ? ` - #${e.taskId} ${e.title}` : ''}
-            </li>
-          )}
-        />
-        <Column title="Today" items={person.today} empty="Nothing without a blocker." render={ticket} />
-        <Column title="Blockers" items={person.blockers} empty="No blockers." render={ticket} />
-        <Column title="With reviewers" items={person.withReviewers} empty="Nothing with reviewers." render={ticket} />
+        <Column title="Today" tone="today" items={person.today} empty="Nothing without a blocker." render={ticket} />
+        <Column title="Blockers" tone="blockers" items={person.blockers} empty="No blockers." render={ticket} />
+        <Column title="With reviewers" tone="reviewers" items={person.withReviewers} empty="Nothing with reviewers." render={ticket} />
       </div>
       {person.qa && (
         <p className={styles.slideFooterNote}>
@@ -119,11 +125,7 @@ function SummarySlide({ team, waits }) {
             <li key={item.taskId}>
               <span className={styles.ticketId}>#{item.taskId}</span> {item.title} - {item.name}
               <span className={styles.slideChips}>
-                {item.reasons.map((r) => (
-                  <Badge key={r} tone={REASON_TONE[r] || 'neutral'} dot>
-                    {REASON_LABELS[r] || r}
-                  </Badge>
-                ))}
+                <ReasonChips reasons={item.reasons} />
               </span>
             </li>
           )}

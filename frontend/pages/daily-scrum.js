@@ -28,22 +28,21 @@ const TABS = [
   { key: 'individual', label: 'Individual' },
 ];
 
+// The scrum window on one quiet line: since -> today, zone and hours,
+// last refresh. Each active ticket sits in exactly one of the three groups.
 function WindowLine({ meta }) {
   const w = meta.window;
   return (
-    <ul className={scrumStyles.window}>
-      <li>
-        Since <strong>{formatWeekdayDate(w.lastWorkingDay)}</strong>, 00:00
-      </li>
-      <li>
-        Today <strong>{formatWeekdayDate(w.today)}</strong>
-      </li>
-      <li>
+    <p className={scrumStyles.window}>
+      <span>
+        Since <strong>{formatWeekdayDate(w.lastWorkingDay)}</strong> 00:00 to Today <strong>{formatWeekdayDate(w.today)}</strong>
+      </span>
+      <span>
         {w.timeZone.replace(/_/g, ' ')}
-        {meta.settings ? `, working hours ${meta.settings.workdayStart}-${meta.settings.workdayEnd}` : ''}
-      </li>
-      <li>Updated {formatDateTime(w.generatedAt, w.timeZone)}</li>
-    </ul>
+        {meta.settings ? ` · ${meta.settings.workdayStart}–${meta.settings.workdayEnd}` : ''}
+      </span>
+      <span>Updated {formatDateTime(w.generatedAt, w.timeZone)}</span>
+    </p>
   );
 }
 
@@ -185,15 +184,9 @@ export default function DailyScrumPage() {
 
   return (
     <AppShell>
-      <div className={styles.pageHeader}>
-        <div>
+      <div className={scrumStyles.header}>
+        <div className={scrumStyles.headerText}>
           <h1 className={styles.pageTitle}>Daily Scrum</h1>
-          <p className={styles.pageSubtitle}>
-            {isTeamRole
-              ? 'Everyone with tickets: what they did since the last working day, what is on today, what is blocking them and what is with reviewers.'
-              : 'Your work since the last working day, what’s on today, what’s blocking you and what’s with reviewers.'}{' '}
-            Each active ticket appears in exactly one of Today, Blockers or With reviewers.
-          </p>
           {meta && <WindowLine meta={meta} />}
         </div>
         <div className={scrumStyles.headerActions}>
