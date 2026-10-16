@@ -27,6 +27,7 @@ import {
   CreateTimelineTeamDto,
   ParseTimelineFileDto,
   PreviewTimelineImportDto,
+  ResetTimelineBaselineDto,
   SaveTimelineChangesDto,
 } from './dto/project-timeline.dto';
 
@@ -37,6 +38,8 @@ import {
 // whose PM-only edit rule is unchanged.
 const VIEW_ROLES: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN, UserRole.EXECUTIVE];
 const EDIT_ROLES: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+// Resetting the slip baseline: Program Manager only (confirmed 2026-10-16).
+const BASELINE_ROLES: UserRole[] = [UserRole.PROGRAM_MANAGER];
 
 // The role check is a guard (not a check inside each handler) so it runs
 // before the ValidationPipe: a Developer posting a malformed body gets 403,
@@ -58,7 +61,11 @@ class ProjectTimelineRolesGuard implements CanActivate {
     const user = await this.usersService.findById(req.user.sub);
     if (!roles.includes(user.role)) {
       throw new ForbiddenException(
-        roles === EDIT_ROLES ? 'Only a Program Manager or Admin can change the Project Timeline.' : 'Only Program Manager, Admin and Executive can view the Project Timeline.',
+        roles === BASELINE_ROLES
+          ? 'Only a Program Manager can reset the Project Timeline baseline.'
+          : roles === EDIT_ROLES
+            ? 'Only a Program Manager or Admin can change the Project Timeline.'
+            : 'Only Program Manager, Admin and Executive can view the Project Timeline.',
       );
     }
     req.timelineUser = user;
@@ -86,6 +93,19 @@ export class ProjectTimelineController {
   @Roles(VIEW_ROLES)
   async plan(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
     return this.projectTimelineService.getPlan(projectId, req.user.tenantId);
+  }
+
+  // Slip tracking: baselines from the audit log - read-only.
+  @Get('projects/:projectId/slip')
+  @Roles(VIEW_ROLES)
+  async slip(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.projectTimelineService.getSlip(projectId, req.user.tenantId);
+  }
+
+  @Post('projects/:projectId/baseline/reset')
+  @Roles(BASELINE_ROLES)
+  async resetBaseline(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: ResetTimelineBaselineDto, @Req() req: any) {
+    return this.projectTimelineService.resetBaseline(projectId, dto.reason, req.timelineUser, req.user.tenantId);
   }
 
   @Get('teams')

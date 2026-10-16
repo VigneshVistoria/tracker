@@ -3,10 +3,16 @@ import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRig
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import styles from '../../styles/projectTimeline.module.css';
-import { formatDate } from '../../lib/formatDate';
+import { formatDate, formatDateTime } from '../../lib/formatDate';
+import { formatSlip } from '../../lib/projectTimelineSummary';
 import { STATUS_TONE, TIMELINE_STATUSES, dateRange, groupByModule, isOverdue, nameKey, rowErrors, rowWarnings } from '../../lib/projectTimeline';
 
 const ADD_TEAM = '__add_team__';
+
+// Hover text for the "+12d vs plan" chip.
+const slipTitle = (s) =>
+  `Planned end ${formatDate(s.baselineEnd)} · end date moved ${s.endMoves} time${s.endMoves === 1 ? '' : 's'}` +
+  (s.lastMove ? ` · last by ${s.lastMove.by || 'unknown'} on ${formatDateTime(s.lastMove.at)}` : '');
 
 // One cell: shows the value in the app's format; for editors, a button
 // that turns into an input/select (Enter or blur keeps the change, Escape
@@ -95,7 +101,7 @@ function EditableCell({ kind, value, display, label, canEdit, onCommit, options,
 // canReorder is false while the table is filtered - moving a row past
 // rows you can't see would be confusing. revealKey (from the Summary's
 // "Go to row") opens that row's module, scrolls to it and focuses it.
-export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
+export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [flashKey, setFlashKey] = useState(null);
 
@@ -211,6 +217,11 @@ export default function TimelineTable({ rows, teams, today, canEdit, canReorder 
                         <EditableCell kind="text" wide value={r.phase} label={label('Phase')} canEdit={canEdit} onCommit={(v) => set({ phase: v })} />
                         <div className={styles.flags}>
                           {overdue && <span className={styles.chipOverdue}>Overdue</span>}
+                          {slipByKey?.get(r.key)?.slip ? (
+                            <span className={styles.chipSlip} title={slipTitle(slipByKey.get(r.key))}>
+                              {formatSlip(slipByKey.get(r.key).slip)} vs plan
+                            </span>
+                          ) : null}
                           {errors.map((e) => (
                             <span key={e} className={styles.flagError}>
                               <AlertCircle size={12} aria-hidden="true" /> {e}

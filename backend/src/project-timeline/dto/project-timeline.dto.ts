@@ -120,3 +120,10 @@ export class CreateTimelineTeamDto {
   @MaxLength(MAX_TEAM_NAME_LENGTH)
   name: string;
 }
+
+export class ResetTimelineBaselineDto {
+  @IsString()
+  @MinLength(1, { message: 'A reason is required to reset the baseline.' })
+  @MaxLength(1000)
+  reason: string;
+}

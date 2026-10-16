@@ -10,6 +10,8 @@ import {
   TIMELINE_COLUMNS,
   TIMELINE_STATUSES,
   TimelineStatus,
+  BaselineEvent,
+  buildBaselines,
   buildPreview,
   matchKeyFor,
   nameKey,
@@ -403,6 +405,64 @@ export class ProjectTimelineService {
       }
     });
     return this.getPlan(projectId, tenantId);
+  }
+
+  // ------------------------------------------------------------ baselines
+
+  // Slip tracking: each current row's baseline (see buildBaselines) and
+  // the project's baseline resets, newest first. Read-only.
+  async getSlip(projectId: number, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const rows = await this.rowsRepository.find({ where: { tenantId, projectId }, select: ['id'] });
+    const ids = rows.map((r) => r.id);
+    const [rowEvents, resetEvents] = await Promise.all([
+      this.auditLogService.findForEntities(tenantId, ENTITY_TYPE, ids, [AuditActions.PROJECT_TIMELINE_ROW_CREATED, AuditActions.PROJECT_TIMELINE_ROW_UPDATED]),
+      this.auditLogService.findForEntities(tenantId, 'Project', [projectId], [AuditActions.PROJECT_TIMELINE_BASELINE_RESET]),
+    ]);
+    const events: BaselineEvent[] = [
+      ...rowEvents.map((e) => ({
+        id: e.id,
+        action: (e.action === AuditActions.PROJECT_TIMELINE_ROW_CREATED ? 'created' : 'updated') as BaselineEvent['action'],
+        rowId: e.entityId,
+        at: e.createdAt,
+        by: e.userEmail,
+        details: e.details,
+      })),
+      ...resetEvents.map((e) => ({ id: e.id, action: 'reset' as const, rowId: null, at: e.createdAt, by: e.userEmail, details: e.details })),
+    ];
+    const baselines = buildBaselines(ids, events);
+    const resets = resetEvents
+      .map((e) => ({ at: e.createdAt, by: e.userEmail, reason: (e.details as any)?.reason ?? null, rows: ((e.details as any)?.snapshot || []).length }))
+      .reverse();
+    const firstCreated = rowEvents.find((e) => e.action === AuditActions.PROJECT_TIMELINE_ROW_CREATED);
+    return {
+      // What "planned" means right now: the latest reset, else the first time rows entered the plan.
+      baselineFrom: resets[0]?.at ?? firstCreated?.createdAt ?? null,
+      resets,
+      rows: [...baselines.values()],
+    };
+  }
+
+  // PM only (controller): the saved dates of every row become the new
+  // baseline. One audit entry holds the reason and the snapshot; nothing
+  // else changes and older history stays in the audit log.
+  async resetBaseline(projectId: number, rawReason: string, actor: Actor, tenantId: number) {
+    const reason = String(rawReason ?? '').trim();
+    if (!reason) throw new BadRequestException('A reason is required to reset the baseline.');
+    await this.dataSource.transaction(async (em) => {
+      const project = await this.findProject(projectId, tenantId, em);
+      await this.lockPlan(em, tenantId, projectId);
+      const rows = await em.getRepository(ProjectTimelineRow).find({ where: { tenantId, projectId }, order: { sortOrder: 'ASC', id: 'ASC' } });
+      if (rows.length === 0) throw new BadRequestException('This project has no plan rows to set a baseline for.');
+      await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_BASELINE_RESET, 'Project', projectId, {
+        tenantId,
+        projectId,
+        projectName: project.name,
+        reason,
+        snapshot: rows.map((r) => ({ id: r.id, startDate: r.startDate ?? null, endDate: r.endDate ?? null })),
+      });
+    });
+    return this.getSlip(projectId, tenantId);
   }
 
   // ----------------------------------------------------------------- teams

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { CheckCircle2, ClipboardCopy, AlertTriangle, ArrowRight } from 'lucide-react';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
+import StatusCheck from './StatusCheck';
+import SlipPanel from './SlipPanel';
 import styles from '../../styles/projectTimeline.module.css';
 import { formatDate } from '../../lib/formatDate';
 import { dateRange } from '../../lib/projectTimeline';
@@ -122,7 +124,24 @@ function MiniTimeline({ summary, onFilter }) {
 
 // Read-only Summary above the Project Timeline table. Every card and
 // number sets the table's filters (onFilter) - nothing here edits.
-export default function TimelineSummary({ summary, projectName, unsaved, onFilter, onJump, onCopy }) {
+export default function TimelineSummary({
+  summary,
+  projectName,
+  unsaved,
+  onFilter,
+  onJump,
+  onCopy,
+  check,
+  teamName,
+  canEdit,
+  onFix,
+  onFixAll,
+  slip,
+  slipLoading,
+  slipError,
+  canResetBaseline,
+  onResetBaseline,
+}) {
   const [showAll, setShowAll] = useState(false);
   const { overall, modules, teams, grid, attention, runningLate, totals, today } = summary;
   const filter = (patch) => onFilter({ ...EMPTY_FILTERS, ...patch });
@@ -152,6 +171,10 @@ export default function TimelineSummary({ summary, projectName, unsaved, onFilte
         <StatusBar c={overall} label={`${projectName} overall`} />
         <Legend />
       </div>
+
+      {/* Status check + slip (2026-10-16) */}
+      <StatusCheck check={check} today={today} teamName={teamName} canEdit={canEdit} onFix={onFix} onFixAll={onFixAll} onJump={onJump} />
+      <SlipPanel slip={slip} loading={slipLoading} error={slipError} canReset={canResetBaseline} unsaved={unsaved} onReset={onResetBaseline} onJump={onJump} />
 
       {/* 2. Modules */}
       <h3 className={styles.subTitle}>Modules</h3>

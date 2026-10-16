@@ -14,6 +14,8 @@ import {
   tidyName,
   typoCorrections,
   correctTypos,
+  buildBaselines,
+  slipDays,
 } from '../src/project-timeline/project-timeline-rules';
 
 // Project Timeline rules (2026-10-16), against a small sample file that
@@ -231,5 +233,46 @@ describe('Project Timeline rules', () => {
     expect(preview.missing.map((m) => m.id)).toEqual([12]);
     expect(preview.summary).toEqual(expect.objectContaining({ newRows: 1, changedRows: 2, unchangedRows: 0, missingRows: 1, toImport: 3 }));
     expect(summarizePlan(saved, TODAY).overdue).toBe(1);
+  });
+
+  describe('slip baselines', () => {
+    const created = (id: number, rowId: number, startDate: string | null, endDate: string | null, source = 'import') =>
+      ({ id, action: 'created' as const, rowId, at: `t${id}`, by: 'pm@x', details: { source, values: { startDate, endDate } } });
+    const moved = (id: number, rowId: number, changes: any) => ({ id, action: 'updated' as const, rowId, at: `t${id}`, by: 'pm@x', details: { changes } });
+    const reset = (id: number, snapshot: any[]) => ({ id, action: 'reset' as const, rowId: null, at: `t${id}`, by: 'pm@x', details: { reason: 'r', snapshot } });
+
+    it('keeps the first dates as the baseline and counts end-date moves', () => {
+      const b = buildBaselines([1], [
+        created(1, 1, '2026-07-01', '2026-07-10'),
+        moved(2, 1, { endDate: { old: '2026-07-10', new: '2026-07-20' } }),
+        moved(3, 1, { status: { old: 'To Do', new: 'In Progress' } }),
+        moved(4, 1, { endDate: { old: '2026-07-20', new: '2026-07-15' } }),
+      ]).get(1)!;
+      expect(b).toEqual(expect.objectContaining({ baselineStart: '2026-07-01', baselineEnd: '2026-07-10', source: 'import', endMoves: 2 }));
+      expect(b.lastMove).toEqual({ at: 't4', by: 'pm@x', from: '2026-07-20', to: '2026-07-15' });
+      expect(slipDays(b.baselineEnd, '2026-07-15')).toBe(5);
+      expect(slipDays(b.baselineEnd, '2026-07-05')).toBe(-5);
+      expect(slipDays(null, '2026-07-05')).toBeNull();
+    });
+
+    it('takes the first date given to an empty phase as its baseline - not a move', () => {
+      const b = buildBaselines([1], [created(1, 1, null, null, 'edit'), moved(2, 1, { endDate: { old: null, new: '2026-08-01' }, startDate: { old: null, new: '2026-07-01' } })]).get(1)!;
+      expect(b).toEqual(expect.objectContaining({ baselineStart: '2026-07-01', baselineEnd: '2026-08-01', source: 'added', endMoves: 0, lastMove: null }));
+    });
+
+    it('a reset re-baselines the rows it snapshotted; later rows and moves count from there', () => {
+      const m = buildBaselines([1, 2, 3], [
+        created(1, 1, '2026-07-01', '2026-07-10'),
+        created(2, 2, '2026-07-11', '2026-07-20'),
+        moved(3, 1, { endDate: { old: '2026-07-10', new: '2026-07-30' } }),
+        reset(4, [{ id: 1, startDate: '2026-07-01', endDate: '2026-07-30' }, { id: 2, startDate: '2026-07-11', endDate: '2026-07-20' }, { id: 99, startDate: null, endDate: null }]),
+        moved(5, 2, { endDate: { old: '2026-07-20', new: '2026-07-25' } }),
+        created(6, 3, '2026-08-01', '2026-08-05', 'edit'),
+      ]);
+      expect(m.get(1)).toEqual(expect.objectContaining({ baselineEnd: '2026-07-30', source: 'reset', endMoves: 0, setAt: 't4' }));
+      expect(m.get(2)).toEqual(expect.objectContaining({ baselineEnd: '2026-07-20', source: 'reset', endMoves: 1 }));
+      expect(m.get(3)).toEqual(expect.objectContaining({ baselineEnd: '2026-08-05', source: 'added' }));
+      expect(m.has(99)).toBe(false); // deleted since - ignored
+    });
   });
 });

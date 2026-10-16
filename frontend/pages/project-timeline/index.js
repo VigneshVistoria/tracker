@@ -17,11 +17,13 @@ import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import { formatDate } from '../../lib/formatDate';
 import { isOverdue, matchKeyFor, nameKey, overlapsByRow, rowErrors, tidyName } from '../../lib/projectTimeline';
-import { EMPTY_FILTERS, computeSummary, isFiltering, matchesFilters, summaryText } from '../../lib/projectTimelineSummary';
+import { EMPTY_FILTERS, computeSlip, computeSummary, isFiltering, matchesFilters, statusCheck, summaryText } from '../../lib/projectTimelineSummary';
 
 // Backend mirror: ProjectTimelineController's VIEW_ROLES / EDIT_ROLES.
 const VIEW_ROLES = ['admin', 'program_manager', 'executive'];
 const EDIT_ROLES = ['admin', 'program_manager'];
+// Resetting the slip baseline: ProjectTimelineController BASELINE_ROLES.
+const BASELINE_ROLES = ['program_manager'];
 const FIELDS = ['module', 'phase', 'teamId', 'status', 'startDate', 'endDate', 'sortOrder'];
 const LEAVE_MESSAGE = 'You have unsaved changes to the Project Timeline. Leave without saving?';
 
@@ -50,6 +52,12 @@ export default function ProjectTimelinePage() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [revealKey, setRevealKey] = useState(null);
   const canEdit = !!user && EDIT_ROLES.includes(user.role);
+  const canResetBaseline = !!user && BASELINE_ROLES.includes(user.role);
+  const [slipData, setSlipData] = useState(null);
+  const [slipError, setSlipError] = useState('');
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetReason, setResetReason] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -91,6 +99,20 @@ export default function ProjectTimelinePage() {
       .then(applyPlan)
       .catch((err) => setError(err.message));
   }, [projectId, applyPlan]);
+
+  // Slip baselines (from the audit log) - reloaded whenever the saved plan
+  // changes (load, Save changes, import).
+  useEffect(() => {
+    if (!plan?.project?.id) return undefined;
+    let cancelled = false;
+    setSlipError('');
+    apiFetch(`/project-timeline/projects/${plan.project.id}/slip`)
+      .then((d) => !cancelled && setSlipData(d))
+      .catch((err) => !cancelled && setSlipError(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [plan?.rows, plan?.project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------------------------------------------------- changes
 
@@ -208,6 +230,32 @@ export default function ProjectTimelinePage() {
     setTimeout(() => document.getElementById('timeline-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
+  // Status check fixes: page only, like an inline edit.
+  const fixRow = (key, patch) => update(key, patch);
+  const fixAll = async (keys, patch, label) => {
+    const ok = await confirmAction({
+      title: `${label}?`,
+      message: `${keys.length} phases change on this page only. Nothing is saved until you click Save changes.`,
+      confirmLabel: label,
+    });
+    if (ok) setDraft((prev) => prev.map((r) => (keys.includes(r.key) ? { ...r, ...patch } : r)));
+  };
+
+  const resetBaseline = async () => {
+    setResetting(true);
+    try {
+      const next = await apiFetch(`/project-timeline/projects/${projectId}/baseline/reset`, { method: 'POST', body: JSON.stringify({ reason: resetReason }) });
+      setSlipData(next);
+      setResetOpen(false);
+      setResetReason('');
+      showToast('Baseline reset. Slip now counts from today’s saved dates.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const copySummary = async () => {
     const text = summaryText(summary, project.name);
     try {
@@ -309,6 +357,9 @@ export default function ProjectTimelinePage() {
   const sortedLive = useMemo(() => [...live].sort((a, b) => a.sortOrder - b.sortOrder || (a.id ?? Infinity) - (b.id ?? Infinity)), [live]);
   const moduleCount = new Set(live.map((r) => tidyName(r.module).toLowerCase())).size;
   const summary = useMemo(() => (plan ? computeSummary(sortedLive, plan.teams, plan.today) : null), [sortedLive, plan]);
+  const check = useMemo(() => (plan ? statusCheck(sortedLive, plan.today) : null), [sortedLive, plan]);
+  const slip = useMemo(() => (slipData ? computeSlip(sortedLive, slipData) : null), [sortedLive, slipData]);
+  const teamNameById = useMemo(() => new Map((plan?.teams || []).map((t) => [t.id, t.name])), [plan]);
   const filtering = isFiltering(filters);
   const shownRows = useMemo(() => {
     if (!plan || !filtering) return sortedLive;
@@ -412,6 +463,19 @@ export default function ProjectTimelinePage() {
                   onFilter={applyFilters}
                   onJump={(key) => reveal(sortedLive.find((r) => r.key === key))}
                   onCopy={copySummary}
+                  check={check}
+                  teamName={teamNameById}
+                  canEdit={canEdit}
+                  onFix={fixRow}
+                  onFixAll={fixAll}
+                  slip={slip}
+                  slipLoading={!slipData && !slipError}
+                  slipError={slipError}
+                  canResetBaseline={canResetBaseline}
+                  onResetBaseline={() => {
+                    setResetReason('');
+                    setResetOpen(true);
+                  }}
                 />
               )}
 
@@ -435,6 +499,7 @@ export default function ProjectTimelinePage() {
                 revealKey={revealKey}
                 onRevealed={() => setRevealKey(null)}
                 emptyText={filtering ? 'No phases match these filters.' : undefined}
+                slipByKey={slip?.perRow}
                 teams={plan.teams}
                 today={today}
                 canEdit={canEdit}
@@ -478,6 +543,40 @@ export default function ProjectTimelinePage() {
           )}
         </>
       )}
+
+      <Modal
+        open={resetOpen}
+        onClose={() => !resetting && setResetOpen(false)}
+        title="Reset the slip baseline?"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setResetOpen(false)} disabled={resetting}>
+              Cancel
+            </Button>
+            <Button onClick={resetBaseline} loading={resetting} disabled={resetting || !tidyName(resetReason)}>
+              Reset baseline
+            </Button>
+          </>
+        }
+      >
+        <p className={styles.muted} style={{ marginTop: 0 }}>
+          Every phase’s current saved start and end dates become the new plan, and slip counts from them. The plan itself doesn’t change, and the
+          old baseline stays in the audit log with your name, the time and this reason.
+        </p>
+        <label className={styles.label} htmlFor="timeline-reset-reason">
+          Reason (required)
+        </label>
+        <textarea
+          id="timeline-reset-reason"
+          className={styles.input}
+          rows={3}
+          maxLength={1000}
+          value={resetReason}
+          onChange={(e) => setResetReason(e.target.value)}
+          placeholder="e.g. Steering committee approved the new dates on Oct 20"
+        />
+      </Modal>
 
       <Modal
         open={!!teamModal}

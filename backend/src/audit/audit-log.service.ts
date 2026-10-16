@@ -67,6 +67,8 @@ export const AuditActions = {
   PROJECT_TIMELINE_ROW_DELETED: 'project_timeline_row_deleted',
   PROJECT_TIMELINE_IMPORTED: 'project_timeline_imported',
   PROJECT_TIMELINE_TEAM_CREATED: 'project_timeline_team_created',
+  // PM reset the slip baseline: { reason, snapshot: [{ id, startDate, endDate }] }.
+  PROJECT_TIMELINE_BASELINE_RESET: 'project_timeline_baseline_reset',
   RELEASE_CREATED: 'release_created',
   RELEASE_UPDATED: 'release_updated',
   RELEASE_ITEM_ADDED: 'release_item_added',

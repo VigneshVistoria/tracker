@@ -667,3 +667,78 @@ export function buildPreview(input: { rows: PreviewInputRow[]; saved: PlanRow[];
     },
   };
 }
+
+// ------------------------------------------------------------- baselines
+
+// Slip tracking (2026-10-16). The baseline is the dates a phase had when
+// it first entered the plan (import or "Add"), or - after a PM "Reset
+// baseline" - its dates at the reset. A phase with no date at its baseline
+// takes the first date it is later given. Built only from the audit log
+// (row created/updated entries + project baseline resets), so it needs no
+// table of its own; the audit log keeps every older baseline as history.
+
+export interface BaselineEvent {
+  id: number; // audit_logs.id - events are replayed in this order
+  action: 'created' | 'updated' | 'reset';
+  rowId: number | null; // null for a reset (project-wide)
+  at: string | Date;
+  by: string | null;
+  details: any;
+}
+
+export interface RowBaseline {
+  rowId: number;
+  baselineStart: string | null;
+  baselineEnd: string | null;
+  // 'import' | 'added' (via Save changes) | 'reset'
+  source: string;
+  setAt: string | Date | null;
+  // End-date moves since the baseline, and the latest one.
+  endMoves: number;
+  lastMove: { at: string | Date; by: string | null; from: string | null; to: string | null } | null;
+}
+
+export function buildBaselines(rowIds: number[], events: BaselineEvent[]): Map<number, RowBaseline> {
+  const wanted = new Set(rowIds);
+  const out = new Map<number, RowBaseline>();
+  for (const e of [...events].sort((a, b) => a.id - b.id)) {
+    if (e.action === 'reset') {
+      for (const s of (e.details?.snapshot || []) as { id: number; startDate: string | null; endDate: string | null }[]) {
+        if (!wanted.has(s.id)) continue;
+        out.set(s.id, { rowId: s.id, baselineStart: s.startDate ?? null, baselineEnd: s.endDate ?? null, source: 'reset', setAt: e.at, endMoves: 0, lastMove: null });
+      }
+      continue;
+    }
+    if (e.rowId == null || !wanted.has(e.rowId)) continue;
+    if (e.action === 'created') {
+      const v = e.details?.values || {};
+      out.set(e.rowId, {
+        rowId: e.rowId,
+        baselineStart: v.startDate ?? null,
+        baselineEnd: v.endDate ?? null,
+        source: e.details?.source === 'import' ? 'import' : 'added',
+        setAt: e.at,
+        endMoves: 0,
+        lastMove: null,
+      });
+      continue;
+    }
+    const b = out.get(e.rowId);
+    const c = e.details?.changes || {};
+    if (!b) continue;
+    if (c.startDate && b.baselineStart == null) b.baselineStart = c.startDate.new ?? null;
+    if (c.endDate) {
+      if (b.baselineEnd == null) b.baselineEnd = c.endDate.new ?? null; // first date given - not a move
+      else {
+        b.endMoves += 1;
+        b.lastMove = { at: e.at, by: e.by, from: c.endDate.old ?? null, to: c.endDate.new ?? null };
+      }
+    }
+  }
+  return out;
+}
+
+export function slipDays(baselineEnd: string | null, endDate: string | null): number | null {
+  if (!baselineEnd || !endDate) return null;
+  return Math.round((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${baselineEnd}T00:00:00Z`)) / 86400000);
+}

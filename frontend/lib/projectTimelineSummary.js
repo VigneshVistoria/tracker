@@ -212,3 +212,120 @@ export function matchesFilters(r, f, teamName, today) {
   }
   return true;
 }
+
+// ---------------------------------------------------------- status check
+
+// Statuses that don't fit their dates. Each phase is listed under the
+// first rule it matches. Fixes only change the page (like an inline edit)
+// until Save changes.
+export const STATUS_CHECK_RULES = [
+  {
+    id: 'started',
+    title: 'Should have started',
+    hint: 'To Do, but today is between its start and end dates',
+    match: (r, today) => r.status === 'To Do' && isRunningNow(r, today),
+    open: true,
+    bulk: { label: 'Mark all In Progress', patch: { status: 'In Progress' } },
+    fixes: [{ label: 'Mark In Progress', patch: { status: 'In Progress' } }, { label: 'Change dates', jump: true }],
+  },
+  {
+    id: 'late',
+    title: 'Running late',
+    hint: 'In Progress, but its end date has passed',
+    match: (r, today) => isRunningLate(r, today),
+    open: true,
+    fixes: [{ label: 'Mark Completed', patch: { status: 'Completed' } }, { label: 'Mark Delayed', patch: { status: 'Delayed' } }, { label: 'Change end date', jump: true }],
+  },
+  {
+    id: 'overdue',
+    title: 'Overdue',
+    hint: 'To Do, and its end date has passed',
+    match: (r, today) => isOverdue(r, today),
+    open: false,
+    fixes: [
+      { label: 'Mark In Progress', patch: { status: 'In Progress' } },
+      { label: 'Mark Completed', patch: { status: 'Completed' } },
+      { label: 'Mark Delayed', patch: { status: 'Delayed' } },
+      { label: 'Change end date', jump: true },
+    ],
+  },
+  {
+    id: 'early',
+    title: 'Started early?',
+    hint: 'In Progress, but its start date is still ahead',
+    match: (r, today) => r.status === 'In Progress' && !!r.startDate && r.startDate > today,
+    open: true,
+    fixes: [{ label: 'Mark To Do', patch: { status: 'To Do' } }, { label: 'Change start date', jump: true }],
+  },
+  {
+    id: 'completedEarly',
+    title: 'Completed early?',
+    hint: 'Completed, but its dates are in the future',
+    match: (r, today) => r.status === 'Completed' && ((!!r.endDate && r.endDate > today) || (!!r.startDate && r.startDate > today)),
+    open: true,
+    // "Set end date to today" only when that keeps end >= start.
+    fixes: [{ label: 'Set end date to today', patch: (r, today) => (!r.startDate || r.startDate <= today ? { endDate: today } : null) }, { label: 'Change dates', jump: true }, { label: 'Leave as is', dismiss: true }],
+  },
+];
+
+export function statusCheck(rows, today) {
+  const groups = STATUS_CHECK_RULES.map((rule) => ({ rule, rows: [] }));
+  for (const r of rows) {
+    const g = groups.find(({ rule }) => rule.match(r, today));
+    if (g) g.rows.push(r);
+  }
+  return { groups, total: groups.reduce((n, g) => n + g.rows.length, 0) };
+}
+
+// ----------------------------------------------------------------- slip
+
+const slipBetween = (from, to) => (from && to ? daysBetween(from, to) : null);
+const latest = (dates) => dates.filter(Boolean).sort().pop() || null;
+
+// rows: live rows (draft); slipData: GET /project-timeline/projects/:id/slip.
+// Slip = current end date minus baseline end date, in calendar days.
+export function computeSlip(rows, slipData) {
+  const base = new Map((slipData?.rows || []).map((b) => [b.rowId, b]));
+  const perRow = new Map();
+  for (const r of rows) {
+    const b = r.id != null ? base.get(r.id) : null;
+    if (!b) continue;
+    perRow.set(r.key, { ...b, slip: slipBetween(b.baselineEnd, r.endDate) });
+  }
+  const summarize = (list) => {
+    const withBase = list.filter((r) => perRow.has(r.key));
+    const plannedEnd = latest(withBase.map((r) => perRow.get(r.key).baselineEnd));
+    const currentEnd = latest(withBase.map((r) => r.endDate));
+    const slips = withBase.map((r) => perRow.get(r.key).slip).filter((s) => s != null);
+    return {
+      plannedEnd,
+      currentEnd,
+      slip: slipBetween(plannedEnd, currentEnd),
+      later: slips.filter((s) => s > 0).length,
+      earlier: slips.filter((s) => s < 0).length,
+    };
+  };
+  const modules = new Map();
+  for (const r of rows) {
+    const k = nameKey(r.module);
+    if (!modules.has(k)) modules.set(k, { key: k, name: tidyName(r.module) || 'Untitled module', rows: [] });
+    modules.get(k).rows.push(r);
+  }
+  const mostSlipped = rows
+    .filter((r) => (perRow.get(r.key)?.slip ?? 0) > 0)
+    .sort((a, b) => perRow.get(b.key).slip - perRow.get(a.key).slip || a.sortOrder - b.sortOrder)
+    .slice(0, 5)
+    .map((r) => ({ row: r, ...perRow.get(r.key) }));
+  const overall = summarize(rows);
+  return {
+    perRow,
+    overall,
+    modules: [...modules.values()].map((m) => ({ key: m.key, name: m.name, ...summarize(m.rows) })),
+    mostSlipped,
+    anyMoved: overall.later + overall.earlier > 0 || (overall.slip ?? 0) !== 0,
+    baselineFrom: slipData?.baselineFrom || null,
+    resets: slipData?.resets || [],
+  };
+}
+
+export const formatSlip = (d) => (d == null ? '—' : d === 0 ? '0d' : `${d > 0 ? '+' : '−'}${Math.abs(d)}d`);

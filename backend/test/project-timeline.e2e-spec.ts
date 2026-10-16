@@ -327,4 +327,84 @@ describe('Project Timeline (e2e)', () => {
       expect(preview.summary).toEqual(expect.objectContaining({ errorRows: 0, toImport: 2 }));
     });
   });
+
+  describe('slip tracking and baseline reset', () => {
+    const importSample = async () => (await post(f.users.pm, `/project-timeline/projects/${pA}/import`, { rows: await parseSample() }).expect(201)).body.plan;
+    const slip = async (u = f.users.pm) => (await get(u, `/project-timeline/projects/${pA}/slip`).expect(200)).body;
+    const byPhase = async (plan: any) => new Map(plan.rows.map((r: any) => [r.phase, r]));
+    const resetUrl = () => `/project-timeline/projects/${pA}/baseline/reset`;
+
+    it('401 logged out; slip is view-only (Exec 200, Dev/QA/Client 403); reset is PM only', async () => {
+      await http().get(`/project-timeline/projects/${pA}/slip`).expect(401);
+      await http().post(resetUrl()).send({ reason: 'x' }).expect(401);
+      await slip(f.users.exec);
+      await slip(f.users.admin);
+      for (const u of [f.users.devA, f.users.qaB, f.users.clientA]) {
+        await get(u, `/project-timeline/projects/${pA}/slip`).expect(403);
+        await post(u, resetUrl(), {}).expect(403);
+      }
+      for (const u of [f.users.admin, f.users.exec]) await post(u, resetUrl(), { reason: 'x' }).expect(403);
+      await get(f.users.pmT2, `/project-timeline/projects/${pA}/slip`).expect(404);
+      expect(await audits('project_timeline_baseline_reset')).toHaveLength(0);
+    });
+
+    it('baseline = import dates; edits and re-imports move it; empty-then-set is not a move; deleted rows drop out', async () => {
+      const plan = await importSample();
+      const rows = await byPhase(plan);
+      const s0 = await slip();
+      expect(s0.rows).toHaveLength(11);
+      expect(s0.rows.every((r: any) => r.source === 'import' && r.endMoves === 0)).toBe(true);
+      expect(s0.baselineFrom).toBeTruthy();
+
+      const dm: any = rows.get('Data Migration'); // end 2026-07-24
+      const rehearsal: any = rows.get('Data Migratiaon Rehearsal'); // end empty (typo kept - suggestion not accepted here)
+      const design: any = rows.get('Design');
+      await post(f.users.pm, `/project-timeline/projects/${pA}/changes`, {
+        updates: [
+          { id: dm.id, version: dm.version, endDate: '2026-07-31' },
+          { id: rehearsal.id, version: rehearsal.version, endDate: '2026-11-20' },
+        ],
+        creates: [{ module: 'Medical Claim', phase: 'Hypercare', status: 'To Do', startDate: '2026-12-01', endDate: '2026-12-10' }],
+        deletes: [{ id: design.id, version: design.version }],
+      }).expect(201);
+      // Re-import: the file still says Jul 24 for Data Migration -> moves it back.
+      await post(f.users.pm, `/project-timeline/projects/${pA}/import`, { rows: await parseSample() }).expect(201);
+
+      const s1 = await slip();
+      const b = new Map(s1.rows.map((r: any) => [r.rowId, r]));
+      expect(b.get(dm.id)).toEqual(expect.objectContaining({ baselineEnd: '2026-07-24', endMoves: 2, lastMove: expect.objectContaining({ from: '2026-07-31', to: '2026-07-24', by: f.users.pm.email }) }));
+      // First end date given (Nov 20) became the baseline - not a move; the
+      // re-import (file has no end date) then cleared it: one move, to empty.
+      expect(b.get(rehearsal.id)).toEqual(expect.objectContaining({ baselineEnd: '2026-11-20', endMoves: 1, lastMove: expect.objectContaining({ from: '2026-11-20', to: null }) }));
+      expect(b.has(design.id)).toBe(false);
+      const hypercare = s1.rows.find((r: any) => r.source === 'added');
+      expect(hypercare).toEqual(expect.objectContaining({ baselineEnd: '2026-12-10' }));
+    });
+
+    it('reset needs a reason, is audited with a snapshot, and slip counts from the new baseline', async () => {
+      const plan = await importSample();
+      const dm: any = (await byPhase(plan)).get('Data Migration');
+      await post(f.users.pm, `/project-timeline/projects/${pA}/changes`, { updates: [{ id: dm.id, version: dm.version, endDate: '2026-08-07' }] }).expect(201);
+      expect((await slip()).rows.find((r: any) => r.rowId === dm.id).baselineEnd).toBe('2026-07-24');
+
+      await post(f.users.pm, resetUrl(), { reason: '   ' }).expect(400);
+      await post(f.users.pm, resetUrl(), {}).expect(400);
+      const after = (await post(f.users.pm, resetUrl(), { reason: 'Steering committee approved the new dates' }).expect(201)).body;
+      expect(after.resets).toEqual([expect.objectContaining({ by: f.users.pm.email, reason: 'Steering committee approved the new dates', rows: 11 })]);
+      expect(after.rows.find((r: any) => r.rowId === dm.id)).toEqual(expect.objectContaining({ baselineEnd: '2026-08-07', source: 'reset', endMoves: 0 }));
+      expect(after.baselineFrom).toBe(after.resets[0].at);
+
+      const [entry] = await audits('project_timeline_baseline_reset');
+      expect(entry).toEqual(expect.objectContaining({ userId: f.users.pm.id, userRole: 'program_manager', entityType: 'Project', entityId: pA }));
+      const details = JSON.parse(entry.details);
+      expect(details.reason).toBe('Steering committee approved the new dates');
+      expect(details.snapshot).toHaveLength(11);
+      // Older history is untouched.
+      expect(await audits('project_timeline_row_updated')).toHaveLength(1);
+      // The plan itself is unchanged by a reset.
+      expect((await plan_()).rows.find((r: any) => r.id === dm.id).endDate).toBe('2026-08-07');
+    });
+
+    const plan_ = () => plan();
+  });
 });
