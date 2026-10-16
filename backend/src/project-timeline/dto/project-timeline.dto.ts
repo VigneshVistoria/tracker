@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -136,4 +137,28 @@ export class ExportTimelineDto {
 
   @IsOptional() @IsArray() @ArrayMaxSize(MAX_ROWS) @IsInt({ each: true })
   rowIds?: number[];
+}
+
+// Stage B: "successor starts after predecessor" (+ lagDays gap).
+export class CreateTimelineDependencyDto {
+  @IsInt()
+  @Min(1)
+  predecessorRowId: number;
+
+  @IsInt()
+  @Min(1)
+  successorRowId: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365, { message: 'The gap can be at most 365 days.' })
+  lagDays?: number;
+}
+
+export class UpdateTimelineDependencyDto {
+  @IsInt()
+  @Min(0)
+  @Max(365, { message: 'The gap can be at most 365 days.' })
+  lagDays: number;
 }

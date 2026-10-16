@@ -12,6 +12,8 @@ import TimelineSummary from '../../components/projectTimeline/TimelineSummary';
 import TimelineFilters from '../../components/projectTimeline/TimelineFilters';
 import BulkBar from '../../components/projectTimeline/BulkBar';
 import GanttView from '../../components/projectTimeline/GanttView';
+import DependencyDialog from '../../components/projectTimeline/DependencyDialog';
+import { cascadeShifts, criticalPath, dependencyConflicts } from '../../lib/projectTimelineDeps';
 import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
@@ -56,6 +58,10 @@ export default function ProjectTimelinePage() {
   const canEdit = !!user && EDIT_ROLES.includes(user.role);
   const canResetBaseline = !!user && BASELINE_ROLES.includes(user.role);
   const [slipData, setSlipData] = useState(null);
+  // Stage B: dependency links (saved straight away by DependencyDialog).
+  const [deps, setDeps] = useState([]);
+  const [depsError, setDepsError] = useState('');
+  const [depRowKey, setDepRowKey] = useState(null);
   const [slipError, setSlipError] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [resetReason, setResetReason] = useState('');
@@ -122,6 +128,20 @@ export default function ProjectTimelinePage() {
     apiFetch(`/project-timeline/projects/${plan.project.id}/slip`)
       .then((d) => !cancelled && setSlipData(d))
       .catch((err) => !cancelled && setSlipError(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [plan?.rows, plan?.project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dependency links - reloaded with the saved plan (a deleted phase takes
+  // its links with it).
+  useEffect(() => {
+    if (!plan?.project?.id) return undefined;
+    let cancelled = false;
+    setDepsError('');
+    apiFetch(`/project-timeline/projects/${plan.project.id}/dependencies`)
+      .then((d) => !cancelled && setDeps(d))
+      .catch((err) => !cancelled && setDepsError(err.message));
     return () => {
       cancelled = true;
     };
@@ -437,6 +457,37 @@ export default function ProjectTimelinePage() {
     const names = new Map(plan.teams.map((t) => [t.id, t.name]));
     return sortedLive.filter((r) => matchesFilters(r, filters, names, plan.today));
   }, [sortedLive, filters, filtering, plan]);
+  // Stage B, on the page's dates (unsaved edits included).
+  const conflicts = useMemo(() => dependencyConflicts(sortedLive, deps), [sortedLive, deps]);
+  const shifts = useMemo(() => cascadeShifts(sortedLive, deps), [sortedLive, deps]);
+  const critical = useMemo(() => criticalPath(sortedLive, deps), [sortedLive, deps]);
+  const depCountById = useMemo(() => {
+    const m = new Map();
+    for (const d of deps) for (const id of [d.predecessorRowId, d.successorRowId]) m.set(id, (m.get(id) || 0) + 1);
+    return m;
+  }, [deps]);
+  const depRow = depRowKey ? live.find((r) => r.key === depRowKey) : null;
+
+  // "Shift them too": every phase that starts too early moves later by just
+  // enough (length kept), and so on down the chain - page only, like any edit.
+  const applyShifts = async () => {
+    const ok = await confirmAction({
+      title: `Move ${plural(shifts.length, 'phase')} later?`,
+      message: `${shifts
+        .slice(0, 6)
+        .map((s) => {
+          const r = live.find((x) => x.id === s.id);
+          return `${r?.phase} +${s.days}d`;
+        })
+        .join(', ')}${shifts.length > 6 ? ', …' : ''}. Nothing is saved until you click Save changes.`,
+      confirmLabel: 'Move them',
+    });
+    if (!ok) return;
+    const byId = new Map(shifts.map((s) => [s.id, s]));
+    setDraft((prev) => prev.map((r) => (r.id != null && byId.has(r.id) && !r.deleted ? { ...r, startDate: byId.get(r.id).startDate, endDate: byId.get(r.id).endDate } : r)));
+    showToast(`${plural(shifts.length, 'phase')} moved later ${pendingNote}.`, 'success', 7000);
+  };
+
   const hiddenChanges = filtering ? [...changes.dirtyKeys].filter((k) => !shownRows.some((r) => r.key === k)).length : 0;
 
   // Rows that leave the table (filtered out, deleted, discarded) are unticked.
@@ -563,6 +614,36 @@ export default function ProjectTimelinePage() {
                 />
               )}
 
+              {depsError && (
+                <div className={`${styles.notice} ${styles.noticeError}`} role="alert">
+                  Couldn’t load dependencies: {depsError}
+                </div>
+              )}
+              {conflicts.length > 0 && (
+                <div className={styles.conflictBanner} role="status">
+                  <div className={styles.conflictText}>
+                    <strong>
+                      {plural(conflicts.length, 'phase')} start{conflicts.length === 1 ? 's' : ''} before the phase{conflicts.length === 1 ? '' : 's'} they
+                      depend on allow{conflicts.length === 1 ? 's' : ''}.
+                    </strong>
+                    <ul>
+                      {conflicts.slice(0, 5).map((c) => (
+                        <li key={`${c.dep.predecessorRowId}-${c.dep.successorRowId}`}>
+                          {c.successor.phase} ({c.successor.module}) starts {formatDate(c.successor.startDate)}, {c.daysEarly} day
+                          {c.daysEarly === 1 ? '' : 's'} before “{c.predecessor.phase}” allows ({formatDate(c.earliest)}).
+                        </li>
+                      ))}
+                      {conflicts.length > 5 && <li>…and {conflicts.length - 5} more.</li>}
+                    </ul>
+                  </div>
+                  {canEdit && shifts.length > 0 && (
+                    <Button variant="secondary" onClick={applyShifts}>
+                      Shift {plural(shifts.length, 'phase')} to fit
+                    </Button>
+                  )}
+                </div>
+              )}
+
               <div id="timeline-table">
                 {live.length > 0 && (
                   <div className={styles.viewSwitch} role="group" aria-label="View">
@@ -601,6 +682,10 @@ export default function ProjectTimelinePage() {
                     setView('table');
                     reveal(row);
                   }}
+                  deps={deps}
+                  conflicts={conflicts}
+                  critical={critical}
+                  onDependencies={(row) => setDepRowKey(row.key)}
                 />
               ) : (
               <TimelineTable
@@ -626,6 +711,8 @@ export default function ProjectTimelinePage() {
                   setTeamName('');
                   setTeamModal({ rowKey });
                 }}
+                onDependencies={(key) => setDepRowKey(key)}
+                depCountById={depCountById}
               />
               )}
 
@@ -662,6 +749,10 @@ export default function ProjectTimelinePage() {
             </>
           )}
         </>
+      )}
+
+      {depRow && depRow.id != null && (
+        <DependencyDialog row={depRow} rows={sortedLive} deps={deps} projectId={projectId} canEdit={canEdit} onClose={() => setDepRowKey(null)} onDepsChanged={setDeps} />
       )}
 
       <Modal

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProjectTimelineRow } from './project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline-team.entity';
+import { ProjectTimelineDependency } from './project-timeline-dependency.entity';
 import { ProjectTimelineService } from './project-timeline.service';
 import { ProjectTimelineController } from './project-timeline.controller';
 import { Project } from '../projects/project.entity';
@@ -11,7 +12,7 @@ import { AuditModule } from '../audit/audit.module';
 import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProjectTimelineRow, ProjectTimelineTeam, Project, TeamSettings]), GuardsModule, AuditModule, UsersModule],
+  imports: [TypeOrmModule.forFeature([ProjectTimelineRow, ProjectTimelineTeam, ProjectTimelineDependency, Project, TeamSettings]), GuardsModule, AuditModule, UsersModule],
   controllers: [ProjectTimelineController],
   providers: [ProjectTimelineService],
 })

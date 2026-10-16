@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Link2, Plus, Trash2 } from 'lucide-react';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import styles from '../../styles/projectTimeline.module.css';
@@ -103,7 +103,7 @@ function EditableCell({ kind, value, display, label, canEdit, onCommit, options,
 // "Go to row") opens that row's module, scrolls to it and focuses it.
 // selected/onSelect (editors only): the tick boxes for bulk edit -
 // onSelect(keys, checked) for one row or a whole module.
-export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, selected, onSelect, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
+export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, selected, onSelect, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam, onDependencies, depCountById }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [flashKey, setFlashKey] = useState(null);
 
@@ -317,6 +317,18 @@ export default function TimelineTable({ rows, teams, today, canEdit, canReorder 
                             >
                               <ArrowDown size={16} aria-hidden="true" />
                             </button>
+                            {onDependencies && (
+                              <button
+                                type="button"
+                                className={`${styles.iconButton} ${depCountById?.get(r.id) ? styles.iconButtonOn : ''}`}
+                                aria-label={`Dependencies of ${r.phase || 'row'}${depCountById?.get(r.id) ? ` (${depCountById.get(r.id)})` : ''}`}
+                                title={r.id == null ? 'Save the new phase first to add dependencies' : 'Dependencies'}
+                                disabled={r.id == null}
+                                onClick={() => onDependencies(r.key)}
+                              >
+                                <Link2 size={16} aria-hidden="true" />
+                              </button>
+                            )}
                             <button type="button" className={styles.iconButton} aria-label={`Duplicate ${r.phase || 'row'}`} title="Duplicate" onClick={() => onDuplicate(r.key)}>
                               <Copy size={16} aria-hidden="true" />
                             </button>

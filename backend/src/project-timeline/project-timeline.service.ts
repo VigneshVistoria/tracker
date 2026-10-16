@@ -6,6 +6,8 @@ import { stringify } from 'csv-stringify/sync';
 import ExcelJS from 'exceljs';
 import { ProjectTimelineRow } from './project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline-team.entity';
+import { ProjectTimelineDependency } from './project-timeline-dependency.entity';
+import { wouldCreateCycle } from './project-timeline-dependencies';
 import {
   EXPORT_INFO_COLUMNS,
   TIMELINE_COLUMNS,
@@ -24,7 +26,7 @@ import {
   summarizePlan,
   tidyName,
 } from './project-timeline-rules';
-import { ApplyTimelineImportDto, ExportTimelineDto, ParseTimelineFileDto, PreviewTimelineImportDto, SaveTimelineChangesDto } from './dto/project-timeline.dto';
+import { ApplyTimelineImportDto, CreateTimelineDependencyDto, ExportTimelineDto, ParseTimelineFileDto, PreviewTimelineImportDto, SaveTimelineChangesDto } from './dto/project-timeline.dto';
 import { parseSpreadsheet } from '../test-cases/test-case-spreadsheet';
 import { Project } from '../projects/project.entity';
 import { TeamSettings } from '../team-settings/team-settings.entity';
@@ -48,6 +50,7 @@ export class ProjectTimelineService {
   constructor(
     @InjectRepository(ProjectTimelineRow) private rowsRepository: Repository<ProjectTimelineRow>,
     @InjectRepository(ProjectTimelineTeam) private teamsRepository: Repository<ProjectTimelineTeam>,
+    @InjectRepository(ProjectTimelineDependency) private depsRepository: Repository<ProjectTimelineDependency>,
     @InjectRepository(Project) private projectsRepository: Repository<Project>,
     @InjectRepository(TeamSettings) private teamSettingsRepository: Repository<TeamSettings>,
     private dataSource: DataSource,
@@ -583,6 +586,95 @@ export class ProjectTimelineService {
       endDate: row.endDate ?? null,
       order: row.sortOrder,
     } as Record<Field, string | number | null>;
+  }
+
+  // ---------------------------------------------------- dependencies (B)
+
+  async listDependencies(projectId: number, tenantId: number, em?: EntityManager) {
+    await this.findProject(projectId, tenantId, em);
+    const repo = em ? em.getRepository(ProjectTimelineDependency) : this.depsRepository;
+    const deps = await repo.find({ where: { tenantId, projectId }, order: { id: 'ASC' } });
+    return deps.map((d) => ({ id: d.id, predecessorRowId: d.predecessorRowId, successorRowId: d.successorRowId, lagDays: d.lagDays, createdAt: d.createdAt }));
+  }
+
+  // Both rows must be in this project's plan; no duplicates, no loops.
+  // Serialised with the plan lock, so two adds can't race into a loop.
+  async addDependency(projectId: number, dto: CreateTimelineDependencyDto, actor: Actor, tenantId: number) {
+    return this.dataSource.transaction(async (em) => {
+      await this.findProject(projectId, tenantId, em);
+      await this.lockPlan(em, tenantId, projectId);
+      const [pred, succ] = await Promise.all([dto.predecessorRowId, dto.successorRowId].map((id) => this.findPlanRow(em, id, projectId, tenantId)));
+      if (pred.id === succ.id) throw new BadRequestException('A phase can\'t depend on itself.');
+      const repo = em.getRepository(ProjectTimelineDependency);
+      const existing = await repo.find({ where: { tenantId, projectId } });
+      if (existing.some((d) => d.predecessorRowId === pred.id && d.successorRowId === succ.id)) {
+        throw new ConflictException(`“${succ.phase}” already starts after “${pred.phase}”.`);
+      }
+      if (wouldCreateCycle(existing, pred.id, succ.id)) {
+        throw new BadRequestException(`That would make a loop: “${pred.phase}” already depends (directly or through other phases) on “${succ.phase}”.`);
+      }
+      const lagDays = dto.lagDays ?? 0;
+      const saved = await repo.save(repo.create({ tenantId, projectId, predecessorRowId: pred.id, successorRowId: succ.id, lagDays, createdByUserId: actor.id }));
+      await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_DEPENDENCY_ADDED, 'ProjectTimelineDependency', saved.id, {
+        projectId,
+        predecessor: { id: pred.id, module: pred.module, phase: pred.phase },
+        successor: { id: succ.id, module: succ.module, phase: succ.phase },
+        lagDays,
+      });
+      return this.listDependencies(projectId, tenantId, em);
+    });
+  }
+
+  async updateDependency(projectId: number, depId: number, lagDays: number, actor: Actor, tenantId: number) {
+    return this.dataSource.transaction(async (em) => {
+      await this.findProject(projectId, tenantId, em);
+      await this.lockPlan(em, tenantId, projectId);
+      const repo = em.getRepository(ProjectTimelineDependency);
+      const dep = await repo.findOne({ where: { id: depId, tenantId, projectId } });
+      if (!dep) throw new NotFoundException('Dependency not found.');
+      if (dep.lagDays !== lagDays) {
+        const old = dep.lagDays;
+        dep.lagDays = lagDays;
+        await repo.save(dep);
+        await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_DEPENDENCY_UPDATED, 'ProjectTimelineDependency', dep.id, {
+          projectId,
+          ...(await this.depNames(em, dep, projectId, tenantId)),
+          lagDays: { old, new: lagDays },
+        });
+      }
+      return this.listDependencies(projectId, tenantId, em);
+    });
+  }
+
+  async removeDependency(projectId: number, depId: number, actor: Actor, tenantId: number) {
+    return this.dataSource.transaction(async (em) => {
+      await this.findProject(projectId, tenantId, em);
+      await this.lockPlan(em, tenantId, projectId);
+      const repo = em.getRepository(ProjectTimelineDependency);
+      const dep = await repo.findOne({ where: { id: depId, tenantId, projectId } });
+      if (!dep) throw new NotFoundException('Dependency not found.');
+      const names = await this.depNames(em, dep, projectId, tenantId);
+      await repo.delete({ id: dep.id });
+      await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_DEPENDENCY_REMOVED, 'ProjectTimelineDependency', dep.id, {
+        projectId,
+        ...names,
+        lagDays: dep.lagDays,
+      });
+      return this.listDependencies(projectId, tenantId, em);
+    });
+  }
+
+  private async findPlanRow(em: EntityManager, id: number, projectId: number, tenantId: number) {
+    const row = await em.getRepository(ProjectTimelineRow).findOne({ where: { id, projectId, tenantId } });
+    if (!row) throw new BadRequestException(`Phase #${id} is not in this project's plan.`);
+    return row;
+  }
+
+  private async depNames(em: EntityManager, dep: ProjectTimelineDependency, projectId: number, tenantId: number) {
+    const rows = await em.getRepository(ProjectTimelineRow).find({ where: { projectId, tenantId } });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const name = (id: number) => ({ id, module: byId.get(id)?.module ?? null, phase: byId.get(id)?.phase ?? null });
+    return { predecessor: name(dep.predecessorRowId), successor: name(dep.successorRowId) };
   }
 
   private diffValues(before: Record<Field, unknown>, after: Record<Field, unknown>) {

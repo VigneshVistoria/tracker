@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Crosshair, PencilLine } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Crosshair, Link2, PencilLine, Route } from 'lucide-react';
 import { formatDate } from '../../lib/formatDate';
 import { groupByModule, isOverdue } from '../../lib/projectTimeline';
 import { formatSlip } from '../../lib/projectTimelineSummary';
+import { earliestStart } from '../../lib/projectTimelineDeps';
 import { ZOOMS, barSpan, chartRange, dayNumber, dragDates, monthBands, tickMarks, zoomPx } from '../../lib/projectTimelineGantt';
 import styles from '../../styles/timelineGantt.module.css';
 
@@ -15,6 +16,8 @@ import styles from '../../styles/timelineGantt.module.css';
 // end date.
 // Every change goes through the page's onChange - the same unsaved-changes
 // buffer as a table edit - so nothing is saved until "Save changes".
+// Stage B adds dependency arrows (red when the later phase starts too
+// early), the critical path highlight and a links button per phase.
 
 // Matches --label-w in timelineGantt.module.css (desktop), for scrolling.
 const LABEL_WIDTH = 280;
@@ -45,11 +48,14 @@ function Legend() {
       <li><span className={`${styles.swatch} ${styles.barTodo} ${styles.barOverdue}`} aria-hidden="true" />Overdue</li>
       <li><span className={`${styles.swatch} ${styles.swatchBaseline}`} aria-hidden="true" />Planned (baseline)</li>
       <li><span className={styles.swatchToday} aria-hidden="true" />Today</li>
+      <li><span className={`${styles.swatch} ${styles.swatchCritical}`} aria-hidden="true" />Critical path</li>
+      <li><span className={styles.swatchArrow} aria-hidden="true" />Starts after</li>
+      <li><span className={`${styles.swatchArrow} ${styles.swatchArrowBad}`} aria-hidden="true" />Starts too early</li>
     </ul>
   );
 }
 
-function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, preview, onDragStart, onKeyMove }) {
+function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, preview, critical, early, onDragStart, onKeyMove }) {
   const dates = preview || row;
   const span = barSpan(dates.startDate, dates.endDate);
   const base = baseline && barSpan(baseline.baselineStart, baseline.baselineEnd);
@@ -64,6 +70,8 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
     overdue ? 'overdue' : null,
     overlapCount ? `overlaps ${overlapCount} phase${overlapCount === 1 ? '' : 's'}` : null,
     moved && baseline?.slip != null ? `slip ${formatSlip(baseline.slip)} against the plan` : null,
+    critical ? 'on the critical path' : null,
+    early ? `starts ${early} day${early === 1 ? '' : 's'} before a phase it depends on allows` : null,
     dirty ? 'unsaved change' : null,
   ]
     .filter(Boolean)
@@ -88,6 +96,7 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
             overdue ? styles.barOverdue : '',
             span.partial ? styles.barPartial : '',
             dirty ? styles.barDirty : '',
+            critical ? styles.barCritical : '',
             canEdit ? styles.barEditable : '',
           ].join(' ')}
           style={{ left: (span.start - range.start) * px, width: Math.max((span.end - span.start + 1) * px, 6) }}
@@ -111,11 +120,26 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
   );
 }
 
-export default function GanttView({ rows, today, teams, canEdit, overlaps, slipByKey, dirtyKeys, onChange, onEditInTable }) {
+export default function GanttView({ rows, today, teams, canEdit, overlaps, slipByKey, dirtyKeys, onChange, onEditInTable, deps = [], conflicts = [], critical, onDependencies }) {
   const [zoom, setZoom] = useState('month');
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [drag, setDrag] = useState(null); // { key, mode, startX, delta, moved }
   const scrollRef = useRef(null);
+  const canvasRef = useRef(null);
+  const rowEls = useRef(new Map());
+  const [rowY, setRowY] = useState(() => new Map());
+  const [showCritical, setShowCritical] = useState(true);
+  const criticalIds = useMemo(() => new Set(showCritical ? critical?.chain || [] : []), [critical, showCritical]);
+  const earlyById = useMemo(() => {
+    const m = new Map();
+    for (const c of conflicts) m.set(c.successor.id, Math.max(m.get(c.successor.id) || 0, c.daysEarly));
+    return m;
+  }, [conflicts]);
+  const depCount = useMemo(() => {
+    const m = new Map();
+    for (const d of deps) for (const id of [d.predecessorRowId, d.successorRowId]) m.set(id, (m.get(id) || 0) + 1);
+    return m;
+  }, [deps]);
   const px = zoomPx(zoom);
   const teamName = useMemo(() => new Map((teams || []).map((t) => [t.id, t.name])), [teams]);
   const range = useMemo(() => chartRange(rows, slipByKey, today, zoom), [rows, slipByKey, today, zoom]);
@@ -188,6 +212,47 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
 
   const preview = (row) => (drag && drag.key === row.key && drag.moved ? dragDates(row, drag.mode, drag.delta) : null);
 
+  // Row centres (px from the top of the chart) for the arrows - measured,
+  // since modules fold and filters hide rows.
+  useLayoutEffect(() => {
+    const next = new Map();
+    for (const [key, el] of rowEls.current) if (el) next.set(key, el.offsetTop + el.offsetHeight / 2);
+    setRowY((prev) => (prev.size === next.size && [...next].every(([k, v]) => prev.get(k) === v) ? prev : next));
+  });
+
+  const labelPx = () => (canvasRef.current ? parseFloat(getComputedStyle(canvasRef.current).getPropertyValue('--label-w')) || LABEL_WIDTH : LABEL_WIDTH);
+  const arrows = (() => {
+    const byId = new Map(rows.filter((r) => r.id != null).map((r) => [r.id, r]));
+    const lx = labelPx();
+    const out = [];
+    for (const d of deps) {
+      const p = byId.get(d.predecessorRowId);
+      const s = byId.get(d.successorRowId);
+      if (!p || !s || !rowY.has(p.key) || !rowY.has(s.key)) continue;
+      const pd = preview(p) || p;
+      const sd = preview(s) || s;
+      const ps = barSpan(pd.startDate, pd.endDate);
+      const ss = barSpan(sd.startDate, sd.endDate);
+      if (!ps || !ss) continue;
+      const x1 = lx + (ps.end - range.start + 1) * px;
+      const x2 = lx + (ss.start - range.start) * px;
+      const y1 = rowY.get(p.key);
+      const y2 = rowY.get(s.key);
+      const bad = !!pd.endDate && !!sd.startDate && sd.startDate < earliestStart(pd.endDate, d.lagDays);
+      const onPath = criticalIds.has(p.id) && criticalIds.has(s.id);
+      let path;
+      if (x2 >= x1 + 12) {
+        const xm = x1 + 6;
+        path = `M${x1},${y1} H${xm} V${y2} H${x2 - 1}`;
+      } else {
+        const ym = y1 + (y2 > y1 ? 17 : -17);
+        path = `M${x1},${y1} H${x1 + 6} V${ym} H${x2 - 8} V${y2} H${x2 - 1}`;
+      }
+      out.push({ key: `${d.predecessorRowId}-${d.successorRowId}`, path, bad, onPath });
+    }
+    return out;
+  })();
+
   if (rows.length === 0) return <p className={styles.empty}>No phases to show.</p>;
 
   return (
@@ -205,6 +270,19 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
         </button>
         <Legend />
       </div>
+      {critical?.projectEnd && (
+        <p className={styles.criticalLine}>
+          <Route size={16} aria-hidden="true" />
+          <span>
+            Project end <strong>{formatDate(critical.projectEnd)}</strong>
+            {' · '}critical path {critical.chain.length} phase{critical.chain.length === 1 ? '' : 's'}
+            {deps.length === 0 && ' (add dependencies to see the chain that drives it)'}
+          </span>
+          <button type="button" className={styles.todayButton} aria-pressed={showCritical} onClick={() => setShowCritical((v) => !v)}>
+            {showCritical ? 'Hide highlight' : 'Highlight'}
+          </button>
+        </p>
+      )}
       {canEdit && (
         <p className={styles.hint}>
           Drag a bar to move a phase, or drag its ends to change one date. With a bar selected, the left and right arrow keys move it a day, and
@@ -213,7 +291,22 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
       )}
 
       <div className={`${styles.scroll} ${drag?.moved ? styles.dragging : ''}`} ref={scrollRef}>
-        <div className={styles.canvas} style={{ width: `calc(var(--label-w) + ${trackWidth}px)` }}>
+        <div className={styles.canvas} ref={canvasRef} style={{ width: `calc(var(--label-w) + ${trackWidth}px)` }}>
+          {arrows.length > 0 && (
+            <svg className={styles.arrows} aria-hidden="true">
+              <defs>
+                <marker id="gantt-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 z" className={styles.arrowHead} />
+                </marker>
+                <marker id="gantt-arrow-bad" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 z" className={styles.arrowHeadBad} />
+                </marker>
+              </defs>
+              {arrows.map((a) => (
+                <path key={a.key} d={a.path} className={`${styles.arrow} ${a.bad ? styles.arrowBad : ''} ${a.onPath ? styles.arrowCritical : ''}`} markerEnd={`url(#${a.bad ? 'gantt-arrow-bad' : 'gantt-arrow'})`} />
+              ))}
+            </svg>
+          )}
           {/* Header: months + ticks */}
           <div className={styles.headRow}>
             <div className={styles.corner}>Phase</div>
@@ -273,12 +366,24 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
 
                 {isOpen &&
                   g.rows.map((r) => (
-                    <div key={r.key} className={styles.row}>
+                    <div key={r.key} className={styles.row} ref={(el) => (el ? rowEls.current.set(r.key, el) : rowEls.current.delete(r.key))}>
                       <div className={styles.label}>
                         <span className={styles.phase} title={r.phase}>
                           {r.phase || 'New phase'}
                         </span>
                         <span className={styles.phaseMeta}>{r.teamId != null ? teamName.get(r.teamId) : 'No team'}</span>
+                        {onDependencies && r.id != null && (
+                          <button
+                            type="button"
+                            className={`${styles.editLink} ${depCount.get(r.id) ? styles.linkHas : ''}`}
+                            onClick={() => onDependencies(r)}
+                            aria-label={`Dependencies of ${r.phase || 'new phase'}${depCount.get(r.id) ? ` (${depCount.get(r.id)})` : ''}`}
+                            title="Dependencies"
+                          >
+                            <Link2 size={14} aria-hidden="true" />
+                            {depCount.get(r.id) ? <span className={styles.linkCount}>{depCount.get(r.id)}</span> : null}
+                          </button>
+                        )}
                         {onEditInTable && (
                           <button type="button" className={styles.editLink} onClick={() => onEditInTable(r)} aria-label={`Show ${r.phase || 'new phase'} in the table`} title="Show in the table">
                             <PencilLine size={14} aria-hidden="true" />
@@ -296,6 +401,8 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                           baseline={slipByKey?.get(r.key)}
                           dirty={dirtyKeys?.has(r.key)}
                           preview={preview(r)}
+                          critical={r.id != null && criticalIds.has(r.id)}
+                          early={r.id != null ? earlyById.get(r.id) : null}
                           onDragStart={onDragStart}
                           onKeyMove={onKeyMove}
                         />

@@ -492,4 +492,87 @@ describe('Project Timeline (e2e)', () => {
       if (other) await post(f.users.pm, `/project-timeline/projects/${other.id}/export`, { format: 'csv', rowIds: [saved.rows[0].id] }).expect(400);
     });
   });
+
+  // Stage B (2026-10-16): "starts after" links between phases.
+  describe('dependencies', () => {
+    const URL = () => `/project-timeline/projects/${pA}/dependencies`;
+    const send = (method: 'post' | 'patch' | 'delete', u: FixtureUser, url: string, body: any = {}) => (http() as any)[method](url).set(auth(u)).send(body);
+    const ids: Record<string, number> = {};
+    const addRow = async (key: string, projectId: number, tenantId = f.tenants.t1) => {
+      const res = await ds.query(
+        `INSERT INTO project_timeline_rows ("tenantId", "projectId", module, phase, "matchKey", status, "startDate", "endDate", "sortOrder")
+         VALUES ($1, $2, 'Medical Claim', $3, $4, 'To Do', '2026-10-01', '2026-10-10', 1) RETURNING id`,
+        [tenantId, projectId, `Phase ${key}`, `medical claim|phase ${key.toLowerCase()}`],
+      );
+      ids[key] = res[0].id;
+    };
+
+    beforeEach(async () => {
+      await ds.query(`DELETE FROM project_timeline_dependencies`);
+      await ds.query(`DELETE FROM project_timeline_rows`);
+      for (const k of ['A', 'B', 'C']) await addRow(k, pA);
+      await addRow('OtherProject', f.projects.pB);
+      await addRow('OtherTenant', f.projects.pT2, f.tenants.t2);
+    });
+
+    it('401 logged out; 403 for Developer/QA/Client; Executive reads but cannot change', async () => {
+      await http().get(URL()).expect(401);
+      await http().post(URL()).send({}).expect(401);
+      for (const u of [f.users.devA, f.users.qaB, f.users.clientA]) {
+        await get(u, URL()).expect(403);
+        await post(u, URL(), {}).expect(403); // 403 before the body is checked
+        await send('patch', u, `${URL()}/1`, {}).expect(403);
+        await send('delete', u, `${URL()}/1`).expect(403);
+      }
+      await get(f.users.exec, URL()).expect(200);
+      await post(f.users.exec, URL(), { predecessorRowId: ids.A, successorRowId: ids.B }).expect(403);
+      expect(await ds.query(`SELECT * FROM project_timeline_dependencies`)).toEqual([]);
+    });
+
+    it('PM adds one (audited with names); Admin changes the gap and removes it (audited); list follows', async () => {
+      const added = (await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.B }).expect(201)).body;
+      expect(added).toEqual([expect.objectContaining({ predecessorRowId: ids.A, successorRowId: ids.B, lagDays: 0 })]);
+      const a = (await audits('project_timeline_dependency_added'))[0];
+      expect(a).toMatchObject({ userId: f.users.pm.id, entityType: 'ProjectTimelineDependency', entityId: added[0].id });
+      expect(JSON.parse(a.details)).toMatchObject({ predecessor: { id: ids.A, phase: 'Phase A' }, successor: { id: ids.B, phase: 'Phase B' }, lagDays: 0 });
+
+      const updated = (await send('patch', f.users.admin, `${URL()}/${added[0].id}`, { lagDays: 3 }).expect(200)).body;
+      expect(updated[0].lagDays).toBe(3);
+      expect(JSON.parse((await audits('project_timeline_dependency_updated'))[0].details).lagDays).toEqual({ old: 0, new: 3 });
+      await send('patch', f.users.admin, `${URL()}/${added[0].id}`, { lagDays: 3 }).expect(200);
+      expect(await audits('project_timeline_dependency_updated')).toHaveLength(1); // no change, no audit
+
+      expect((await send('delete', f.users.admin, `${URL()}/${added[0].id}`).expect(200)).body).toEqual([]);
+      expect(await audits('project_timeline_dependency_removed')).toHaveLength(1);
+      expect((await get(f.users.exec, URL()).expect(200)).body).toEqual([]);
+    });
+
+    it('refuses self-links, duplicates, loops, bad gaps, and phases from another project or tenant', async () => {
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.A }).expect(400);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.B }).expect(201);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.B }).expect(409);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.B, successorRowId: ids.C }).expect(201);
+      expect((await post(f.users.pm, URL(), { predecessorRowId: ids.C, successorRowId: ids.A }).expect(400)).body.message).toMatch(/loop/);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.C, lagDays: 366 }).expect(400);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.C, lagDays: -1 }).expect(400);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.OtherProject }).expect(400);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.OtherTenant, successorRowId: ids.A }).expect(400);
+      await get(f.users.pmT2, URL()).expect(404);
+      const list = (await get(f.users.pm, URL()).expect(200)).body;
+      expect(list).toHaveLength(2);
+      await send('delete', f.users.pmT2, `/project-timeline/projects/${f.projects.pT2}/dependencies/${list[0].id}`).expect(404);
+      expect(await audits('project_timeline_dependency_added')).toHaveLength(2);
+    });
+
+    it('deleting a phase through Save changes takes its links with it; nothing else changes', async () => {
+      await post(f.users.pm, URL(), { predecessorRowId: ids.A, successorRowId: ids.B }).expect(201);
+      await post(f.users.pm, URL(), { predecessorRowId: ids.B, successorRowId: ids.C }).expect(201);
+      const before = (await plan()).rows;
+      const b = before.find((r: any) => r.id === ids.B);
+      await post(f.users.pm, `/project-timeline/projects/${pA}/changes`, { creates: [], updates: [], deletes: [{ id: b.id, version: b.version }] }).expect(201);
+      expect((await get(f.users.pm, URL()).expect(200)).body).toEqual([]);
+      const after = (await plan()).rows;
+      expect(after.map((r: any) => [r.id, r.startDate, r.endDate])).toEqual(before.filter((r: any) => r.id !== ids.B).map((r: any) => [r.id, r.startDate, r.endDate]));
+    });
+  });
 });

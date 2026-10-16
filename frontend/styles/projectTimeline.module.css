@@ -1046,3 +1046,103 @@
   color: var(--ds-text-primary);
   box-shadow: var(--ds-shadow-xs);
 }
+
+/* Stage B: dependencies dialog + conflict banner (2026-10-16). */
+.depHeading {
+  margin: var(--ds-space-4) 0 var(--ds-space-2);
+  font-family: var(--ds-font-body);
+  letter-spacing: normal;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+
+.depList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.depItem {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+}
+
+.depMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--ds-text-sm);
+}
+
+.depName {
+  color: var(--ds-text-primary);
+  font-weight: var(--ds-weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.depGap {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+.depGap input {
+  width: 72px;
+}
+
+.depAdd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-3);
+}
+
+.depAddPick {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.depAddGap {
+  width: 110px;
+}
+
+.conflictBanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--ds-space-2) var(--ds-space-4);
+  margin: var(--ds-space-3) 0;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-color-error);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-color-error-tint);
+  color: var(--ds-color-error-dark);
+  font-size: var(--ds-text-sm);
+}
+
+.conflictBanner ul {
+  margin: var(--ds-space-1) 0 0;
+  padding-left: var(--ds-space-5);
+}
+
+.conflictText {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.iconButtonOn {
+  color: var(--ds-text-link);
+}

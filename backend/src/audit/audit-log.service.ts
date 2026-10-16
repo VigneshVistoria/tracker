@@ -69,6 +69,11 @@ export const AuditActions = {
   PROJECT_TIMELINE_TEAM_CREATED: 'project_timeline_team_created',
   // PM reset the slip baseline: { reason, snapshot: [{ id, startDate, endDate }] }.
   PROJECT_TIMELINE_BASELINE_RESET: 'project_timeline_baseline_reset',
+  // Stage B dependencies. details: { predecessor: {id, module, phase},
+  // successor: {...}, lagDays } (+ { old, new } lagDays on update).
+  PROJECT_TIMELINE_DEPENDENCY_ADDED: 'project_timeline_dependency_added',
+  PROJECT_TIMELINE_DEPENDENCY_UPDATED: 'project_timeline_dependency_updated',
+  PROJECT_TIMELINE_DEPENDENCY_REMOVED: 'project_timeline_dependency_removed',
   RELEASE_CREATED: 'release_created',
   RELEASE_UPDATED: 'release_updated',
   RELEASE_ITEM_ADDED: 'release_item_added',

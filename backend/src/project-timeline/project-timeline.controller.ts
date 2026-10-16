@@ -5,11 +5,13 @@ import {
   Controller,
   ExecutionContext,
   ForbiddenException,
+  Delete,
   Get,
   HttpCode,
   Injectable,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -25,12 +27,14 @@ import { UserRole } from '../users/user.entity';
 import { ProjectTimelineService } from './project-timeline.service';
 import {
   ApplyTimelineImportDto,
+  CreateTimelineDependencyDto,
   CreateTimelineTeamDto,
   ExportTimelineDto,
   ParseTimelineFileDto,
   PreviewTimelineImportDto,
   ResetTimelineBaselineDto,
   SaveTimelineChangesDto,
+  UpdateTimelineDependencyDto,
 } from './dto/project-timeline.dto';
 
 // Project Timeline (2026-10-16), confirmed with the user: Program Manager
@@ -108,6 +112,37 @@ export class ProjectTimelineController {
   @Roles(BASELINE_ROLES)
   async resetBaseline(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: ResetTimelineBaselineDto, @Req() req: any) {
     return this.projectTimelineService.resetBaseline(projectId, dto.reason, req.timelineUser, req.user.tenantId);
+  }
+
+  // Stage B: dependencies ("starts after"). View roles read; PM/Admin
+  // add, change the gap, remove - each audited.
+  @Get('projects/:projectId/dependencies')
+  @Roles(VIEW_ROLES)
+  async dependencies(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.projectTimelineService.listDependencies(projectId, req.user.tenantId);
+  }
+
+  @Post('projects/:projectId/dependencies')
+  @Roles(EDIT_ROLES)
+  async addDependency(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: CreateTimelineDependencyDto, @Req() req: any) {
+    return this.projectTimelineService.addDependency(projectId, dto, req.timelineUser, req.user.tenantId);
+  }
+
+  @Patch('projects/:projectId/dependencies/:depId')
+  @Roles(EDIT_ROLES)
+  async updateDependency(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @Param('depId', ParseIntPipe) depId: number,
+    @Body() dto: UpdateTimelineDependencyDto,
+    @Req() req: any,
+  ) {
+    return this.projectTimelineService.updateDependency(projectId, depId, dto.lagDays, req.timelineUser, req.user.tenantId);
+  }
+
+  @Delete('projects/:projectId/dependencies/:depId')
+  @Roles(EDIT_ROLES)
+  async removeDependency(@Param('projectId', ParseIntPipe) projectId: number, @Param('depId', ParseIntPipe) depId: number, @Req() req: any) {
+    return this.projectTimelineService.removeDependency(projectId, depId, req.timelineUser, req.user.tenantId);
   }
 
   @Get('teams')

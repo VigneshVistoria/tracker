@@ -467,3 +467,91 @@
     display: none;
   }
 }
+
+/* ---------- Stage B: dependencies + critical path ---------- */
+
+.arrows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.arrow {
+  fill: none;
+  stroke: var(--ds-text-secondary);
+  stroke-width: 1.5;
+}
+
+.arrowCritical {
+  stroke: var(--ds-text-primary);
+  stroke-width: 2;
+}
+
+.arrowBad {
+  stroke: var(--ds-color-error);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
+.arrowHead {
+  fill: var(--ds-text-secondary);
+}
+
+.arrowHeadBad {
+  fill: var(--ds-color-error);
+}
+
+/* Critical path: a dark ring, distinct from the blue "unsaved" ring. */
+.barCritical {
+  outline: 2px solid var(--ds-text-primary);
+  outline-offset: 2px;
+}
+
+.swatchCritical {
+  background: var(--ds-bg-surface);
+  outline: 2px solid var(--ds-text-primary);
+  outline-offset: -2px;
+}
+
+.swatchArrow {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px solid var(--ds-text-secondary);
+}
+
+.swatchArrowBad {
+  border-top: 2px dashed var(--ds-color-error);
+}
+
+.criticalLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2) var(--ds-space-3);
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.criticalLine strong {
+  color: var(--ds-text-primary);
+}
+
+.criticalLine svg {
+  color: var(--ds-text-primary);
+}
+
+.linkHas {
+  color: var(--ds-text-link);
+}
+
+.linkCount {
+  margin-left: 1px;
+  font-size: 10px;
+  font-weight: var(--ds-weight-semibold);
+}
