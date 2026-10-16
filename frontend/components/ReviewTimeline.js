@@ -13,6 +13,9 @@ const OUTCOME = {
   // A QA decision a PM/Admin undid as a mistake - the decision is still
   // shown, followed by who reverted it and why.
   reverted: { icon: Undo2, tone: styles.reverted, text: 'Reverted' },
+  // A PM/Admin pulled the task back from QA before QA decided it - not a
+  // QA verdict; "Reviewed by" below is the PM, the comment their reason.
+  withdrawn: { icon: Undo2, tone: styles.reverted, text: 'Sent back by PM before QA review' },
 };
 
 const PM_OUTCOME_TEXT = { pending: 'Waiting for PM', approved: 'Sent to QA', rejected: 'Sent back by PM' };
@@ -58,7 +61,7 @@ export default function ReviewTimeline({ reviews }) {
               {r.status !== 'pending' && (
                 <p className={styles.meta}>
                   <decided.icon size={12} aria-hidden="true" />
-                  Reviewed by <Avatar name={r.reviewedByFullName} size="xs" /> {r.reviewedByFullName || 'Unknown'}
+                  {r.status === 'withdrawn' ? 'Sent back by' : 'Reviewed by'} <Avatar name={r.reviewedByFullName} size="xs" /> {r.reviewedByFullName || 'Unknown'}
                   {r.reviewedAt ? ` · ${formatDate(r.reviewedAt)}` : ''}
                 </p>
               )}

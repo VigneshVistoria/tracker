@@ -28,7 +28,18 @@ export enum TaskArtifactType {
 // who undid it, and a fresh 'pending' round re-opens the same submission.
 // Every count keys off 'approved'/'rejected', so a reverted round no
 // longer counts anywhere (KPI, Summary tiles, rejection rate).
-export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated' | 'reverted';
+// 'withdrawn' (2026-10-16) - a Program Manager or Admin pulled a still-
+// pending QA round back before QA decided it and sent the task to the
+// developer (TaskQaReviewsService.sendBackFromQa()). reviewedBy/At and
+// qaComment hold who did it and why, as on a 'pm' round. Not a QA
+// decision: it counts nowhere, and it doesn't make the next submit a
+// resubmission (the task goes back to Feedback, not Re-Feedback).
+export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated' | 'reverted' | 'withdrawn';
+
+// Rounds that never stood as a review verdict - left out of the first-
+// time vs resubmission count (Feedback vs Re-Feedback) and of every
+// "earlier decision" check.
+export const NON_VERDICT_ROUND_STATUSES: TaskQaReviewStatus[] = ['reverted', 'withdrawn'];
 
 // 'qa' (default) is a round any QA teammate can pick up from the tenant-
 // wide QA queue - reviewerUserId/Email stay null. 'peer' is a Peer Review

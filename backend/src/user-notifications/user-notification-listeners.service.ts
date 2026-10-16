@@ -49,6 +49,19 @@ export interface TaskQaDecisionRevertedEvent {
   decision: 'approved' | 'rejected';
 }
 
+// TaskQaReviewsService.sendBackFromQa() (2026-10-16) - a PM/Admin pulled
+// the task back from QA to the developer, maybe a different one.
+export interface TaskSentBackFromQaEvent {
+  tenantId: number;
+  taskId: number;
+  title: string;
+  assigneeUserId: number;
+  previousAssigneeUserId: number | null;
+  actorUserId: number;
+  actorEmail: string;
+  reason: string;
+}
+
 // PmReviewsService (PM review gate, 2026-10-13).
 export interface TaskPmReviewDecidedEvent {
   tenantId: number;
@@ -179,6 +192,46 @@ export class UserNotificationListenersService {
         actorUserId: e.actorUserId,
         actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
       });
+    });
+  }
+
+  // The developer it now sits with gets the reason; when it was handed to
+  // someone else, the previous developer hears it moved.
+  @OnEvent('task.sentBackFromQa')
+  onTaskSentBackFromQa(e: TaskSentBackFromQaEvent) {
+    return this.safely('task.sentBackFromQa', async () => {
+      const actorName = await this.actorName(e.actorUserId, e.actorEmail, e.tenantId);
+      const reason = e.reason.length > 200 ? `${e.reason.slice(0, 197)}...` : e.reason;
+      const sends: Promise<unknown>[] = [];
+      if (e.assigneeUserId !== e.actorUserId) {
+        sends.push(
+          this.notifications.create({
+            tenantId: e.tenantId,
+            userId: e.assigneeUserId,
+            type: 'task.pmSentBackFromQa',
+            title: `PM sent task #${e.taskId} back to you before QA review`,
+            body: `${e.title} - ${reason}`,
+            link: `/tasks/${e.taskId}`,
+            actorUserId: e.actorUserId,
+            actorName,
+          }),
+        );
+      }
+      if (e.previousAssigneeUserId && e.previousAssigneeUserId !== e.actorUserId && e.previousAssigneeUserId !== e.assigneeUserId) {
+        sends.push(
+          this.notifications.create({
+            tenantId: e.tenantId,
+            userId: e.previousAssigneeUserId,
+            type: 'task.reassigned',
+            title: `Task #${e.taskId} was taken back from QA and given to another developer`,
+            body: e.title,
+            link: `/tasks/${e.taskId}`,
+            actorUserId: e.actorUserId,
+            actorName,
+          }),
+        );
+      }
+      await Promise.all(sends);
     });
   }
 

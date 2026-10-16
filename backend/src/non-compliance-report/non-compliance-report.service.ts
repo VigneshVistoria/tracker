@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
 import { ProjectTask } from '../tasks/project-task.entity';
-import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
+import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { effectiveDueDate, isPastEffectiveDue } from '../tasks/pm-review';
@@ -281,7 +281,11 @@ export class NonComplianceReportService {
       // out so it isn't a second submission or a rejection.
       // PM review rounds (the gate before QA) aren't QA/Peer submissions or
       // rejections either - the QA round the PM opens is the submission.
-      const devReviews = devTasks.flatMap((t) => reviewsByTaskId.get(t.id) ?? []).filter((r) => r.status !== 'reverted' && r.reviewType !== 'pm');
+      // Nor is a round a PM pulled back from QA before QA decided it
+      // ('withdrawn') - it counts nowhere, as agreed with the user.
+      const devReviews = devTasks
+        .flatMap((t) => reviewsByTaskId.get(t.id) ?? [])
+        .filter((r) => !NON_VERDICT_ROUND_STATUSES.includes(r.status) && r.reviewType !== 'pm');
       const submissionsInRange = devReviews.filter((r) => inRange(toDateOnly(r.submittedAt), from, to));
       const rejectionsInRange = submissionsInRange.filter((r) => r.status === 'rejected');
       const submissions = submissionsInRange.length;

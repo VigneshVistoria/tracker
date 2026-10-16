@@ -1,8 +1,8 @@
-import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { In, LessThan, Not, Repository } from 'typeorm';
-import { TaskQaReview } from './task-qa-review.entity';
+import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
+import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
 import { QaSubmitTaskDto } from './dto/qa-submit-task.dto';
@@ -10,11 +10,12 @@ import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
+import { QaSendBackDto, QA_SEND_BACK_REASON_MIN } from './dto/qa-send-back.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { Project } from '../projects/project.entity';
-import { PM_REVIEW_STATUS } from '../tasks/pm-review';
+import { PM_FEEDBACK_STATUS, PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { TasksService } from '../tasks/tasks.service';
-import { UserRole } from '../users/user.entity';
+import { DEVELOPER_EQUIVALENT_ROLES, User, UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
@@ -34,6 +35,16 @@ export type TaskQaReviewForDisplay = TaskQaReviewWithArtifacts & {
   revertedByFullName: string | null;
   qaArtifacts: TaskQaReviewQaArtifact[];
 };
+
+// A task waiting for QA - the only statuses sendBackFromQa() acts on.
+const QA_STAGE_STATUSES = ['Feedback', 'Re-Feedback'];
+
+// The send-back reason is plain text; qaComment is rendered as rich text
+// everywhere, so store it escaped, line breaks kept.
+function plainTextToHtml(text: string): string {
+  const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return `<p>${escaped.replace(/\r?\n/g, '<br>')}</p>`;
+}
 
 @Injectable()
 export class TaskQaReviewsService {
@@ -168,8 +179,13 @@ export class TaskQaReviewsService {
     // PM first. Peer Review tasks never get here (refused above).
     const viaPm = !task.isDefect && (await this.pmGateOn(task.projectId, tenantId));
     // First submission vs resubmission for QA - PM rounds don't make a
-    // task a QA resubmission.
-    const priorQaRounds = priorRounds === 0 ? 0 : await this.qaReviewsRepository.count({ where: { taskId, tenantId, reviewType: Not('pm') } });
+    // task a QA resubmission, and neither does a round that never stood as
+    // a verdict (reverted, or pulled back from QA by a PM before QA
+    // decided it - see sendBackFromQa()).
+    const priorQaRounds =
+      priorRounds === 0
+        ? 0
+        : await this.qaReviewsRepository.count({ where: { taskId, tenantId, reviewType: Not('pm'), status: Not(In(NON_VERDICT_ROUND_STATUSES)) } });
 
     // Review row + its artifact rows are saved together in a transaction
     // so a submission can never land with a round but no artifacts (or
@@ -290,7 +306,8 @@ export class TaskQaReviewsService {
     pending.reviewedAt = new Date();
 
     const { savedReview, savedQaArtifacts } = await this.qaReviewsRepository.manager.transaction(async (manager) => {
-      const savedReview = await manager.save(TaskQaReview, pending);
+      await this.closePendingRoundWithin(manager, pending, taskId);
+      const savedReview = pending;
 
       const artifacts = (dto.artifacts || []).map((item) =>
         manager.create(TaskQaReviewQaArtifact, {
@@ -373,7 +390,8 @@ export class TaskQaReviewsService {
     pending.reviewedAt = new Date();
 
     const { savedReview, savedQaArtifacts } = await this.qaReviewsRepository.manager.transaction(async (manager) => {
-      const savedReview = await manager.save(TaskQaReview, pending);
+      await this.closePendingRoundWithin(manager, pending, taskId);
+      const savedReview = pending;
 
       const artifacts = (dto.artifacts || []).map((item) =>
         manager.create(TaskQaReviewQaArtifact, {
@@ -482,7 +500,8 @@ export class TaskQaReviewsService {
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
     pending.reviewedAt = new Date();
-    const savedReview = await this.qaReviewsRepository.save(pending);
+    await this.closePendingRoundWithin(this.qaReviewsRepository.manager, pending, taskId);
+    const savedReview = pending;
 
     task.status = 'Escalated';
     const savedTask = await this.tasksRepository.save(task);
@@ -505,6 +524,162 @@ export class TaskQaReviewsService {
     });
 
     return savedReview;
+  }
+
+  // Writes QA's verdict onto the round only if it is still pending. QA
+  // works from a page loaded earlier: a PM may have sent the task back to
+  // the developer (sendBackFromQa) or another QA decided it meanwhile -
+  // a plain save would overwrite that.
+  private async closePendingRoundWithin(em: EntityManager, round: TaskQaReview, taskId: number) {
+    const upd = await em.update(
+      TaskQaReview,
+      { id: round.id, status: 'pending' },
+      {
+        status: round.status,
+        qaComment: round.qaComment ?? null,
+        reviewedByUserId: round.reviewedByUserId,
+        reviewedByEmail: round.reviewedByEmail,
+        reviewedAt: round.reviewedAt,
+      },
+    );
+    if (!upd.affected) {
+      throw new BadRequestException(
+        `Task #${taskId} is no longer waiting for this review - it was decided or sent back to the developer in the meantime. Reload to see it.`,
+      );
+    }
+  }
+
+  // Program Manager / Admin pulls a task back from QA to the developer
+  // before QA has decided it (2026-10-16, confirmed with the user; role
+  // gate in the controller) - e.g. the description turned out unclear.
+  // Tasks only (a defect belongs to the QA who raised it), and only while
+  // it waits for QA: Feedback / Re-Feedback with a pending 'qa' round. A
+  // round QA already decided is Revert QA decision's job, not this.
+  //
+  // The pending round is closed as 'withdrawn' (who/when/why in reviewedBy/
+  // reviewedAt/qaComment) and the task goes to PM Feedback - the same
+  // developer-side state as the PM review gate's send-back, so the reason
+  // shows in the task page's PM feedback banner until they resubmit. Not a
+  // QA decision: nothing QA-side counts it, the QA review due date is
+  // cleared, and the next submit is a first-time Feedback again unless an
+  // earlier QA verdict still stands. Optionally hands the task to another
+  // developer at the same time (Program Manager only - Admin can't assign
+  // tasks, see MUTATE_ROLES in TasksService). Guarded updates: two people
+  // clicking at once, or QA deciding meanwhile, can't both succeed.
+  async sendBackFromQa(
+    taskId: number,
+    dto: QaSendBackDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<{ task: ProjectTask }> {
+    const reason = (dto.reason || '').trim();
+    if (reason.length < QA_SEND_BACK_REASON_MIN) {
+      throw new BadRequestException(`Enter a reason (at least ${QA_SEND_BACK_REASON_MIN} characters).`);
+    }
+    const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
+    if (task.isDefect) {
+      throw new BadRequestException(`#${taskId} is a defect - it goes back through the QA who raised it, not a PM send-back.`);
+    }
+    const fromStatus = task.status;
+    const pending = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId, status: 'pending' } });
+    if (!QA_STAGE_STATUSES.includes(fromStatus) || !pending || pending.reviewType !== 'qa') {
+      const withdrawn = await this.qaReviewsRepository.findOne({ where: { taskId, tenantId, status: 'withdrawn' }, order: { roundNumber: 'DESC' } });
+      throw new BadRequestException(
+        fromStatus === PM_FEEDBACK_STATUS && withdrawn
+          ? `Task #${taskId} was already sent back to the developer by ${withdrawn.reviewedByEmail} - reload to see it.`
+          : `Task #${taskId} is not waiting for QA (it is ${fromStatus}) - only a task in Feedback or Re-Feedback can be sent back to the developer.`,
+      );
+    }
+
+    const reassign = dto.assigneeUserId != null && dto.assigneeUserId !== task.assigneeUserId;
+    let target: User | null = null;
+    if (reassign) {
+      if (currentUser.role !== UserRole.PROGRAM_MANAGER) {
+        throw new ForbiddenException('Only a Program Manager can send a task to a different developer - an Admin can send it back to its current developer.');
+      }
+      target = await this.usersService.findByIdAndTenant(dto.assigneeUserId!, tenantId);
+      if (!target) throw new NotFoundException(`User #${dto.assigneeUserId} not found`);
+      // A QA (or any non-developer) assignee would silently turn the task
+      // into a Peer Review one - see TasksService.requiresPeerReviewForAssignee().
+      if (!DEVELOPER_EQUIVALENT_ROLES.includes(target.role)) {
+        throw new BadRequestException('Send it to a Developer, Designer or DevOps user.');
+      }
+    } else if (!task.assigneeUserId) {
+      throw new BadRequestException(
+        currentUser.role === UserRole.PROGRAM_MANAGER
+          ? `Task #${taskId} has no developer - pick who to send it to.`
+          : `Task #${taskId} has no developer - a Program Manager needs to pick who to send it to.`,
+      );
+    }
+    const toUserId = reassign ? target!.id : task.assigneeUserId!;
+    const toEmail = reassign ? target!.email : task.assigneeEmail;
+    const now = new Date();
+
+    await this.qaReviewsRepository.manager.transaction(async (em) => {
+      const roundUpdate = await em.update(
+        TaskQaReview,
+        { id: pending.id, tenantId, status: 'pending', reviewType: 'qa' },
+        { status: 'withdrawn', reviewedByUserId: currentUser.id, reviewedByEmail: currentUser.email, reviewedAt: now, qaComment: plainTextToHtml(reason) },
+      );
+      if (!roundUpdate.affected) {
+        throw new BadRequestException(`Task #${taskId} was decided or sent back while you were on it - reload and try again.`);
+      }
+      const taskUpdate = await em.update(
+        ProjectTask,
+        { id: taskId, tenantId, status: fromStatus },
+        {
+          status: PM_FEEDBACK_STATUS,
+          qaReviewDueDate: null as any,
+          ...(reassign ? { assigneeUserId: toUserId, assigneeEmail: toEmail } : {}),
+        },
+      );
+      if (!taskUpdate.affected) {
+        throw new BadRequestException(`Task #${taskId} changed while you were sending it back - reload and try again.`);
+      }
+      const actor = { userId: currentUser.id, userEmail: currentUser.email, userRole: currentUser.role, tenantId, entityType: 'ProjectTask', entityId: taskId };
+      await this.auditLogService.recordWithin(em, {
+        ...actor,
+        action: AuditActions.TASK_PM_SENT_BACK_FROM_QA,
+        details: {
+          reason,
+          roundNumber: pending.roundNumber,
+          statusFrom: fromStatus,
+          statusTo: PM_FEEDBACK_STATUS,
+          previousAssigneeUserId: task.assigneeUserId,
+          assigneeUserId: toUserId,
+          reassigned: reassign,
+          selfReview: currentUser.id === task.assigneeUserId || currentUser.id === toUserId,
+        },
+      });
+      if (reassign) {
+        // Same entry a Team Tasks reassign writes, so assignment history
+        // (Daily Scrum, the audit view) sees the hand-over too.
+        await this.auditLogService.recordWithin(em, {
+          ...actor,
+          action: AuditActions.TASK_REASSIGNED,
+          details: {
+            previousAssigneeUserId: task.assigneeUserId,
+            previousAssigneeEmail: task.assigneeEmail,
+            assigneeUserId: toUserId,
+            assigneeEmail: toEmail,
+            source: 'pm-send-back-from-qa',
+          },
+        });
+      }
+    });
+
+    this.eventEmitter.emit('task.sentBackFromQa', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: toUserId,
+      previousAssigneeUserId: reassign ? task.assigneeUserId : null,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      reason,
+    });
+    return { task: await this.tasksService.findOne(taskId, tenantId) };
   }
 
   // Is the PM review gate on for this task's project?
@@ -560,6 +735,9 @@ export class TaskQaReviewsService {
     if (latest.status === 'escalated') {
       throw new BadRequestException(`Task #${taskId} was escalated to PM, not approved or rejected - handle it from Interventions.`);
     }
+    if (latest.status === 'withdrawn') {
+      throw new BadRequestException(`Task #${taskId} was sent back to the developer before QA decided it - there is no QA decision to revert.`);
+    }
     const decision = latest.status;
     const leftAt = decision === 'approved' ? 'Pass' : 'Failed';
     if (task.status !== leftAt) {
@@ -610,7 +788,7 @@ export class TaskQaReviewsService {
     // Feedback if no earlier round still stands as a decision, else
     // Re-Feedback - the same first-time/resubmission split submit() makes.
     const earlierDecided = await this.qaReviewsRepository.count({
-      where: { taskId, tenantId, roundNumber: LessThan(latest.roundNumber), status: Not(In(['pending', 'reverted'])), reviewType: Not('pm') },
+      where: { taskId, tenantId, roundNumber: LessThan(latest.roundNumber), status: Not(In(['pending', ...NON_VERDICT_ROUND_STATUSES])), reviewType: Not('pm') },
     });
     const newStatus = earlierDecided === 0 ? 'Feedback' : 'Re-Feedback';
     const now = new Date();

@@ -5,6 +5,7 @@ import { QaApproveTaskDto } from './dto/qa-approve-task.dto';
 import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
+import { QaSendBackDto } from './dto/qa-send-back.dto';
 import { UserRole } from '../users/user.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -19,6 +20,10 @@ import { UsersService } from '../users/users.service';
 // Who may undo a mistaken QA decision - the same Program Manager + Admin
 // pair as Hold/Release/Close/Reopen (confirmed with the user 2026-10-13).
 const ROLES_ALLOWED_TO_REVERT_QA_DECISION: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+// Who may pull a task back from QA to the developer (2026-10-16) - same
+// pair; sending it to a different developer is Program Manager only
+// (checked in the service).
+const ROLES_ALLOWED_TO_SEND_BACK_FROM_QA: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -70,5 +75,14 @@ export class TaskQaReviewsController {
       throw new ForbiddenException('Only a Program Manager or Admin can revert a QA decision.');
     }
     return this.qaReviewsService.revertDecision(id, dto, currentUser, req.user.tenantId);
+  }
+
+  @Patch(':id/qa-send-back')
+  async sendBackFromQa(@Param('id', ParseIntPipe) id: number, @Body() dto: QaSendBackDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_SEND_BACK_FROM_QA.includes(currentUser.role)) {
+      throw new ForbiddenException('Only a Program Manager or Admin can send a task back from QA to the developer.');
+    }
+    return this.qaReviewsService.sendBackFromQa(id, dto, currentUser, req.user.tenantId);
   }
 }

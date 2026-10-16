@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EntityManager, In, Not, Repository } from 'typeorm';
-import { TaskQaReview } from './task-qa-review.entity';
+import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
 import { PmSendBackDto, PmSendToQaDto } from './dto/pm-review.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
@@ -224,7 +224,10 @@ export class PmReviewsService {
     const tenantId = task.tenantId;
     const waited = businessDaysBetween(new Date(round.submittedAt), now);
     await this.decideRoundWithin(em, round, 'approved', actor, comment, now, task.id);
-    const priorQaRounds = await em.count(TaskQaReview, { where: { tenantId, taskId: task.id, reviewType: Not('pm') } });
+    // Same first-time/resubmission split as TaskQaReviewsService.submit().
+    const priorQaRounds = await em.count(TaskQaReview, {
+      where: { tenantId, taskId: task.id, reviewType: Not('pm'), status: Not(In(NON_VERDICT_ROUND_STATUSES)) },
+    });
     const status = priorQaRounds === 0 ? 'Feedback' : 'Re-Feedback';
     const upd = await em.update(
       ProjectTask,

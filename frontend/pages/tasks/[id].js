@@ -19,6 +19,7 @@ import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel, statusBadgeS
 import { formatDate, formatDateTime } from '../../lib/formatDate';
 import JunkReasonModal from '../../components/JunkReasonModal';
 import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
+import SendBackToDeveloperModal from '../../components/SendBackToDeveloperModal';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
@@ -409,6 +410,7 @@ export default function TaskDetailPage() {
   const [savingHoldClosed, setSavingHoldClosed] = useState(false);
   const [junkModalOpen, setJunkModalOpen] = useState(false);
   const [revertModalOpen, setRevertModalOpen] = useState(false);
+  const [sendBackModalOpen, setSendBackModalOpen] = useState(false);
   const [junkHistory, setJunkHistory] = useState([]);
   const [restoringJunk, setRestoringJunk] = useState(false);
 
@@ -774,8 +776,22 @@ export default function TaskDetailPage() {
   const canActOnPmReview =
     ['program_manager', 'admin'].includes(user.role) && isPmRound && hasPendingQaReview && task.status === 'Pending PM Review' && !isReviewPaused;
   // The PM's latest send-back, shown to the developer while the task is
-  // in PM Feedback.
-  const latestPmSendBack = task.status === 'PM Feedback' ? qaReviews.find((r) => r.reviewType === 'pm' && r.status === 'rejected') : null;
+  // in PM Feedback - from the PM review gate (a rejected 'pm' round) or
+  // pulled back from QA before QA decided it (a 'withdrawn' round).
+  const latestPmSendBack =
+    task.status === 'PM Feedback' ? qaReviews.find((r) => (r.reviewType === 'pm' && r.status === 'rejected') || r.status === 'withdrawn') : null;
+  const pmSendBackFromQa = latestPmSendBack?.status === 'withdrawn';
+  // Backend mirror: TaskQaReviewsService.sendBackFromQa() + the controller's
+  // ROLES_ALLOWED_TO_SEND_BACK_FROM_QA - PM/Admin, a task (not a defect)
+  // waiting for QA with a pending QA round. Picking another developer is
+  // Program Manager only.
+  const canSendBackFromQa =
+    ['program_manager', 'admin'].includes(user.role) &&
+    !isJunk &&
+    !task.isDefect &&
+    ['Feedback', 'Re-Feedback'].includes(task.status) &&
+    latestQaReview?.status === 'pending' &&
+    latestQaReview?.reviewType === 'qa';
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit()'s isEscalated guard - the Assignee can't resubmit either way
   // until PM reassigns it from the Escalations queue.
@@ -790,7 +806,16 @@ export default function TaskDetailPage() {
       return { tone: 'info', icon: ClipboardList, title: 'Waiting for PM review', detail: 'Send it to QA, or back to the developer with feedback.', cta: 'Review now', target: 'pm-review' };
     }
     if (isAssignee && latestPmSendBack) {
-      return { tone: 'error', icon: AlertTriangle, title: 'PM feedback', detail: 'The Program Manager sent this back - see their feedback below, refine it, and submit again.', cta: 'See feedback', target: 'task-pm-feedback' };
+      return {
+        tone: 'error',
+        icon: AlertTriangle,
+        title: 'PM feedback',
+        detail: pmSendBackFromQa
+          ? 'The Program Manager took this back from QA before review - see their reason below, refine it, and submit again.'
+          : 'The Program Manager sent this back - see their feedback below, refine it, and submit again.',
+        cta: 'See feedback',
+        target: 'task-pm-feedback',
+      };
     }
     if (isAssignee && hasPendingQaReview && isPmRound) {
       return { tone: 'neutral', icon: CheckCircle2, title: 'With the Program Manager', detail: 'A PM reviews it before QA - you\'ll see the outcome here.' };
@@ -846,7 +871,9 @@ export default function TaskDetailPage() {
       render: (r) =>
         r.status === 'reverted' && r.revertedDecision
           ? `${r.revertedDecision === 'approved' ? 'Approved' : 'Rejected'}, reverted`
-          : r.reviewType === 'pm' && r.status !== 'pending'
+          : r.status === 'withdrawn'
+            ? 'Sent back by PM before QA review'
+            : r.reviewType === 'pm' && r.status !== 'pending'
             ? r.status === 'approved' ? 'Sent to QA' : 'Sent back'
             : statusLabel(r.status.charAt(0).toUpperCase() + r.status.slice(1)),
     },
@@ -1168,6 +1195,18 @@ export default function TaskDetailPage() {
     const junked = result.junkedDefectIds || [];
     showToast(
       `QA ${what} reverted - back to ${statusLabel(refreshedTask.status)}${junked.length ? `; ${junked.map((d) => `#${d}`).join(', ')} moved to Junk` : ''}`,
+      'success',
+    );
+  };
+
+  const submitSendBackFromQa = async (reason, assigneeUserId) => {
+    await apiFetch(`/tasks/${task.id}/qa-send-back`, { method: 'PATCH', body: JSON.stringify({ reason, assigneeUserId }) });
+    setSendBackModalOpen(false);
+    const [refreshedTask, refreshedReviews] = await Promise.all([apiFetch(`/tasks/${task.id}`), apiFetch(`/tasks/${task.id}/qa-reviews`)]);
+    setTask(refreshedTask);
+    setQaReviews(refreshedReviews);
+    showToast(
+      `Task #${task.id} sent back to ${refreshedTask.assigneeFullName || refreshedTask.assigneeEmail || 'the developer'} - out of the QA queue`,
       'success',
     );
   };
@@ -1863,6 +1902,26 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {latestPmSendBack && (
+        <div id="task-pm-feedback" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
+          <h2 className={styles.cardTitle}>
+            PM feedback
+          </h2>
+          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
+            From {latestPmSendBack.reviewedByFullName || 'the Program Manager'}
+            {latestPmSendBack.reviewedAt ? ` · ${formatDate(latestPmSendBack.reviewedAt)}` : ''}
+          </p>
+          <RichTextDisplay value={latestPmSendBack.qaComment} />
+          {isAssignee && (
+            <p className={styles.helpText} style={{ marginBottom: 0 }}>
+              {pmSendBackFromQa
+                ? `Taken back from QA before review. Refine the task, then submit it again below - it goes ${task.pmReviewGateOn ? 'to the Program Manager first, then QA' : 'back to QA'}. This is not a QA rejection.`
+                : 'Refine the task, then submit it again below - it goes back to the Program Manager. This is not a QA rejection.'}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className={styles.tabs} role="tablist" aria-label="Task sections">
         {[
           { key: 'overview', label: 'Overview' },
@@ -2233,29 +2292,55 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {canRevertQaDecision && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+      {(canRevertQaDecision || canSendBackFromQa) && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-pm-actions">
           <h2 className={styles.cardTitle}>
-            QA decision
+            PM actions
           </h2>
-          <p className={styles.helpText}>
-            {latestRound.reviewedByFullName || 'QA'} {latestRound.status === 'approved' ? 'approved' : 'rejected'} round {latestRound.roundNumber}
-            {latestRound.reviewedAt ? ` on ${formatDate(latestRound.reviewedAt)}` : ''}. Made by mistake? Revert it and the task goes back to
-            waiting for QA with the same submission.
-          </p>
-          <div className={styles.actions}>
-            <button className={styles.buttonSecondary} type="button" onClick={() => setRevertModalOpen(true)}>
-              Revert QA decision
-            </button>
-          </div>
-          <RevertQaDecisionModal
-            open={revertModalOpen}
-            taskId={task.id}
-            decision={latestRound.status}
-            decidedBy={latestRound.reviewedByFullName}
-            onClose={() => setRevertModalOpen(false)}
-            submit={submitRevertQaDecision}
-          />
+          {canSendBackFromQa && (
+            <>
+              <p className={styles.helpText}>
+                Waiting for QA (round {latestQaReview.roundNumber}). Not ready for QA - for example the description is unclear? Send it back
+                to the developer with a reason. It leaves the QA queue and does not count as a QA rejection.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.buttonSecondary} type="button" onClick={() => setSendBackModalOpen(true)}>
+                  Send back to developer
+                </button>
+              </div>
+              <SendBackToDeveloperModal
+                open={sendBackModalOpen}
+                taskId={task.id}
+                currentDeveloper={task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeFullName || task.assigneeEmail } : null}
+                developers={developers}
+                canPickOther={user.role === 'program_manager'}
+                onClose={() => setSendBackModalOpen(false)}
+                submit={submitSendBackFromQa}
+              />
+            </>
+          )}
+          {canRevertQaDecision && (
+            <>
+              <p className={styles.helpText}>
+                {latestRound.reviewedByFullName || 'QA'} {latestRound.status === 'approved' ? 'approved' : 'rejected'} round {latestRound.roundNumber}
+                {latestRound.reviewedAt ? ` on ${formatDate(latestRound.reviewedAt)}` : ''}. Made by mistake? Revert it and the task goes back to
+                waiting for QA with the same submission.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.buttonSecondary} type="button" onClick={() => setRevertModalOpen(true)}>
+                  Revert QA decision
+                </button>
+              </div>
+              <RevertQaDecisionModal
+                open={revertModalOpen}
+                taskId={task.id}
+                decision={latestRound.status}
+                decidedBy={latestRound.reviewedByFullName}
+                onClose={() => setRevertModalOpen(false)}
+                submit={submitRevertQaDecision}
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -2634,24 +2719,6 @@ export default function TaskDetailPage() {
             {latestDecidedReview.reviewedAt ? ` on ${formatDate(latestDecidedReview.reviewedAt)}` : ''}. Need a re-check? Ask a
             Program Manager or QA to reopen it.
           </p>
-        </div>
-      )}
-
-      {latestPmSendBack && (
-        <div id="task-pm-feedback" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
-          <h2 className={styles.cardTitle}>
-            PM feedback
-          </h2>
-          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
-            From {latestPmSendBack.reviewedByFullName || 'the Program Manager'}
-            {latestPmSendBack.reviewedAt ? ` · ${formatDate(latestPmSendBack.reviewedAt)}` : ''}
-          </p>
-          <RichTextDisplay value={latestPmSendBack.qaComment} />
-          {isAssignee && (
-            <p className={styles.helpText} style={{ marginBottom: 0 }}>
-              Refine the task, then submit it again below - it goes back to the Program Manager. This is not a QA rejection.
-            </p>
-          )}
         </div>
       )}
 
