@@ -101,7 +101,9 @@ function EditableCell({ kind, value, display, label, canEdit, onCommit, options,
 // canReorder is false while the table is filtered - moving a row past
 // rows you can't see would be confusing. revealKey (from the Summary's
 // "Go to row") opens that row's module, scrolls to it and focuses it.
-export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
+// selected/onSelect (editors only): the tick boxes for bulk edit -
+// onSelect(keys, checked) for one row or a whole module.
+export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, selected, onSelect, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [flashKey, setFlashKey] = useState(null);
 
@@ -154,9 +156,20 @@ export default function TimelineTable({ rows, teams, today, canEdit, canReorder 
     const pct = Math.round((done / group.rows.length) * 100);
     const isOpen = !collapsed.has(group.key);
     const bodyId = `timeline-group-${group.key.replace(/[^a-z0-9]+/g, '-')}`;
+    const ticked = canEdit ? group.rows.filter((r) => selected.has(r.key)).length : 0;
     return (
       <section key={group.key} className={styles.group} aria-label={`Module ${group.name}`}>
         <div className={styles.groupHeader}>
+          {canEdit && (
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={ticked > 0 && ticked === group.rows.length}
+              ref={(el) => el && (el.indeterminate = ticked > 0 && ticked < group.rows.length)}
+              onChange={(e) => onSelect(group.rows.map((r) => r.key), e.target.checked)}
+              aria-label={`Select all ${group.rows.length} phases in ${group.name}`}
+            />
+          )}
           <button type="button" className={styles.groupToggle} aria-expanded={isOpen} aria-controls={bodyId} onClick={() => toggle(group.key)}>
             {isOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
             {group.name}
@@ -185,6 +198,11 @@ export default function TimelineTable({ rows, teams, today, canEdit, canReorder 
             <table className={styles.table}>
               <thead>
                 <tr>
+                  {canEdit && (
+                    <th scope="col">
+                      <span className="sr-only">Select</span>
+                    </th>
+                  )}
                   <th scope="col">Module</th>
                   <th scope="col">Phase</th>
                   <th scope="col">Team</th>
@@ -208,8 +226,19 @@ export default function TimelineTable({ rows, teams, today, canEdit, canReorder 
                       key={r.key}
                       id={`timeline-row-${r.key}`}
                       tabIndex={-1}
-                      className={`${dirtyKeys.has(r.key) ? styles.rowDirty : ''} ${flashKey === r.key ? styles.rowFlash : ''}`}
+                      className={`${dirtyKeys.has(r.key) ? styles.rowDirty : ''} ${flashKey === r.key ? styles.rowFlash : ''} ${canEdit && selected.has(r.key) ? styles.rowSelected : ''}`}
                     >
+                      {canEdit && (
+                        <td>
+                          <input
+                            type="checkbox"
+                            className={styles.checkbox}
+                            checked={selected.has(r.key)}
+                            onChange={(e) => onSelect([r.key], e.target.checked)}
+                            aria-label={`Select ${r.module || 'new row'} – ${r.phase || 'new phase'}`}
+                          />
+                        </td>
+                      )}
                       <td>
                         <EditableCell kind="text" wide value={r.module} label={label('Module')} canEdit={canEdit} onCommit={(v) => set({ module: v })} />
                       </td>

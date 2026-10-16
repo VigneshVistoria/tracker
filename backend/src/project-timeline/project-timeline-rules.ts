@@ -742,3 +742,65 @@ export function slipDays(baselineEnd: string | null, endDate: string | null): nu
   if (!baselineEnd || !endDate) return null;
   return Math.round((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${baselineEnd}T00:00:00Z`)) / 86400000);
 }
+
+// ---------------------------------------------------------------- export
+
+// Export (Stage 3, 2026-10-16): the import columns first, so the file can
+// be imported again unchanged, then read-only info columns that import
+// ignores.
+export const EXPORT_INFO_COLUMNS = ['Overdue', 'Overlaps with', 'Slip (days)'] as const;
+
+export interface ExportRow {
+  module: string;
+  phase: string;
+  team: string;
+  status: string;
+  startDate: string | null;
+  endDate: string | null;
+  overdue: boolean;
+  overlapsWith: string[];
+  slip: number | null;
+}
+
+// `rows` = the rows to export, in table order. Overlaps are checked
+// against the whole plan (`allRows`), so a filtered export still shows an
+// overlap with a phase that was filtered out.
+export function buildExportRows(input: {
+  rows: PlanRow[];
+  allRows: PlanRow[];
+  teamNameById: Map<number, string>;
+  today: string;
+  baselineEndById: Map<number, string | null>;
+}): ExportRow[] {
+  const overlapsById = new Map<number, string[]>();
+  for (const pair of findOverlaps(input.allRows)) {
+    for (const [self, other] of [
+      [pair.a, pair.b],
+      [pair.b, pair.a],
+    ]) {
+      if (self.id == null) continue;
+      if (!overlapsById.has(self.id)) overlapsById.set(self.id, []);
+      overlapsById.get(self.id)!.push(other.phase);
+    }
+  }
+  return input.rows.map((r) => ({
+    module: r.module,
+    phase: r.phase,
+    team: r.teamId != null ? input.teamNameById.get(r.teamId) ?? '' : '',
+    status: r.status,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    overdue: isOverdue(r, input.today),
+    overlapsWith: overlapsById.get(r.id) || [],
+    slip: input.baselineEndById.has(r.id) ? slipDays(input.baselineEndById.get(r.id) ?? null, r.endDate) : null,
+  }));
+}
+
+// "1-Jul-26" - the date style of the plan files (and the template).
+// Plan dates are always 2000-2099 (isoFrom), so a 2-digit year reads back.
+export function fileDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(`${iso}T00:00:00Z`);
+  const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  return `${d.getUTCDate()}-${month}-${String(d.getUTCFullYear()).slice(-2)}`;
+}

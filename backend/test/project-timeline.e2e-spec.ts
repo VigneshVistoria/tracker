@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { createTestApp } from './setup/test-app';
 import { seedFixtures, Fixtures, FixtureUser } from './setup/fixtures';
 import { addDays } from '../src/project-timeline/project-timeline-rules';
+import { parseSpreadsheet } from '../src/test-cases/test-case-spreadsheet';
 import { dateInZone } from '../src/team-settings/time-zone';
 
 // Project Timeline (2026-10-16): PM and Admin import and edit, Executive
@@ -57,6 +58,8 @@ describe('Project Timeline (e2e)', () => {
       { method: 'post', url: () => `/project-timeline/projects/${projectId()}/import/preview`, edit: true },
       { method: 'post', url: () => `/project-timeline/projects/${projectId()}/import`, edit: true },
       { method: 'post', url: () => `/project-timeline/projects/${projectId()}/changes`, edit: true },
+      // Export is PM/Admin only (user decision 2026-10-16).
+      { method: 'post', url: () => `/project-timeline/projects/${projectId()}/export`, edit: true },
     ];
 
     it('401 on every route without a login', async () => {
@@ -86,6 +89,7 @@ describe('Project Timeline (e2e)', () => {
         const rows = await parseSample(u);
         await post(u, `/project-timeline/projects/${pA}/import/preview`, { rows }).expect(201);
         await get(u, '/project-timeline/template?format=xlsx').expect(200);
+        await post(u, `/project-timeline/projects/${pA}/export`, { format: 'csv' }).expect(200);
       }
     });
 
@@ -406,5 +410,86 @@ describe('Project Timeline (e2e)', () => {
     });
 
     const plan_ = () => plan();
+  });
+
+  describe('export', () => {
+    const importSample = async () => (await post(f.users.pm, `/project-timeline/projects/${pA}/import`, { rows: await parseSample() }).expect(201)).body.plan;
+    const binary = (res: any, cb: (err: Error | null, body: Buffer) => void) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c: Buffer) => chunks.push(c));
+      res.on('end', () => cb(null, Buffer.concat(chunks)));
+    };
+    const exportFile = async (body: any, u = f.users.pm) => {
+      const res = await post(u, `/project-timeline/projects/${pA}/export`, body).buffer(true).parse(binary).expect(200);
+      return { buffer: res.body as Buffer, headers: res.headers };
+    };
+    const readBack = (buffer: Buffer, format: string) => parseSpreadsheet(buffer.toString('base64'), format as any);
+    const HEADERS = ['Module', 'Phase', 'Team', 'Status', 'Start Date', 'End Date', 'Overdue', 'Overlaps with', 'Slip (days)'];
+
+    it('exports the whole plan in plan order with Overdue, Overlaps and Slip, saving nothing', async () => {
+      const saved = await importSample();
+      const dm = saved.rows.find((r: any) => r.phase === 'Data Migration');
+      await post(f.users.pm, `/project-timeline/projects/${pA}/changes`, { updates: [{ id: dm.id, version: dm.version, endDate: '2026-07-31' }] }).expect(201);
+      const auditCount = Number((await ds.query(`SELECT count(*) FROM audit_logs`))[0].count);
+
+      const { buffer, headers } = await exportFile({ format: 'csv' });
+      expect(headers['content-type']).toContain('text/csv');
+      expect(headers['content-disposition']).toMatch(/^attachment; filename="Project-A-timeline-\d{4}-\d{2}-\d{2}\.csv"$/);
+      const sheet = await readBack(buffer, 'csv');
+      expect(sheet.headers).toEqual(HEADERS);
+      expect(sheet.rows).toHaveLength(11);
+      const current = (await plan()).rows;
+      expect(sheet.rows.map((r) => r.cells[1])).toEqual(current.map((r: any) => r.phase));
+      const byPhase = new Map(sheet.rows.map((r) => [r.cells[1], r.cells]));
+      // 2026-07-31 is past in the team time zone, To Do -> overdue; end moved +7 days; overlaps Pilot Run.
+      expect(byPhase.get('Data Migration')).toEqual(['Medical Claim', 'Data Migration', 'Vistoria', 'To Do', '13-Jul-26', '31-Jul-26', 'Yes', 'Pilot Run (Staging)', '7']);
+      expect(byPhase.get('Requirements Gathering')).toEqual(['Medical Claim', 'Requirements Gathering', 'Vistoria', 'Completed', '1-Jul-26', '10-Jul-26', '', '', '0']);
+      expect(byPhase.get('Data Migratiaon Rehearsal')!.slice(4, 9)).toEqual(['1-Nov-26', '', '', '', '']);
+      expect(byPhase.get('Pilot Run (Staging)')![7]).toBe('Data Migration'); // Production Readiness starts the day Pilot Run ends - touching, not overlap
+
+      expect(Number((await ds.query(`SELECT count(*) FROM audit_logs`))[0].count)).toBe(auditCount);
+    });
+
+    it.each(['csv', 'xlsx'])('a %s export imports back with nothing to change', async (format) => {
+      await importSample();
+      const { buffer } = await exportFile({ format });
+      const parsed = (await post(f.users.pm, '/project-timeline/import/parse', { format, fileBase64: buffer.toString('base64') }).expect(201)).body;
+      expect(parsed.ignoredColumns).toEqual(['Overdue', 'Overlaps with', 'Slip (days)']);
+      const preview = (await post(f.users.pm, `/project-timeline/projects/${pA}/import/preview`, { rows: parsed.rows }).expect(201)).body;
+      expect(preview.summary).toEqual(expect.objectContaining({ newRows: 0, changedRows: 0, unchangedRows: 11, missingRows: 0, errorRows: 0 }));
+    });
+
+    it('xlsx dates are real Excel dates', async () => {
+      await importSample();
+      const { buffer, headers } = await exportFile({ format: 'xlsx' });
+      expect(headers['content-type']).toContain('spreadsheetml');
+      const ExcelJS = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buffer as any);
+      const cell = wb.worksheets[0].getRow(2).getCell(5);
+      expect(cell.value).toEqual(new Date('2026-07-01T00:00:00Z'));
+      expect(cell.numFmt).toBe('d-mmm-yy');
+    });
+
+    it('rowIds exports just those rows, in plan order, still showing overlaps with rows left out', async () => {
+      const saved = await importSample();
+      const pick = (phase: string) => saved.rows.find((r: any) => r.phase === phase).id;
+      const { buffer } = await exportFile({ format: 'csv', rowIds: [pick('Pilot Run (Staging)'), pick('Requirements Gathering')] });
+      const sheet = await readBack(buffer, 'csv');
+      expect(sheet.rows.map((r) => r.cells[1])).toEqual(['Requirements Gathering', 'Pilot Run (Staging)']);
+      expect(sheet.rows[1].cells[7]).toBe('Data Migration'); // Production Readiness starts the day Pilot Run ends - touching, not overlap
+      const empty = await readBack((await exportFile({ format: 'csv', rowIds: [] })).buffer, 'csv');
+      expect(empty.rows).toHaveLength(0);
+    });
+
+    it('refuses rows that are not in this plan, bad formats and other tenants', async () => {
+      const saved = await importSample();
+      await post(f.users.pm, `/project-timeline/projects/${pA}/export`, { format: 'csv', rowIds: [saved.rows[0].id, 999999] }).expect(400);
+      await post(f.users.pm, `/project-timeline/projects/${pA}/export`, { format: 'pdf' }).expect(400);
+      await post(f.users.pm, `/project-timeline/projects/${pA}/export`, { format: 'csv', rowIds: ['x'] }).expect(400);
+      await post(f.users.pmT2, `/project-timeline/projects/${pA}/export`, { format: 'csv' }).expect(404);
+      const other = (await ds.query(`SELECT id FROM projects WHERE id <> $1 AND "tenantId" = $2 LIMIT 1`, [pA, f.tenants.t1]))[0];
+      if (other) await post(f.users.pm, `/project-timeline/projects/${other.id}/export`, { format: 'csv', rowIds: [saved.rows[0].id] }).expect(400);
+    });
   });
 });

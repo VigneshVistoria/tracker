@@ -16,6 +16,8 @@ import {
   correctTypos,
   buildBaselines,
   slipDays,
+  buildExportRows,
+  fileDate,
 } from '../src/project-timeline/project-timeline-rules';
 
 // Project Timeline rules (2026-10-16), against a small sample file that
@@ -274,5 +276,45 @@ describe('Project Timeline rules', () => {
       expect(m.get(3)).toEqual(expect.objectContaining({ baselineEnd: '2026-08-05', source: 'added' }));
       expect(m.has(99)).toBe(false); // deleted since - ignored
     });
+  });
+});
+
+describe('export rows', () => {
+  const row = (id: number, module: string, phase: string, status: any, startDate: string | null, endDate: string | null, teamId: number | null = 1) => ({
+    id,
+    module,
+    phase,
+    teamId,
+    status,
+    startDate,
+    endDate,
+  });
+  const all = [
+    row(1, 'M', 'A', 'To Do', '2026-07-01', '2026-07-10'),
+    row(2, 'M', 'B', 'In Progress', '2026-07-05', '2026-07-20', null),
+    row(3, 'M', 'C', 'To Do', '2026-07-20', '2026-10-20', 99),
+    row(4, 'N', 'D', 'Completed', '2026-07-01', '2026-07-30'),
+  ];
+  const build = (rows = all) =>
+    buildExportRows({ rows, allRows: all, teamNameById: new Map([[1, 'Amanah']]), today: TODAY, baselineEndById: new Map([[1, '2026-07-03'], [3, null]]) });
+
+  it('flags overdue (To Do + end passed) only, and slip only where there is a baseline end', () => {
+    const out = build();
+    expect(out.map((r) => r.overdue)).toEqual([true, false, false, false]);
+    expect(out.map((r) => r.slip)).toEqual([7, null, null, null]);
+    expect(out.map((r) => r.team)).toEqual(['Amanah', '', '', 'Amanah']);
+  });
+
+  it('overlaps come from the whole plan, same module only, touching is not an overlap', () => {
+    expect(build().map((r) => r.overlapsWith)).toEqual([['B'], ['A'], [], []]);
+    expect(build([all[1]])[0].overlapsWith).toEqual(['A']);
+  });
+
+  it('fileDate writes the plan style and reads back the same', () => {
+    expect(fileDate('2026-07-01')).toBe('1-Jul-26');
+    expect(fileDate('2026-12-31')).toBe('31-Dec-26');
+    expect(fileDate('2099-03-05')).toBe('5-Mar-99');
+    expect(fileDate(null)).toBe('');
+    for (const iso of ['2026-07-01', '2026-12-31', '2000-01-01', '2099-03-05']) expect(parsePlanDate(fileDate(iso)).value).toBe(iso);
   });
 });

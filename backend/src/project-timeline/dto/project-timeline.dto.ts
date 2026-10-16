@@ -127,3 +127,13 @@ export class ResetTimelineBaselineDto {
   @MaxLength(1000)
   reason: string;
 }
+
+// Export: the rows the table shows (by id, in any order - the file uses
+// the plan order). No rowIds = the whole plan.
+export class ExportTimelineDto {
+  @IsIn(['csv', 'xlsx'])
+  format: 'csv' | 'xlsx';
+
+  @IsOptional() @IsArray() @ArrayMaxSize(MAX_ROWS) @IsInt({ each: true })
+  rowIds?: number[];
+}

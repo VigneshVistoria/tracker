@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Plus, Upload } from 'lucide-react';
+import { Download, Plus, Upload } from 'lucide-react';
 import AppShell from '../../components/AppShell';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -10,13 +10,14 @@ import ImportPanel from '../../components/projectTimeline/ImportPanel';
 import TimelineTable from '../../components/projectTimeline/TimelineTable';
 import TimelineSummary from '../../components/projectTimeline/TimelineSummary';
 import TimelineFilters from '../../components/projectTimeline/TimelineFilters';
+import BulkBar from '../../components/projectTimeline/BulkBar';
 import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
-import { apiFetch } from '../../lib/api';
+import { apiDownload, apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import { formatDate } from '../../lib/formatDate';
-import { isOverdue, matchKeyFor, nameKey, overlapsByRow, rowErrors, tidyName } from '../../lib/projectTimeline';
+import { addDaysIso, isOverdue, matchKeyFor, nameKey, overlapsByRow, rowErrors, tidyName } from '../../lib/projectTimeline';
 import { EMPTY_FILTERS, computeSlip, computeSummary, isFiltering, matchesFilters, statusCheck, summaryText } from '../../lib/projectTimelineSummary';
 
 // Backend mirror: ProjectTimelineController's VIEW_ROLES / EDIT_ROLES.
@@ -58,6 +59,10 @@ export default function ProjectTimelinePage() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetReason, setResetReason] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('xlsx');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -85,6 +90,7 @@ export default function ProjectTimelinePage() {
   }, [router.isReady, router.query.project, projects, projectId]);
 
   const applyPlan = useCallback((next) => {
+    setSelected(new Set());
     setPlan(next);
     setDraft(next.rows.map(toDraft));
     setProjects((prev) => prev.map((p) => (p.id === next.project.id ? { ...p, rowCount: next.rows.length } : p)));
@@ -241,6 +247,64 @@ export default function ProjectTimelinePage() {
     if (ok) setDraft((prev) => prev.map((r) => (keys.includes(r.key) ? { ...r, ...patch } : r)));
   };
 
+  // ---------------------------------------------------------- bulk edit
+
+  // Ticked rows, for the bulk bar. Only rows the table shows can be ticked
+  // (see the pruning effect below), so a bulk change never touches a row
+  // hidden by the filters.
+  const select = (keys, checked) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const k of keys) {
+        if (checked) next.add(k);
+        else next.delete(k);
+      }
+      return next;
+    });
+  const bulkUpdate = (makePatch) => setDraft((prev) => prev.map((r) => (selected.has(r.key) && !r.deleted ? { ...r, ...makePatch(r) } : r)));
+  const pendingNote = 'on this page - click Save changes to keep them';
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+  const bulkTeam = (teamId) => {
+    bulkUpdate(() => ({ teamId }));
+    showToast(`Team set to ${teamId == null ? 'No team' : teamNameById.get(teamId)} for ${plural(selected.size, 'phase')} ${pendingNote}.`, 'success');
+  };
+  const bulkStatus = (status) => {
+    bulkUpdate(() => ({ status }));
+    showToast(`Status set to ${status} for ${plural(selected.size, 'phase')} ${pendingNote}.`, 'success');
+  };
+  // Start and end move together; an empty date stays empty.
+  const bulkShift = (days) => {
+    const rows = live.filter((r) => selected.has(r.key));
+    const undated = rows.filter((r) => !r.startDate && !r.endDate).length;
+    bulkUpdate((r) => ({ startDate: r.startDate && addDaysIso(r.startDate, days), endDate: r.endDate && addDaysIso(r.endDate, days) }));
+    const moved = rows.length - undated;
+    showToast(
+      `${plural(moved, 'phase')} moved ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ${days > 0 ? 'later' : 'earlier'} ${pendingNote}.` +
+        (undated ? ` ${plural(undated, 'phase')} without dates left as they are.` : ''),
+      'success',
+      7000,
+    );
+  };
+
+  // ---------------------------------------------------------- export
+
+  const runExport = async () => {
+    setExporting(true);
+    try {
+      const safeName = project.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+      await apiDownload(`/project-timeline/projects/${projectId}/export`, `${safeName}-timeline-${today}.${exportFormat}`, {
+        format: exportFormat,
+        ...(filtering ? { rowIds: shownRows.map((r) => r.id) } : {}),
+      });
+      setExportOpen(false);
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const resetBaseline = async () => {
     setResetting(true);
     try {
@@ -368,6 +432,16 @@ export default function ProjectTimelinePage() {
   }, [sortedLive, filters, filtering, plan]);
   const hiddenChanges = filtering ? [...changes.dirtyKeys].filter((k) => !shownRows.some((r) => r.key === k)).length : 0;
 
+  // Rows that leave the table (filtered out, deleted, discarded) are unticked.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (!prev.size) return prev;
+      const shown = new Set(shownRows.map((r) => r.key));
+      const next = new Set([...prev].filter((k) => shown.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [shownRows]);
+
   if (!user) return null;
 
   return (
@@ -392,6 +466,9 @@ export default function ProjectTimelinePage() {
               <div className={styles.actions}>
                 <Button variant="secondary" leftIcon={Plus} onClick={addModule} disabled={!plan}>
                   Add module
+                </Button>
+                <Button variant="secondary" leftIcon={Download} onClick={() => setExportOpen(true)} disabled={!plan || live.length === 0}>
+                  Export
                 </Button>
                 <Button
                   leftIcon={Upload}
@@ -500,6 +577,8 @@ export default function ProjectTimelinePage() {
                 onRevealed={() => setRevealKey(null)}
                 emptyText={filtering ? 'No phases match these filters.' : undefined}
                 slipByKey={slip?.perRow}
+                selected={selected}
+                onSelect={select}
                 teams={plan.teams}
                 today={today}
                 canEdit={canEdit}
@@ -516,27 +595,34 @@ export default function ProjectTimelinePage() {
                 }}
               />
 
-              {canEdit && dirty && (
-                <div className={styles.saveBar} role="region" aria-label="Unsaved changes">
-                  <span className={styles.saveBarText}>
-                    <strong>
-                      {changes.count} unsaved change{changes.count === 1 ? '' : 's'}
-                    </strong>{' '}
-                    ({changes.creates.length} added, {changes.updates.length} edited, {changes.deletes.length} deleted)
-                    {hiddenChanges > 0 && <span> – {hiddenChanges} of them in rows hidden by the filters</span>}
-                    {problems.length > 0 && (
-                      <span className={styles.issueError} role="alert">
-                        {' '}
-                        – fix before saving: {problems.join('; ')}
+              {canEdit && (selected.size > 0 || dirty) && (
+                <div className={styles.bottomBars}>
+                  {selected.size > 0 && (
+                    <BulkBar count={selected.size} teams={plan.teams} onSetTeam={bulkTeam} onSetStatus={bulkStatus} onShift={bulkShift} onClear={() => setSelected(new Set())} />
+                  )}
+                  {dirty && (
+                    <div className={styles.saveBar} role="region" aria-label="Unsaved changes">
+                      <span className={styles.saveBarText}>
+                        <strong>
+                          {changes.count} unsaved change{changes.count === 1 ? '' : 's'}
+                        </strong>{' '}
+                        ({changes.creates.length} added, {changes.updates.length} edited, {changes.deletes.length} deleted)
+                        {hiddenChanges > 0 && <span> – {hiddenChanges} of them in rows hidden by the filters</span>}
+                        {problems.length > 0 && (
+                          <span className={styles.issueError} role="alert">
+                            {' '}
+                            – fix before saving: {problems.join('; ')}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  <Button variant="secondary" onClick={discard} disabled={saving}>
-                    Discard
-                  </Button>
-                  <Button onClick={save} loading={saving} disabled={saving || problems.length > 0}>
-                    Save changes
-                  </Button>
+                      <Button variant="secondary" onClick={discard} disabled={saving}>
+                        Discard
+                      </Button>
+                      <Button onClick={save} loading={saving} disabled={saving || problems.length > 0}>
+                        Save changes
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -576,6 +662,48 @@ export default function ProjectTimelinePage() {
           onChange={(e) => setResetReason(e.target.value)}
           placeholder="e.g. Steering committee approved the new dates on Oct 20"
         />
+      </Modal>
+
+      <Modal
+        open={exportOpen}
+        onClose={() => !exporting && setExportOpen(false)}
+        title="Export the timeline"
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setExportOpen(false)} disabled={exporting}>
+              Cancel
+            </Button>
+            <Button leftIcon={Download} onClick={runExport} loading={exporting} disabled={exporting || dirty || shownRows.length === 0}>
+              Download
+            </Button>
+          </>
+        }
+      >
+        {dirty ? (
+          <div className={`${styles.notice} ${styles.noticeError}`} role="alert">
+            Save or discard your {plural(changes.count, 'unsaved change')} first - the export is the saved plan.
+          </div>
+        ) : (
+          <p className={styles.muted} style={{ marginTop: 0 }}>
+            {filtering ? `The ${plural(shownRows.length, 'phase')} the filters show (of ${live.length}).` : `The whole plan: ${plural(live.length, 'phase')}.`}
+          </p>
+        )}
+        <fieldset className={styles.formatChoice}>
+          <legend className={styles.label}>Format</legend>
+          <label>
+            <input type="radio" name="timeline-export-format" value="xlsx" checked={exportFormat === 'xlsx'} onChange={() => setExportFormat('xlsx')} />
+            Excel (.xlsx)
+          </label>
+          <label>
+            <input type="radio" name="timeline-export-format" value="csv" checked={exportFormat === 'csv'} onChange={() => setExportFormat('csv')} />
+            CSV
+          </label>
+        </fieldset>
+        <p className={styles.muted}>
+          Columns: Module, Phase, Team, Status, Start Date, End Date - the import layout, so the file can be imported again - then Overdue, Overlaps
+          with and Slip (days), which import ignores.
+        </p>
       </Modal>
 
       <Modal

@@ -6,6 +6,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Get,
+  HttpCode,
   Injectable,
   Param,
   ParseIntPipe,
@@ -25,6 +26,7 @@ import { ProjectTimelineService } from './project-timeline.service';
 import {
   ApplyTimelineImportDto,
   CreateTimelineTeamDto,
+  ExportTimelineDto,
   ParseTimelineFileDto,
   PreviewTimelineImportDto,
   ResetTimelineBaselineDto,
@@ -147,6 +149,16 @@ export class ProjectTimelineController {
   @Roles(EDIT_ROLES)
   async import(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: ApplyTimelineImportDto, @Req() req: any) {
     return this.projectTimelineService.applyImport(projectId, dto, req.timelineUser, req.user.tenantId);
+  }
+
+  // PM/Admin only (user decision 2026-10-16) - Executive views, no export.
+  @Post('projects/:projectId/export')
+  @HttpCode(200)
+  @Roles(EDIT_ROLES)
+  async export(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: ExportTimelineDto, @Req() req: any, @Res() res: Response) {
+    const { buffer, filename } = await this.projectTimelineService.exportPlan(projectId, dto, req.user.tenantId);
+    res.set({ 'Content-Type': CONTENT_TYPES[dto.format], 'Content-Disposition': `attachment; filename="${filename}"` });
+    res.send(buffer);
   }
 
   @Post('projects/:projectId/changes')

@@ -7,12 +7,15 @@ import ExcelJS from 'exceljs';
 import { ProjectTimelineRow } from './project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline-team.entity';
 import {
+  EXPORT_INFO_COLUMNS,
   TIMELINE_COLUMNS,
   TIMELINE_STATUSES,
   TimelineStatus,
   BaselineEvent,
   buildBaselines,
+  buildExportRows,
   buildPreview,
+  fileDate,
   matchKeyFor,
   nameKey,
   parsePlanDate,
@@ -21,7 +24,7 @@ import {
   summarizePlan,
   tidyName,
 } from './project-timeline-rules';
-import { ApplyTimelineImportDto, ParseTimelineFileDto, PreviewTimelineImportDto, SaveTimelineChangesDto } from './dto/project-timeline.dto';
+import { ApplyTimelineImportDto, ExportTimelineDto, ParseTimelineFileDto, PreviewTimelineImportDto, SaveTimelineChangesDto } from './dto/project-timeline.dto';
 import { parseSpreadsheet } from '../test-cases/test-case-spreadsheet';
 import { Project } from '../projects/project.entity';
 import { TeamSettings } from '../team-settings/team-settings.entity';
@@ -519,6 +522,53 @@ export class ProjectTimelineService {
       'Uploading again updates the rows with the same Module + Phase - it never creates duplicates.',
     ].forEach((text) => help.addRow({ text }));
     return { buffer: Buffer.from(await workbook.xlsx.writeBuffer()), filename: 'project-timeline-template.xlsx' };
+  }
+
+  // ---------------------------------------------------------------- export
+
+  // The saved rows asked for (all when rowIds is missing), in plan order,
+  // as a file that can be imported again. Read-only.
+  async exportPlan(projectId: number, dto: ExportTimelineDto, tenantId: number): Promise<{ buffer: Buffer; filename: string }> {
+    const project = await this.findProject(projectId, tenantId);
+    const [allRows, teams, { today }, slip] = await Promise.all([
+      this.rowsRepository.find({ where: { tenantId, projectId }, order: { sortOrder: 'ASC', id: 'ASC' } }),
+      this.listTeams(tenantId),
+      this.today(tenantId),
+      this.getSlip(projectId, tenantId),
+    ]);
+    let rows = allRows;
+    if (dto.rowIds) {
+      const wanted = new Set(dto.rowIds);
+      rows = allRows.filter((r) => wanted.has(r.id));
+      if (rows.length !== wanted.size) {
+        throw new BadRequestException('Some of these rows are no longer in the plan. Reload the page and export again.');
+      }
+    }
+    const data = buildExportRows({
+      rows,
+      allRows,
+      teamNameById: new Map(teams.map((t) => [t.id, t.name])),
+      today,
+      baselineEndById: new Map(slip.rows.map((b) => [b.rowId, b.baselineEnd])),
+    });
+    const columns = [...TIMELINE_COLUMNS, ...EXPORT_INFO_COLUMNS];
+    const safeName = project.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
+    const filename = `${safeName}-timeline-${today}.${dto.format}`;
+    const info = (r: (typeof data)[number]) => [r.overdue ? 'Yes' : '', r.overlapsWith.join('; '), r.slip ?? ''];
+
+    if (dto.format === 'csv') {
+      const lines = data.map((r) => [r.module, r.phase, r.team, r.status, fileDate(r.startDate), fileDate(r.endDate), ...info(r)]);
+      // BOM so Excel opens the UTF-8 file with the right characters.
+      return { buffer: Buffer.from('\uFEFF' + stringify([columns, ...lines]), 'utf-8'), filename };
+    }
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Project Timeline', { views: [{ state: 'frozen', ySplit: 1 }] });
+    sheet.columns = columns.map((header) => ({ header, key: header, width: header === 'Phase' || header === 'Overlaps with' ? 36 : 18 }));
+    sheet.getRow(1).font = { bold: true };
+    const asDate = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
+    data.forEach((r) => sheet.addRow([r.module, r.phase, r.team, r.status, asDate(r.startDate), asDate(r.endDate), ...info(r)]));
+    for (const header of ['Start Date', 'End Date']) sheet.getColumn(header).numFmt = 'd-mmm-yy';
+    return { buffer: Buffer.from(await workbook.xlsx.writeBuffer()), filename };
   }
 
   // ----------------------------------------------------------------- audit

@@ -24,12 +24,15 @@ export async function apiFetch(path, options = {}) {
 }
 
 // Fetches a binary file (e.g. a PDF or an attachment) with the saved auth
-// token and returns it as a Blob.
-export async function apiBlob(path) {
+// token and returns it as a Blob. `body` (optional) is sent as a JSON POST,
+// for files built from a request (e.g. the Project Timeline export).
+export async function apiBlob(path, body) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
   const res = await fetch(`${API_URL}${path}`, {
+    ...(body !== undefined ? { method: 'POST', body: JSON.stringify(body) } : {}),
     headers: {
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
@@ -53,8 +56,8 @@ export async function apiBlob(path) {
 // normal browser "Save As" download using a throwaway <a> element - no
 // server round trip needed beyond the one fetch, and nothing is left
 // behind in the DOM or in memory afterwards.
-export async function apiDownload(path, filename) {
-  const blob = await apiBlob(path);
+export async function apiDownload(path, filename, body) {
+  const blob = await apiBlob(path, body);
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

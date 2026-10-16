@@ -912,3 +912,101 @@
   font-weight: var(--ds-weight-medium);
   white-space: nowrap;
 }
+
+/* ---------- Bulk edit + export (Stage 3, 2026-10-16) ---------- */
+.checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--ds-color-primary-600);
+  cursor: pointer;
+}
+
+.checkbox:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.rowSelected td {
+  background: var(--ds-color-primary-50);
+}
+
+/* The bulk bar and the save bar share one sticky strip at the bottom. */
+.bottomBars {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--ds-z-sticky);
+  display: grid;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-4);
+}
+
+.bottomBars .saveBar {
+  position: static;
+  margin-top: 0;
+}
+
+.bulkBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ds-space-3) var(--ds-space-4);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border-focus);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-shadow-lg);
+}
+
+.bulkCount {
+  align-self: center;
+  font-size: var(--ds-text-sm);
+}
+
+.bulkControl {
+  display: grid;
+}
+
+.bulkInline {
+  display: flex;
+  gap: var(--ds-space-2);
+  align-items: center;
+}
+
+.bulkInline .select {
+  width: auto;
+  min-width: 140px;
+}
+
+.bulkDays {
+  width: 96px;
+}
+
+.bulkHint {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  margin-top: var(--ds-space-1);
+}
+
+.formatChoice {
+  display: grid;
+  gap: var(--ds-space-2);
+  margin: var(--ds-space-3) 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--ds-text-sm);
+}
+
+.formatChoice label {
+  display: flex;
+  gap: var(--ds-space-2);
+  align-items: center;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .bulkBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
