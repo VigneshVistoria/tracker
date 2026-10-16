@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   TrendingUp,
   SlidersHorizontal,
+  CalendarClock,
   Globe,
   FileSpreadsheet,
   Layers,
@@ -159,6 +160,9 @@ export const NAV_SECTIONS = [
       { href: '/admin/teams-integration', label: 'Teams Integration', icon: Radio, roles: [ADMIN] },
       { href: '/admin/regression-testing', label: 'Regression Testing', icon: CheckSquare, roles: [ADMIN] },
       { href: '/admin/task-status-config', label: 'Task Status Config', icon: Percent, roles: [ADMIN] },
+      // Matches DailyScrumController.ROLES_ALLOWED_TO_EDIT_SCRUM_SETTINGS -
+      // the one Admin-section page Program Manager also gets (2026-10-12).
+      { href: '/admin/daily-scrum-settings', label: 'Daily Scrum Settings', icon: CalendarClock, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

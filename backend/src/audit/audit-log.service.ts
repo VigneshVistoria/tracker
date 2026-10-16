@@ -120,6 +120,8 @@ export const AuditActions = {
   TASK_PEER_REVIEW_SUBMITTED: 'task_peer_review_submitted',
   TASK_PEER_REVIEW_APPROVED: 'task_peer_review_approved',
   TASK_PEER_REVIEW_REJECTED: 'task_peer_review_rejected',
+  // details: { before: {timeZone, workdayStart, workdayEnd}, after: {...} }
+  DAILY_SCRUM_SETTINGS_UPDATED: 'daily_scrum_settings_updated',
   ROLLBACK_TRIGGERED: 'rollback_triggered',
   EVIDENCE_SUBMITTED: 'evidence_submitted',
   IMPERSONATION_STARTED: 'impersonation_started',

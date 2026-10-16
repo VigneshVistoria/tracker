@@ -92,6 +92,7 @@ import { Release } from './release-logs/release.entity';
 import { ReleaseItem } from './release-logs/release-item.entity';
 import { ReleaseLogsModule } from './release-logs/release-logs.module';
 import { StatusReviewModule } from './status-review/status-review.module';
+import { DailyScrumModule } from './daily-scrum/daily-scrum.module';
 import { TeamSettings } from './team-settings/team-settings.entity';
 import { ProjectTimelineRow } from './project-timeline/project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline/project-timeline-team.entity';
@@ -220,6 +221,7 @@ import { SearchModule } from './search/search.module';
     PermissionsModule,
     ReleaseLogsModule,
     StatusReviewModule,
+    DailyScrumModule,
     ProjectTimelineModule,
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 20 }]),
   ],
