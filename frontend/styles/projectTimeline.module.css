@@ -1010,3 +1010,39 @@
     flex-direction: column;
   }
 }
+
+/* Table | Gantt switch (Stage A, 2026-10-16). */
+.viewSwitch {
+  display: inline-flex;
+  margin: var(--ds-space-4) 0 var(--ds-space-3);
+  padding: 2px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-bg-surface-sunken);
+}
+
+.viewButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-1) var(--ds-space-4);
+  border: 0;
+  border-radius: var(--ds-radius-md);
+  background: none;
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+
+.viewButton:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.viewActive {
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-xs);
+}

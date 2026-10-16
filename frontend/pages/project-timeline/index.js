@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Download, Plus, Upload } from 'lucide-react';
+import { Download, GanttChart, Plus, Table2, Upload } from 'lucide-react';
 import AppShell from '../../components/AppShell';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -11,6 +11,7 @@ import TimelineTable from '../../components/projectTimeline/TimelineTable';
 import TimelineSummary from '../../components/projectTimeline/TimelineSummary';
 import TimelineFilters from '../../components/projectTimeline/TimelineFilters';
 import BulkBar from '../../components/projectTimeline/BulkBar';
+import GanttView from '../../components/projectTimeline/GanttView';
 import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
@@ -63,6 +64,12 @@ export default function ProjectTimelinePage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
+  // Table or Gantt (Stage A) - kept in ?view= so a link opens the same view.
+  const view = router.query.view === 'gantt' ? 'gantt' : 'table';
+  const setView = (next) => {
+    const { view: _old, ...rest } = router.query;
+    router.replace({ pathname: '/project-timeline', query: next === 'gantt' ? { ...rest, view: 'gantt' } : rest }, undefined, { shallow: true });
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -196,7 +203,7 @@ export default function ProjectTimelinePage() {
   const pickProject = async (id) => {
     if (dirty && !(await confirmAction({ title: 'Discard unsaved changes?', message: LEAVE_MESSAGE, confirmLabel: 'Discard and switch', danger: true }))) return;
     setProjectId(id);
-    router.replace({ pathname: '/project-timeline', query: { project: id } }, undefined, { shallow: true });
+    router.replace({ pathname: '/project-timeline', query: { project: id, ...(view === 'gantt' ? { view } : {}) } }, undefined, { shallow: true });
   };
 
   const nextOrder = () => draft.reduce((max, r) => Math.max(max, r.sortOrder || 0), 0) + 1;
@@ -558,6 +565,16 @@ export default function ProjectTimelinePage() {
 
               <div id="timeline-table">
                 {live.length > 0 && (
+                  <div className={styles.viewSwitch} role="group" aria-label="View">
+                    <button type="button" className={`${styles.viewButton} ${view === 'table' ? styles.viewActive : ''}`} aria-pressed={view === 'table'} onClick={() => setView('table')}>
+                      <Table2 size={16} aria-hidden="true" /> Table
+                    </button>
+                    <button type="button" className={`${styles.viewButton} ${view === 'gantt' ? styles.viewActive : ''}`} aria-pressed={view === 'gantt'} onClick={() => setView('gantt')}>
+                      <GanttChart size={16} aria-hidden="true" /> Gantt
+                    </button>
+                  </div>
+                )}
+                {live.length > 0 && (
                   <TimelineFilters
                     filters={filters}
                     onChange={setFilters}
@@ -570,6 +587,22 @@ export default function ProjectTimelinePage() {
                 )}
               </div>
 
+              {view === 'gantt' ? (
+                <GanttView
+                  rows={shownRows}
+                  today={today}
+                  teams={plan.teams}
+                  canEdit={canEdit}
+                  overlaps={overlaps}
+                  slipByKey={slip?.perRow}
+                  dirtyKeys={changes.dirtyKeys}
+                  onChange={update}
+                  onEditInTable={(row) => {
+                    setView('table');
+                    reveal(row);
+                  }}
+                />
+              ) : (
               <TimelineTable
                 rows={shownRows}
                 canReorder={!filtering}
@@ -594,10 +627,11 @@ export default function ProjectTimelinePage() {
                   setTeamModal({ rowKey });
                 }}
               />
+              )}
 
               {canEdit && (selected.size > 0 || dirty) && (
                 <div className={styles.bottomBars}>
-                  {selected.size > 0 && (
+                  {selected.size > 0 && view === 'table' && (
                     <BulkBar count={selected.size} teams={plan.teams} onSetTeam={bulkTeam} onSetStatus={bulkStatus} onShift={bulkShift} onClear={() => setSelected(new Set())} />
                   )}
                   {dirty && (
