@@ -39,6 +39,7 @@ import {
   PackageCheck,
   LifeBuoy,
   UserCheck,
+  GanttChart,
 } from 'lucide-react';
 
 // Single source of truth for the sidebar and the command palette.
@@ -93,6 +94,9 @@ export const NAV_SECTIONS = [
       { href: '/tasks/qa-review', label: 'QA Review', icon: FlaskConical, roles: [ADMIN, PM, EXEC, QA], countKey: 'qaReview' },
       { href: '/issues', label: 'Issues', icon: Ticket, roles: [ADMIN, PM, QA] },
       { href: '/dependencies', label: 'Dependency', icon: Workflow, roles: [ADMIN, PM, EXEC, QA] },
+      // Project Timeline (2026-10-16) - matches ProjectTimelineController: PM and
+      // Admin edit, Executive view only.
+      { href: '/project-timeline', label: 'Project Timeline', icon: GanttChart, roles: [ADMIN, PM, EXEC] },
     ],
   },
   {

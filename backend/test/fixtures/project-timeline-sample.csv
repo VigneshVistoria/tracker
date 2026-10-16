@@ -1,0 +1,17 @@
+Module,Phase,Team,Status,Start Date,End Date
+Medical Claim,Requirements Gathering,Vistoria,Completed,1-Jul-26,10-Jul-26
+Medical Claim,  Data   Migration ,Vistoria,To Do,13-Jul-26,24-Jul-26
+Medical Claim,Pilot Run (Staging),Amanah,In Progress,20-Jul-26,31-Jul-26
+Medical Claim,Production Readiness,Vistoria,To Do,31-Jul-26,14-Aug-26
+Medical Claim,Data Migratiaon Rehearsal,Vistoria,To Do,1-Nov-26,
+Medical Claim,Go Live,Vistoria,Delayed,10-Aug-26,1-Aug-26
+Underwriting,Prodcution Deployment,Amanah,On Hold,1-Aug-26,15-Aug-26
+Underwriting,Pilot Run - Staging,Amanah,Delayed,1-Sep-26,30-Sep-26
+Underwriting,UAT,Amanah,Finished,1-Oct-26,10-Oct-26
+,Orphan Phase,Vistoria,To Do,1-Oct-26,2-Oct-26
+Underwriting,Sign Off,Vistoria,To Do,32-Oct-26,1-Nov-26
+Underwriting,Training,Amanha,Completed,1-Nov-26,30-Nov-26
+underwriting,training,Vistoria,To Do,1-Jul-26,2-Jul-26
+Pre-Auth,Design,Vistoria,Completed,1-Jul-26,31-Jul-26
+Pre-Auth,Build,Vistoria,Completed,1-Aug-26,10-Aug-26
+Pre-Auth,Integration,Amanah,Completed,25-Jul-26,5-Aug-26

@@ -17,6 +17,10 @@ const DAILY_SCRUM_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-
 // against the entity.
 const TASK_ATTACHMENT_ENTITY = path.join(SRC, 'tasks', 'task-attachment.entity.ts');
 const TASK_ATTACHMENTS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-task-attachments.sql');
+// Project Timeline (project_timeline_rows/_teams) - same: real migration,
+// checked against the entities.
+const TIMELINE_DIR = path.join(SRC, 'project-timeline');
+const TIMELINE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-project-timeline.sql');
 const JUNK_COLUMNS = ['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
 // Revert QA decision columns on task_qa_reviews - same treatment as the
 // Junk columns: re-added by the real migration and checked against the entity.
@@ -51,7 +55,9 @@ function dataSource(entities: string[]) {
 // portal entities column for column - so the migrations themselves are tested.
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
-  const existing = all.filter((f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY);
+  const existing = all.filter(
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && !f.startsWith(TIMELINE_DIR),
+  );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
   const base = dataSource(existing);
@@ -74,6 +80,7 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(PM_REVIEW_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(TIMELINE_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -88,7 +95,9 @@ export async function buildTestSchema() {
   if (!scrumMeta) problems.push('team_settings: entity missing');
   const taskAttachmentMeta = check.entityMetadatas.find((m) => m.tableName === 'task_attachments');
   if (!taskAttachmentMeta) problems.push('task_attachments: entity missing');
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : [])]) {
+  const timelineMetas = check.entityMetadatas.filter((m) => ['project_timeline_rows', 'project_timeline_teams'].includes(m.tableName));
+  if (timelineMetas.length !== 2) problems.push('project_timeline_rows/_teams: entity missing');
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

@@ -59,6 +59,14 @@ export const AuditActions = {
   PROJECT_TEAM_UPDATED: 'project_team_updated',
   PROJECT_TEAM_ACTIVATED: 'project_team_activated',
   PROJECT_TEAM_DEACTIVATED: 'project_team_deactivated',
+  // Project Timeline (2026-10-16). Row entries carry { source: 'import' |
+  // 'edit', batchId, changes: { field: { old, new } } } (or values /
+  // snapshot for created / deleted); one IMPORTED entry per import.
+  PROJECT_TIMELINE_ROW_CREATED: 'project_timeline_row_created',
+  PROJECT_TIMELINE_ROW_UPDATED: 'project_timeline_row_updated',
+  PROJECT_TIMELINE_ROW_DELETED: 'project_timeline_row_deleted',
+  PROJECT_TIMELINE_IMPORTED: 'project_timeline_imported',
+  PROJECT_TIMELINE_TEAM_CREATED: 'project_timeline_team_created',
   RELEASE_CREATED: 'release_created',
   RELEASE_UPDATED: 'release_updated',
   RELEASE_ITEM_ADDED: 'release_item_added',
