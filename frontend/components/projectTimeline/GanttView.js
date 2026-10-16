@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Crosshair, Link2, PencilLine, Route } from 'lucide-react';
+import { ChevronDown, ChevronRight, Crosshair, Link2, ListChecks, PencilLine, Route } from 'lucide-react';
+import { progressText } from '../../lib/projectTimelineTickets';
 import { formatDate } from '../../lib/formatDate';
 import { groupByModule, isOverdue } from '../../lib/projectTimeline';
 import { formatSlip } from '../../lib/projectTimelineSummary';
@@ -51,11 +52,13 @@ function Legend() {
       <li><span className={`${styles.swatch} ${styles.swatchCritical}`} aria-hidden="true" />Critical path</li>
       <li><span className={styles.swatchArrow} aria-hidden="true" />Starts after</li>
       <li><span className={`${styles.swatchArrow} ${styles.swatchArrowBad}`} aria-hidden="true" />Starts too early</li>
+      <li><span className={`${styles.swatch} ${styles.swatchFill}`} aria-hidden="true" />Tickets done</li>
+      <li><span className={styles.swatchMismatch} aria-hidden="true" />Doesn’t match tickets</li>
     </ul>
   );
 }
 
-function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, preview, critical, early, onDragStart, onKeyMove }) {
+function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, preview, critical, early, tickets, onDragStart, onKeyMove }) {
   const dates = preview || row;
   const span = barSpan(dates.startDate, dates.endDate);
   const base = baseline && barSpan(baseline.baselineStart, baseline.baselineEnd);
@@ -72,6 +75,8 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
     moved && baseline?.slip != null ? `slip ${formatSlip(baseline.slip)} against the plan` : null,
     critical ? 'on the critical path' : null,
     early ? `starts ${early} day${early === 1 ? '' : 's'} before a phase it depends on allows` : null,
+    tickets ? `tickets ${progressText(tickets.progress)}` : null,
+    ...(tickets?.mismatches || []).map((m) => m.text),
     dirty ? 'unsaved change' : null,
   ]
     .filter(Boolean)
@@ -112,6 +117,8 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
             </>
           )}
           {overlapCount > 0 && <span className={styles.overlapDot} aria-hidden="true" />}
+          {tickets?.progress?.percent != null && <span className={styles.barFill} style={{ width: `${tickets.progress.percent}%` }} aria-hidden="true" />}
+          {tickets?.mismatches?.length > 0 && <span className={styles.mismatchDot} aria-hidden="true" />}
         </button>
       ) : (
         <span className={styles.noDates}>No dates</span>
@@ -120,7 +127,7 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
   );
 }
 
-export default function GanttView({ rows, today, teams, canEdit, overlaps, slipByKey, dirtyKeys, onChange, onEditInTable, deps = [], conflicts = [], critical, onDependencies }) {
+export default function GanttView({ rows, today, teams, canEdit, overlaps, slipByKey, dirtyKeys, onChange, onEditInTable, deps = [], conflicts = [], critical, onDependencies, ticketInfoById, onTickets }) {
   const [zoom, setZoom] = useState('month');
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [drag, setDrag] = useState(null); // { key, mode, startX, delta, moved }
@@ -384,6 +391,17 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                             {depCount.get(r.id) ? <span className={styles.linkCount}>{depCount.get(r.id)}</span> : null}
                           </button>
                         )}
+                        {onTickets && r.id != null && (
+                          <button
+                            type="button"
+                            className={`${styles.editLink} ${ticketInfoById?.get(r.id) ? styles.linkHas : ''}`}
+                            onClick={() => onTickets(r)}
+                            aria-label={`Tickets for ${r.phase || 'new phase'}: ${ticketInfoById?.get(r.id) ? progressText(ticketInfoById.get(r.id).progress) : 'none linked'}`}
+                            title={ticketInfoById?.get(r.id) ? `Tickets: ${progressText(ticketInfoById.get(r.id).progress)}` : 'Tickets'}
+                          >
+                            <ListChecks size={14} aria-hidden="true" />
+                          </button>
+                        )}
                         {onEditInTable && (
                           <button type="button" className={styles.editLink} onClick={() => onEditInTable(r)} aria-label={`Show ${r.phase || 'new phase'} in the table`} title="Show in the table">
                             <PencilLine size={14} aria-hidden="true" />
@@ -403,6 +421,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                           preview={preview(r)}
                           critical={r.id != null && criticalIds.has(r.id)}
                           early={r.id != null ? earlyById.get(r.id) : null}
+                          tickets={r.id != null ? ticketInfoById?.get(r.id) : null}
                           onDragStart={onDragStart}
                           onKeyMove={onKeyMove}
                         />

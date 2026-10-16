@@ -162,3 +162,26 @@ export class UpdateTimelineDependencyDto {
   @Max(365, { message: 'The gap can be at most 365 days.' })
   lagDays: number;
 }
+
+// Stage C: link a phase to tickets - a Module (+ optional Phase) or one
+// ticket. The service checks the combination.
+export class CreateTimelineTicketLinkDto {
+  @IsInt()
+  @Min(1)
+  rowId: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  moduleId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  phaseId?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  taskId?: number;
+}

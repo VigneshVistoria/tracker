@@ -28,6 +28,7 @@ import { ProjectTimelineService } from './project-timeline.service';
 import {
   ApplyTimelineImportDto,
   CreateTimelineDependencyDto,
+  CreateTimelineTicketLinkDto,
   CreateTimelineTeamDto,
   ExportTimelineDto,
   ParseTimelineFileDto,
@@ -143,6 +144,39 @@ export class ProjectTimelineController {
   @Roles(EDIT_ROLES)
   async removeDependency(@Param('projectId', ParseIntPipe) projectId: number, @Param('depId', ParseIntPipe) depId: number, @Req() req: any) {
     return this.projectTimelineService.removeDependency(projectId, depId, req.timelineUser, req.user.tenantId);
+  }
+
+  // Stage C: ticket links + progress. View roles read progress; PM/Admin
+  // pick (options, search), add and remove - each audited. Tickets are
+  // only read.
+  @Get('projects/:projectId/ticket-progress')
+  @Roles(VIEW_ROLES)
+  async ticketProgress(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.projectTimelineService.ticketProgress(projectId, req.user.tenantId);
+  }
+
+  @Get('projects/:projectId/ticket-link-options')
+  @Roles(EDIT_ROLES)
+  async ticketLinkOptions(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.projectTimelineService.ticketLinkOptions(projectId, req.user.tenantId);
+  }
+
+  @Get('projects/:projectId/ticket-search')
+  @Roles(EDIT_ROLES)
+  async ticketSearch(@Param('projectId', ParseIntPipe) projectId: number, @Query('q') q: string, @Req() req: any) {
+    return this.projectTimelineService.searchTickets(projectId, q, req.user.tenantId);
+  }
+
+  @Post('projects/:projectId/ticket-links')
+  @Roles(EDIT_ROLES)
+  async addTicketLink(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: CreateTimelineTicketLinkDto, @Req() req: any) {
+    return this.projectTimelineService.addTicketLink(projectId, dto, req.timelineUser, req.user.tenantId);
+  }
+
+  @Delete('projects/:projectId/ticket-links/:linkId')
+  @Roles(EDIT_ROLES)
+  async removeTicketLink(@Param('projectId', ParseIntPipe) projectId: number, @Param('linkId', ParseIntPipe) linkId: number, @Req() req: any) {
+    return this.projectTimelineService.removeTicketLink(projectId, linkId, req.timelineUser, req.user.tenantId);
   }
 
   @Get('teams')

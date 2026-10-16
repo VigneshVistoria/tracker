@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Not, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { stringify } from 'csv-stringify/sync';
 import ExcelJS from 'exceljs';
@@ -8,6 +8,12 @@ import { ProjectTimelineRow } from './project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline-team.entity';
 import { ProjectTimelineDependency } from './project-timeline-dependency.entity';
 import { wouldCreateCycle } from './project-timeline-dependencies';
+import { ProjectTimelineTicketLink } from './project-timeline-ticket-link.entity';
+import { percentFor, rowProgress, ticketsByRow } from './project-timeline-tickets';
+import { ProjectTask } from '../tasks/project-task.entity';
+import { ProjectModule } from '../modules/project-module.entity';
+import { Phase } from '../phases/phase.entity';
+import { TaskStatusConfigService } from '../task-status-config/task-status-config.service';
 import {
   EXPORT_INFO_COLUMNS,
   TIMELINE_COLUMNS,
@@ -26,7 +32,7 @@ import {
   summarizePlan,
   tidyName,
 } from './project-timeline-rules';
-import { ApplyTimelineImportDto, CreateTimelineDependencyDto, ExportTimelineDto, ParseTimelineFileDto, PreviewTimelineImportDto, SaveTimelineChangesDto } from './dto/project-timeline.dto';
+import { ApplyTimelineImportDto, CreateTimelineDependencyDto, CreateTimelineTicketLinkDto, ExportTimelineDto, ParseTimelineFileDto, PreviewTimelineImportDto, SaveTimelineChangesDto } from './dto/project-timeline.dto';
 import { parseSpreadsheet } from '../test-cases/test-case-spreadsheet';
 import { Project } from '../projects/project.entity';
 import { TeamSettings } from '../team-settings/team-settings.entity';
@@ -51,6 +57,11 @@ export class ProjectTimelineService {
     @InjectRepository(ProjectTimelineRow) private rowsRepository: Repository<ProjectTimelineRow>,
     @InjectRepository(ProjectTimelineTeam) private teamsRepository: Repository<ProjectTimelineTeam>,
     @InjectRepository(ProjectTimelineDependency) private depsRepository: Repository<ProjectTimelineDependency>,
+    @InjectRepository(ProjectTimelineTicketLink) private ticketLinksRepository: Repository<ProjectTimelineTicketLink>,
+    @InjectRepository(ProjectTask) private tasksRepository: Repository<ProjectTask>,
+    @InjectRepository(ProjectModule) private modulesRepository: Repository<ProjectModule>,
+    @InjectRepository(Phase) private phasesRepository: Repository<Phase>,
+    private taskStatusConfigService: TaskStatusConfigService,
     @InjectRepository(Project) private projectsRepository: Repository<Project>,
     @InjectRepository(TeamSettings) private teamSettingsRepository: Repository<TeamSettings>,
     private dataSource: DataSource,
@@ -662,6 +673,138 @@ export class ProjectTimelineService {
       });
       return this.listDependencies(projectId, tenantId, em);
     });
+  }
+
+  // ---------------------------------------------------- ticket links (C)
+
+  // Every link, and each linked phase's tickets and progress. Read-only -
+  // tickets are never changed here.
+  async ticketProgress(projectId: number, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const [links, tickets, modules, phases, percents] = await Promise.all([
+      this.ticketLinksRepository.find({ where: { tenantId, projectId }, order: { id: 'ASC' } }),
+      this.tasksRepository.find({
+        where: { tenantId, projectId, status: Not('Junk') },
+        select: ['id', 'title', 'status', 'moduleId', 'phaseId'],
+      }),
+      this.modulesRepository.find({ where: { tenantId, projectId } }),
+      this.phasesRepository.find({ where: { tenantId, projectId } }),
+      this.taskStatusConfigService.percentByStatus(tenantId),
+    ]);
+    const moduleName = new Map(modules.map((m) => [m.id, m.name]));
+    const phaseName = new Map(phases.map((p) => [p.id, p.name]));
+    const ticketTitle = new Map(tickets.map((t) => [t.id, t.title]));
+    const byRow = ticketsByRow(links, tickets);
+    return {
+      links: links.map((l) => ({
+        id: l.id,
+        rowId: l.rowId,
+        kind: l.taskId != null ? 'ticket' : 'module',
+        moduleId: l.moduleId,
+        moduleName: l.moduleId != null ? moduleName.get(l.moduleId) ?? null : null,
+        phaseId: l.phaseId,
+        phaseName: l.phaseId != null ? phaseName.get(l.phaseId) ?? null : null,
+        taskId: l.taskId,
+        taskTitle: l.taskId != null ? ticketTitle.get(l.taskId) ?? null : null,
+      })),
+      rows: [...byRow].map(([rowId, list]) => ({
+        rowId,
+        progress: rowProgress(list, percents),
+        tickets: list.map((t) => ({ id: t.id, title: t.title, status: t.status, percent: percentFor(t.status, percents) })),
+      })),
+    };
+  }
+
+  // The project's app Modules and their Phases, for the link picker.
+  async ticketLinkOptions(projectId: number, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const [modules, phases] = await Promise.all([
+      this.modulesRepository.find({ where: { tenantId, projectId }, order: { name: 'ASC' } }),
+      this.phasesRepository.find({ where: { tenantId, projectId }, order: { name: 'ASC' } }),
+    ]);
+    return modules.map((m) => ({
+      id: m.id,
+      name: m.name,
+      isActive: m.isActive,
+      phases: phases.filter((p) => p.moduleId === m.id).map((p) => ({ id: p.id, name: p.name, isActive: p.isActive })),
+    }));
+  }
+
+  // This project's tickets by #id or title words (Junk left out), max 20.
+  async searchTickets(projectId: number, q: string, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const text = (q || '').trim();
+    if (!text) return [];
+    const qb = this.tasksRepository
+      .createQueryBuilder('t')
+      .select(['t.id', 't.title', 't.status', 't.moduleName', 't.phaseName'])
+      .where('t."tenantId" = :tenantId AND t."projectId" = :projectId AND t.status <> :junk', { tenantId, projectId, junk: 'Junk' });
+    const id = Number(text.replace(/^#/, ''));
+    const like = `%${text.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    if (Number.isInteger(id) && id > 0) qb.andWhere('(t.id = :id OR t.title ILIKE :like)', { id, like });
+    else qb.andWhere('t.title ILIKE :like', { like });
+    const rows = await qb.orderBy('t.id', 'DESC').limit(20).getMany();
+    return rows.map((t) => ({ id: t.id, title: t.title, status: t.status, moduleName: t.moduleName, phaseName: t.phaseName }));
+  }
+
+  async addTicketLink(projectId: number, dto: CreateTimelineTicketLinkDto, actor: Actor, tenantId: number) {
+    const byTicket = dto.taskId != null;
+    if (byTicket === (dto.moduleId != null) || (byTicket && dto.phaseId != null)) {
+      throw new BadRequestException('Link either one ticket, or a module (with or without a phase).');
+    }
+    if (!byTicket && dto.moduleId == null) throw new BadRequestException('Choose a module.');
+    return this.dataSource.transaction(async (em) => {
+      await this.findProject(projectId, tenantId, em);
+      await this.lockPlan(em, tenantId, projectId);
+      const row = await this.findPlanRow(em, dto.rowId, projectId, tenantId);
+      const details: Record<string, unknown> = { projectId, row: { id: row.id, module: row.module, phase: row.phase } };
+      if (byTicket) {
+        const task = await em.getRepository(ProjectTask).findOne({ where: { id: dto.taskId!, tenantId, projectId } });
+        if (!task || task.status === 'Junk') throw new BadRequestException(`Ticket #${dto.taskId} is not in this project.`);
+        details.ticket = { id: task.id, title: task.title };
+      } else {
+        const mod = await em.getRepository(ProjectModule).findOne({ where: { id: dto.moduleId!, tenantId, projectId } });
+        if (!mod) throw new BadRequestException('That module is not in this project.');
+        details.module = { id: mod.id, name: mod.name };
+        if (dto.phaseId != null) {
+          const ph = await em.getRepository(Phase).findOne({ where: { id: dto.phaseId, tenantId, projectId, moduleId: mod.id } });
+          if (!ph) throw new BadRequestException('That phase is not in this module.');
+          details.phase = { id: ph.id, name: ph.name };
+        }
+      }
+      const repo = em.getRepository(ProjectTimelineTicketLink);
+      const dup = await repo.findOne({
+        where: byTicket
+          ? { rowId: row.id, taskId: dto.taskId! }
+          : { rowId: row.id, moduleId: dto.moduleId!, phaseId: dto.phaseId ?? IsNull(), taskId: IsNull() },
+      });
+      if (dup) throw new ConflictException('That link is already on this phase.');
+      const saved = await repo.save(
+        repo.create({ tenantId, projectId, rowId: row.id, moduleId: dto.moduleId ?? null, phaseId: dto.phaseId ?? null, taskId: dto.taskId ?? null, createdByUserId: actor.id }),
+      );
+      await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_TICKET_LINK_ADDED, 'ProjectTimelineTicketLink', saved.id, details);
+      return saved.id;
+    }).then(() => this.ticketProgress(projectId, tenantId));
+  }
+
+  async removeTicketLink(projectId: number, linkId: number, actor: Actor, tenantId: number) {
+    await this.dataSource.transaction(async (em) => {
+      await this.findProject(projectId, tenantId, em);
+      await this.lockPlan(em, tenantId, projectId);
+      const repo = em.getRepository(ProjectTimelineTicketLink);
+      const link = await repo.findOne({ where: { id: linkId, tenantId, projectId } });
+      if (!link) throw new NotFoundException('Link not found.');
+      const row = await em.getRepository(ProjectTimelineRow).findOne({ where: { id: link.rowId } });
+      await repo.delete({ id: link.id });
+      await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_TICKET_LINK_REMOVED, 'ProjectTimelineTicketLink', link.id, {
+        projectId,
+        row: { id: link.rowId, module: row?.module ?? null, phase: row?.phase ?? null },
+        moduleId: link.moduleId,
+        phaseId: link.phaseId,
+        taskId: link.taskId,
+      });
+    });
+    return this.ticketProgress(projectId, tenantId);
   }
 
   private async findPlanRow(em: EntityManager, id: number, projectId: number, tenantId: number) {

@@ -13,6 +13,8 @@ import TimelineFilters from '../../components/projectTimeline/TimelineFilters';
 import BulkBar from '../../components/projectTimeline/BulkBar';
 import GanttView from '../../components/projectTimeline/GanttView';
 import DependencyDialog from '../../components/projectTimeline/DependencyDialog';
+import TicketLinksDialog from '../../components/projectTimeline/TicketLinksDialog';
+import { ticketMismatches } from '../../lib/projectTimelineTickets';
 import { cascadeShifts, criticalPath, dependencyConflicts } from '../../lib/projectTimelineDeps';
 import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
@@ -62,6 +64,10 @@ export default function ProjectTimelinePage() {
   const [deps, setDeps] = useState([]);
   const [depsError, setDepsError] = useState('');
   const [depRowKey, setDepRowKey] = useState(null);
+  // Stage C: ticket links + progress (saved straight away by TicketLinksDialog).
+  const [ticketData, setTicketData] = useState(null);
+  const [ticketError, setTicketError] = useState('');
+  const [ticketRowKey, setTicketRowKey] = useState(null);
   const [slipError, setSlipError] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [resetReason, setResetReason] = useState('');
@@ -142,6 +148,19 @@ export default function ProjectTimelinePage() {
     apiFetch(`/project-timeline/projects/${plan.project.id}/dependencies`)
       .then((d) => !cancelled && setDeps(d))
       .catch((err) => !cancelled && setDepsError(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [plan?.rows, plan?.project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ticket links + progress - reloaded with the saved plan.
+  useEffect(() => {
+    if (!plan?.project?.id) return undefined;
+    let cancelled = false;
+    setTicketError('');
+    apiFetch(`/project-timeline/projects/${plan.project.id}/ticket-progress`)
+      .then((d) => !cancelled && setTicketData(d))
+      .catch((err) => !cancelled && setTicketError(err.message));
     return () => {
       cancelled = true;
     };
@@ -468,6 +487,25 @@ export default function ProjectTimelinePage() {
   }, [deps]);
   const depRow = depRowKey ? live.find((r) => r.key === depRowKey) : null;
 
+  // Stage C: per saved row - links, tickets, progress, and mismatches
+  // against the phase's current (maybe unsaved) status.
+  const ticketInfoById = useMemo(() => {
+    const m = new Map();
+    if (!ticketData) return m;
+    const progressByRow = new Map(ticketData.rows.map((r) => [r.rowId, r]));
+    for (const r of sortedLive) {
+      if (r.id == null) continue;
+      const links = ticketData.links.filter((l) => l.rowId === r.id);
+      if (!links.length) continue;
+      const p = progressByRow.get(r.id);
+      const progress = p?.progress || null;
+      m.set(r.id, { links, tickets: p?.tickets || [], progress, mismatches: ticketMismatches(r.status, progress, links.length) });
+    }
+    return m;
+  }, [ticketData, sortedLive]);
+  const ticketIssues = sortedLive.filter((r) => r.id != null && ticketInfoById.get(r.id)?.mismatches.length);
+  const ticketRow = ticketRowKey ? live.find((r) => r.key === ticketRowKey) : null;
+
   // "Shift them too": every phase that starts too early moves later by just
   // enough (length kept), and so on down the chain - page only, like any edit.
   const applyShifts = async () => {
@@ -644,6 +682,30 @@ export default function ProjectTimelinePage() {
                 </div>
               )}
 
+              {ticketError && (
+                <div className={`${styles.notice} ${styles.noticeError}`} role="alert">
+                  Couldn’t load ticket progress: {ticketError}
+                </div>
+              )}
+              {ticketIssues.length > 0 && (
+                <div className={styles.ticketCheck} role="status">
+                  <strong>
+                    Ticket check: {plural(ticketIssues.length, 'phase')} {ticketIssues.length === 1 ? 'doesn’t' : 'don’t'} match {ticketIssues.length === 1 ? 'its' : 'their'} tickets.
+                  </strong>
+                  <ul>
+                    {ticketIssues.slice(0, 6).map((r) => (
+                      <li key={r.key}>
+                        <button type="button" onClick={() => setTicketRowKey(r.key)}>
+                          {r.module} – {r.phase}
+                        </button>
+                        : {ticketInfoById.get(r.id).mismatches.map((m) => m.text).join('; ')}
+                      </li>
+                    ))}
+                    {ticketIssues.length > 6 && <li>…and {ticketIssues.length - 6} more.</li>}
+                  </ul>
+                </div>
+              )}
+
               <div id="timeline-table">
                 {live.length > 0 && (
                   <div className={styles.viewSwitch} role="group" aria-label="View">
@@ -686,6 +748,8 @@ export default function ProjectTimelinePage() {
                   conflicts={conflicts}
                   critical={critical}
                   onDependencies={(row) => setDepRowKey(row.key)}
+                  ticketInfoById={ticketInfoById}
+                  onTickets={(row) => setTicketRowKey(row.key)}
                 />
               ) : (
               <TimelineTable
@@ -713,6 +777,8 @@ export default function ProjectTimelinePage() {
                 }}
                 onDependencies={(key) => setDepRowKey(key)}
                 depCountById={depCountById}
+                ticketInfoById={ticketInfoById}
+                onTickets={(key) => setTicketRowKey(key)}
               />
               )}
 
@@ -749,6 +815,17 @@ export default function ProjectTimelinePage() {
             </>
           )}
         </>
+      )}
+
+      {ticketRow && ticketRow.id != null && (
+        <TicketLinksDialog
+          row={ticketRow}
+          info={ticketInfoById.get(ticketRow.id)}
+          projectId={projectId}
+          canEdit={canEdit}
+          onClose={() => setTicketRowKey(null)}
+          onChanged={setTicketData}
+        />
       )}
 
       {depRow && depRow.id != null && (

@@ -1146,3 +1146,143 @@
 .iconButtonOn {
   color: var(--ds-text-link);
 }
+
+/* Stage C: tickets per phase (2026-10-16). */
+.ticketProgress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2) var(--ds-space-3);
+  margin-bottom: var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+}
+
+.ticketBar {
+  flex: 1 1 200px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface-sunken);
+  border: 1px solid var(--ds-border);
+}
+
+.ticketBar span {
+  display: block;
+  height: 100%;
+  background: var(--ds-color-success);
+}
+
+.ticketSearch {
+  margin-top: var(--ds-space-3);
+}
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchWrap svg {
+  position: absolute;
+  left: var(--ds-space-3);
+  color: var(--ds-text-secondary);
+  pointer-events: none;
+}
+
+.searchWrap input {
+  padding-left: calc(var(--ds-space-3) + 22px);
+}
+
+.searchResults,
+.ticketList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  margin: var(--ds-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ds-text-sm);
+}
+
+.searchResults {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.searchResults li,
+.ticketList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-1) var(--ds-space-3);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.searchResultText {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ticketLink {
+  color: var(--ds-text-link);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.ticketLink:hover {
+  text-decoration: underline;
+}
+
+.chipTickets {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  padding: 0 var(--ds-space-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface);
+  font: inherit;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+
+.chipTickets:hover {
+  color: var(--ds-text-link);
+  border-color: var(--ds-text-link);
+}
+
+.chipTickets:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.ticketCheck {
+  margin: var(--ds-space-3) 0;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-color-warning);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-color-warning-tint);
+  color: var(--ds-color-warning-dark);
+  font-size: var(--ds-text-sm);
+}
+
+.ticketCheck ul {
+  margin: var(--ds-space-1) 0 0;
+  padding-left: var(--ds-space-5);
+}
+
+.ticketCheck button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: var(--ds-weight-semibold);
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

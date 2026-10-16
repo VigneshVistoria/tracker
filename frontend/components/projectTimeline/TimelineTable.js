@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Link2, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Link2, ListChecks, Plus, Trash2 } from 'lucide-react';
+import { progressText } from '../../lib/projectTimelineTickets';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import styles from '../../styles/projectTimeline.module.css';
@@ -103,7 +104,7 @@ function EditableCell({ kind, value, display, label, canEdit, onCommit, options,
 // "Go to row") opens that row's module, scrolls to it and focuses it.
 // selected/onSelect (editors only): the tick boxes for bulk edit -
 // onSelect(keys, checked) for one row or a whole module.
-export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, selected, onSelect, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam, onDependencies, depCountById }) {
+export default function TimelineTable({ rows, teams, today, canEdit, canReorder = true, overlaps, dirtyKeys, revealKey, onRevealed, emptyText, slipByKey, selected, onSelect, onChange, onAddRow, onDuplicate, onDelete, onMove, onAddTeam, onDependencies, depCountById, ticketInfoById, onTickets }) {
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [flashKey, setFlashKey] = useState(null);
 
@@ -259,6 +260,22 @@ export default function TimelineTable({ rows, teams, today, canEdit, canReorder 
                           {warnings.map((w) => (
                             <span key={w} className={styles.flagWarning}>
                               <AlertTriangle size={12} aria-hidden="true" /> {w}
+                            </span>
+                          ))}
+                          {onTickets && r.id != null && (ticketInfoById?.get(r.id) || canEdit) && (
+                            <button
+                              type="button"
+                              className={styles.chipTickets}
+                              onClick={() => onTickets(r.key)}
+                              aria-label={`Tickets for ${r.phase || 'phase'}: ${ticketInfoById?.get(r.id) ? progressText(ticketInfoById.get(r.id).progress) : 'none linked'}`}
+                            >
+                              <ListChecks size={12} aria-hidden="true" />
+                              {ticketInfoById?.get(r.id) ? progressText(ticketInfoById.get(r.id).progress) : 'Link tickets'}
+                            </button>
+                          )}
+                          {(ticketInfoById?.get(r.id)?.mismatches || []).map((m) => (
+                            <span key={m.code} className={styles.flagWarning}>
+                              <AlertTriangle size={12} aria-hidden="true" /> {m.text}
                             </span>
                           ))}
                           {overlapping.length > 0 && (

@@ -555,3 +555,40 @@
   font-size: 10px;
   font-weight: var(--ds-weight-semibold);
 }
+
+/* ---------- Stage C: ticket progress inside the bar ---------- */
+
+/* A dark strip along the bottom of the bar, as wide as the % done. */
+.barFill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  border-radius: 0 0 5px 5px;
+  background: var(--ds-text-primary);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.mismatchDot {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--ds-bg-surface);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-error);
+}
+
+.swatchFill {
+  background: linear-gradient(to top, var(--ds-text-primary) 0 4px, var(--ds-text-secondary) 4px);
+}
+
+.swatchMismatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-error);
+}

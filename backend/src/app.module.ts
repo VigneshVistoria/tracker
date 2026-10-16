@@ -98,6 +98,7 @@ import { ScrumExternalWait } from './daily-scrum/scrum-external-wait.entity';
 import { ProjectTimelineRow } from './project-timeline/project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline/project-timeline-team.entity';
 import { ProjectTimelineDependency } from './project-timeline/project-timeline-dependency.entity';
+import { ProjectTimelineTicketLink } from './project-timeline/project-timeline-ticket-link.entity';
 import { ProjectTimelineModule } from './project-timeline/project-timeline.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { UserNotification } from './user-notifications/user-notification.entity';
@@ -175,6 +176,7 @@ import { SearchModule } from './search/search.module';
           ProjectTimelineRow,
           ProjectTimelineTeam,
           ProjectTimelineDependency,
+          ProjectTimelineTicketLink,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.

@@ -575,4 +575,125 @@ describe('Project Timeline (e2e)', () => {
       expect(after.map((r: any) => [r.id, r.startDate, r.endDate])).toEqual(before.filter((r: any) => r.id !== ids.B).map((r: any) => [r.id, r.startDate, r.endDate]));
     });
   });
+
+  // Stage C (2026-10-16): link phases to tickets; progress from them.
+  describe('ticket links', () => {
+    const base = () => `/project-timeline/projects/${pA}`;
+    const del = (u: FixtureUser, url: string) => http().delete(url).set(auth(u));
+    let rowId: number;
+    let otherRowId: number;
+    let phaseBuild: number;
+    let phaseTest: number;
+    const tix: Record<string, number> = {};
+
+    const ticket = async (key: string, status: string, phaseId: number, projectId = pA, moduleId = f.modules.mA) => {
+      const res = await ds.query(
+        `INSERT INTO project_tasks ("tenantId", "projectId", "projectName", "moduleId", "moduleName", "phaseId", "phaseName", title, description, status, "dueDate",
+           "assigneeUserId", "assigneeEmail", "createdByUserId", "createdByEmail")
+         VALUES ($1, $2, 'Project A', $3, 'Medical Claim', $4, 'x', $5, 'x', $6, '2099-12-31', $7, $8, $9, $10) RETURNING id`,
+        [f.tenants.t1, projectId, moduleId, phaseId, `Ticket ${key}`, status, f.users.devA.id, f.users.devA.email, f.users.pm.id, f.users.pm.email],
+      );
+      tix[key] = res[0].id;
+    };
+
+    beforeEach(async () => {
+      await ds.query(`DELETE FROM project_timeline_ticket_links`);
+      await ds.query(`DELETE FROM project_timeline_rows`);
+      await ds.query(`DELETE FROM project_tasks`);
+      await ds.query(`DELETE FROM phases WHERE name IN ('Build', 'Test')`);
+      const r = await ds.query(
+        `INSERT INTO project_timeline_rows ("tenantId", "projectId", module, phase, "matchKey", status, "sortOrder")
+         VALUES ($1, $2, 'Medical Claim', 'Development', 'medical claim|development', 'Completed', 1),
+                ($1, $2, 'Medical Claim', 'UAT', 'medical claim|uat', 'To Do', 2) RETURNING id`,
+        [f.tenants.t1, pA],
+      );
+      [rowId, otherRowId] = r.map((x: any) => x.id);
+      const ph = await ds.query(
+        `INSERT INTO phases ("tenantId", "projectId", "projectName", "moduleId", "moduleName", name) VALUES ($1, $2, 'Project A', $3, 'Medical Claim', 'Build'), ($1, $2, 'Project A', $3, 'Medical Claim', 'Test') RETURNING id`,
+        [f.tenants.t1, pA, f.modules.mA],
+      );
+      [phaseBuild, phaseTest] = ph.map((x: any) => x.id);
+      await ticket('dev', 'Development', phaseBuild);
+      await ticket('fb', 'Feedback', phaseBuild);
+      await ticket('pass', 'Pass', phaseBuild);
+      await ticket('junk', 'Junk', phaseBuild);
+      await ticket('closed', 'Closed', phaseBuild);
+      await ticket('test', 'Pass', phaseTest);
+      await ticket('otherProject', 'Pass', phaseTest, f.projects.pB, f.modules.mB);
+    });
+
+    it('401 logged out; 403 for Developer/QA/Client; Executive reads progress but cannot pick or change', async () => {
+      await http().get(`${base()}/ticket-progress`).expect(401);
+      for (const u of [f.users.devA, f.users.qaB, f.users.clientA]) {
+        await get(u, `${base()}/ticket-progress`).expect(403);
+        await post(u, `${base()}/ticket-links`, {}).expect(403);
+        await del(u, `${base()}/ticket-links/1`).expect(403);
+      }
+      await get(f.users.exec, `${base()}/ticket-progress`).expect(200);
+      for (const url of ['ticket-link-options', 'ticket-search?q=x']) await get(f.users.exec, `${base()}/${url}`).expect(403);
+      await post(f.users.exec, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mA }).expect(403);
+    });
+
+    it('a module+phase link counts its tickets with the status-config %, Junk/Closed left out; a single ticket adds on', async () => {
+      let body = (await post(f.users.pm, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mA, phaseId: phaseBuild }).expect(201)).body;
+      let row = body.rows.find((r: any) => r.rowId === rowId);
+      expect(row.tickets.map((t: any) => t.id).sort()).toEqual([tix.dev, tix.fb, tix.pass, tix.closed].sort());
+      expect(row.progress).toEqual({ counted: 3, done: 1, open: 2, hold: 0, moving: 2, leftOut: 1, percent: 50 });
+      body = (await post(f.users.admin, `${base()}/ticket-links`, { rowId, taskId: tix.test }).expect(201)).body;
+      row = body.rows.find((r: any) => r.rowId === rowId);
+      expect(row.progress).toMatchObject({ counted: 4, done: 2, percent: 63 });
+      expect(body.links.map((l: any) => [l.kind, l.moduleName, l.phaseName, l.taskTitle])).toEqual([
+        ['module', 'Medical Claim', 'Build', null],
+        ['ticket', null, null, 'Ticket test'],
+      ]);
+      // A ticket created later in the linked phase is picked up by itself.
+      await ticket('later', 'Pass', phaseBuild);
+      row = (await get(f.users.exec, `${base()}/ticket-progress`).expect(200)).body.rows.find((r: any) => r.rowId === rowId);
+      expect(row.progress.counted).toBe(5);
+      const added = await audits('project_timeline_ticket_link_added');
+      expect(added).toHaveLength(2);
+      expect(JSON.parse(added[0].details)).toMatchObject({ row: { id: rowId, phase: 'Development' }, module: { name: 'Medical Claim' }, phase: { name: 'Build' } });
+    });
+
+    it('refuses both/neither kinds, wrong module/phase/project/tenant tickets, Junk tickets and duplicates', async () => {
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mA, taskId: tix.dev }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, taskId: tix.dev, phaseId: phaseBuild }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mB }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, taskId: tix.otherProject }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, taskId: tix.junk }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId: 999999, moduleId: f.modules.mA }).expect(400);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mA }).expect(201);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mA }).expect(409);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId, moduleId: f.modules.mA, phaseId: phaseTest }).expect(201); // narrower link is different
+      await post(f.users.pmT2, `/project-timeline/projects/${f.projects.pT2}/ticket-links`, { rowId, moduleId: f.modules.mA }).expect(400);
+      expect(await audits('project_timeline_ticket_link_added')).toHaveLength(2);
+    });
+
+    it('options list the project modules + phases; search finds by #id or title, never Junk or other projects', async () => {
+      const opts = (await get(f.users.pm, `${base()}/ticket-link-options`).expect(200)).body;
+      const mc = opts.find((m: any) => m.id === f.modules.mA);
+      expect(mc.phases.map((p: any) => p.name).sort()).toEqual(['Build', 'Test']);
+      expect(opts.some((m: any) => m.id === f.modules.mB)).toBe(false);
+      const byId = (await get(f.users.pm, `${base()}/ticket-search?q=%23${tix.fb}`).expect(200)).body;
+      expect(byId.map((t: any) => t.id)).toContain(tix.fb);
+      const byTitle = (await get(f.users.pm, `${base()}/ticket-search?q=ticket`).expect(200)).body.map((t: any) => t.id);
+      expect(byTitle).not.toContain(tix.junk);
+      expect(byTitle).not.toContain(tix.otherProject);
+      expect((await get(f.users.pm, `${base()}/ticket-search?q=100%25`).expect(200)).body).toEqual([]);
+    });
+
+    it('removing a link is audited; deleting the phase removes its links; tickets are never touched', async () => {
+      const before = await ds.query(`SELECT id, status, "updatedAt" FROM project_tasks ORDER BY id`);
+      const body = (await post(f.users.pm, `${base()}/ticket-links`, { rowId: otherRowId, taskId: tix.dev }).expect(201)).body;
+      expect((await del(f.users.admin, `${base()}/ticket-links/${body.links[0].id}`).expect(200)).body.links).toEqual([]);
+      expect(await audits('project_timeline_ticket_link_removed')).toHaveLength(1);
+      await del(f.users.pm, `${base()}/ticket-links/${body.links[0].id}`).expect(404);
+      await post(f.users.pm, `${base()}/ticket-links`, { rowId: otherRowId, moduleId: f.modules.mA }).expect(201);
+      const r = (await plan()).rows.find((x: any) => x.id === otherRowId);
+      await post(f.users.pm, `/project-timeline/projects/${pA}/changes`, { creates: [], updates: [], deletes: [{ id: r.id, version: r.version }] }).expect(201);
+      expect((await get(f.users.pm, `${base()}/ticket-progress`).expect(200)).body.links).toEqual([]);
+      expect(await ds.query(`SELECT id, status, "updatedAt" FROM project_tasks ORDER BY id`)).toEqual(before);
+    });
+  });
 });

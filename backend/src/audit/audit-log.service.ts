@@ -74,6 +74,10 @@ export const AuditActions = {
   PROJECT_TIMELINE_DEPENDENCY_ADDED: 'project_timeline_dependency_added',
   PROJECT_TIMELINE_DEPENDENCY_UPDATED: 'project_timeline_dependency_updated',
   PROJECT_TIMELINE_DEPENDENCY_REMOVED: 'project_timeline_dependency_removed',
+  // Stage C ticket links. details: { row: {id, module, phase}, module,
+  // phase, ticket } (names/titles as they were).
+  PROJECT_TIMELINE_TICKET_LINK_ADDED: 'project_timeline_ticket_link_added',
+  PROJECT_TIMELINE_TICKET_LINK_REMOVED: 'project_timeline_ticket_link_removed',
   RELEASE_CREATED: 'release_created',
   RELEASE_UPDATED: 'release_updated',
   RELEASE_ITEM_ADDED: 'release_item_added',

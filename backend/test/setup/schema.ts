@@ -27,6 +27,7 @@ const TIMELINE_DIR = path.join(SRC, 'project-timeline');
 const TIMELINE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-project-timeline.sql');
 // Stage B dependencies - same folder, so also created by its real migration.
 const TIMELINE_DEPS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-project-timeline-dependencies.sql');
+const TIMELINE_TICKETS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-project-timeline-ticket-links.sql');
 const JUNK_COLUMNS = ['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
 // Revert QA decision columns on task_qa_reviews - same treatment as the
 // Junk columns: re-added by the real migration and checked against the entity.
@@ -88,6 +89,7 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(PM_REVIEW_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(TIMELINE_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(TIMELINE_DEPS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(TIMELINE_TICKETS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(EXTERNAL_WAITS_MIGRATION, 'utf8'));
   await base.destroy();
 
@@ -103,8 +105,8 @@ export async function buildTestSchema() {
   if (!scrumMeta) problems.push('team_settings: entity missing');
   const taskAttachmentMeta = check.entityMetadatas.find((m) => m.tableName === 'task_attachments');
   if (!taskAttachmentMeta) problems.push('task_attachments: entity missing');
-  const timelineMetas = check.entityMetadatas.filter((m) => ['project_timeline_rows', 'project_timeline_teams', 'project_timeline_dependencies'].includes(m.tableName));
-  if (timelineMetas.length !== 3) problems.push('project_timeline_rows/_teams/_dependencies: entity missing');
+  const timelineMetas = check.entityMetadatas.filter((m) => ['project_timeline_rows', 'project_timeline_teams', 'project_timeline_dependencies', 'project_timeline_ticket_links'].includes(m.tableName));
+  if (timelineMetas.length !== 4) problems.push('project_timeline_rows/_teams/_dependencies/_ticket_links: entity missing');
   const externalWaitMeta = check.entityMetadatas.find((m) => m.tableName === 'scrum_external_waits');
   if (!externalWaitMeta) problems.push('scrum_external_waits: entity missing');
   for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : [])]) {
