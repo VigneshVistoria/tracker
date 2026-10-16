@@ -77,6 +77,8 @@ export const AuditActions = {
   TASK_DEPENDENCY_TICKET_CREATED: 'task_dependency_ticket_created',
   TASK_DEPENDENCY_TICKET_RESOLVED: 'task_dependency_ticket_resolved',
   TASK_DEPENDENCY_TICKET_TITLE_UPDATED: 'task_dependency_ticket_title_updated',
+  // PM/Admin moved an open dependency ticket to a different owner (2026-10-14).
+  TASK_DEPENDENCY_TICKET_OWNER_CHANGED: 'task_dependency_ticket_owner_changed',
   TASK_BLOCKING_DEFECT_LINKED: 'task_blocking_defect_linked',
   TASK_BLOCKING_DEFECT_UNLINKED: 'task_blocking_defect_unlinked',
   KPI_CONFIG_UPDATED: 'kpi_config_updated',
@@ -186,9 +188,16 @@ export class AuditLogService {
 
   // Entries for one entity, oldest first, limited to the given actions,
   // with `details` parsed (null if it doesn't parse).
-  async findForEntity(tenantId: number, entityType: string, entityId: number, actions: string[]) {
+  findForEntity(tenantId: number, entityType: string, entityId: number, actions: string[]) {
+    return this.findForEntities(tenantId, entityType, [entityId], actions);
+  }
+
+  // Same as findForEntity() across several entities of one type (e.g.
+  // every dependency ticket on a task), oldest first.
+  async findForEntities(tenantId: number, entityType: string, entityIds: number[], actions: string[]) {
+    if (entityIds.length === 0) return [];
     const rows = await this.auditLogRepository.find({
-      where: { tenantId, entityType, entityId, action: In(actions) },
+      where: { tenantId, entityType, entityId: In(entityIds), action: In(actions) },
       order: { id: 'ASC' },
     });
     return rows.map((r) => {
@@ -198,7 +207,16 @@ export class AuditLogService {
       } catch {
         details = null;
       }
-      return { id: r.id, action: r.action, userEmail: r.userEmail, userRole: r.userRole, createdAt: r.createdAt, details };
+      return {
+        id: r.id,
+        action: r.action,
+        entityId: r.entityId,
+        userId: r.userId,
+        userEmail: r.userEmail,
+        userRole: r.userRole,
+        createdAt: r.createdAt,
+        details,
+      };
     });
   }
 

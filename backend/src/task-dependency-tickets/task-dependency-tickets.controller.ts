@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Req, Parse
 import { TaskDependencyTicketsService } from './task-dependency-tickets.service';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
+import { ChangeTaskDependencyTicketOwnerDto } from './dto/change-task-dependency-ticket-owner.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { TasksService } from '../tasks/tasks.service';
@@ -47,6 +48,17 @@ export class TaskDependencyTicketsController {
     return this.ticketsService.findForTask(parentTaskId, req.user.tenantId);
   }
 
+  // Task page "Dependency history" - same view gate as findForTask above.
+  @Get('history')
+  async findHistoryForTask(@Query('parentTaskId', ParseIntPipe) parentTaskId: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    const task = await this.tasksService.findOne(parentTaskId, req.user.tenantId);
+    if (!(await this.tasksService.canView(task, currentUser))) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    return this.ticketsService.findHistoryForTask(parentTaskId, req.user.tenantId);
+  }
+
   @Post()
   async create(@Body() dto: CreateTaskDependencyTicketDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -61,6 +73,16 @@ export class TaskDependencyTicketsController {
   ) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.ticketsService.updateTitle(id, dto, currentUser, req.user.tenantId);
+  }
+
+  @Patch(':id/owner')
+  async changeOwner(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChangeTaskDependencyTicketOwnerDto,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.ticketsService.changeOwner(id, dto, currentUser, req.user.tenantId);
   }
 
   @Patch(':id/resolve')

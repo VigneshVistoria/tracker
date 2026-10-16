@@ -19,6 +19,7 @@ import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel, statusBadgeS
 import { formatDate, formatDateTime } from '../../lib/formatDate';
 import JunkReasonModal from '../../components/JunkReasonModal';
 import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
+import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
@@ -179,6 +180,23 @@ function QaArtifactIcons({ artifacts }) {
   );
 }
 
+// One line of the "Dependency history" list, after the actor's name.
+function dependencyHistoryText(h) {
+  const ticket = `"${h.ticketTitle || `#${h.ticketId}`}"`;
+  switch (h.action) {
+    case 'task_dependency_ticket_created':
+      return `raised ${ticket}${h.ownerName ? ` for ${h.ownerName}` : ''}`;
+    case 'task_dependency_ticket_title_updated':
+      return `renamed "${h.previousTitle}" to "${h.title}"`;
+    case 'task_dependency_ticket_owner_changed':
+      return `changed the owner of ${ticket} from ${h.previousOwnerName} to ${h.ownerName}`;
+    case 'task_dependency_ticket_resolved':
+      return `resolved ${ticket}`;
+    default:
+      return `updated ${ticket}`;
+  }
+}
+
 function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
@@ -242,6 +260,10 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [tickets, setTickets] = useState([]);
+  // "Change owner" dialog (PM/Admin) - the ticket being moved, or null.
+  const [ownerChangeTicket, setOwnerChangeTicket] = useState(null);
+  // Audited changes to this task's dependency tickets, oldest first.
+  const [dependencyHistory, setDependencyHistory] = useState([]);
   const [developers, setDevelopers] = useState([]);
   // Team Tasks - Assignee edit (Program Manager only). A separate,
   // unrestricted-by-role list from `developers` above (which is scoped to
@@ -392,7 +414,13 @@ export default function TaskDetailPage() {
 
   const loadTickets = () => {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
+    loadDependencyHistory();
   };
+
+  const loadDependencyHistory = () => {
+    apiFetch(`/task-dependency-tickets/history?parentTaskId=${id}`).then(setDependencyHistory).catch(() => setDependencyHistory([]));
+  };
+
 
   const loadLinkedDefects = () => {
     apiFetch(`/tasks/${id}/linked-defects`).then(setLinkedDefects).catch(() => {});
@@ -466,6 +494,18 @@ export default function TaskDetailPage() {
     }
   };
 
+  // Errors are thrown back to ChangeDependencyOwnerModal, which shows them
+  // in place and stays open.
+  const handleChangeTicketOwner = async (ownerUserId) => {
+    const updated = await apiFetch(`/task-dependency-tickets/${ownerChangeTicket.id}/owner`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ownerUserId }),
+    });
+    setOwnerChangeTicket(null);
+    showToast(`Dependency owner changed to ${updated.ownerName || updated.ownerEmail}`, 'success');
+    loadTickets();
+  };
+
   const handleResolveTicket = async (ticketId) => {
     setError('');
     try {
@@ -490,7 +530,7 @@ export default function TaskDetailPage() {
     }
     setUser(parsed);
     setArtifactUrlHistory(loadArtifactUrlHistory());
-    apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map(userToOption))).catch(() => {});
+    apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map((u) => ({ ...userToOption(u), role: u.role })))).catch(() => {});
     apiFetch('/projects').then(setProjects).catch(() => {});
     if (MANAGE_ROLES.includes(parsed.role)) {
       apiFetch('/users/assignable').then((rows) => setAssignableUsers(rows.map(userToOption))).catch(() => {});
@@ -561,6 +601,7 @@ export default function TaskDetailPage() {
         setTitleDraft(t.title);
         setAssigneeSelection(t.assigneeUserId ? { id: t.assigneeUserId, name: t.assigneeFullName || t.assigneeEmail } : null);
         setTickets(ticketList);
+        loadDependencyHistory();
         setQaReviews(reviewList);
         setLinkedDefects(linkedDefectList);
         setBlockingDefects(blockingDefectList);
@@ -663,6 +704,8 @@ export default function TaskDetailPage() {
   const canChangeBlockingLinks = canLinkBlocking && !isJunk;
   const isProgramManager = MANAGE_ROLES.includes(user.role);
   const canManage = isProgramManager && !isJunk;
+  // Backend mirror: TaskDependencyTicketsService.changeOwner().
+  const canChangeDependencyOwner = (user.role === 'program_manager' || user.role === 'admin') && !isJunk;
   const isAssignee = task.assigneeUserId === user.id;
   const canEditFields = (canManage || isAssignee) && !isJunk;
   const estimatedHoursLocked = task.estimatedHours != null && !canManage;
@@ -2427,7 +2470,7 @@ export default function TaskDetailPage() {
             )}
             <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Owner: {ticket.ownerEmail} &middot; Filed by {ticket.createdByEmail} &middot;{' '}
+              Owner: {ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
               {formatDate(ticket.createdAt)}
             </p>
             {editingTicketId !== ticket.id && (ticket.createdByUserId === user.id || canManage || user.role === 'admin') && (
@@ -2443,6 +2486,17 @@ export default function TaskDetailPage() {
                 Edit Title
               </button>
             )}
+            {editingTicketId !== ticket.id && canChangeDependencyOwner && ticket.status === 'open' && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
+                onClick={() => setOwnerChangeTicket(ticket)}
+                aria-label={`Change owner of ${ticket.title}`}
+              >
+                Change owner
+              </button>
+            )}
             {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
               <button
                 className={styles.buttonSecondary}
@@ -2455,7 +2509,26 @@ export default function TaskDetailPage() {
             )}
           </div>
         ))}
+        {dependencyHistory.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
+            <h3 className={styles.issueMeta} style={{ margin: '0 0 var(--ds-space-2)' }}>Dependency history</h3>
+            <ul style={{ margin: 0, paddingLeft: 'var(--ds-space-5)' }}>
+              {dependencyHistory.map((h) => (
+                <li key={h.id} className={styles.issueMeta} style={{ marginBottom: 'var(--ds-space-1)' }}>
+                  {formatDateTime(h.createdAt)} &middot; {h.actorName} {dependencyHistoryText(h)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
+      <ChangeDependencyOwnerModal
+        open={!!ownerChangeTicket}
+        ticket={ownerChangeTicket}
+        people={developers}
+        onClose={() => setOwnerChangeTicket(null)}
+        submit={handleChangeTicketOwner}
+      />
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         <h2 className={styles.cardTitle}>

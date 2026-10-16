@@ -234,6 +234,24 @@ export class UserNotificationListenersService {
     });
   }
 
+  // PM/Admin moved a dependency ticket to a new owner - in-app only, to
+  // the new owner (2026-10-14).
+  @OnEvent('dependencyTicket.ownerChanged')
+  onDependencyTicketOwnerChanged(e: DependencyTicketEvent) {
+    return this.safely('dependencyTicket.ownerChanged', async () => {
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.recipientUserId,
+        type: 'dependency.assigned',
+        title: `Dependency on task #${e.parentTaskId} reassigned to you`,
+        body: e.title,
+        link: '/dependency-clearance',
+        actorUserId: e.actorUserId,
+        actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
+      });
+    });
+  }
+
   @OnEvent('dependencyTicket.resolved')
   onDependencyTicketResolved(e: DependencyTicketEvent) {
     return this.safely('dependencyTicket.resolved', async () => {

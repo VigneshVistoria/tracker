@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
+import { ChangeTaskDependencyTicketOwnerDto } from './dto/change-task-dependency-ticket-owner.dto';
 import { TasksService, JUNK_STATUS } from '../tasks/tasks.service';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
@@ -37,11 +38,62 @@ export class TaskDependencyTicketsService {
   ) {}
 
   // Combined task detail view - dependency tickets filed against a given
-  // parent task.
-  findForTask(parentTaskId: number, tenantId: number): Promise<TaskDependencyTicket[]> {
-    return this.ticketsRepository.find({
+  // parent task, with owner/filer full names for display (2026-10-14).
+  async findForTask(
+    parentTaskId: number,
+    tenantId: number,
+  ): Promise<Array<TaskDependencyTicket & { ownerName: string | null; createdByName: string | null }>> {
+    const tickets = await this.ticketsRepository.find({
       where: { parentTaskId, tenantId },
       order: { createdAt: 'DESC' },
+    });
+    const userIds = [...new Set(tickets.flatMap((t) => [t.createdByUserId, t.ownerUserId]).filter((id) => id != null))];
+    const users = await this.usersService.findByIds(userIds, tenantId);
+    const nameById = new Map(users.map((u) => [u.id, u.fullName || null]));
+    return tickets.map((t) => ({
+      ...t,
+      ownerName: nameById.get(t.ownerUserId) ?? null,
+      createdByName: nameById.get(t.createdByUserId) ?? null,
+    }));
+  }
+
+  // Task page "Dependency history" - every audited change to this task's
+  // dependency tickets, oldest first, with the actor's full name. Read from
+  // the audit log, so it also covers changes made before this list existed.
+  async findHistoryForTask(parentTaskId: number, tenantId: number) {
+    const tickets = await this.ticketsRepository.find({ where: { parentTaskId, tenantId } });
+    const titleById = new Map(tickets.map((t) => [t.id, t.title]));
+    const entries = await this.auditLogService.findForEntities(
+      tenantId,
+      'TaskDependencyTicket',
+      tickets.map((t) => t.id),
+      [
+        AuditActions.TASK_DEPENDENCY_TICKET_CREATED,
+        AuditActions.TASK_DEPENDENCY_TICKET_TITLE_UPDATED,
+        AuditActions.TASK_DEPENDENCY_TICKET_OWNER_CHANGED,
+        AuditActions.TASK_DEPENDENCY_TICKET_RESOLVED,
+      ],
+    );
+    const users = await this.usersService.findAll(tenantId);
+    const nameById = new Map(users.map((u) => [u.id, u.fullName || u.email]));
+    const nameByEmail = new Map(users.map((u) => [u.email, u.fullName || u.email]));
+    return entries.map((e) => {
+      const d = (e.details || {}) as Record<string, any>;
+      const ownerEmail = typeof d.ownerEmail === 'string' ? d.ownerEmail : null;
+      return {
+        id: e.id,
+        action: e.action,
+        ticketId: e.entityId,
+        ticketTitle: titleById.get(e.entityId) ?? null,
+        actorName: (e.userId != null && nameById.get(e.userId)) || e.userEmail,
+        createdAt: e.createdAt,
+        // Owner names as recorded at the time for owner changes (so a later
+        // rename/deletion doesn't rewrite history); current name otherwise.
+        ownerName: d.ownerName ?? (ownerEmail ? nameByEmail.get(ownerEmail) ?? ownerEmail : null),
+        previousOwnerName: d.previousOwnerName ?? null,
+        previousTitle: d.previousTitle ?? null,
+        title: d.title ?? null,
+      };
     });
   }
 
@@ -203,6 +255,86 @@ export class TaskDependencyTicketsService {
     });
 
     return saved;
+  }
+
+  // Moves an open ticket to a different owner (2026-10-14). Program
+  // Manager or Admin only - the same leadership pair that may already
+  // resolve or retitle any ticket. Same owner rule as create(): Developer/
+  // Designer/DevOps only (never a Client - owning a ticket grants view
+  // access to the internal task page, see TasksService.canView). The
+  // person who filed it can't own it (they're the one blocked on it).
+  // There is deliberately no "remove owner": a ticket always has one,
+  // since Dependency Clearance, Team Tasks, Daily Scrum and KPI all count
+  // open tickets by owner.
+  async changeOwner(
+    id: number,
+    dto: ChangeTaskDependencyTicketOwnerDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskDependencyTicket & { ownerName: string | null }> {
+    const isLeadership = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.PROGRAM_MANAGER;
+    if (!isLeadership) {
+      throw new ForbiddenException('Only Admin or Program Manager can change the owner of a dependency ticket.');
+    }
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) {
+      throw new NotFoundException(`Dependency ticket #${id} not found`);
+    }
+    this.tasksService.assertNotJunk(await this.tasksService.findOne(ticket.parentTaskId, tenantId));
+    if (ticket.status !== 'open') {
+      throw new BadRequestException('Only an open dependency ticket can change owner.');
+    }
+    if (dto.ownerUserId === ticket.ownerUserId) {
+      throw new BadRequestException('This person is already the owner.');
+    }
+    if (dto.ownerUserId === ticket.createdByUserId) {
+      throw new BadRequestException('The person who raised this dependency cannot own it.');
+    }
+    const owner = await this.usersService.findByIdAndTenant(dto.ownerUserId, tenantId);
+    if (!owner) {
+      throw new NotFoundException(`User #${dto.ownerUserId} not found`);
+    }
+    if (!DEVELOPER_EQUIVALENT_ROLES.includes(owner.role)) {
+      throw new BadRequestException('Dependency Owner must be a Developer, Designer, or DevOps.');
+    }
+
+    const previousOwnerUserId = ticket.ownerUserId;
+    const previousOwnerEmail = ticket.ownerEmail;
+    const previousOwner = await this.usersService.findByIdAndTenant(previousOwnerUserId, tenantId);
+    ticket.ownerUserId = owner.id;
+    ticket.ownerEmail = owner.email;
+    const saved = await this.ticketsRepository.save(ticket);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_DEPENDENCY_TICKET_OWNER_CHANGED,
+      tenantId,
+      entityType: 'TaskDependencyTicket',
+      entityId: saved.id,
+      details: {
+        parentTaskId: saved.parentTaskId,
+        previousOwnerUserId,
+        previousOwnerEmail,
+        previousOwnerName: previousOwner?.fullName || previousOwnerEmail,
+        ownerUserId: owner.id,
+        ownerEmail: owner.email,
+        ownerName: owner.fullName || owner.email,
+      },
+    });
+
+    this.eventEmitter.emit('dependencyTicket.ownerChanged', {
+      tenantId,
+      ticketId: saved.id,
+      parentTaskId: saved.parentTaskId,
+      title: saved.title,
+      recipientUserId: owner.id,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+    });
+
+    return { ...saved, ownerName: owner.fullName || null };
   }
 
   // Marks a ticket cleared - this entity had no resolution concept at all
