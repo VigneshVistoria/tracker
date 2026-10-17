@@ -687,13 +687,105 @@ describe('Project Timeline (e2e)', () => {
       const before = await ds.query(`SELECT id, status, "updatedAt" FROM project_tasks ORDER BY id`);
       const body = (await post(f.users.pm, `${base()}/ticket-links`, { rowId: otherRowId, taskId: tix.dev }).expect(201)).body;
       expect((await del(f.users.admin, `${base()}/ticket-links/${body.links[0].id}`).expect(200)).body.links).toEqual([]);
-      expect(await audits('project_timeline_ticket_link_removed')).toHaveLength(1);
+      const removed = await audits('project_timeline_ticket_link_removed');
+      expect(removed).toHaveLength(1);
+      expect(JSON.parse(removed[0].details)).toMatchObject({ row: { id: otherRowId, phase: 'UAT' }, taskId: tix.dev, ticket: { id: tix.dev, title: 'Ticket dev' } });
       await del(f.users.pm, `${base()}/ticket-links/${body.links[0].id}`).expect(404);
       await post(f.users.pm, `${base()}/ticket-links`, { rowId: otherRowId, moduleId: f.modules.mA }).expect(201);
       const r = (await plan()).rows.find((x: any) => x.id === otherRowId);
       await post(f.users.pm, `/project-timeline/projects/${pA}/changes`, { creates: [], updates: [], deletes: [{ id: r.id, version: r.version }] }).expect(201);
       expect((await get(f.users.pm, `${base()}/ticket-progress`).expect(200)).body.links).toEqual([]);
       expect(await ds.query(`SELECT id, status, "updatedAt" FROM project_tasks ORDER BY id`)).toEqual(before);
+    });
+  });
+
+  describe('forecast and what changed', () => {
+    const base = () => `/project-timeline/projects/${pA}`;
+    const ids: Record<string, number> = {};
+    let today: string;
+    const addRow = async (key: string, status: string, start: number, end: number, sortOrder: number) => {
+      const res = await ds.query(
+        `INSERT INTO project_timeline_rows ("tenantId", "projectId", module, phase, "matchKey", status, "startDate", "endDate", "sortOrder")
+         VALUES ($1, $2, 'Medical Claim', $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [f.tenants.t1, pA, key, `medical claim|${key.toLowerCase()}`, status, addDays(today, start), addDays(today, end), sortOrder],
+      );
+      ids[key] = res[0].id;
+    };
+
+    beforeEach(async () => {
+      await ds.query(`DELETE FROM project_timeline_ticket_links`);
+      await ds.query(`DELETE FROM project_timeline_dependencies`);
+      await ds.query(`DELETE FROM project_timeline_rows`);
+      await ds.query(`DELETE FROM project_tasks`);
+      today = (await plan()).today;
+    });
+
+    it('401 logged out; 403 for Developer/QA/Client; Executive reads both', async () => {
+      for (const url of ['forecast', 'recent-changes']) {
+        await http().get(`${base()}/${url}`).expect(401);
+        for (const u of [f.users.devA, f.users.qaB, f.users.clientA]) await get(u, `${base()}/${url}`).expect(403);
+        await get(f.users.exec, `${base()}/${url}`).expect(200);
+      }
+      await get(f.users.pm, `/project-timeline/projects/${f.projects.pT2}/forecast`).expect(404);
+    });
+
+    it('forecast pushes a waiting phase after an overdue one and uses ticket pace, saving nothing', async () => {
+      await addRow('Build', 'Delayed', -14, -5, 1);
+      await addRow('UAT', 'To Do', 0, 3, 2);
+      await addRow('Docs', 'In Progress', -9, 1, 3);
+      await post(f.users.pm, `${base()}/dependencies`, { predecessorRowId: ids.Build, successorRowId: ids.UAT, lagDays: 1 }).expect(201);
+      const ph = await ds.query(
+        `INSERT INTO phases ("tenantId", "projectId", "projectName", "moduleId", "moduleName", name) VALUES ($1, $2, 'Project A', $3, 'Medical Claim', 'Docs') RETURNING id`,
+        [f.tenants.t1, pA, f.modules.mA],
+      );
+      for (const status of ['Pass', 'Development']) {
+        const t = await ds.query(
+          `INSERT INTO project_tasks ("tenantId", "projectId", "projectName", "moduleId", "moduleName", "phaseId", "phaseName", title, description, status, "dueDate",
+             "assigneeUserId", "assigneeEmail", "createdByUserId", "createdByEmail")
+           VALUES ($1, $2, 'Project A', $3, 'Medical Claim', $4, 'Docs', 'Doc ticket', 'x', $5, '2099-12-31', $6, $7, $6, $7) RETURNING id`,
+          [f.tenants.t1, pA, f.modules.mA, ph[0].id, status, f.users.pm.id, f.users.pm.email],
+        );
+        await post(f.users.pm, `${base()}/ticket-links`, { rowId: ids.Docs, taskId: t[0].id }).expect(201);
+      }
+      const before = await ds.query(`SELECT * FROM project_timeline_rows ORDER BY id`);
+      const auditCount = (await ds.query(`SELECT count(*) FROM audit_logs`))[0].count;
+      const fc = (await get(f.users.exec, `${base()}/forecast`).expect(200)).body;
+      const row = (id: number) => fc.rows.find((r: any) => r.id === id);
+      expect(row(ids.Build)).toMatchObject({ end: today, slipDays: 5, reasons: [{ code: 'overdue' }] });
+      expect(row(ids.UAT)).toMatchObject({ start: addDays(today, 2), end: addDays(today, 5), slipDays: 2, reasons: [{ code: 'waits_on', rowId: ids.Build }] });
+      // Docs: 10 days in at 50% -> 20 days -> ends today + 10.
+      expect(row(ids.Docs)).toMatchObject({ end: addDays(today, 10), slipDays: 9, reasons: [{ code: 'ticket_pace', percent: 50, elapsedDays: 10 }] });
+      expect(fc).toMatchObject({ today, plannedEnd: addDays(today, 3), likelyEnd: addDays(today, 10), slipDays: 7, drivers: [ids.Docs] });
+      expect(await ds.query(`SELECT * FROM project_timeline_rows ORDER BY id`)).toEqual(before);
+      expect((await ds.query(`SELECT count(*) FROM audit_logs`))[0].count).toBe(auditCount);
+    });
+
+    it('what changed nets the period from the audit log, only for this project, within the days asked', async () => {
+      await addRow('Build', 'To Do', 1, 10, 1);
+      let r = (await plan()).rows[0];
+      await post(f.users.pm, `${base()}/changes`, { updates: [{ id: r.id, version: r.version, endDate: addDays(today, 15) }] }).expect(201);
+      r = (await plan()).rows[0];
+      await post(f.users.admin, `${base()}/changes`, { updates: [{ id: r.id, version: r.version, endDate: addDays(today, 20), status: 'In Progress' }] }).expect(201);
+      await post(f.users.pm, `${base()}/changes`, { creates: [{ module: 'Pre-Auth', phase: 'Design', status: 'To Do', sortOrder: 2 }] }).expect(201);
+      await post(f.users.pm, `${base()}/baseline/reset`, { reason: 'Scope change' }).expect(201);
+      // Another project's change and an entry older than the period stay out.
+      await ds.query(
+        `INSERT INTO audit_logs ("tenantId", "userEmail", action, "entityType", "entityId", details, "createdAt") VALUES
+           ($1, 'x@x.com', 'project_timeline_baseline_reset', 'Project', $2, '{"reason":"other"}', now()),
+           ($1, 'x@x.com', 'project_timeline_baseline_reset', 'Project', $3, '{"reason":"old"}', now() - interval '10 days')`,
+        [f.tenants.t1, f.projects.pB, pA],
+      );
+      const body = (await get(f.users.exec, `${base()}/recent-changes`).expect(200)).body;
+      expect(body.days).toBe(7);
+      const build = body.phases.find((p: any) => p.rowId === r.id);
+      expect(build).toMatchObject({ kind: 'changed', endShiftDays: 10, changes: { endDate: { old: addDays(today, 10), new: addDays(today, 20) }, status: { old: 'To Do', new: 'In Progress' } } });
+      expect(build.by.sort()).toEqual([f.users.admin.email, f.users.pm.email].sort());
+      expect(body.phases.find((p: any) => p.kind === 'added')).toMatchObject({ module: 'Pre-Auth', phase: 'Design' });
+      expect(body.events.map((e: any) => e.text)).toEqual(['Baseline reset: “Scope change”']);
+      expect(body.totals).toMatchObject({ added: 1, endLater: 1, statusChanged: 1 });
+      const month = (await get(f.users.pm, `${base()}/recent-changes?days=30`).expect(200)).body;
+      expect(month.events.map((e: any) => e.text)).toEqual(['Baseline reset: “Scope change”', 'Baseline reset: “old”']);
+      expect((await get(f.users.pm, `${base()}/recent-changes?days=5000`).expect(200)).body.days).toBe(90);
     });
   });
 });

@@ -16,6 +16,7 @@ import DependencyDialog from '../../components/projectTimeline/DependencyDialog'
 import TicketLinksDialog from '../../components/projectTimeline/TicketLinksDialog';
 import { ticketMismatches } from '../../lib/projectTimelineTickets';
 import { cascadeShifts, criticalPath, dependencyConflicts } from '../../lib/projectTimelineDeps';
+import { forecastPlan } from '../../lib/projectTimelineForecast';
 import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
@@ -69,6 +70,9 @@ export default function ProjectTimelinePage() {
   const [ticketError, setTicketError] = useState('');
   const [ticketRowKey, setTicketRowKey] = useState(null);
   const [slipError, setSlipError] = useState('');
+  const [changesDays, setChangesDays] = useState(7);
+  const [changesData, setChangesData] = useState(null);
+  const [changesError, setChangesError] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [resetReason, setResetReason] = useState('');
   const [resetting, setResetting] = useState(false);
@@ -165,6 +169,21 @@ export default function ProjectTimelinePage() {
       cancelled = true;
     };
   }, [plan?.rows, plan?.project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "What changed" (from the audit log) - reloaded with the saved plan and
+  // when the period changes.
+  useEffect(() => {
+    if (!plan?.project?.id) return undefined;
+    let cancelled = false;
+    setChangesError('');
+    setChangesData(null);
+    apiFetch(`/project-timeline/projects/${plan.project.id}/recent-changes?days=${changesDays}`)
+      .then((d) => !cancelled && setChangesData(d))
+      .catch((err) => !cancelled && setChangesError(err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [plan?.rows, plan?.project?.id, changesDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------------------------------------------------- changes
 
@@ -503,6 +522,21 @@ export default function ProjectTimelinePage() {
     }
     return m;
   }, [ticketData, sortedLive]);
+  // Stage D forecast, on the page's dates and statuses (unsaved rows get a
+  // stand-in id so they count too).
+  const forecastIds = useMemo(() => new Map(sortedLive.map((r) => [r.key, r.id ?? `new:${r.key}`])), [sortedLive]);
+  const forecastRowById = useMemo(() => new Map(sortedLive.map((r) => [forecastIds.get(r.key), r])), [sortedLive, forecastIds]);
+  const forecast = useMemo(() => {
+    if (!plan) return null;
+    const pace = new Map((ticketData?.rows || []).map((r) => [r.rowId, r.progress]));
+    return forecastPlan(
+      sortedLive.map((r) => ({ id: forecastIds.get(r.key), status: r.status, startDate: r.startDate || null, endDate: r.endDate || null, sortOrder: r.sortOrder })),
+      deps,
+      plan.today,
+      pace,
+    );
+  }, [sortedLive, forecastIds, deps, ticketData, plan]);
+  const rowKeyById = useMemo(() => new Map(sortedLive.filter((r) => r.id != null).map((r) => [r.id, r.key])), [sortedLive]);
   const ticketIssues = sortedLive.filter((r) => r.id != null && ticketInfoById.get(r.id)?.mismatches.length);
   const ticketRow = ticketRowKey ? live.find((r) => r.key === ticketRowKey) : null;
 
@@ -649,6 +683,14 @@ export default function ProjectTimelinePage() {
                     setResetReason('');
                     setResetOpen(true);
                   }}
+                  forecast={forecast}
+                  forecastRowById={forecastRowById}
+                  changes={changesData}
+                  changesLoading={!changesData && !changesError}
+                  changesError={changesError}
+                  changesDays={changesDays}
+                  onChangesDays={setChangesDays}
+                  rowKeyById={rowKeyById}
                 />
               )}
 

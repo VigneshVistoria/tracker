@@ -319,7 +319,7 @@ export default function ImportPanel({ project, onImported, onCancel }) {
                             )}
                             {Object.entries(p.changes).map(([field, c]) => (
                               <li key={field} className={styles.issueInfo}>
-                                {FIELD_LABEL[field]}: {c.old ?? '—'} → {c.new ?? '—'}
+                                {FIELD_LABEL[field]}: {c.old ?? '—'} to {c.new ?? '—'}
                               </li>
                             ))}
                             {p.errors.map((e) => (

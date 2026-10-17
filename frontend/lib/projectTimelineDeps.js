@@ -48,7 +48,7 @@ export function dependencyConflicts(rows, deps) {
   return out;
 }
 
-function topoOrder(ids, deps) {
+export function topoOrder(ids, deps) {
   const indeg = new Map(ids.map((id) => [id, 0]));
   const next = new Map();
   for (const d of deps) {

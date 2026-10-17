@@ -4,6 +4,8 @@ import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import StatusCheck from './StatusCheck';
 import SlipPanel from './SlipPanel';
+import ForecastPanel from './ForecastPanel';
+import ChangesPanel from './ChangesPanel';
 import styles from '../../styles/projectTimeline.module.css';
 import { formatDate } from '../../lib/formatDate';
 import { dateRange } from '../../lib/projectTimeline';
@@ -141,6 +143,14 @@ export default function TimelineSummary({
   slipError,
   canResetBaseline,
   onResetBaseline,
+  forecast,
+  forecastRowById,
+  changes,
+  changesLoading,
+  changesError,
+  changesDays,
+  onChangesDays,
+  rowKeyById,
 }) {
   const [showAll, setShowAll] = useState(false);
   const { overall, modules, teams, grid, attention, runningLate, totals, today } = summary;
@@ -175,6 +185,9 @@ export default function TimelineSummary({
       {/* Status check + slip (2026-10-16) */}
       <StatusCheck check={check} today={today} teamName={teamName} canEdit={canEdit} onFix={onFix} onFixAll={onFixAll} onJump={onJump} />
       <SlipPanel slip={slip} loading={slipLoading} error={slipError} canReset={canResetBaseline} unsaved={unsaved} onReset={onResetBaseline} onJump={onJump} />
+      {/* Forecast + what changed (Stage D) */}
+      <ForecastPanel forecast={forecast} rowById={forecastRowById} onJump={onJump} />
+      <ChangesPanel data={changes} loading={changesLoading} error={changesError} days={changesDays} onDays={onChangesDays} rowKeyById={rowKeyById} onJump={onJump} />
 
       {/* 2. Modules */}
       <h3 className={styles.subTitle}>Modules</h3>

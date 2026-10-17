@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, IsNull, Not, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { stringify } from 'csv-stringify/sync';
 import ExcelJS from 'exceljs';
@@ -10,6 +10,9 @@ import { ProjectTimelineDependency } from './project-timeline-dependency.entity'
 import { wouldCreateCycle } from './project-timeline-dependencies';
 import { ProjectTimelineTicketLink } from './project-timeline-ticket-link.entity';
 import { percentFor, rowProgress, ticketsByRow } from './project-timeline-tickets';
+import { forecastPlan } from './project-timeline-forecast';
+import { CHANGE_ENTITY_TYPES, summarizeChanges } from './project-timeline-changes';
+import { AuditLog } from '../audit/audit-log.entity';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { ProjectModule } from '../modules/project-module.entity';
 import { Phase } from '../phases/phase.entity';
@@ -795,6 +798,11 @@ export class ProjectTimelineService {
       const link = await repo.findOne({ where: { id: linkId, tenantId, projectId } });
       if (!link) throw new NotFoundException('Link not found.');
       const row = await em.getRepository(ProjectTimelineRow).findOne({ where: { id: link.rowId } });
+      const [mod, ph, task] = await Promise.all([
+        link.moduleId != null ? em.getRepository(ProjectModule).findOne({ where: { id: link.moduleId, tenantId } }) : null,
+        link.phaseId != null ? em.getRepository(Phase).findOne({ where: { id: link.phaseId, tenantId } }) : null,
+        link.taskId != null ? em.getRepository(ProjectTask).findOne({ where: { id: link.taskId, tenantId }, select: ['id', 'title'] }) : null,
+      ]);
       await repo.delete({ id: link.id });
       await this.audit(em, actor, tenantId, AuditActions.PROJECT_TIMELINE_TICKET_LINK_REMOVED, 'ProjectTimelineTicketLink', link.id, {
         projectId,
@@ -802,9 +810,50 @@ export class ProjectTimelineService {
         moduleId: link.moduleId,
         phaseId: link.phaseId,
         taskId: link.taskId,
+        ...(mod ? { module: { id: mod.id, name: mod.name } } : {}),
+        ...(ph ? { phase: { id: ph.id, name: ph.name } } : {}),
+        ...(task ? { ticket: { id: task.id, title: task.title } } : {}),
       });
     });
     return this.ticketProgress(projectId, tenantId);
+  }
+
+  // ------------------------------------------- forecast + what changed (D)
+
+  // Likely finish of each phase and the project, on the saved plan (the
+  // page runs the same rules on unsaved edits). Read-only.
+  async forecast(projectId: number, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const [rows, deps, progress, { today }] = await Promise.all([
+      this.rowsRepository.find({ where: { tenantId, projectId }, order: { sortOrder: 'ASC', id: 'ASC' } }),
+      this.depsRepository.find({ where: { tenantId, projectId } }),
+      this.ticketProgress(projectId, tenantId),
+      this.today(tenantId),
+    ]);
+    const pace = new Map(progress.rows.map((r) => [r.rowId, r.progress]));
+    return forecastPlan(rows, deps, today, pace);
+  }
+
+  // Net changes to the plan over the last `days` days, from the audit log.
+  async recentChanges(projectId: number, rawDays: number, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const days = Math.min(Math.max(Math.trunc(Number(rawDays) || 7), 1), 90);
+    const to = new Date();
+    const from = new Date(to.getTime() - days * 86400000);
+    const logs = await this.dataSource.getRepository(AuditLog).find({
+      where: { tenantId, entityType: In(CHANGE_ENTITY_TYPES), createdAt: MoreThanOrEqual(from) },
+      order: { id: 'ASC' },
+    });
+    const events = logs.map((l) => {
+      let details: Record<string, any> | null = null;
+      try {
+        details = l.details ? JSON.parse(l.details) : null;
+      } catch {
+        details = null;
+      }
+      return { id: l.id, action: l.action, entityType: l.entityType, entityId: l.entityId ?? null, at: l.createdAt, by: l.userEmail ?? null, details };
+    });
+    return { days, from: from.toISOString(), to: to.toISOString(), ...summarizeChanges(events, projectId) };
   }
 
   private async findPlanRow(em: EntityManager, id: number, projectId: number, tenantId: number) {

@@ -44,7 +44,7 @@ export default function SlipPanel({ slip, loading, error, canReset, unsaved, onR
           ) : (
             <>
               <p className={styles.cardLine}>
-                <strong>Overall finish:</strong> planned {formatDate(slip.overall.plannedEnd)} → now {formatDate(slip.overall.currentEnd)}{' '}
+                <strong>Overall finish:</strong> planned {formatDate(slip.overall.plannedEnd)}, now {formatDate(slip.overall.currentEnd)}{' '}
                 <span className={slipClass(slip.overall.slip)}>({formatSlip(slip.overall.slip)})</span> · {slip.overall.later} phase{slip.overall.later === 1 ? '' : 's'} later,{' '}
                 {slip.overall.earlier} earlier
               </p>
@@ -85,7 +85,7 @@ export default function SlipPanel({ slip, loading, error, canReset, unsaved, onR
                       <li key={s.row.key}>
                         <span className={styles.chipSlip}>{formatSlip(s.slip)}</span>
                         <span>
-                          <strong>{s.row.module}</strong> – {s.row.phase} · planned {formatDate(s.baselineEnd)} → {formatDate(s.row.endDate)} · moved {s.endMoves} time
+                          <strong>{s.row.module}</strong> – {s.row.phase} · planned {formatDate(s.baselineEnd)}, now {formatDate(s.row.endDate)} · moved {s.endMoves} time
                           {s.endMoves === 1 ? '' : 's'}
                         </span>
                         <button type="button" className={styles.linkButton} onClick={() => onJump(s.row.key)} aria-label={`Go to ${s.row.module} – ${s.row.phase} in the table`}>

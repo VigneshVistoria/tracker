@@ -179,6 +179,19 @@ export class ProjectTimelineController {
     return this.projectTimelineService.removeTicketLink(projectId, linkId, req.timelineUser, req.user.tenantId);
   }
 
+  // Stage D: forecast and "what changed" - both read-only.
+  @Get('projects/:projectId/forecast')
+  @Roles(VIEW_ROLES)
+  async forecast(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.projectTimelineService.forecast(projectId, req.user.tenantId);
+  }
+
+  @Get('projects/:projectId/recent-changes')
+  @Roles(VIEW_ROLES)
+  async recentChanges(@Param('projectId', ParseIntPipe) projectId: number, @Query('days') days: string, @Req() req: any) {
+    return this.projectTimelineService.recentChanges(projectId, Number(days), req.user.tenantId);
+  }
+
   @Get('teams')
   @Roles(VIEW_ROLES)
   async teams(@Req() req: any) {

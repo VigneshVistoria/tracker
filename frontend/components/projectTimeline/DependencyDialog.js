@@ -125,7 +125,7 @@ export default function DependencyDialog({ row, rows, deps, projectId, canEdit, 
     <Modal open onClose={onClose} title={`Dependencies – ${row.phase || 'new phase'}`} size="md" footer={<Button variant="secondary" onClick={onClose}>Close</Button>}>
       <p className={styles.muted} style={{ marginTop: 0 }}>
         {phaseName(row)} · {formatDate(row.startDate)} – {formatDate(row.endDate)}. A phase may start the day after the phases it depends on
-        finish, plus the gap. Links are saved straight away; moving dates never moves other phases unless you choose to.
+        finish, plus the gap.{canEdit ? ' Links are saved straight away; moving dates never moves other phases unless you choose to.' : ''}
       </p>
 
       <h3 className={styles.depHeading}>Starts after</h3>

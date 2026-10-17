@@ -87,7 +87,7 @@ export function dependencyConflicts<R extends DepRow>(rows: R[], deps: Dep[]): C
 
 // Rows in an order where every predecessor comes before its successors
 // (rows in a loop - which the service never allows - are left out).
-function topoOrder(ids: number[], deps: Dep[]): number[] {
+export function topoOrder(ids: number[], deps: Dep[]): number[] {
   const indeg = new Map(ids.map((id) => [id, 0]));
   const next = new Map<number, number[]>();
   for (const d of deps) {

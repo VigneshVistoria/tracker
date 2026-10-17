@@ -379,7 +379,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                           {r.phase || 'New phase'}
                         </span>
                         <span className={styles.phaseMeta}>{r.teamId != null ? teamName.get(r.teamId) : 'No team'}</span>
-                        {onDependencies && r.id != null && (
+                        {onDependencies && r.id != null && (canEdit || depCount.get(r.id) > 0) && (
                           <button
                             type="button"
                             className={`${styles.editLink} ${depCount.get(r.id) ? styles.linkHas : ''}`}
@@ -391,7 +391,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                             {depCount.get(r.id) ? <span className={styles.linkCount}>{depCount.get(r.id)}</span> : null}
                           </button>
                         )}
-                        {onTickets && r.id != null && (
+                        {onTickets && r.id != null && (canEdit || ticketInfoById?.get(r.id)) && (
                           <button
                             type="button"
                             className={`${styles.editLink} ${ticketInfoById?.get(r.id) ? styles.linkHas : ''}`}
@@ -402,7 +402,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                             <ListChecks size={14} aria-hidden="true" />
                           </button>
                         )}
-                        {onEditInTable && (
+                        {canEdit && onEditInTable && (
                           <button type="button" className={styles.editLink} onClick={() => onEditInTable(r)} aria-label={`Show ${r.phase || 'new phase'} in the table`} title="Show in the table">
                             <PencilLine size={14} aria-hidden="true" />
                           </button>
