@@ -111,7 +111,8 @@
 .scroll {
   position: relative;
   overflow: auto;
-  max-height: 70vh;
+  max-height: calc(100vh - var(--ds-topbar-height) - 120px);
+  min-height: 320px;
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-xl);
   background: var(--ds-bg-surface);
@@ -245,7 +246,7 @@
   align-items: center;
   gap: var(--ds-space-1);
   width: 100%;
-  height: 34px;
+  height: 38px;
   padding: 0 var(--ds-space-2);
   border: 0;
   background: none;
@@ -279,7 +280,7 @@
   display: flex;
   align-items: center;
   gap: var(--ds-space-2);
-  height: 34px;
+  height: 38px;
   padding: 0 var(--ds-space-2) 0 var(--ds-space-6);
   border-top: 1px solid var(--ds-border);
 }
@@ -322,7 +323,7 @@
 .track {
   position: relative;
   flex: none;
-  height: 34px;
+  height: 38px;
   border-top: 1px solid var(--ds-border);
 }
 
@@ -339,15 +340,35 @@
 .moduleSpan {
   position: absolute;
   top: 14px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--ds-text-secondary);
-  opacity: 0.55;
+  height: 10px;
+  overflow: hidden;
+  border-radius: var(--ds-radius-full);
+  background: color-mix(in srgb, var(--ds-text-secondary) 30%, transparent);
+}
+
+/* Module bar: the filled part is the share of phases completed. */
+.moduleFill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--ds-color-success);
+}
+
+.moduleSpanLabel {
+  position: absolute;
+  top: 10px;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .baseline {
   position: absolute;
-  bottom: 4px;
+  bottom: 3px;
   height: 5px;
   border-radius: 3px;
   background: var(--ds-border-strong);
@@ -355,13 +376,20 @@
 
 .bar {
   position: absolute;
-  top: 7px;
-  height: 16px;
+  top: 8px;
+  height: 20px;
   padding: 0;
+  overflow: visible;
   border: 0;
-  border-radius: 5px;
+  border-radius: 6px;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.12);
   cursor: default;
   z-index: 1;
+  transition: filter var(--ds-transition-fast), box-shadow var(--ds-transition-fast);
+}
+
+.bar:hover {
+  filter: brightness(1.08);
 }
 
 .barEditable {
@@ -395,12 +423,16 @@
 
 /* Only one date: a faded dot on that day (the label says which is missing). */
 .barPartial {
-  top: 10px;
-  height: 10px;
-  min-width: 10px;
-  max-width: 10px;
-  border-radius: var(--ds-radius-full);
-  opacity: 0.6;
+  opacity: 0.7;
+}
+
+/* One-date phases (or start = end): a diamond on that day. */
+.barMilestone {
+  top: 11px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  transform: rotate(45deg);
 }
 
 .barDirty {
@@ -529,7 +561,7 @@
 }
 
 .criticalLine {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--ds-space-2) var(--ds-space-3);
@@ -582,7 +614,7 @@
 }
 
 .swatchFill {
-  background: linear-gradient(to top, var(--ds-text-primary) 0 4px, var(--ds-text-secondary) 4px);
+  background: linear-gradient(to right, var(--ds-color-info) 0 60%, color-mix(in srgb, var(--ds-color-info) 45%, var(--ds-bg-surface)) 60%);
 }
 
 .swatchMismatch {
@@ -591,4 +623,278 @@
   height: 8px;
   border-radius: var(--ds-radius-full);
   background: var(--ds-color-error);
+}
+
+/* ---------- 2026-10-17 redesign ---------- */
+
+.scrollFull {
+  max-height: calc(100vh - 120px);
+}
+
+.controlsSpacer {
+  flex: 1;
+}
+
+.groupLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  padding: 0 var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+}
+
+.toggles {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-1) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface);
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+
+.toggleOn {
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text-primary);
+}
+
+.toggle:focus-visible,
+.popover > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.toggleBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--ds-border-strong);
+  border-radius: 4px;
+}
+
+.toggleOn .toggleBox {
+  border-color: var(--ds-text-primary);
+  background: var(--ds-text-primary);
+  color: var(--ds-bg-surface);
+}
+
+.popover {
+  position: relative;
+}
+
+.popover > summary {
+  list-style: none;
+}
+
+.popover > summary::-webkit-details-marker {
+  display: none;
+}
+
+.popoverBody {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--ds-z-dropdown);
+  width: min(560px, 90vw);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-bg-surface);
+  box-shadow: var(--ds-shadow-lg);
+}
+
+.popoverRight {
+  width: min(380px, 90vw);
+}
+
+.popover[data-align='right'] .popoverBody {
+  right: 0;
+  left: auto;
+}
+
+.todayPill {
+  position: absolute;
+  top: 3px;
+  z-index: 2;
+  padding: 1px 6px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-error);
+  color: #fff;
+  font-size: 11px;
+  font-weight: var(--ds-weight-semibold);
+  line-height: 16px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.statusDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-left: calc(var(--ds-space-3) * -1);
+  border-radius: var(--ds-radius-full);
+}
+
+.trackHover {
+  background-color: color-mix(in srgb, var(--ds-text-link) 6%, transparent);
+}
+
+/* Label beside the bar - always on the surface colour, never on the bar,
+   so its contrast doesn't depend on the bar's colour. */
+.barLabel {
+  position: absolute;
+  top: 10px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-medium);
+  line-height: 16px;
+  color: var(--ds-text-primary);
+  pointer-events: none;
+}
+
+.barLabelPct {
+  color: var(--ds-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ticket progress: the part not yet done is faded. */
+.barRest {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--ds-bg-surface) 55%, transparent);
+  pointer-events: none;
+}
+
+/* Forecast ghost: dashed, from the current end to the likely finish. */
+.ghost {
+  position: absolute;
+  top: 8px;
+  height: 20px;
+  border: 2px dashed var(--ds-color-error);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ds-color-error) 12%, transparent) 0 4px, transparent 4px 8px);
+  pointer-events: none;
+}
+
+.swatchGhost {
+  border: 2px dashed var(--ds-color-error);
+  background: none;
+}
+
+.swatchMilestone {
+  width: 10px;
+  height: 10px;
+  margin: 0 4px;
+  background: var(--ds-text-secondary);
+  transform: rotate(45deg);
+}
+
+/* Hover / focus card */
+.hoverCard {
+  position: absolute;
+  z-index: 6;
+  width: 300px;
+  padding: var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-bg-surface);
+  box-shadow: var(--ds-shadow-lg);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-primary);
+  pointer-events: none;
+}
+
+.hoverAbove {
+  bottom: calc(100% - 4px);
+}
+
+.hoverBelow {
+  top: calc(100% - 4px);
+}
+
+.hcTitle {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.hcSub {
+  color: var(--ds-text-secondary);
+}
+
+.hcStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  margin-top: var(--ds-space-2);
+  font-weight: var(--ds-weight-medium);
+}
+
+.hcDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ds-radius-full);
+}
+
+.hcFacts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--ds-space-3);
+  margin: var(--ds-space-2) 0 0;
+}
+
+.hcFacts dt {
+  color: var(--ds-text-secondary);
+}
+
+.hcFacts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hcBad {
+  color: var(--ds-color-error-dark);
+}
+
+.hcNote {
+  margin-top: var(--ds-space-2);
+  color: var(--ds-text-secondary);
+}
+
+@media (max-width: 640px) {
+  .barLabel,
+  .moduleSpanLabel,
+  .controlsSpacer {
+    display: none;
+  }
+  .hoverCard {
+    width: 240px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
 }

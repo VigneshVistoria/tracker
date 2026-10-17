@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Download, GanttChart, Plus, Table2, Upload } from 'lucide-react';
+import { Download, GanttChart, LayoutDashboard, Plus, SlidersHorizontal, Table2, Upload } from 'lucide-react';
 import AppShell from '../../components/AppShell';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -14,11 +14,13 @@ import BulkBar from '../../components/projectTimeline/BulkBar';
 import GanttView from '../../components/projectTimeline/GanttView';
 import DependencyDialog from '../../components/projectTimeline/DependencyDialog';
 import TicketLinksDialog from '../../components/projectTimeline/TicketLinksDialog';
+import TimelineHero from '../../components/projectTimeline/TimelineHero';
+import AttentionStrip from '../../components/projectTimeline/AttentionStrip';
 import { ticketMismatches } from '../../lib/projectTimelineTickets';
 import { cascadeShifts, criticalPath, dependencyConflicts } from '../../lib/projectTimelineDeps';
 import { forecastPlan } from '../../lib/projectTimelineForecast';
-import pageStyles from '../../styles/issues.module.css';
 import styles from '../../styles/projectTimeline.module.css';
+import ov from '../../styles/timelineOverview.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
@@ -33,6 +35,8 @@ const EDIT_ROLES = ['admin', 'program_manager'];
 const BASELINE_ROLES = ['program_manager'];
 const FIELDS = ['module', 'phase', 'teamId', 'status', 'startDate', 'endDate', 'sortOrder'];
 const LEAVE_MESSAGE = 'You have unsaved changes to the Project Timeline. Leave without saving?';
+const VIEWS = ['overview', 'gantt', 'table'];
+const DEFAULT_VIEW = 'gantt';
 
 let tempSeq = 0;
 const toDraft = (r) => ({ key: `id-${r.id}`, id: r.id, version: r.version, ...Object.fromEntries(FIELDS.map((f) => [f, r[f] ?? null])) });
@@ -80,12 +84,21 @@ export default function ProjectTimelinePage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('xlsx');
   const [exporting, setExporting] = useState(false);
-  // Table or Gantt (Stage A) - kept in ?view= so a link opens the same view.
-  const view = router.query.view === 'gantt' ? 'gantt' : 'table';
+  // Overview, Gantt or Table - kept in ?view= so a link opens the same
+  // view. Gantt is the default (2026-10-17: the page is mostly opened full
+  // screen to present the plan).
+  const view = VIEWS.includes(router.query.view) ? router.query.view : DEFAULT_VIEW;
   const setView = (next) => {
     const { view: _old, ...rest } = router.query;
-    router.replace({ pathname: '/project-timeline', query: next === 'gantt' ? { ...rest, view: 'gantt' } : rest }, undefined, { shallow: true });
+    router.replace({ pathname: '/project-timeline', query: next === DEFAULT_VIEW ? rest : { ...rest, view: next } }, undefined, { shallow: true });
   };
+  // Where Overview's cards send the filters: the last of Gantt/Table used.
+  const lastListView = useRef(DEFAULT_VIEW);
+  if (view !== 'overview') lastListView.current = view;
+  // Full screen (AppShell without sidebar/top bar) by default, like Team
+  // Tasks - per visit, not remembered; "Exit full screen" brings them back.
+  const [fullScreen, setFullScreen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -261,7 +274,7 @@ export default function ProjectTimelinePage() {
   const pickProject = async (id) => {
     if (dirty && !(await confirmAction({ title: 'Discard unsaved changes?', message: LEAVE_MESSAGE, confirmLabel: 'Discard and switch', danger: true }))) return;
     setProjectId(id);
-    router.replace({ pathname: '/project-timeline', query: { project: id, ...(view === 'gantt' ? { view } : {}) } }, undefined, { shallow: true });
+    router.replace({ pathname: '/project-timeline', query: { project: id, ...(view !== DEFAULT_VIEW ? { view } : {}) } }, undefined, { shallow: true });
   };
 
   const nextOrder = () => draft.reduce((max, r) => Math.max(max, r.sortOrder || 0), 0) + 1;
@@ -286,9 +299,12 @@ export default function ProjectTimelinePage() {
     reveal(copy);
   };
 
-  // Scroll to a row (Summary "Go to row", or a row just added). If the
-  // filters hide it, they are cleared first - with a note saying so.
+  // Scroll to a row (Summary "Go to row", or a row just added) - in the
+  // Table, switching to it if needed. If the filters hide it, they are
+  // cleared first - with a note saying so.
   const reveal = (row) => {
+    if (!row) return;
+    if (view !== 'table') setView('table');
     if (isFiltering(filters) && !matchesFilters(row, filters, new Map((plan?.teams || []).map((t) => [t.id, t.name])), plan?.today)) {
       setFilters(EMPTY_FILTERS);
       showToast('Filters cleared to show the row.', 'info');
@@ -298,6 +314,8 @@ export default function ProjectTimelinePage() {
 
   const applyFilters = (next) => {
     setFilters(next);
+    setFiltersOpen(true);
+    if (view === 'overview') setView(lastListView.current);
     setTimeout(() => document.getElementById('timeline-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
   };
 
@@ -537,6 +555,14 @@ export default function ProjectTimelinePage() {
     );
   }, [sortedLive, forecastIds, deps, ticketData, plan]);
   const rowKeyById = useMemo(() => new Map(sortedLive.filter((r) => r.id != null).map((r) => [r.id, r.key])), [sortedLive]);
+  // Gantt forecast ghosts, by row key.
+  const forecastByKey = useMemo(() => {
+    const m = new Map();
+    if (!forecast) return m;
+    const byId = new Map(forecast.rows.map((f) => [f.id, f]));
+    for (const r of sortedLive) if (byId.has(forecastIds.get(r.key))) m.set(r.key, byId.get(forecastIds.get(r.key)));
+    return m;
+  }, [forecast, sortedLive, forecastIds]);
   const ticketIssues = sortedLive.filter((r) => r.id != null && ticketInfoById.get(r.id)?.mismatches.length);
   const ticketRow = ticketRowKey ? live.find((r) => r.key === ticketRowKey) : null;
 
@@ -574,46 +600,68 @@ export default function ProjectTimelinePage() {
 
   if (!user) return null;
 
-  return (
-    <AppShell>
-      <div className={pageStyles.pageHeader}>
-        <div>
-          <h1 className={pageStyles.pageTitle}>Project Timeline</h1>
-          <p className={pageStyles.pageSubtitle}>
-            The plan for a project, module by module: phase, team, status and dates.{' '}
-            {canEdit ? 'Import it from a CSV or Excel file, then edit any cell and click Save changes.' : 'View only.'}
-          </p>
-        </div>
-      </div>
+  const statusCheckCount = check ? check.groups.reduce((n, g) => n + g.rows.length, 0) : 0;
+  const activeFilters = Object.values(filters).filter((v) => v !== '').length;
+  const showStatusCheck = () => {
+    setView('overview');
+    setTimeout(() => document.getElementById('tl-status-check')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
 
+  const actions = project && canEdit && !importing && (
+    <>
+      <Button variant="secondary" leftIcon={Plus} onClick={addModule} disabled={!plan}>
+        Add module
+      </Button>
+      <Button variant="secondary" leftIcon={Download} onClick={() => setExportOpen(true)} disabled={!plan || live.length === 0}>
+        Export
+      </Button>
+      <Button
+        leftIcon={Upload}
+        disabled={!plan}
+        onClick={async () => {
+          if (dirty && !(await confirmAction({ title: 'Save or discard first', message: 'Importing reloads the plan, so unsaved changes would be lost. Discard them and import?', confirmLabel: 'Discard and import', danger: true }))) return;
+          if (dirty) setDraft(plan.rows.map(toDraft));
+          setImporting(true);
+        }}
+      >
+        Import file
+      </Button>
+    </>
+  );
+
+  return (
+    <AppShell fullScreen={fullScreen}>
       {loading ? (
         <LoadingState />
       ) : (
         <>
-          <div className={styles.toolbar}>
-            <ProjectPicker projects={projects} value={projectId} onChange={pickProject} />
-            {project && canEdit && !importing && (
-              <div className={styles.actions}>
-                <Button variant="secondary" leftIcon={Plus} onClick={addModule} disabled={!plan}>
-                  Add module
-                </Button>
-                <Button variant="secondary" leftIcon={Download} onClick={() => setExportOpen(true)} disabled={!plan || live.length === 0}>
-                  Export
-                </Button>
-                <Button
-                  leftIcon={Upload}
-                  disabled={!plan}
-                  onClick={async () => {
-                    if (dirty && !(await confirmAction({ title: 'Save or discard first', message: 'Importing reloads the plan, so unsaved changes would be lost. Discard them and import?', confirmLabel: 'Discard and import', danger: true }))) return;
-                    if (dirty) setDraft(plan.rows.map(toDraft));
-                    setImporting(true);
-                  }}
-                >
-                  Import file
-                </Button>
-              </div>
-            )}
-          </div>
+          <TimelineHero
+            projectName={project?.name}
+            picker={<ProjectPicker projects={projects} value={projectId} onChange={pickProject} />}
+            actions={actions}
+            fullScreen={fullScreen}
+            onToggleFullScreen={() => setFullScreen((v) => !v)}
+            summary={plan && live.length > 0 ? summary : null}
+            forecast={forecast}
+            slip={slip}
+            critical={critical}
+            unsaved={dirty}
+            viewOnly={!canEdit}
+            meta={
+              plan ? (
+                <>
+                  <span>
+                    {plural(live.length, 'phase')} · {plural(moduleCount, 'module')}
+                  </span>
+                  <span>
+                    Today {formatDate(today)} ({plan.timeZone})
+                  </span>
+                </>
+              ) : (
+                <span>The plan for a project, module by module: phase, team, status and dates.</span>
+              )
+            }
+          />
 
           {error && (
             <div className={`${styles.notice} ${styles.noticeError}`} role="alert">
@@ -638,128 +686,66 @@ export default function ProjectTimelinePage() {
 
           {project && plan && !importing && (
             <>
-              <div className={styles.stats} aria-live="polite">
-                <div className={styles.stat}>
-                  <div className={styles.statValue}>{live.length}</div>
-                  <div className={styles.statLabel}>Rows</div>
-                </div>
-                <div className={styles.stat}>
-                  <div className={styles.statValue}>{moduleCount}</div>
-                  <div className={styles.statLabel}>Modules</div>
-                </div>
-                <div className={`${styles.stat} ${styles.statError}`}>
-                  <div className={styles.statValue}>{live.filter((r) => isOverdue(r, today)).length}</div>
-                  <div className={styles.statLabel}>Overdue (To Do, end date passed)</div>
-                </div>
-                <div className={`${styles.stat} ${styles.statError}`}>
-                  <div className={styles.statValue}>{live.filter((r) => r.status === 'Delayed').length}</div>
-                  <div className={styles.statLabel}>Delayed</div>
-                </div>
-                <div className={`${styles.stat} ${styles.statWarning}`}>
-                  <div className={styles.statValue}>{overlapPairs}</div>
-                  <div className={styles.statLabel}>Overlapping pairs</div>
-                </div>
-              </div>
-              <p className={styles.muted}>Today in the team time zone ({plan.timeZone}): {formatDate(today)}.</p>
-
-              {summary && live.length > 0 && (
-                <TimelineSummary
-                  summary={summary}
-                  projectName={project.name}
-                  unsaved={dirty}
-                  onFilter={applyFilters}
-                  onJump={(key) => reveal(sortedLive.find((r) => r.key === key))}
-                  onCopy={copySummary}
-                  check={check}
-                  teamName={teamNameById}
-                  canEdit={canEdit}
-                  onFix={fixRow}
-                  onFixAll={fixAll}
-                  slip={slip}
-                  slipLoading={!slipData && !slipError}
-                  slipError={slipError}
-                  canResetBaseline={canResetBaseline}
-                  onResetBaseline={() => {
-                    setResetReason('');
-                    setResetOpen(true);
-                  }}
-                  forecast={forecast}
-                  forecastRowById={forecastRowById}
-                  changes={changesData}
-                  changesLoading={!changesData && !changesError}
-                  changesError={changesError}
-                  changesDays={changesDays}
-                  onChangesDays={setChangesDays}
-                  rowKeyById={rowKeyById}
-                />
-              )}
-
               {depsError && (
                 <div className={`${styles.notice} ${styles.noticeError}`} role="alert">
                   Couldn’t load dependencies: {depsError}
                 </div>
               )}
-              {conflicts.length > 0 && (
-                <div className={styles.conflictBanner} role="status">
-                  <div className={styles.conflictText}>
-                    <strong>
-                      {plural(conflicts.length, 'phase')} start{conflicts.length === 1 ? 's' : ''} before the phase{conflicts.length === 1 ? '' : 's'} they
-                      depend on allow{conflicts.length === 1 ? 's' : ''}.
-                    </strong>
-                    <ul>
-                      {conflicts.slice(0, 5).map((c) => (
-                        <li key={`${c.dep.predecessorRowId}-${c.dep.successorRowId}`}>
-                          {c.successor.phase} ({c.successor.module}) starts {formatDate(c.successor.startDate)}, {c.daysEarly} day
-                          {c.daysEarly === 1 ? '' : 's'} before “{c.predecessor.phase}” allows ({formatDate(c.earliest)}).
-                        </li>
-                      ))}
-                      {conflicts.length > 5 && <li>…and {conflicts.length - 5} more.</li>}
-                    </ul>
-                  </div>
-                  {canEdit && shifts.length > 0 && (
-                    <Button variant="secondary" onClick={applyShifts}>
-                      Shift {plural(shifts.length, 'phase')} to fit
-                    </Button>
-                  )}
-                </div>
-              )}
-
               {ticketError && (
                 <div className={`${styles.notice} ${styles.noticeError}`} role="alert">
                   Couldn’t load ticket progress: {ticketError}
                 </div>
               )}
-              {ticketIssues.length > 0 && (
-                <div className={styles.ticketCheck} role="status">
-                  <strong>
-                    Ticket check: {plural(ticketIssues.length, 'phase')} {ticketIssues.length === 1 ? 'doesn’t' : 'don’t'} match {ticketIssues.length === 1 ? 'its' : 'their'} tickets.
-                  </strong>
-                  <ul>
-                    {ticketIssues.slice(0, 6).map((r) => (
-                      <li key={r.key}>
-                        <button type="button" onClick={() => setTicketRowKey(r.key)}>
-                          {r.module} – {r.phase}
-                        </button>
-                        : {ticketInfoById.get(r.id).mismatches.map((m) => m.text).join('; ')}
-                      </li>
-                    ))}
-                    {ticketIssues.length > 6 && <li>…and {ticketIssues.length - 6} more.</li>}
-                  </ul>
-                </div>
+              {live.length > 0 && (
+                <AttentionStrip
+                  conflicts={conflicts}
+                  shiftsCount={shifts.length}
+                  canEdit={canEdit}
+                  onShift={applyShifts}
+                  ticketIssues={ticketIssues}
+                  ticketInfoById={ticketInfoById}
+                  onTicketRow={setTicketRowKey}
+                  overdue={live.filter((r) => isOverdue(r, today)).length}
+                  onOverdue={() => applyFilters({ ...EMPTY_FILTERS, status: 'overdue' })}
+                  statusChecks={statusCheckCount}
+                  onStatusChecks={showStatusCheck}
+                  overlapPairs={overlapPairs}
+                />
               )}
 
-              <div id="timeline-table">
-                {live.length > 0 && (
-                  <div className={styles.viewSwitch} role="group" aria-label="View">
-                    <button type="button" className={`${styles.viewButton} ${view === 'table' ? styles.viewActive : ''}`} aria-pressed={view === 'table'} onClick={() => setView('table')}>
-                      <Table2 size={16} aria-hidden="true" /> Table
+              <div id="timeline-table" className={ov.tabBar} style={{ '--tab-top': fullScreen ? '0px' : 'var(--ds-topbar-height)' }}>
+                <div className={ov.tabs} role="group" aria-label="View">
+                  {[
+                    ['overview', 'Overview', LayoutDashboard],
+                    ['gantt', 'Gantt', GanttChart],
+                    ['table', 'Table', Table2],
+                  ].map(([key, label, Icon]) => (
+                    <button key={key} type="button" className={`${ov.tab} ${view === key ? ov.tabActive : ''}`} aria-pressed={view === key} onClick={() => setView(key)}>
+                      <Icon size={16} aria-hidden="true" /> {label}
                     </button>
-                    <button type="button" className={`${styles.viewButton} ${view === 'gantt' ? styles.viewActive : ''}`} aria-pressed={view === 'gantt'} onClick={() => setView('gantt')}>
-                      <GanttChart size={16} aria-hidden="true" /> Gantt
+                  ))}
+                </div>
+                <span className={ov.tabSpacer} />
+                {view !== 'overview' && live.length > 0 && (
+                  <>
+                    {/* The filter panel has its own "Showing n of m" line. */}
+                    <span className={ov.shownText} aria-live={filtersOpen ? undefined : 'polite'} hidden={filtersOpen}>
+                      {filtering ? `Showing ${shownRows.length} of ${live.length} phases` : `${plural(live.length, 'phase')}`}
+                    </span>
+                    <button type="button" className={ov.filterToggle} aria-expanded={filtersOpen} aria-controls="tl-filters" onClick={() => setFiltersOpen((v) => !v)}>
+                      <SlidersHorizontal size={16} aria-hidden="true" /> Filters
+                      {activeFilters > 0 && (
+                        <span className={ov.filterCount} aria-label={`${activeFilters} active`}>
+                          {activeFilters}
+                        </span>
+                      )}
                     </button>
-                  </div>
+                  </>
                 )}
-                {live.length > 0 && (
+              </div>
+
+              {view !== 'overview' && live.length > 0 && filtersOpen && (
+                <div id="tl-filters">
                   <TimelineFilters
                     filters={filters}
                     onChange={setFilters}
@@ -769,10 +755,45 @@ export default function ProjectTimelinePage() {
                     shown={shownRows.length}
                     total={live.length}
                   />
-                )}
-              </div>
+                </div>
+              )}
 
-              {view === 'gantt' ? (
+              {view === 'overview' &&
+                (summary && live.length > 0 ? (
+                  <TimelineSummary
+                    summary={summary}
+                    projectName={project.name}
+                    unsaved={dirty}
+                    onFilter={applyFilters}
+                    onJump={(key) => reveal(sortedLive.find((r) => r.key === key))}
+                    onCopy={copySummary}
+                    check={check}
+                    teamName={teamNameById}
+                    canEdit={canEdit}
+                    onFix={fixRow}
+                    onFixAll={fixAll}
+                    slip={slip}
+                    slipLoading={!slipData && !slipError}
+                    slipError={slipError}
+                    canResetBaseline={canResetBaseline}
+                    onResetBaseline={() => {
+                      setResetReason('');
+                      setResetOpen(true);
+                    }}
+                    forecast={forecast}
+                    forecastRowById={forecastRowById}
+                    changes={changesData}
+                    changesLoading={!changesData && !changesError}
+                    changesError={changesError}
+                    changesDays={changesDays}
+                    onChangesDays={setChangesDays}
+                    rowKeyById={rowKeyById}
+                  />
+                ) : (
+                  <p className={styles.muted}>No phases yet - {canEdit ? 'import a plan file or add a module.' : 'nothing to summarise.'}</p>
+                ))}
+
+              {view === 'gantt' && (
                 <GanttView
                   rows={shownRows}
                   today={today}
@@ -782,18 +803,18 @@ export default function ProjectTimelinePage() {
                   slipByKey={slip?.perRow}
                   dirtyKeys={changes.dirtyKeys}
                   onChange={update}
-                  onEditInTable={(row) => {
-                    setView('table');
-                    reveal(row);
-                  }}
+                  onEditInTable={(row) => reveal(row)}
                   deps={deps}
                   conflicts={conflicts}
                   critical={critical}
                   onDependencies={(row) => setDepRowKey(row.key)}
                   ticketInfoById={ticketInfoById}
                   onTickets={(row) => setTicketRowKey(row.key)}
+                  forecastByKey={forecastByKey}
+                  fullScreen={fullScreen}
                 />
-              ) : (
+              )}
+              {view === 'table' && (
               <TimelineTable
                 rows={shownRows}
                 canReorder={!filtering}

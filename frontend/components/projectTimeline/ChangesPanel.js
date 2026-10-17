@@ -33,7 +33,7 @@ export default function ChangesPanel({ data, loading, error, days, onDays, rowKe
 
   return (
     <>
-      <div className={styles.summaryHeader} style={{ marginTop: 'var(--ds-space-5)' }}>
+      <div className={styles.summaryHeader}>
         <h3 className={styles.subTitle} style={{ margin: 0 }}>
           What changed
         </h3>

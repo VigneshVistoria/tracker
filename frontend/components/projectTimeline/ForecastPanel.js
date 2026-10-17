@@ -27,7 +27,7 @@ function reasonText(reason, row, rowById) {
 // "Forecast" (Stage D): the likely finish of each phase and of the
 // project, worked out from today, statuses, dependencies and ticket pace
 // (lib/projectTimelineForecast.js). Read-only - it never moves a date.
-export default function ForecastPanel({ forecast, rowById, onJump }) {
+export default function ForecastPanel({ forecast, rowById, onJump, embedded = false }) {
   const [showAll, setShowAll] = useState(false);
   if (!forecast || !forecast.likelyEnd) return null;
   const late = forecast.rows.filter((f) => !f.done && f.slipDays > 0 && rowById.has(f.id)).sort((a, b) => b.slipDays - a.slipDays || (a.end < b.end ? -1 : 1));
@@ -37,20 +37,25 @@ export default function ForecastPanel({ forecast, rowById, onJump }) {
 
   return (
     <>
-      <h3 className={styles.subTitle} style={{ marginTop: 'var(--ds-space-5)' }}>
-        Forecast
-      </h3>
-      <p className={styles.cardLine}>
-        <strong>Likely finish:</strong> {formatDate(forecast.likelyEnd)}
-        {forecast.slipDays > 0 ? (
-          <>
-            {' '}
-            – <span className={slipClass(forecast.slipDays)}>{plural(forecast.slipDays, 'day')} after</span> the planned {formatDate(forecast.plannedEnd)}
-          </>
-        ) : (
-          <> – on plan</>
-        )}
-      </p>
+      {/* Embedded in the Overview's Forecast card, which shows the date itself. */}
+      {!embedded && (
+        <>
+          <h3 className={styles.subTitle} style={{ marginTop: 'var(--ds-space-5)' }}>
+            Forecast
+          </h3>
+          <p className={styles.cardLine}>
+            <strong>Likely finish:</strong> {formatDate(forecast.likelyEnd)}
+            {forecast.slipDays > 0 ? (
+              <>
+                {' '}
+                – <span className={slipClass(forecast.slipDays)}>{plural(forecast.slipDays, 'day')} after</span> the planned {formatDate(forecast.plannedEnd)}
+              </>
+            ) : (
+              <> – on plan</>
+            )}
+          </p>
+        </>
+      )}
       {forecast.slipDays > 0 && drivers.length > 0 && (
         <p className={styles.cardLine}>
           <strong>What sets it:</strong>{' '}

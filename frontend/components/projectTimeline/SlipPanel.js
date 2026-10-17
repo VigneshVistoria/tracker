@@ -9,11 +9,11 @@ const slipClass = (d) => (d > 0 ? styles.slipLater : d < 0 ? styles.slipEarlier 
 // "Slip since plan": current end dates against the baseline (the dates a
 // phase had when it entered the plan, or at the last PM reset). Calendar
 // days; negative = pulled earlier. Baselines come from the audit log.
-export default function SlipPanel({ slip, loading, error, canReset, unsaved, onReset, onJump }) {
+export default function SlipPanel({ slip, loading, error, canReset, unsaved, onReset, onJump, children }) {
   const latestReset = slip?.resets?.[0];
   return (
     <>
-      <div className={styles.summaryHeader} style={{ marginTop: 'var(--ds-space-5)' }}>
+      <div className={styles.summaryHeader}>
         <h3 className={styles.subTitle} style={{ margin: 0 }}>
           Slip since plan
         </h3>
@@ -48,6 +48,7 @@ export default function SlipPanel({ slip, loading, error, canReset, unsaved, onR
                 <span className={slipClass(slip.overall.slip)}>({formatSlip(slip.overall.slip)})</span> · {slip.overall.later} phase{slip.overall.later === 1 ? '' : 's'} later,{' '}
                 {slip.overall.earlier} earlier
               </p>
+              {children}
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <caption className="sr-only">Planned and current end date for each module</caption>
