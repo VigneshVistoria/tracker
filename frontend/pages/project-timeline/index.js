@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Download, GanttChart, LayoutDashboard, Plus, SlidersHorizontal, Table2, Upload } from 'lucide-react';
+import { Download, FlaskConical, GanttChart, History, LayoutDashboard, Plus, SlidersHorizontal, Table2, Upload } from 'lucide-react';
 import AppShell from '../../components/AppShell';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -16,9 +16,14 @@ import DependencyDialog from '../../components/projectTimeline/DependencyDialog'
 import TicketLinksDialog from '../../components/projectTimeline/TicketLinksDialog';
 import TimelineHero from '../../components/projectTimeline/TimelineHero';
 import AttentionStrip from '../../components/projectTimeline/AttentionStrip';
+import WhatIfPanel from '../../components/projectTimeline/WhatIfPanel';
+import TimeTravelPanel from '../../components/projectTimeline/TimeTravelPanel';
+import PresentationMode from '../../components/projectTimeline/PresentationMode';
 import { ticketMismatches } from '../../lib/projectTimelineTickets';
 import { cascadeShifts, criticalPath, dependencyConflicts } from '../../lib/projectTimelineDeps';
 import { forecastPlan } from '../../lib/projectTimelineForecast';
+import { riskByKey, riskCounts, teamLoad, topRisks } from '../../lib/projectTimelineRisk';
+import { changeDays, historyDays, planAt } from '../../lib/projectTimelineHistory';
 import styles from '../../styles/projectTimeline.module.css';
 import ov from '../../styles/timelineOverview.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
@@ -26,7 +31,7 @@ import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import { formatDate } from '../../lib/formatDate';
 import { addDaysIso, isOverdue, matchKeyFor, nameKey, overlapsByRow, rowErrors, tidyName } from '../../lib/projectTimeline';
-import { EMPTY_FILTERS, computeSlip, computeSummary, isFiltering, matchesFilters, statusCheck, summaryText } from '../../lib/projectTimelineSummary';
+import { EMPTY_FILTERS, computeSlip, computeSummary, daysBetween, formatSlip, isFiltering, matchesFilters, statusCheck, summaryText } from '../../lib/projectTimelineSummary';
 
 // Backend mirror: ProjectTimelineController's VIEW_ROLES / EDIT_ROLES.
 const VIEW_ROLES = ['admin', 'program_manager', 'executive'];
@@ -99,6 +104,14 @@ export default function ProjectTimelinePage() {
   // Tasks - per visit, not remembered; "Exit full screen" brings them back.
   const [fullScreen, setFullScreen] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // What-if sandbox: a scratch copy of the rows (null when off). Never saved.
+  const [whatIf, setWhatIf] = useState(null);
+  // Time travel: the past day shown (null when off) + the change history.
+  const [travelDay, setTravelDay] = useState(null);
+  const [history, setHistory] = useState(null); // { events, error }
+  const [presenting, setPresenting] = useState(false);
+  // Stable, so the deck's open/close effect doesn't re-run on re-renders.
+  const closePresent = useCallback(() => setPresenting(false), []);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -563,6 +576,198 @@ export default function ProjectTimelinePage() {
     for (const r of sortedLive) if (byId.has(forecastIds.get(r.key))) m.set(r.key, byId.get(forecastIds.get(r.key)));
     return m;
   }, [forecast, sortedLive, forecastIds]);
+  // Risk score per phase + team load per week (on the page's rows).
+  const risks = useMemo(() => {
+    const earlyById = new Map();
+    for (const c of conflicts) earlyById.set(c.successor.id, Math.max(earlyById.get(c.successor.id) || 0, c.daysEarly));
+    return riskByKey(sortedLive, {
+      today: plan?.today,
+      forecastByKey,
+      slipByKey: slip?.perRow,
+      ticketInfoById,
+      earlyById,
+      criticalIds: new Set(critical?.chain || []),
+    });
+  }, [sortedLive, plan, forecastByKey, slip, ticketInfoById, conflicts, critical]);
+  const risk = useMemo(() => ({ top: topRisks(sortedLive, risks), counts: riskCounts(sortedLive, risks) }), [sortedLive, risks]);
+  const load = useMemo(() => (plan ? teamLoad(sortedLive, plan.teams, plan.today) : null), [sortedLive, plan]);
+
+  // ---------------------------------------------------------- what-if
+
+  // The same numbers as the plan's, worked out on the what-if copy.
+  const wi = useMemo(() => {
+    if (!whatIf || !plan) return null;
+    const ids = new Map(whatIf.map((r) => [r.key, r.id ?? `new:${r.key}`]));
+    const pace = new Map((ticketData?.rows || []).map((r) => [r.rowId, r.progress]));
+    const fc = forecastPlan(
+      whatIf.map((r) => ({ id: ids.get(r.key), status: r.status, startDate: r.startDate || null, endDate: r.endDate || null, sortOrder: r.sortOrder })),
+      deps,
+      plan.today,
+      pace,
+    );
+    const fById = new Map(fc.rows.map((f) => [f.id, f]));
+    const fByKey = new Map(whatIf.filter((r) => fById.has(ids.get(r.key))).map((r) => [r.key, fById.get(ids.get(r.key))]));
+    const wConflicts = dependencyConflicts(whatIf, deps);
+    const wCritical = criticalPath(whatIf, deps);
+    const wTickets = new Map();
+    for (const r of whatIf) {
+      const info = r.id != null ? ticketInfoById.get(r.id) : null;
+      if (info) wTickets.set(r.id, { ...info, mismatches: ticketMismatches(r.status, info.progress, info.links.length) });
+    }
+    const earlyById = new Map();
+    for (const c of wConflicts) earlyById.set(c.successor.id, Math.max(earlyById.get(c.successor.id) || 0, c.daysEarly));
+    const wSlip = slipData ? computeSlip(whatIf, slipData) : null;
+    const wRisks = riskByKey(whatIf, { today: plan.today, forecastByKey: fByKey, slipByKey: wSlip?.perRow, ticketInfoById: wTickets, earlyById, criticalIds: new Set(wCritical?.chain || []) });
+    // The plan's dates as the "baseline" ghost, so every move shows.
+    const liveByKey = new Map(sortedLive.map((r) => [r.key, r]));
+    const ghost = new Map();
+    const changed = [];
+    for (const r of whatIf) {
+      const o = liveByKey.get(r.key);
+      if (!o) continue;
+      ghost.set(r.key, { baselineStart: o.startDate, baselineEnd: o.endDate, slip: o.endDate && r.endDate ? daysBetween(o.endDate, r.endDate) : null });
+      const parts = [];
+      if (o.startDate !== r.startDate) parts.push(o.startDate && r.startDate ? `start ${formatSlip(daysBetween(o.startDate, r.startDate))}` : `start ${r.startDate ? formatDate(r.startDate) : 'cleared'}`);
+      if (o.endDate !== r.endDate) parts.push(o.endDate && r.endDate ? `end ${formatSlip(daysBetween(o.endDate, r.endDate))}` : `end ${r.endDate ? formatDate(r.endDate) : 'cleared'}`);
+      if (o.status !== r.status) parts.push(`${o.status} to ${r.status}`);
+      if (parts.length) changed.push({ key: r.key, row: r, parts });
+    }
+    const risky = (rs, rows) => rows.filter((r) => ['high', 'critical'].includes(rs.get(r.key)?.level.key)).length;
+    return {
+      forecastByKey: fByKey,
+      conflicts: wConflicts,
+      critical: wCritical,
+      tickets: wTickets,
+      risks: wRisks,
+      ghost,
+      changed,
+      dirtyKeys: new Set(changed.map((c) => c.key)),
+      overlaps: overlapsByRow(whatIf).byRow,
+      metrics: {
+        likelyEnd: fc.likelyEnd,
+        projectEnd: wCritical?.projectEnd || null,
+        overdue: whatIf.filter((r) => isOverdue(r, plan.today)).length,
+        conflicts: wConflicts.length,
+        risky: risky(wRisks, whatIf),
+      },
+      planMetrics: {
+        likelyEnd: forecast?.likelyEnd || null,
+        projectEnd: critical?.projectEnd || null,
+        overdue: sortedLive.filter((r) => isOverdue(r, plan.today)).length,
+        conflicts: conflicts.length,
+        risky: risky(risks, sortedLive),
+      },
+    };
+  }, [whatIf, plan, deps, ticketData, ticketInfoById, slipData, sortedLive, forecast, critical, conflicts, risks]);
+  const wiShown = useMemo(() => {
+    if (!whatIf || !plan || !filtering) return whatIf;
+    return whatIf.filter((r) => matchesFilters(r, filters, teamNameById, plan.today));
+  }, [whatIf, plan, filters, filtering, teamNameById]);
+
+  // ---------------------------------------------------------- time travel
+
+  // History reloads with the saved plan (a save adds events).
+  useEffect(() => {
+    setHistory(null);
+  }, [plan?.rows, plan?.project?.id]);
+  useEffect(() => {
+    if (travelDay == null || history || !plan?.project?.id) return undefined;
+    let cancelled = false;
+    apiFetch(`/project-timeline/projects/${plan.project.id}/history`)
+      .then((d) => !cancelled && setHistory({ events: d.events, error: '' }))
+      .catch((err) => !cancelled && setHistory({ events: [], error: err.message }));
+    return () => {
+      cancelled = true;
+    };
+  }, [travelDay, history, plan?.project?.id]);
+  const travel = useMemo(() => {
+    if (travelDay == null || !plan || !history || history.error) return null;
+    const events = history.events;
+    const days = historyDays(events, plan.today);
+    const rows = planAt(plan.rows, plan.teams, events, travelDay);
+    const analyse = (list, day, pace) => {
+      const fc = forecastPlan(
+        list.map((r) => ({ id: r.id, status: r.status, startDate: r.startDate || null, endDate: r.endDate || null, sortOrder: r.sortOrder })),
+        deps,
+        day,
+        pace,
+      );
+      return {
+        phases: list.length,
+        completed: list.filter((r) => r.status === 'Completed').length,
+        overdue: list.filter((r) => isOverdue(r, day)).length,
+        projectEnd: criticalPath(list, deps)?.projectEnd || null,
+        likelyEnd: fc.likelyEnd || null,
+      };
+    };
+    const savedNow = planAt(plan.rows, plan.teams, [], plan.today);
+    const nowById = new Map(savedNow.map((r) => [r.id, r]));
+    const ghost = new Map(rows.filter((r) => nowById.has(r.id)).map((r) => [r.key, { baselineStart: nowById.get(r.id).startDate, baselineEnd: nowById.get(r.id).endDate, slip: null }]));
+    const names = new Map();
+    for (const e of events) if (e.values?.phase) names.set(e.rowId, `${e.values.phase} (${e.values.module})`);
+    for (const r of savedNow) names.set(r.id, `${r.phase} (${r.module})`);
+    return {
+      days,
+      changeDays: changeDays(events),
+      events,
+      rows,
+      ghost,
+      conflicts: dependencyConflicts(rows, deps),
+      critical: criticalPath(rows, deps),
+      overlaps: overlapsByRow(rows).byRow,
+      then: analyse(rows, travelDay, new Map()),
+      now: analyse(savedNow, plan.today, new Map((ticketData?.rows || []).map((r) => [r.rowId, r.progress]))),
+      nameOf: (e) => names.get(e.rowId) || `Phase #${e.rowId}`,
+    };
+  }, [travelDay, plan, history, deps, ticketData]);
+  const travelShown = useMemo(() => {
+    if (!travel || !filtering) return travel?.rows;
+    return travel.rows.filter((r) => matchesFilters(r, filters, teamNameById, travelDay));
+  }, [travel, filtering, filters, teamNameById, travelDay]);
+  const startTravel = () => {
+    setWhatIf(null);
+    // Opens a week back (moved up to the first change by the effect below).
+    setTravelDay(addDaysIso(plan.today, -7));
+    if (view !== 'gantt') setView('gantt');
+  };
+  // Never before the first change, never after today.
+  const pickTravelDay = useCallback(
+    (d) => {
+      if (!plan) return;
+      setTravelDay(d > plan.today ? plan.today : d);
+    },
+    [plan],
+  );
+  useEffect(() => {
+    if (travel && travelDay < travel.days[0]) setTravelDay(travel.days[0]);
+  }, [travel, travelDay]);
+  const sandbox = !!whatIf || travelDay != null;
+
+  const startWhatIf = () => {
+    setTravelDay(null);
+    setWhatIf(sortedLive.map((r) => ({ ...r })));
+    if (view !== 'gantt') setView('gantt');
+  };
+  const updateWhatIf = (key, patch) => setWhatIf((prev) => prev && prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const shiftWhatIf = (moduleKey, days) => {
+    const moves = (r) => r.status !== 'Completed' && (!moduleKey || nameKey(r.module) === moduleKey) && (r.startDate || r.endDate);
+    const n = whatIf.filter(moves).length;
+    setWhatIf((prev) => prev.map((r) => (moves(r) ? { ...r, startDate: r.startDate && addDaysIso(r.startDate, days), endDate: r.endDate && addDaysIso(r.endDate, days) } : r)));
+    showToast(`What-if: ${plural(n, 'phase')} moved ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ${days > 0 ? 'later' : 'earlier'}.`, 'info');
+  };
+  const applyWhatIf = async () => {
+    const byKey = new Map(whatIf.map((r) => [r.key, r]));
+    const keys = new Set(wi.changed.map((c) => c.key));
+    const ok = await confirmAction({
+      title: `Apply ${plural(keys.size, 'change')} to the plan?`,
+      message: 'They become unsaved changes on this page, like any edit. Nothing is saved until you click Save changes.',
+      confirmLabel: 'Apply to plan',
+    });
+    if (!ok) return;
+    setDraft((prev) => prev.map((r) => (keys.has(r.key) ? { ...r, startDate: byKey.get(r.key).startDate, endDate: byKey.get(r.key).endDate, status: byKey.get(r.key).status } : r)));
+    setWhatIf(null);
+    showToast(`${plural(keys.size, 'phase')} changed ${pendingNote}.`, 'success', 7000);
+  };
   const ticketIssues = sortedLive.filter((r) => r.id != null && ticketInfoById.get(r.id)?.mismatches.length);
   const ticketRow = ticketRowKey ? live.find((r) => r.key === ticketRowKey) : null;
 
@@ -638,9 +843,10 @@ export default function ProjectTimelinePage() {
           <TimelineHero
             projectName={project?.name}
             picker={<ProjectPicker projects={projects} value={projectId} onChange={pickProject} />}
-            actions={actions}
+            actions={sandbox ? null : actions}
             fullScreen={fullScreen}
             onToggleFullScreen={() => setFullScreen((v) => !v)}
+            onPresent={plan && live.length > 0 && !sandbox ? () => setPresenting(true) : null}
             summary={plan && live.length > 0 ? summary : null}
             forecast={forecast}
             slip={slip}
@@ -696,7 +902,7 @@ export default function ProjectTimelinePage() {
                   Couldn’t load ticket progress: {ticketError}
                 </div>
               )}
-              {live.length > 0 && (
+              {live.length > 0 && !sandbox && (
                 <AttentionStrip
                   conflicts={conflicts}
                   shiftsCount={shifts.length}
@@ -720,11 +926,41 @@ export default function ProjectTimelinePage() {
                     ['gantt', 'Gantt', GanttChart],
                     ['table', 'Table', Table2],
                   ].map(([key, label, Icon]) => (
-                    <button key={key} type="button" className={`${ov.tab} ${view === key ? ov.tabActive : ''}`} aria-pressed={view === key} onClick={() => setView(key)}>
+                    <button
+                      key={key}
+                      type="button"
+                      className={`${ov.tab} ${view === key ? ov.tabActive : ''}`}
+                      aria-pressed={view === key}
+                      disabled={sandbox && key !== 'gantt'}
+                      title={sandbox && key !== 'gantt' ? 'Leave what-if / time travel to switch views' : undefined}
+                      onClick={() => setView(key)}
+                    >
                       <Icon size={16} aria-hidden="true" /> {label}
                     </button>
                   ))}
                 </div>
+                {live.length > 0 && (
+                  <button
+                    type="button"
+                    className={`${ov.filterToggle} ${ov.whatIfButton} ${whatIf ? ov.whatIfOn : ''}`}
+                    aria-pressed={!!whatIf}
+                    onClick={whatIf ? () => setWhatIf(null) : startWhatIf}
+                    title="Try changes on a scratch copy of the plan - nothing is saved"
+                  >
+                    <FlaskConical size={16} aria-hidden="true" /> {whatIf ? 'Exit what-if' : 'What-if'}
+                  </button>
+                )}
+                {live.length > 0 && (
+                  <button
+                    type="button"
+                    className={`${ov.filterToggle} ${ov.whatIfButton} ${travelDay != null ? ov.whatIfOn : ''}`}
+                    aria-pressed={travelDay != null}
+                    onClick={travelDay != null ? () => setTravelDay(null) : startTravel}
+                    title="See the plan as it stood on any past day"
+                  >
+                    <History size={16} aria-hidden="true" /> {travelDay != null ? 'Back to today' : 'Time travel'}
+                  </button>
+                )}
                 <span className={ov.tabSpacer} />
                 {view !== 'overview' && live.length > 0 && (
                   <>
@@ -788,12 +1024,85 @@ export default function ProjectTimelinePage() {
                     changesDays={changesDays}
                     onChangesDays={setChangesDays}
                     rowKeyById={rowKeyById}
+                    risk={risk}
+                    load={load}
                   />
                 ) : (
                   <p className={styles.muted}>No phases yet - {canEdit ? 'import a plan file or add a module.' : 'nothing to summarise.'}</p>
                 ))}
 
-              {view === 'gantt' && (
+              {whatIf && wi && (
+                <WhatIfPanel
+                  plan={wi.planMetrics}
+                  what={wi.metrics}
+                  changes={wi.changed}
+                  modules={summary?.modules || []}
+                  rows={whatIf}
+                  onShift={shiftWhatIf}
+                  onStatus={(key, status) => updateWhatIf(key, { status })}
+                  onReset={() => setWhatIf(sortedLive.map((r) => ({ ...r })))}
+                  onApply={canEdit ? applyWhatIf : null}
+                  onExit={() => setWhatIf(null)}
+                />
+              )}
+              {view === 'gantt' && whatIf && wi && (
+                <GanttView
+                  rows={wiShown}
+                  today={today}
+                  teams={plan.teams}
+                  canEdit
+                  overlaps={wi.overlaps}
+                  slipByKey={wi.ghost}
+                  dirtyKeys={wi.dirtyKeys}
+                  onChange={updateWhatIf}
+                  deps={deps}
+                  conflicts={wi.conflicts}
+                  critical={wi.critical}
+                  ticketInfoById={wi.tickets}
+                  forecastByKey={wi.forecastByKey}
+                  risks={wi.risks}
+                  fullScreen={fullScreen}
+                  whatIf
+                />
+              )}
+              {travelDay != null && (
+                <TimeTravelPanel
+                  days={travel?.days || [travelDay]}
+                  changeDays={travel?.changeDays || []}
+                  day={travelDay}
+                  onDay={pickTravelDay}
+                  events={travel?.events || []}
+                  loading={!history}
+                  error={history?.error || ''}
+                  then={travel?.then || {}}
+                  now={travel?.now || {}}
+                  nameOf={travel?.nameOf || (() => '')}
+                  onExit={() => setTravelDay(null)}
+                />
+              )}
+              {view === 'gantt' && travel && (
+                travelShown.length ? (
+                  <GanttView
+                    rows={travelShown}
+                    today={travelDay}
+                    teams={plan.teams}
+                    canEdit={false}
+                    overlaps={travel.overlaps}
+                    slipByKey={travel.ghost}
+                    dirtyKeys={new Set()}
+                    onChange={() => {}}
+                    deps={deps}
+                    conflicts={travel.conflicts}
+                    critical={travel.critical}
+                    fullScreen={fullScreen}
+                    baselineLabel="Today’s plan (grey outline)"
+                    todayLabel="As of"
+                  />
+                ) : (
+                  <p className={styles.muted}>No phases in the plan on {formatDate(travelDay)}.</p>
+                )
+              )}
+              {view === 'gantt' && !whatIf && travelDay == null && (
                 <GanttView
                   rows={shownRows}
                   today={today}
@@ -811,6 +1120,7 @@ export default function ProjectTimelinePage() {
                   ticketInfoById={ticketInfoById}
                   onTickets={(row) => setTicketRowKey(row.key)}
                   forecastByKey={forecastByKey}
+                  risks={risks}
                   fullScreen={fullScreen}
                 />
               )}
@@ -845,7 +1155,7 @@ export default function ProjectTimelinePage() {
               />
               )}
 
-              {canEdit && (selected.size > 0 || dirty) && (
+              {canEdit && !sandbox && (selected.size > 0 || dirty) && (
                 <div className={styles.bottomBars}>
                   {selected.size > 0 && view === 'table' && (
                     <BulkBar count={selected.size} teams={plan.teams} onSetTeam={bulkTeam} onSetStatus={bulkStatus} onShift={bulkShift} onClear={() => setSelected(new Set())} />
@@ -878,6 +1188,26 @@ export default function ProjectTimelinePage() {
             </>
           )}
         </>
+      )}
+
+      {presenting && plan && summary && live.length > 0 && (
+        <PresentationMode
+          projectName={project?.name || ''}
+          today={plan.today}
+          timeZone={plan.timeZone}
+          summary={summary}
+          forecast={forecast}
+          forecastRowById={forecastRowById}
+          slip={slip}
+          critical={critical}
+          risk={risk}
+          load={load}
+          changes={changesData}
+          rows={sortedLive}
+          teamName={teamNameById}
+          unsaved={dirty}
+          onClose={closePresent}
+        />
       )}
 
       {ticketRow && ticketRow.id != null && (

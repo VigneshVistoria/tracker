@@ -1,0 +1,418 @@
+/* Project Timeline - Presentation mode (2026-10-17). A full-screen deck
+   over the page. --ds-* tokens only; type is a step or two larger than
+   the page so it reads on a projector. */
+
+.deck {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--ds-z-toast) + 10);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background:
+    radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--ds-color-primary-500) 10%, transparent) 0%, transparent 60%),
+    var(--ds-bg-canvas);
+  color: var(--ds-text-primary);
+  outline: none;
+}
+
+.top,
+.bottom {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-8);
+}
+
+.top {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.brand {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+}
+
+.bottom {
+  justify-content: center;
+  border-top: 1px solid var(--ds-border);
+}
+
+.iconButton,
+.autoButton,
+.dot {
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  cursor: pointer;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ds-radius-full);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.autoButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  margin-left: var(--ds-space-4);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: var(--ds-radius-full);
+  font: inherit;
+  font-size: var(--ds-text-sm);
+}
+
+.autoOn {
+  border-color: var(--ds-text-primary);
+}
+
+.iconButton:focus-visible,
+.autoButton:focus-visible,
+.dot:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  max-width: 50vw;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface-sunken);
+}
+
+.dotOn {
+  width: 28px;
+  border-color: var(--ds-text-primary);
+  background: var(--ds-text-primary);
+}
+
+.counter {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--ds-text-secondary);
+}
+
+.slide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-5);
+  width: min(1280px, 100%);
+  margin: 0 auto;
+  padding: var(--ds-space-8);
+  overflow: auto;
+  animation: enter 280ms ease-out;
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slide {
+    animation: none;
+  }
+}
+
+.slideTitle {
+  margin: 0;
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-weight-bold);
+}
+
+.slideBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-5);
+  font-size: var(--ds-text-lg);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.titleSlide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ds-space-4);
+  margin: auto 0;
+}
+
+.titleBig {
+  margin: 0;
+  font-family: var(--ds-font-display);
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-weight: var(--ds-weight-bold);
+  line-height: var(--ds-leading-tight);
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-8);
+  margin-top: var(--ds-space-4);
+}
+
+.bigGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(200px, 1fr));
+  gap: var(--ds-space-4);
+  flex: 1;
+}
+
+.big {
+  display: grid;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-4) var(--ds-space-5);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-xl);
+  background: var(--ds-bg-surface);
+}
+
+.bigLabel {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+
+.bigValue {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-3xl);
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--ds-leading-tight);
+}
+
+.bigSub,
+.note,
+.why {
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-secondary);
+}
+
+.why {
+  display: block;
+  font-size: var(--ds-text-sm);
+}
+
+.lead {
+  margin: 0;
+  font-size: var(--ds-text-xl);
+}
+
+.forecastHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+}
+
+.list {
+  display: grid;
+  gap: var(--ds-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-bg-surface);
+}
+
+.slipChip,
+.dateChip {
+  flex: none;
+  min-width: 88px;
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface-sunken);
+  font-size: var(--ds-text-base);
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.moduleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--ds-space-4);
+}
+
+.moduleCard {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-5);
+  padding: var(--ds-space-5);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-xl);
+  background: var(--ds-bg-surface);
+}
+
+.moduleBody {
+  display: grid;
+  gap: var(--ds-space-2);
+  justify-items: start;
+  min-width: 0;
+}
+
+.moduleName {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-xl);
+  font-weight: var(--ds-weight-bold);
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ds-space-6);
+}
+
+.colTitle {
+  margin: 0 0 var(--ds-space-3);
+  font-size: var(--ds-text-xl);
+}
+
+/* Module timeline slide */
+.mt {
+  display: grid;
+  gap: var(--ds-space-2);
+}
+
+.mtRow {
+  display: grid;
+  grid-template-columns: minmax(180px, 26%) minmax(0, 1fr) 210px;
+  align-items: center;
+  gap: var(--ds-space-4);
+}
+
+.mtAxis {
+  position: relative;
+  height: 28px;
+}
+
+.mtMonth,
+.mtTodayLabel {
+  position: absolute;
+  top: 4px;
+  font-size: var(--ds-text-sm);
+  white-space: nowrap;
+  color: var(--ds-text-secondary);
+}
+
+.mtTodayLabel {
+  padding: 0 6px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-color-error);
+  color: #fff;
+  font-weight: var(--ds-weight-semibold);
+  transform: translateX(-50%);
+}
+
+.mtName {
+  display: grid;
+  min-width: 0;
+}
+
+.mtPhase {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--ds-weight-semibold);
+}
+
+.mtMeta {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.mtTrack {
+  position: relative;
+  height: 34px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface-sunken);
+}
+
+.mtBar {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  border-radius: 6px;
+}
+
+.mtOverdue {
+  background: repeating-linear-gradient(135deg, var(--ds-color-error) 0 6px, var(--ds-color-error-dark) 6px 12px) !important;
+}
+
+.mtToday {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ds-color-error);
+}
+
+.mtDates {
+  font-size: var(--ds-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-secondary);
+}
+
+@media (max-width: 1024px) {
+  .slide {
+    padding: var(--ds-space-5);
+  }
+  .twoCol,
+  .bigGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mtRow {
+    grid-template-columns: minmax(120px, 30%) minmax(0, 1fr);
+  }
+  .mtDates {
+    display: none;
+  }
+}

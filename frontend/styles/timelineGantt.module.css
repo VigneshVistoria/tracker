@@ -857,6 +857,14 @@
   border-radius: var(--ds-radius-full);
 }
 
+.hcRisk {
+  margin-top: var(--ds-space-2);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-color-error-tint);
+  color: var(--ds-color-error-dark);
+}
+
 .hcFacts {
   display: grid;
   grid-template-columns: auto 1fr;

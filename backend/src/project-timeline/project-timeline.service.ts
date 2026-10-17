@@ -12,6 +12,7 @@ import { ProjectTimelineTicketLink } from './project-timeline-ticket-link.entity
 import { percentFor, rowProgress, ticketsByRow } from './project-timeline-tickets';
 import { forecastPlan } from './project-timeline-forecast';
 import { CHANGE_ENTITY_TYPES, summarizeChanges } from './project-timeline-changes';
+import { historyEvents } from './project-timeline-history';
 import { AuditLog } from '../audit/audit-log.entity';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { ProjectModule } from '../modules/project-module.entity';
@@ -854,6 +855,27 @@ export class ProjectTimelineService {
       return { id: l.id, action: l.action, entityType: l.entityType, entityId: l.entityId ?? null, at: l.createdAt, by: l.userEmail ?? null, details };
     });
     return { days, from: from.toISOString(), to: to.toISOString(), ...summarizeChanges(events, projectId) };
+  }
+
+  // Time travel: every saved change to this project's phases, oldest first
+  // (read-only, from the audit log). The page rebuilds past plans from it.
+  async history(projectId: number, tenantId: number) {
+    await this.findProject(projectId, tenantId);
+    const { today, timeZone } = await this.today(tenantId);
+    const logs = await this.dataSource.getRepository(AuditLog).find({
+      where: { tenantId, entityType: 'ProjectTimelineRow' },
+      order: { id: 'ASC' },
+    });
+    const events = logs.map((l) => {
+      let details: Record<string, any> | null = null;
+      try {
+        details = l.details ? JSON.parse(l.details) : null;
+      } catch {
+        details = null;
+      }
+      return { id: l.id, action: l.action, entityType: l.entityType, entityId: l.entityId ?? null, at: l.createdAt, by: l.userEmail ?? null, details };
+    });
+    return { today, timeZone, events: historyEvents(events, projectId, timeZone) };
   }
 
   private async findPlanRow(em: EntityManager, id: number, projectId: number, tenantId: number) {

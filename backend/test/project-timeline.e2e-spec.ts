@@ -788,4 +788,47 @@ describe('Project Timeline (e2e)', () => {
       expect((await get(f.users.pm, `${base()}/recent-changes?days=5000`).expect(200)).body.days).toBe(90);
     });
   });
+  describe('time travel history', () => {
+    const base = () => `/project-timeline/projects/${pA}`;
+
+    beforeEach(async () => {
+      await ds.query(`DELETE FROM project_timeline_ticket_links`);
+      await ds.query(`DELETE FROM project_timeline_dependencies`);
+      await ds.query(`DELETE FROM project_timeline_rows`);
+    });
+
+    it('401 logged out; 403 for Developer/QA/Client; 404 other tenant', async () => {
+      await http().get(`${base()}/history`).expect(401);
+      for (const u of [f.users.devA, f.users.qaB, f.users.clientA]) await get(u, `${base()}/history`).expect(403);
+      await get(f.users.exec, `${base()}/history`).expect(200);
+      await get(f.users.pm, `/project-timeline/projects/${f.projects.pT2}/history`).expect(404);
+    });
+
+    it('returns create/update/delete events for this project only, oldest first, saving nothing', async () => {
+      await post(f.users.pm, `${base()}/changes`, { creates: [{ module: 'Pre-Auth', phase: 'Design', status: 'To Do', startDate: '2026-11-01', endDate: '2026-11-10', sortOrder: 1 }] }).expect(201);
+      let r = (await plan()).rows[0];
+      await post(f.users.admin, `${base()}/changes`, { updates: [{ id: r.id, version: r.version, endDate: '2026-11-20', status: 'In Progress' }] }).expect(201);
+      r = (await plan()).rows[0];
+      await post(f.users.pm, `${base()}/changes`, { deletes: [{ id: r.id, version: r.version }] }).expect(201);
+      // Another project's row event stays out.
+      await ds.query(
+        `INSERT INTO audit_logs ("tenantId", "userEmail", action, "entityType", "entityId", details) VALUES ($1, 'x@x.com', 'project_timeline_row_created', 'ProjectTimelineRow', 999, $2)`,
+        [f.tenants.t1, JSON.stringify({ projectId: f.projects.pB, values: { module: 'X' } })],
+      );
+      const auditCount = (await ds.query(`SELECT count(*) FROM audit_logs`))[0].count;
+      const body = (await get(f.users.exec, `${base()}/history`).expect(200)).body;
+      expect(body.timeZone).toBeTruthy();
+      expect(body.events.map((e: any) => [e.rowId, e.kind])).toEqual([
+        [r.id, 'created'],
+        [r.id, 'updated'],
+        [r.id, 'deleted'],
+      ]);
+      expect(body.events[0].values).toMatchObject({ module: 'Pre-Auth', phase: 'Design', status: 'To Do', startDate: '2026-11-01', endDate: '2026-11-10' });
+      expect(body.events[1].changes).toMatchObject({ endDate: { old: '2026-11-10', new: '2026-11-20' }, status: { old: 'To Do', new: 'In Progress' } });
+      expect(body.events[1].by).toBe(f.users.admin.email);
+      expect(body.events[2].values).toMatchObject({ endDate: '2026-11-20', status: 'In Progress' });
+      expect(body.events.every((e: any) => /^\d{4}-\d{2}-\d{2}$/.test(e.day))).toBe(true);
+      expect((await ds.query(`SELECT count(*) FROM audit_logs`))[0].count).toBe(auditCount);
+    });
+  });
 });

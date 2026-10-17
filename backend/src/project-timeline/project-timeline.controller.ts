@@ -192,6 +192,13 @@ export class ProjectTimelineController {
     return this.projectTimelineService.recentChanges(projectId, Number(days), req.user.tenantId);
   }
 
+  // Time travel (2026-10-17): read-only change history of the phases.
+  @Get('projects/:projectId/history')
+  @Roles(VIEW_ROLES)
+  async history(@Param('projectId', ParseIntPipe) projectId: number, @Req() req: any) {
+    return this.projectTimelineService.history(projectId, req.user.tenantId);
+  }
+
   @Get('teams')
   @Roles(VIEW_ROLES)
   async teams(@Req() req: any) {

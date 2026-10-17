@@ -768,6 +768,385 @@ button.chip:focus-visible,
   margin: 0;
 }
 
+/* ---------- Risk (2026-10-17) ---------- */
+
+/* Level colours: tint background + dark text (AA), the label names the
+   level so colour is never the only signal. */
+.riskLow { --risk: var(--ds-color-success); background: var(--ds-color-success-tint); color: var(--ds-color-success-dark); }
+.riskMedium { --risk: var(--ds-color-warning); background: var(--ds-color-warning-tint); color: var(--ds-color-warning-dark); }
+.riskHigh { --risk: var(--ds-color-error); background: var(--ds-color-error-tint); color: var(--ds-color-error-dark); }
+.riskCritical { --risk: var(--ds-color-error-dark); background: var(--ds-color-error-tint); color: var(--ds-color-error-dark); box-shadow: inset 0 0 0 2px var(--ds-color-error); font-weight: var(--ds-weight-bold); }
+
+.riskBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--ds-space-1);
+  min-width: 96px;
+  padding: 2px var(--ds-space-2) 2px 2px;
+  border-radius: var(--ds-radius-full);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.riskScore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.riskCounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+}
+
+.riskCount {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--ds-space-1);
+  padding: var(--ds-space-1) var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+}
+
+.riskCountValue {
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.riskList {
+  display: grid;
+  gap: var(--ds-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.riskList li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--ds-space-2) var(--ds-space-3);
+  padding: var(--ds-space-2) 0;
+  border-top: 1px solid var(--ds-border);
+  font-size: var(--ds-text-sm);
+}
+
+.riskList li:first-child {
+  border-top: 0;
+}
+
+.riskText {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 200px;
+  color: var(--ds-text-primary);
+}
+
+.riskWhy {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+/* ---------- Team load ---------- */
+
+.loadHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2) var(--ds-space-4);
+  font-size: var(--ds-text-sm);
+}
+
+.loadLimit {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  color: var(--ds-text-secondary);
+}
+
+.loadLimit input {
+  width: 64px;
+}
+
+.loadScroll {
+  overflow-x: auto;
+}
+
+.load {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+  font-size: var(--ds-text-xs);
+}
+
+.load th {
+  padding: var(--ds-space-1);
+  font-weight: var(--ds-weight-semibold);
+  white-space: nowrap;
+  color: var(--ds-text-secondary);
+}
+
+.load thead th {
+  text-align: center;
+}
+
+.load tbody th {
+  text-align: left;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+}
+
+.load td {
+  min-width: 40px;
+  padding: 0;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-surface-sunken);
+  text-align: center;
+}
+
+.loadNow {
+  color: var(--ds-text-primary) !important;
+}
+
+.loadNowCell {
+  box-shadow: inset 0 0 0 2px var(--ds-text-primary);
+}
+
+.loadOver {
+  background: var(--ds-color-error-tint) !important;
+  box-shadow: inset 0 0 0 1.5px var(--ds-color-error);
+}
+
+.loadOver.loadNowCell {
+  box-shadow: inset 0 0 0 2px var(--ds-text-primary), inset 0 0 0 4px var(--ds-color-error);
+}
+
+.loadOver .loadCell {
+  color: var(--ds-color-error-dark);
+  font-weight: var(--ds-weight-bold);
+}
+
+.loadCell {
+  display: block;
+  width: 100%;
+  padding: var(--ds-space-2) 0;
+  border: 0;
+  border-radius: var(--ds-radius-sm);
+  background: none;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-primary);
+  cursor: pointer;
+}
+
+.loadCell:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.loadEmpty {
+  display: block;
+  padding: var(--ds-space-2) 0;
+  color: var(--ds-text-secondary);
+}
+
+.whatIfButton {
+  border-style: dashed;
+}
+
+.whatIfOn {
+  border-color: var(--ds-color-info);
+  background: var(--ds-color-info-tint);
+  color: var(--ds-color-info-dark);
+}
+
+/* ---------- What-if sandbox ---------- */
+
+.whatIf {
+  display: grid;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-3);
+  padding: var(--ds-space-4) var(--ds-space-5);
+  border: 2px dashed var(--ds-color-info);
+  border-radius: var(--ds-radius-xl);
+  background: color-mix(in srgb, var(--ds-color-info) 5%, var(--ds-bg-surface));
+}
+
+.wiHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2) var(--ds-space-3);
+}
+
+.wiNote {
+  margin: 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.wiMetrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--ds-space-2);
+}
+
+.wiMetric {
+  display: grid;
+  gap: 2px;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-bg-surface);
+}
+
+.wiValues {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ds-space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.wiPlan {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  text-decoration: line-through;
+  text-decoration-color: var(--ds-border-strong);
+}
+
+.wiTo {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.wiWhat {
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-bold);
+  color: var(--ds-text-primary);
+}
+
+.wiTools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3) var(--ds-space-5);
+}
+
+.wiTool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.wiTool select {
+  width: auto;
+  max-width: 280px;
+}
+
+.wiTool input {
+  width: 80px;
+}
+
+.wiToolLabel {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+
+.wiToolText {
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.wiChanges {
+  margin: var(--ds-space-2) 0 0;
+  padding-left: var(--ds-space-5);
+  font-size: var(--ds-text-sm);
+}
+
+@media (max-width: 1024px) {
+  .wiMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.timeTravel {
+  border-color: var(--ds-text-secondary);
+  background: color-mix(in srgb, var(--ds-text-secondary) 5%, var(--ds-bg-surface));
+}
+
+.ttControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+
+.ttSlider {
+  position: relative;
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 240px;
+  padding-bottom: 8px;
+}
+
+.ttSlider input {
+  width: 100%;
+  accent-color: var(--ds-text-primary);
+}
+
+.ttDay {
+  font-weight: var(--ds-weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-primary);
+}
+
+/* A tick under the slider for every day that has changes. */
+.ttTicks {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 6px;
+}
+
+.ttTick {
+  position: absolute;
+  width: 2px;
+  height: 6px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--ds-color-info);
+}
+
+.ttEvents {
+  display: grid;
+  gap: var(--ds-space-1);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+}
+
+.ttEvents ul {
+  margin: 0;
+  padding-left: var(--ds-space-5);
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1024px) {

@@ -39,6 +39,9 @@ const ALL_ZOOMS = [...ZOOMS, { key: 'fit', label: 'Fit' }];
 // the status colours; the hover card and aria-label name the team.
 const TEAM_COLORS = ['var(--ds-color-info)', 'var(--ds-color-success)', 'var(--ds-color-warning)', 'var(--ds-color-primary-800)', 'var(--ds-color-gray-600)', 'var(--ds-color-error)', 'var(--ds-color-primary-400)'];
 const NO_TEAM_COLOR = 'var(--ds-color-gray-400)';
+// Colour by risk (levels from lib/projectTimelineRisk).
+const RISK_COLORS = { low: 'var(--ds-color-success)', medium: 'var(--ds-color-warning)', high: 'var(--ds-color-error)', critical: 'var(--ds-color-error-dark)' };
+const RISK_LEGEND = [['Low risk (0–24)', RISK_COLORS.low], ['Medium (25–49)', RISK_COLORS.medium], ['High (50–74)', RISK_COLORS.high], ['Critical (75+)', RISK_COLORS.critical]];
 const STATUS_DOT = {
   'To Do': 'var(--ds-text-secondary)',
   'In Progress': 'var(--ds-color-info)',
@@ -69,10 +72,10 @@ function rangeText(start, end) {
   return `${start ? formatDate(start) : 'no start'} to ${end ? formatDate(end) : 'no end'}`;
 }
 
-function Legend({ colorBy, teamColors }) {
+function Legend({ colorBy, teamColors, baselineLabel }) {
   return (
     <ul className={styles.legend} aria-label="Legend">
-      {colorBy === 'team' ? (
+      {colorBy !== 'status' ? (
         teamColors.map(([name, color]) => (
           <li key={name}>
             <span className={styles.swatch} style={{ background: color }} aria-hidden="true" />
@@ -91,7 +94,7 @@ function Legend({ colorBy, teamColors }) {
       )}
       <li><span className={`${styles.swatch} ${styles.swatchGhost}`} aria-hidden="true" />Likely finish (forecast)</li>
       <li><span className={`${styles.swatch} ${styles.swatchMilestone}`} aria-hidden="true" />One date only</li>
-      <li><span className={`${styles.swatch} ${styles.swatchBaseline}`} aria-hidden="true" />Planned (baseline)</li>
+      <li><span className={`${styles.swatch} ${styles.swatchBaseline}`} aria-hidden="true" />{baselineLabel || 'Planned (baseline)'}</li>
       <li><span className={styles.swatchToday} aria-hidden="true" />Today</li>
       <li><span className={`${styles.swatch} ${styles.swatchCritical}`} aria-hidden="true" />Critical path</li>
       <li><span className={styles.swatchArrow} aria-hidden="true" />Starts after</li>
@@ -102,7 +105,7 @@ function Legend({ colorBy, teamColors }) {
   );
 }
 
-function HoverCard({ row, dates, team, overdue, baseline, moved, forecast, tickets, depCount, early, critical, dirty, canEdit, below, left }) {
+function HoverCard({ row, dates, team, overdue, baseline, moved, forecast, tickets, depCount, early, critical, dirty, canEdit, below, left, risk }) {
   const span = barSpan(dates.startDate, dates.endDate);
   const days = span ? span.end - span.start + 1 : null;
   const likelyLater = forecast && !forecast.done && forecast.end && dates.endDate && forecast.end > dates.endDate;
@@ -118,6 +121,14 @@ function HoverCard({ row, dates, team, overdue, baseline, moved, forecast, ticke
         {overdue && <span className={styles.hcBad}> · overdue</span>}
         {critical && <span> · critical path</span>}
       </div>
+      {risk && risk.score > 0 && (
+        <div className={styles.hcRisk}>
+          <strong>
+            Risk {risk.score} · {risk.level.label}
+          </strong>{' '}
+          – {risk.reasons.map((x) => x.text).join(', ')}
+        </div>
+      )}
       <dl className={styles.hcFacts}>
         <dt>Dates</dt>
         <dd>
@@ -166,7 +177,7 @@ function HoverCard({ row, dates, team, overdue, baseline, moved, forecast, ticke
   );
 }
 
-function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, preview, critical, early, tickets, onDragStart, onKeyMove, color, forecast, showForecast, showBaseline, depCount, team, hovered, onHover, below }) {
+function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, preview, critical, early, tickets, onDragStart, onKeyMove, color, forecast, showForecast, showBaseline, depCount, team, hovered, onHover, below, risk }) {
   const dates = preview || row;
   const span = barSpan(dates.startDate, dates.endDate);
   const base = baseline && barSpan(baseline.baselineStart, baseline.baselineEnd);
@@ -188,6 +199,7 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
     moved && baseline?.slip != null ? `slip ${formatSlip(baseline.slip)} against the plan` : null,
     ghost ? `likely to finish ${formatDate(forecast.end)}` : null,
     critical ? 'on the critical path' : null,
+    risk && risk.score > 0 ? `risk ${risk.score} of 100, ${risk.level.label}` : null,
     early ? `starts ${early} day${early === 1 ? '' : 's'} before a phase it depends on allows` : null,
     tickets ? `tickets ${progressText(tickets.progress)}` : null,
     ...(tickets?.mismatches || []).map((m) => m.text),
@@ -271,13 +283,14 @@ function Bar({ row, range, px, today, canEdit, overlaps, baseline, dirty, previe
           canEdit={canEdit}
           below={below}
           left={Math.max(0, barLeft)}
+          risk={risk}
         />
       )}
     </>
   );
 }
 
-export default function GanttView({ rows, today, teams, canEdit, overlaps, slipByKey, dirtyKeys, onChange, onEditInTable, deps = [], conflicts = [], critical, onDependencies, ticketInfoById, onTickets, forecastByKey, fullScreen }) {
+export default function GanttView({ rows, today, teams, canEdit, overlaps, slipByKey, dirtyKeys, onChange, onEditInTable, deps = [], conflicts = [], critical, onDependencies, ticketInfoById, onTickets, forecastByKey, risks, fullScreen, whatIf = false, baselineLabel = null, todayLabel = 'Today' }) {
   const [zoom, setZoom] = useState('month');
   const [colorBy, setColorBy] = useState('status');
   const [showForecast, setShowForecast] = useState(true);
@@ -308,7 +321,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
     try {
       const p = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
       if (ALL_ZOOMS.some((z) => z.key === p.zoom)) setZoom(p.zoom);
-      if (p.colorBy === 'team' || p.colorBy === 'status') setColorBy(p.colorBy);
+      if (['team', 'status', 'risk'].includes(p.colorBy)) setColorBy(p.colorBy);
       if (typeof p.showForecast === 'boolean') setShowForecast(p.showForecast);
       if (typeof p.showBaseline === 'boolean') setShowBaseline(p.showBaseline);
       if (typeof p.showCritical === 'boolean') setShowCritical(p.showCritical);
@@ -358,7 +371,11 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
   const ticks = useMemo(() => tickMarks(range, tickZoom), [range, tickZoom]);
   // Colour by team: a stable colour per team (plan order), grey for none.
   const teamColor = useMemo(() => new Map((teams || []).map((t, i) => [t.id, TEAM_COLORS[i % TEAM_COLORS.length]])), [teams]);
-  const colorOf = (r) => (colorBy === 'team' ? (r.teamId != null ? teamColor.get(r.teamId) || NO_TEAM_COLOR : NO_TEAM_COLOR) : null);
+  const colorOf = (r) => {
+    if (colorBy === 'team') return r.teamId != null ? teamColor.get(r.teamId) || NO_TEAM_COLOR : NO_TEAM_COLOR;
+    if (colorBy === 'risk') return RISK_COLORS[risks?.get(r.key)?.level.key || 'low'];
+    return null;
+  };
   const teamLegend = useMemo(() => {
     const used = new Set(rows.map((r) => r.teamId ?? null));
     const list = (teams || []).filter((t) => used.has(t.id)).map((t) => [t.name, teamColor.get(t.id)]);
@@ -509,6 +526,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
           {[
             ['status', 'Status'],
             ['team', 'Team'],
+            ['risk', 'Risk'],
           ].map(([key, label]) => (
             <button key={key} type="button" className={`${styles.zoomButton} ${colorBy === key ? styles.zoomActive : ''}`} aria-pressed={colorBy === key} onClick={() => setColorBy(key)}>
               {label}
@@ -518,7 +536,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
         <div className={styles.toggles} role="group" aria-label="Show on the chart">
           {[
             ['Forecast', showForecast, setShowForecast],
-            ['Baseline', showBaseline, setShowBaseline],
+            [baselineLabel ? baselineLabel.split(' (')[0] : whatIf ? 'Real plan' : 'Baseline', showBaseline, setShowBaseline],
             ['Critical path', showCritical, setShowCritical],
           ].map(([label, on, set]) => (
             <button key={label} type="button" className={`${styles.toggle} ${on ? styles.toggleOn : ''}`} aria-pressed={on} onClick={() => set((v) => !v)}>
@@ -543,7 +561,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
         <details className={styles.popover} onToggle={alignPopover}>
           <summary className={styles.todayButton}>Legend</summary>
           <div className={styles.popoverBody}>
-            <Legend colorBy={colorBy} teamColors={teamLegend} />
+            <Legend colorBy={colorBy} teamColors={colorBy === 'risk' ? RISK_LEGEND : teamLegend} baselineLabel={baselineLabel || (whatIf ? 'Real plan (before your what-if moves)' : null)} />
           </div>
         </details>
         {canEdit && (
@@ -589,8 +607,8 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                   </span>
                 ))}
               </div>
-              <span className={styles.todayPill} style={{ left: todayOffset }} title={`Today, ${formatDate(today)}`}>
-                Today
+              <span className={styles.todayPill} style={{ left: todayOffset }} title={`${todayLabel}, ${formatDate(today)}`}>
+                {todayLabel}
               </span>
               {ticks.length > 0 && (
                 <div className={styles.ticks}>
@@ -708,6 +726,7 @@ export default function GanttView({ rows, today, teams, canEdit, overlaps, slipB
                           hovered={hoverKey === r.key && !drag}
                           onHover={setHoverKey}
                           below={(visibleIndex.get(r.key) || 0) <= 3}
+                          risk={risks?.get(r.key)}
                         />
                         {drag && drag.key === r.key && drag.moved && (
                           <span className={styles.dragTip} style={{ left: (barSpan(preview(r).startDate, preview(r).endDate).start - range.start) * px }}>

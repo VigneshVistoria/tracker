@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, ClipboardCopy, AlertTriangle, ArrowRight, Boxes, CalendarRange, Flame, Gauge, LayoutGrid, Telescope, Users } from 'lucide-react';
+import { CheckCircle2, ClipboardCopy, AlertTriangle, ArrowRight, Boxes, CalendarRange, Flame, Gauge, LayoutGrid, ShieldAlert, Telescope, Users, Waves } from 'lucide-react';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import StatusCheck from './StatusCheck';
@@ -9,6 +9,7 @@ import ChangesPanel from './ChangesPanel';
 import styles from '../../styles/projectTimeline.module.css';
 import ov from '../../styles/timelineOverview.module.css';
 import { ProgressRing } from './TimelineHero';
+import { TeamLoad, TopRisks } from './RiskCards';
 import { formatDate } from '../../lib/formatDate';
 import { dateRange } from '../../lib/projectTimeline';
 import { ATTENTION_PREVIEW, EMPTY_FILTERS, HEALTH_RULES, SOON_DAYS, daysBetween, formatSlip } from '../../lib/projectTimelineSummary';
@@ -232,6 +233,8 @@ export default function TimelineSummary({
   changesDays,
   onChangesDays,
   rowKeyById,
+  risk,
+  load,
 }) {
   const [showAll, setShowAll] = useState(false);
   const { overall, modules, teams, grid, attention, runningLate, totals, today } = summary;
@@ -299,6 +302,56 @@ export default function TimelineSummary({
         )}
       </Card>
 
+      {/* Top risks */}
+      <Card span={6} title="Top risks" icon={ShieldAlert}>
+        <TopRisks top={risk.top} counts={risk.counts} onJump={onJump} />
+      </Card>
+
+      {/* Needs attention: status check + overdue + running late */}
+      <Card span={6} id="tl-status-check" title="Needs attention" icon={Flame}>
+        <StatusCheck check={check} today={today} teamName={teamName} canEdit={canEdit} onFix={onFix} onFixAll={onFixAll} onJump={onJump} />
+        <h4 className={styles.subTitle}>Overdue ({attention.length})</h4>
+        {attention.length === 0 ? (
+          <p className={styles.totals}>
+            <CheckCircle2 size={14} aria-hidden="true" /> Nothing is overdue.
+          </p>
+        ) : (
+          <ol className={styles.attention}>
+            {attentionShown.map((a) => (
+              <li key={a.row.key}>
+                <span className={styles.chipOverdue}>{plural(a.daysLate, 'day')} late</span>
+                <span>
+                  <strong>{a.row.module}</strong> – {a.row.phase}
+                  {a.team ? ` · ${a.team}` : ''} · ended {formatDate(a.row.endDate)}
+                </span>
+                <button type="button" className={styles.linkButton} onClick={() => onJump(a.row.key)} aria-label={`Go to ${a.row.module} – ${a.row.phase} in the table`}>
+                  Go to row <ArrowRight size={12} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ol>
+        )}
+        {attention.length > ATTENTION_PREVIEW && (
+          <button type="button" className={styles.linkButton} onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+            {showAll ? `Show the top ${ATTENTION_PREVIEW} only` : `Show all ${attention.length}`}
+          </button>
+        )}
+        {runningLate.length > 0 && (
+          <p className={`${styles.notice} ${styles.noticeInfo}`}>
+            <AlertTriangle size={14} aria-hidden="true" /> Running late (In Progress, past end date, not counted as overdue):{' '}
+            {runningLate.map((r, i) => (
+              <span key={r.key}>
+                {i > 0 && '; '}
+                <button type="button" className={styles.linkButton} onClick={() => onJump(r.key)}>
+                  {r.module} – {r.phase}
+                </button>{' '}
+                (ended {formatDate(r.endDate)})
+              </span>
+            ))}
+          </p>
+        )}
+      </Card>
+
       {/* Modules */}
       <Card span={12} title="Modules" icon={Boxes}>
         <details className={styles.details}>
@@ -347,50 +400,15 @@ export default function TimelineSummary({
         </div>
       </Card>
 
-      {/* Needs attention: status check + overdue + running late */}
-      <Card span={6} id="tl-status-check" title="Needs attention" icon={Flame}>
-        <StatusCheck check={check} today={today} teamName={teamName} canEdit={canEdit} onFix={onFix} onFixAll={onFixAll} onJump={onJump} />
-        <h4 className={styles.subTitle}>Overdue ({attention.length})</h4>
-        {attention.length === 0 ? (
-          <p className={styles.totals}>
-            <CheckCircle2 size={14} aria-hidden="true" /> Nothing is overdue.
+      {/* Team load */}
+      {load && (
+        <Card span={12} title="Team load" icon={Waves}>
+          <p className={styles.muted} style={{ margin: 0 }}>
+            Unfinished phases running at the same time, per team and week (2 weeks back, 14 ahead). Select a number to show those phases.
           </p>
-        ) : (
-          <ol className={styles.attention}>
-            {attentionShown.map((a) => (
-              <li key={a.row.key}>
-                <span className={styles.chipOverdue}>{plural(a.daysLate, 'day')} late</span>
-                <span>
-                  <strong>{a.row.module}</strong> – {a.row.phase}
-                  {a.team ? ` · ${a.team}` : ''} · ended {formatDate(a.row.endDate)}
-                </span>
-                <button type="button" className={styles.linkButton} onClick={() => onJump(a.row.key)} aria-label={`Go to ${a.row.module} – ${a.row.phase} in the table`}>
-                  Go to row <ArrowRight size={12} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ol>
-        )}
-        {attention.length > ATTENTION_PREVIEW && (
-          <button type="button" className={styles.linkButton} onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
-            {showAll ? `Show the top ${ATTENTION_PREVIEW} only` : `Show all ${attention.length}`}
-          </button>
-        )}
-        {runningLate.length > 0 && (
-          <p className={`${styles.notice} ${styles.noticeInfo}`}>
-            <AlertTriangle size={14} aria-hidden="true" /> Running late (In Progress, past end date, not counted as overdue):{' '}
-            {runningLate.map((r, i) => (
-              <span key={r.key}>
-                {i > 0 && '; '}
-                <button type="button" className={styles.linkButton} onClick={() => onJump(r.key)}>
-                  {r.module} – {r.phase}
-                </button>{' '}
-                (ended {formatDate(r.endDate)})
-              </span>
-            ))}
-          </p>
-        )}
-      </Card>
+          <TeamLoad load={load} onFilter={filter} />
+        </Card>
+      )}
 
       {/* What changed */}
       <Card span={6} label="What changed">
@@ -450,7 +468,7 @@ export default function TimelineSummary({
       </Card>
 
       {/* Teams */}
-      <Card span={12} title="Teams" icon={Users}>
+      <Card span={6} title="Teams" icon={Users}>
         <div className={styles.cardGrid}>
           {teams.map((t) => (
             <article key={t.key} className={styles.sumCard} aria-label={`Team ${t.name}`}>

@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarClock, Maximize2, Minimize2, Route, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Maximize2, Minimize2, Presentation, Route, TrendingUp } from 'lucide-react';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import styles from '../../styles/timelineOverview.module.css';
@@ -47,7 +47,7 @@ function Kpi({ icon: Icon, iconTone, label, value, valueTone, sub, children }) {
 // Page header band (2026-10-17): project name, picker + actions, the full
 // screen switch and five headline numbers. Read-only - every number comes
 // from the same page state the Overview and Gantt use.
-export default function TimelineHero({ projectName, picker, actions, fullScreen, onToggleFullScreen, summary, forecast, slip, critical, meta, unsaved, viewOnly }) {
+export default function TimelineHero({ projectName, picker, actions, fullScreen, onToggleFullScreen, onPresent, summary, forecast, slip, critical, meta, unsaved, viewOnly }) {
   const o = summary?.overall;
   const late = forecast?.slipDays > 0;
   const runningLate = summary?.runningLate?.length || 0;
@@ -66,6 +66,11 @@ export default function TimelineHero({ projectName, picker, actions, fullScreen,
         <div className={styles.heroActions}>
           <div className={styles.heroPicker}>{picker}</div>
           {actions}
+          {onPresent && (
+            <Button variant="secondary" leftIcon={Presentation} onClick={onPresent} title="Show the plan as a full-screen slideshow">
+              Present
+            </Button>
+          )}
           <Button variant="secondary" leftIcon={fullScreen ? Minimize2 : Maximize2} onClick={onToggleFullScreen} aria-pressed={fullScreen}>
             {fullScreen ? 'Exit full screen' : 'Full screen'}
           </Button>
