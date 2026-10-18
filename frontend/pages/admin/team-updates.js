@@ -9,6 +9,7 @@ import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -33,7 +34,7 @@ export default function TeamUpdatesPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     if (JSON.parse(storedUser).role !== 'admin') {

@@ -12,6 +12,7 @@ import { apiFetch } from '../../lib/api';
 import { formatRelativeTime } from '../../lib/formatDate';
 import { usePortalMe } from '../../lib/clientTickets';
 import styles from '../../styles/portal.module.css';
+import { redirectToSignIn } from '../../lib/session';
 
 const FILTERS = [
   { key: 'open', label: 'Open', match: (t) => t.status !== 'closed' },
@@ -38,7 +39,7 @@ export default function ClientTicketsPage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setUser(JSON.parse(stored));

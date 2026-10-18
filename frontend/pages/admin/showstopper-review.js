@@ -6,6 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 function ReviewCard({ issue, onDecide, deciding }) {
   let reasons = [];
@@ -77,7 +78,7 @@ export default function ShowstopperReviewPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const role = JSON.parse(storedUser).role;

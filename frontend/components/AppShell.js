@@ -13,6 +13,7 @@ import { apiFetch } from '../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
 import { navSectionsFor, isNavItemActive } from '../lib/navigation';
 import { loadPortalMe, resetPortalMe } from '../lib/clientTickets';
+import { signOut, storeSession, redirectToSignIn, webClientHeaders } from '../lib/session';
 import { useTheme } from '../lib/theme';
 import ThemeToggle from './ui/ThemeToggle';
 
@@ -83,7 +84,7 @@ export default function AppShell({ children, fullScreen = false }) {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setUser(JSON.parse(storedUser));
@@ -115,22 +116,27 @@ export default function AppShell({ children, fullScreen = false }) {
     }
   }, [router]);
 
+  // A role or name change picked up by a session refresh (lib/session.js).
+  useEffect(() => {
+    const onUserUpdated = (e) => e.detail && setUser(e.detail);
+    window.addEventListener('tracker:user-updated', onUserUpdated);
+    return () => window.removeEventListener('tracker:user-updated', onUserUpdated);
+  }, []);
+
   const handleLogout = useCallback(() => {
-    disconnectSocket();
+    // Clears this tab at once (and, via localStorage, every other tab),
+    // then ends the session on the server in the background.
+    signOut();
     resetPortalMe();
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('impersonator');
     router.push('/');
   }, [router]);
 
   const handleExitImpersonation = async () => {
     setExiting(true);
     try {
-      const res = await apiFetch('/auth/exit-impersonation', { method: 'POST' });
-      localStorage.setItem('accessToken', res.accessToken);
-      localStorage.setItem('user', JSON.stringify(res.user));
+      const res = await apiFetch('/auth/exit-impersonation', { method: 'POST', credentials: 'include', headers: webClientHeaders });
       localStorage.removeItem('impersonator');
+      storeSession(res);
       disconnectSocket();
       resetPortalMe();
       router.push('/admin/users');

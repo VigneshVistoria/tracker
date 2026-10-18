@@ -4,6 +4,7 @@ import { Maximize2, Minimize2 } from 'lucide-react';
 import AppShell from '../../components/AppShell';
 import TeamTaskWorkboard from '../../components/TeamTaskWorkboard';
 import styles from '../../styles/issues.module.css';
+import { redirectToSignIn } from '../../lib/session';
 
 // Admin/Executive/Program Manager only - leadership-wide, same visibility
 // grant TasksService.LEADERSHIP_ROLES gives those roles elsewhere (Task
@@ -32,7 +33,7 @@ export default function TeamTasksPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { getSocket } from '../../../lib/socket';
 import { useToast } from '../../../lib/toast';
 import LoadingState from '../../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../../lib/session';
 
 export default function UsersList() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function UsersList() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const currentUser = JSON.parse(storedUser);

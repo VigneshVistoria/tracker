@@ -104,6 +104,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { UserNotification } from './user-notifications/user-notification.entity';
 import { UserNotificationsModule } from './user-notifications/user-notifications.module';
 import { SearchModule } from './search/search.module';
+import { RefreshSession } from './auth/refresh-session.entity';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -121,6 +122,7 @@ import { SearchModule } from './search/search.module';
         database: config.get<string>('DB_NAME'),
         entities: [
           UserNotification,
+          RefreshSession,
           User,
           Issue,
           Project,

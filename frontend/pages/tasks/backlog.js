@@ -13,6 +13,7 @@ import { priorityTone, priorityLabel, statusBadgeStyle, statusLabel } from '../.
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -75,7 +76,7 @@ export default function TaskBacklogPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

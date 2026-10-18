@@ -8,6 +8,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import LoadingState from '../../components/ui/LoadingState';
 import JunkReasonModal from '../../components/JunkReasonModal';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['admin', 'program_manager'];
 
@@ -45,7 +46,7 @@ export default function EscalationsPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

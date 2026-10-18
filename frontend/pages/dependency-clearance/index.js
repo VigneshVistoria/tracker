@@ -5,6 +5,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import DependencyTicketBoard from '../../components/taskViews/DependencyTicketBoard';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = DEVELOPER_EQUIVALENT_ROLES;
 
@@ -19,7 +20,7 @@ export default function DependencyClearancePage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

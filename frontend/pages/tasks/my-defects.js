@@ -4,6 +4,7 @@ import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import QaReviewWorkboard from '../../components/QaReviewWorkboard';
 import styles from '../../styles/issues.module.css';
+import { redirectToSignIn } from '../../lib/session';
 
 const ACTIVE_CARD_STORAGE_KEY = 'myDefectsActiveCard';
 
@@ -22,7 +23,7 @@ export default function MyDefectsPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

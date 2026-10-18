@@ -9,6 +9,7 @@ import { useConfirm } from '../../lib/confirm';
 import { formatDateTime } from '../../lib/formatDate';
 import { statusLabel } from '../../lib/taskTableShared';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 // Backend mirror: TasksController.ROLES_ALLOWED_TO_VIEW_JUNK /
 // ROLES_ALLOWED_TO_MANAGE_JUNK - Admin views, Program Manager restores.
@@ -41,7 +42,7 @@ export default function JunkPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

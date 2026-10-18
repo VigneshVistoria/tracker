@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useToast } from '../../lib/toast';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 export default function ProjectsAdmin() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export default function ProjectsAdmin() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setIsAdmin(JSON.parse(storedUser).role === 'admin');

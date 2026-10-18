@@ -10,6 +10,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { STATUSES, TEAM_STATUS_OPTIONS, postReply, usePortalMe } from '../../lib/clientTickets';
 import styles from '../../styles/portal.module.css';
+import { redirectToSignIn } from '../../lib/session';
 
 // One client ticket, team side (Stage 2): reply or add an internal note,
 // change status, assign to someone on this client's team.
@@ -29,7 +30,7 @@ export default function ClientTicketTeamPage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setUser(JSON.parse(stored));

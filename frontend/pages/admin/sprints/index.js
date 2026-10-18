@@ -8,6 +8,7 @@ import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
 import { formatDate } from '../../../lib/formatDate';
 import LoadingState from '../../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../../lib/session';
 
 const STATUS_BADGE_STYLE = {
   Planned: { background: 'var(--color-slate-tint, #eef0f2)', color: 'var(--color-ink-soft)' },
@@ -30,7 +31,7 @@ export default function SprintsListPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setIsAdmin(JSON.parse(storedUser).role === 'admin');

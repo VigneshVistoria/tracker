@@ -10,6 +10,7 @@ import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 // Program Manager only for now (built PM-first for review, 2026-09-26) -
 // widen together with ReleaseLogsController.assertIsPm and the AppShell
@@ -71,7 +72,7 @@ export default function ReleaseLogPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

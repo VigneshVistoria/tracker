@@ -11,6 +11,7 @@ import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { formatRelativeTime } from '../../lib/formatDate';
 import { uploadDefectScreenshots } from '../../lib/defectScreenshots';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['qa'];
 
@@ -171,7 +172,7 @@ export default function NewDefectPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

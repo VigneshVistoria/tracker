@@ -7,6 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { getSocket } from '../../../lib/socket';
 import LoadingState from '../../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../../lib/session';
 
 const STATUS_OPTIONS = ['Planned', 'Active', 'Completed'];
 
@@ -71,7 +72,7 @@ export default function SprintDetailPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setIsAdmin(JSON.parse(storedUser).role === 'admin');

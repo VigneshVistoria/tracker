@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 // Backend mirror: DailyScrumController.ROLES_ALLOWED_TO_EDIT_SCRUM_SETTINGS.
 const EDIT_ROLES = ['admin', 'program_manager'];
@@ -51,7 +52,7 @@ export default function DailyScrumSettingsPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     if (!EDIT_ROLES.includes(JSON.parse(storedUser).role)) {

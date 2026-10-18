@@ -112,6 +112,19 @@
   text-align: center;
 }
 
+.notice {
+  max-width: 320px;
+  margin: 0;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--ds-radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-size: 0.9rem;
+  line-height: var(--ds-leading-normal);
+  text-align: center;
+}
+
 .srOnly {
   position: absolute;
   width: 1px;

@@ -10,6 +10,7 @@ import { useToast } from '../../lib/toast';
 import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets, getIssueMoveAction } from '../../lib/status';
 import { formatDate } from '../../lib/formatDate';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 const MOVE_ACTION_TO_REQUEST = {
   patch: (id, targetStatus) => ({ path: `/issues/${id}`, options: { method: 'PATCH', body: JSON.stringify({ status: targetStatus }) } }),
@@ -136,7 +137,7 @@ export default function IssuesList() {
     const token = localStorage.getItem('accessToken');
     const storedUser = localStorage.getItem('user');
     if (!token || !storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setUser(JSON.parse(storedUser));

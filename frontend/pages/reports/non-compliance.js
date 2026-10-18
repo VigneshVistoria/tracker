@@ -9,6 +9,7 @@ import { apiFetch, apiDownload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 // Same tier as KPI Matrix (GET /kpi/report) - Admin/Executive/Program
 // Manager only. A developer never sees this report about themselves or
@@ -74,7 +75,7 @@ export default function NonComplianceReportPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

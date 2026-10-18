@@ -11,8 +11,16 @@ import { User, UserRole } from '../users/user.entity';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { ConfigService } from '@nestjs/config';
+import { SessionService } from './session.service';
 
 const SALT_ROUNDS = 10;
+
+// Sign-ins from before web sessions existed hold a 1-day token and no
+// refresh cookie. Until SESSION_UPGRADE_UNTIL (set to deploy time + 24h)
+// such a token can be swapped once for a web session, so nobody is
+// signed out by the change. Tokens issued after the deploy never qualify.
+const UPGRADE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // Impersonation tokens are deliberately shorter-lived than a normal login
 // session (see JWT_EXPIRES_IN in guards.module.ts) - if one leaks, the
@@ -25,7 +33,57 @@ export class AuthService {
     private usersService: UsersService,
     private jwtService: JwtService,
     private auditLogService: AuditLogService,
+    private sessionService: SessionService,
+    private config: ConfigService,
   ) {}
+
+  // Web sign-in: a short-lived access token for the page, plus the
+  // refresh token the controller puts in the httpOnly cookie.
+  async startWebSession(user: { id: number; email: string }, tenantId: number, userAgent?: string) {
+    const { session, refreshToken } = await this.sessionService.create(user.id, tenantId, userAgent);
+    return {
+      accessToken: this.signWebAccessToken(user, tenantId),
+      refreshToken,
+      cookieMaxAgeMs: this.sessionService.cookieMaxAge(session),
+    };
+  }
+
+  // Swaps the refresh cookie for a new access token, returning the user
+  // as they are now (a role change shows up on the next refresh).
+  async refresh(refreshToken: string | undefined, tenantId: number) {
+    const rotated = await this.sessionService.rotate(refreshToken, tenantId);
+    const user = await this.usersService.findByIdAndTenant(rotated.session.userId, tenantId);
+    if (!user) {
+      await this.sessionService.revokeSession(rotated.session.id, 'user_missing');
+      throw new UnauthorizedException('Session expired');
+    }
+    return {
+      accessToken: this.signWebAccessToken(user, tenantId),
+      user: this.toPublicUser(user),
+      refreshToken: rotated.refreshToken,
+      cookieMaxAgeMs: this.sessionService.cookieMaxAge(rotated.session),
+    };
+  }
+
+  async logout(refreshToken: string | undefined) {
+    await this.sessionService.revokeByToken(refreshToken);
+  }
+
+  async upgradeLegacySession(payload: { sub: number; tenantId: number; iat?: number; impersonatorId?: number }, tenantId: number, userAgent?: string) {
+    const until = Date.parse(this.config.get<string>('SESSION_UPGRADE_UNTIL') || '');
+    const now = Date.now();
+    const issuedAt = (payload.iat || 0) * 1000;
+    if (!Number.isFinite(until) || now >= until || issuedAt >= until - UPGRADE_WINDOW_MS || payload.impersonatorId || payload.tenantId !== tenantId) {
+      throw new ForbiddenException('Session upgrade not available');
+    }
+    const user = await this.usersService.findByIdAndTenant(payload.sub, tenantId);
+    if (!user) throw new UnauthorizedException('Session expired');
+    return { ...(await this.startWebSession(user, tenantId, userAgent)), user: this.toPublicUser(user) };
+  }
+
+  signWebAccessToken(user: { id: number; email: string }, tenantId: number) {
+    return this.jwtService.sign({ sub: user.id, email: user.email, tenantId }, { expiresIn: this.sessionService.accessTokenTtl as any });
+  }
 
   // Exposed via a public endpoint so the frontend can hide/disable the
   // registration form instead of letting someone fill it out and only

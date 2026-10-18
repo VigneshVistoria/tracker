@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { formatDateTime } from '../../lib/formatDate';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 const EMPTY_FORM = { name: '', subdomain: '', adminEmail: '', adminFullName: '' };
 
@@ -32,7 +33,7 @@ export default function PlatformTenantsPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     if (!JSON.parse(storedUser).isPlatformSuperadmin) {

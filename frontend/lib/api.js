@@ -1,17 +1,34 @@
+import { getAccessToken, ensureFreshToken, recoverFrom401, endSession } from './session';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+// Every authenticated request goes through here - the one place a 401 is
+// handled. On a 401 the session is refreshed and the request retried once;
+// if the session has really ended, lib/session.js signs the tab out with a
+// friendly message and this returns a promise that never settles, so no
+// page ever shows a raw "Invalid or expired token" error underneath.
+async function authedFetch(path, init, headers = {}) {
+  await ensureFreshToken();
+  const send = () => {
+    const token = getAccessToken();
+    return fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: { ...headers, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers || {}) },
+    });
+  };
+  let res = await send();
+  if (res.status !== 401) return res;
+  if (await recoverFrom401()) {
+    res = await send();
+    if (res.status !== 401) return res;
+    endSession('expired');
+  }
+  return new Promise(() => {});
+}
 
 // Wraps fetch, automatically attaching the saved JWT as a Bearer token.
 export async function apiFetch(path, options = {}) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
+  const res = await authedFetch(path, options, { 'Content-Type': 'application/json' });
 
   const data = await res.json().catch(() => ({}));
 
@@ -27,15 +44,11 @@ export async function apiFetch(path, options = {}) {
 // token and returns it as a Blob. `body` (optional) is sent as a JSON POST,
 // for files built from a request (e.g. the Project Timeline export).
 export async function apiBlob(path, body) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-
-  const res = await fetch(`${API_URL}${path}`, {
-    ...(body !== undefined ? { method: 'POST', body: JSON.stringify(body) } : {}),
-    headers: {
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  const res = await authedFetch(
+    path,
+    body !== undefined ? { method: 'POST', body: JSON.stringify(body) } : {},
+    body !== undefined ? { 'Content-Type': 'application/json' } : {},
+  );
 
   if (!res.ok) {
     let message = 'Download failed';
@@ -71,12 +84,7 @@ export async function apiDownload(path, filename, body) {
 // Multipart upload (FormData). The browser sets the multipart Content-Type
 // itself, so unlike apiFetch no JSON header is sent.
 export async function apiUpload(path, formData) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-  });
+  const res = await authedFetch(path, { method: 'POST', body: formData });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 413) throw new Error('A file is too large. Each file can be at most 10 MB.');

@@ -14,6 +14,7 @@ import { copyText, personText, teamText } from '../lib/dailyScrumText';
 import { useToast } from '../lib/toast';
 import styles from '../styles/issues.module.css';
 import scrumStyles from '../styles/dailyScrum.module.css';
+import { redirectToSignIn } from '../lib/session';
 
 // Daily Scrum. Read-only for tickets: nothing here edits one.
 // - Developer/Designer/DevOps/QA: their own summary (Stage 2).
@@ -105,7 +106,7 @@ export default function DailyScrumPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

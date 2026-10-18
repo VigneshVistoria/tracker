@@ -25,6 +25,7 @@ import EmptyState from '../components/ui/EmptyState';
 import { SkeletonTable } from '../components/ui/Skeleton';
 import { apiFetch } from '../lib/api';
 import { formatDate } from '../lib/formatDate';
+import { redirectToSignIn } from '../lib/session';
 
 const STATUS_TONE = {
   Backlog: 'neutral',
@@ -57,7 +58,7 @@ export default function DesignPreviewPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setUser(JSON.parse(storedUser));

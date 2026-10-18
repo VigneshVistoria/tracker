@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 // Mirrors IssueCategoriesService.PROTECTED_NAMES on the backend exactly -
 // these two are matched by name (not id) in 3 other backend services
@@ -34,7 +35,7 @@ export default function IssueCategoriesPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const role = JSON.parse(storedUser).role;

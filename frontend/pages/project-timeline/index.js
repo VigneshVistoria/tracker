@@ -32,6 +32,7 @@ import { useConfirm } from '../../lib/confirm';
 import { formatDate } from '../../lib/formatDate';
 import { addDaysIso, isOverdue, matchKeyFor, nameKey, overlapsByRow, rowErrors, tidyName } from '../../lib/projectTimeline';
 import { EMPTY_FILTERS, computeSlip, computeSummary, daysBetween, formatSlip, isFiltering, matchesFilters, statusCheck, summaryText } from '../../lib/projectTimelineSummary';
+import { redirectToSignIn } from '../../lib/session';
 
 // Backend mirror: ProjectTimelineController's VIEW_ROLES / EDIT_ROLES.
 const VIEW_ROLES = ['admin', 'program_manager', 'executive'];
@@ -116,7 +117,7 @@ export default function ProjectTimelinePage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(stored);

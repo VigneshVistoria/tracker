@@ -8,6 +8,7 @@ import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { formatDate } from '../../lib/formatDate';
 import { isQaReviewOverdue } from '../../lib/developerTaskStats';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 // Self-scoped to the current user as reviewer (TasksService.
 // findPeerReviewQueue()) - only Developer/Designer/DevOps can be picked
@@ -26,7 +27,7 @@ export default function PeerReviewQueuePage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

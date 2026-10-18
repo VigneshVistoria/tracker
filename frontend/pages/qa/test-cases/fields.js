@@ -8,6 +8,7 @@ import { useToast } from '../../../lib/toast';
 import { FIELD_TYPE, FIELD_TYPE_OPTIONS } from '../../../lib/testCaseFields';
 import { useConfirm } from '../../../lib/confirm';
 import LoadingState from '../../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../../lib/session';
 
 const EMPTY_FIELD = { name: '', fieldType: FIELD_TYPE.TEXT, optionsText: '', isRequired: false };
 
@@ -52,7 +53,7 @@ export default function TestCaseFieldsPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const role = JSON.parse(storedUser).role;

@@ -6,6 +6,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 
@@ -27,7 +28,7 @@ export default function MyTasksPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

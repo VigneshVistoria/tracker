@@ -9,6 +9,7 @@ import LoadingState from '../../components/ui/LoadingState';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { formatDate } from '../../lib/formatDate';
+import { redirectToSignIn } from '../../lib/session';
 
 // Backend mirror: PmReviewsController's PM_REVIEW_ROLES.
 const VIEW_ROLES = ['admin', 'program_manager'];
@@ -28,7 +29,7 @@ export default function PmReviewPage() {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(stored);

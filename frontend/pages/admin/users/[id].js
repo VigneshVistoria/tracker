@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../../components/AppShell';
 import styles from '../../../styles/issues.module.css';
+import { storeSession } from '../../../lib/session';
 import { apiFetch } from '../../../lib/api';
 import { useToast } from '../../../lib/toast';
 import { disconnectSocket } from '../../../lib/socket';
@@ -37,9 +38,10 @@ export default function EditUser() {
     setImpersonating(true);
     try {
       const res = await apiFetch(`/auth/impersonate/${id}`, { method: 'POST' });
+      // impersonator first: storeSession then knows not to schedule a
+      // refresh (a refresh would hand back the admin's own token).
       localStorage.setItem('impersonator', JSON.stringify(res.impersonator));
-      localStorage.setItem('accessToken', res.accessToken);
-      localStorage.setItem('user', JSON.stringify(res.user));
+      storeSession(res);
       // Reconnect live updates as the impersonated user (personal
       // notification room is keyed by the token's user).
       disconnectSocket();

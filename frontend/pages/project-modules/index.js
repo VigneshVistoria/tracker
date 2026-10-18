@@ -8,6 +8,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 
@@ -56,7 +57,7 @@ export default function ProjectModulesPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

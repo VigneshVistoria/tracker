@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api';
 import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 export default function RollbackPage() {
   const router = useRouter();
@@ -28,7 +29,7 @@ export default function RollbackPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     if (JSON.parse(storedUser).role !== 'admin') {

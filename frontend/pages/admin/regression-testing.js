@@ -7,6 +7,7 @@ import { formatDateTime } from '../../lib/formatDate';
 import { useToast } from '../../lib/toast';
 import { getSocket } from '../../lib/socket';
 import LoadingState from '../../components/ui/LoadingState';
+import { redirectToSignIn } from '../../lib/session';
 
 function CheckRow({ check }) {
   const [expanded, setExpanded] = useState(!check.passed);
@@ -128,7 +129,7 @@ export default function RegressionTestingPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     if (JSON.parse(storedUser).role !== 'admin') {

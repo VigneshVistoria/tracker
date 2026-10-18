@@ -8,6 +8,7 @@ import LoadingState from '../ui/LoadingState';
 import { disconnectSocket } from '../../lib/socket';
 import { apiFetch } from '../../lib/api';
 import { resetPortalMe, usePortalMe } from '../../lib/clientTickets';
+import { signOut, storeSession, redirectToSignIn, webClientHeaders } from '../../lib/session';
 import styles from '../../styles/portal.module.css';
 import shellStyles from '../../styles/appshell.module.css';
 
@@ -35,7 +36,7 @@ export default function PortalShell({ children }) {
   useEffect(() => {
     const stored = localStorage.getItem('user');
     if (!stored) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     setUser(JSON.parse(stored));
@@ -47,21 +48,17 @@ export default function PortalShell({ children }) {
   }, [me, router]);
 
   const logout = () => {
-    disconnectSocket();
+    signOut();
     resetPortalMe();
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
-    localStorage.removeItem('impersonator');
     router.push('/');
   };
 
   // An admin impersonating a portal user returns to their own account.
   const exitImpersonation = async () => {
     try {
-      const res = await apiFetch('/auth/exit-impersonation', { method: 'POST' });
-      localStorage.setItem('accessToken', res.accessToken);
-      localStorage.setItem('user', JSON.stringify(res.user));
+      const res = await apiFetch('/auth/exit-impersonation', { method: 'POST', credentials: 'include', headers: webClientHeaders });
       localStorage.removeItem('impersonator');
+      storeSession(res);
       disconnectSocket();
       router.push('/admin/users');
     } catch {

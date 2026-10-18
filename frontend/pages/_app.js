@@ -7,6 +7,8 @@ import { ToastProvider } from '../lib/toast';
 import { ConfirmProvider } from '../lib/confirm';
 import { ThemeProvider } from '../lib/theme';
 import { installChunkErrorRecovery } from '../lib/chunkErrorRecovery';
+import { installSessionKeeper } from '../lib/session';
+import SessionEndedPanel from '../components/SessionEndedPanel';
 
 // Self-hosted (frontend/fonts/, SIL OFL 1.1 - licences alongside) rather
 // than next/font/google, which downloads the fonts during every build:
@@ -31,6 +33,9 @@ const fontVariables = `${inter.variable} ${jakarta.variable} font-root`;
 
 export default function App({ Component, pageProps }) {
   useEffect(() => installChunkErrorRecovery(), []);
+  // Quiet token refresh, the single session-ended handling, and keeping
+  // tabs in step - see lib/session.js.
+  useEffect(() => installSessionKeeper(), []);
   // Dialogs, toasts and the command palette portal into <body>, outside
   // the wrapper div below - put the font variable on <body> too so they
   // get the app fonts instead of the system fallback.
@@ -49,6 +54,7 @@ export default function App({ Component, pageProps }) {
           <ConfirmProvider>
             <div className={fontVariables}>
               <Component {...pageProps} />
+              <SessionEndedPanel />
             </div>
           </ConfirmProvider>
         </ToastProvider>

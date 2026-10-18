@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import Input from '../components/ui/Input';
 import styles from '../styles/login.module.css';
 import { loadPortalMe } from '../lib/clientTickets';
+import { storeSession, takeReturnPath, takeSignInNotice, webClientHeaders } from '../lib/session';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -12,6 +13,18 @@ export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // "Your session expired, please sign in again." after a session ended -
+  // shown as calm information, not as an error.
+  const [notice, setNotice] = useState('');
+  // Where to go after signing in: the exact page (and filters) the user
+  // was on when the session ended, if any.
+  const returnTo = useRef(null);
+
+  useEffect(() => {
+    if (!router.isReady) return;
+    returnTo.current = takeReturnPath(router.query.next);
+    setNotice(takeSignInNotice() || '');
+  }, [router.isReady, router.query.next]);
   // A ref (not just the `loading` state) so a second submit event dispatched
   // before React re-renders the disabled button - e.g. a duplicate event from
   // a browser extension, or Enter + click landing in the same tick - is
@@ -32,7 +45,8 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...webClientHeaders },
+        credentials: 'include',
         body: JSON.stringify(form),
       });
 
@@ -42,14 +56,16 @@ export default function LoginPage() {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Store the token. For production, prefer an httpOnly cookie set by
-      // the backend over localStorage to reduce XSS risk.
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      // A short-lived access token; the long-lived refresh token is in an
+      // httpOnly cookie the backend set (see lib/session.js).
+      storeSession(data);
+      localStorage.removeItem('impersonator');
 
-      // Users of a switched-on client portal start in /portal.
+      // Users of a switched-on client portal only ever use /portal.
       const portal = await loadPortalMe().catch(() => null);
-      router.push(portal?.portalClient ? '/portal' : '/dashboard');
+      const next = returnTo.current;
+      if (portal?.portalClient) router.push(next && next.startsWith('/portal') ? next : '/portal');
+      else router.push(next || '/dashboard');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -62,6 +78,12 @@ export default function LoginPage() {
     <div className={styles.page}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/vistoria-logo.png" alt="Vistoria Systems" className={styles.logo} />
+
+      {notice && !error && (
+        <p className={styles.notice} role="status">
+          {notice}
+        </p>
+      )}
 
       <form className={`${styles.form} ${error ? styles.formError : ''}`} onSubmit={handleSubmit}>
         <Input
