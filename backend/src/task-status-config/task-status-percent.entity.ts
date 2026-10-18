@@ -48,6 +48,8 @@ export const TASK_STATUSES = [
   // PM review gate (2026-10-13) - see backend/src/tasks/pm-review.ts.
   'Pending PM Review',
   'PM Feedback',
+  // Return to QA (2026-10-18) - see backend/src/tasks/return-to-qa.ts.
+  'Returned to QA',
   'Escalated',
   'Failed',
   'Pass',
@@ -70,6 +72,7 @@ export const TASK_STATUS_PERCENT_DEFAULTS: Record<TaskStatus, number> = {
   'Re-Peer-Review': 50,
   'Pending PM Review': 50,
   'PM Feedback': 0,
+  'Returned to QA': 0,
   Escalated: 50,
   Failed: 0,
   Pass: 100,

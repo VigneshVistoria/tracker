@@ -23,7 +23,8 @@
 
 export const EXCLUDED_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Released - No Showstoppers'];
 // 'Pending PM Review' (PM review gate, 2026-10-13) is with a reviewer too.
-export const REVIEW_STATUSES = ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
+// 'Returned to QA': a PM sent it back to QA - with QA, not the developer.
+export const REVIEW_STATUSES = ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA'];
 // 'PM Feedback': the PM sent it back for the developer to refine.
 export const SENT_BACK_STATUSES = ['Failed', 'Released - With Showstoppers', 'PM Feedback'];
 // A dependency whose parent ticket is one of these isn't shown at all.

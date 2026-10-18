@@ -11,6 +11,8 @@ export const TASK_STATUSES = [
   'Development',
   'Feedback',
   'Re-Feedback',
+  // Return to QA (2026-10-18) - see backend/src/tasks/return-to-qa.ts.
+  'Returned to QA',
   'Escalated',
   'Failed',
   'Pass',
@@ -73,6 +75,8 @@ export const LEGEND_ITEMS = [
   // using every one of the 6 legacy hues this app has).
   { label: 'Hold', swatch: 'var(--ds-color-info-tint)', dot: 'var(--ds-color-info)' },
   { label: 'Closed', swatch: 'var(--ds-color-gray-300)', dot: 'var(--ds-color-gray-500)' },
+  // Return to QA (2026-10-18) - --ds-* tokens, same reason as Hold/Closed.
+  { label: 'Returned to QA', swatch: 'var(--ds-color-primary-100)', dot: 'var(--ds-color-primary-500)' },
 ];
 
 // Status is expressed as row background color in every task list except
@@ -93,6 +97,7 @@ export function buildRowTintClass(styles) {
     'Released - No Showstoppers': styles.rowTintTeal,
     Hold: styles.rowTintHold,
     Closed: styles.rowTintClosed,
+    'Returned to QA': styles.rowTintReturnedToQa,
   };
 }
 
@@ -111,6 +116,7 @@ export function buildRowRailClass(styles) {
     'Released - No Showstoppers': styles.railTeal,
     Hold: styles.railHold,
     Closed: styles.railClosed,
+    'Returned to QA': styles.railReturnedToQa,
   };
 }
 
@@ -136,6 +142,7 @@ const STATUS_BADGE_STYLE = {
   // PM review gate (2026-10-13) - mirrored in tasks/[id].js's STATUS_COLOR.
   'Pending PM Review': { background: 'var(--ds-color-warning-tint)', color: 'var(--ds-color-warning-dark)' },
   'PM Feedback': { background: 'var(--ds-color-error-tint)', color: 'var(--ds-color-error-dark)' },
+  'Returned to QA': { background: 'var(--ds-color-primary-100)', color: 'var(--ds-color-primary-800)' },
 };
 
 export function statusBadgeStyle(status) {
@@ -157,6 +164,8 @@ export const STATUS_TAB_GROUPS = [
     statuses: ['Development', 'Failed', 'Released - With Showstoppers'],
   },
   { key: 'Feedback', label: 'QA', statuses: ['Feedback', 'Re-Feedback'] },
+  // Return to QA (2026-10-18) - a PM sent it back to QA.
+  { key: 'ReturnedToQa', label: 'Returned to QA', statuses: ['Returned to QA'] },
   { key: 'Escalated', label: statusLabel('Escalated'), statuses: ['Escalated'] },
   { key: 'Pass', label: 'Pass', statuses: ['Pass'] },
   { key: 'ReleasedNoShowstoppers', label: 'Released - No Showstoppers', statuses: ['Released - No Showstoppers'] },

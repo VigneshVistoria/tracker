@@ -25,6 +25,8 @@ import { GuardsModule } from '../common/guards.module';
 import { AuditModule } from '../audit/audit.module';
 import { UsersModule } from '../users/users.module';
 import { StorageModule } from '../storage/storage.module';
+import { ReturnToQaController } from './return-to-qa.controller';
+import { ReturnToQaService } from './return-to-qa.service';
 
 @Module({
   imports: [
@@ -43,8 +45,9 @@ import { StorageModule } from '../storage/storage.module';
   // shared `tasks` prefix, and must be matched before TasksController's
   // `:id` catch-all below (same ordering precedent as IssuesModule).
   // TaskAttachmentsController (defect screenshots) likewise goes first.
-  controllers: [TasksBulkController, TaskAttachmentsController, TasksController],
-  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService],
+  // ReturnToQaController likewise ('returned-to-qa' vs ':id').
+  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, TasksController],
+  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService],
   exports: [TasksService],
 })
 export class TasksModule {}

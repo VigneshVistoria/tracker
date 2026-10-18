@@ -4,6 +4,7 @@ import { AlertTriangle, Info, Eye, XCircle, CheckCircle2, Maximize2, Minimize2 }
 import AppShell from '../components/AppShell';
 import styles from '../styles/issues.module.css';
 import g from '../styles/sop.module.css';
+import { redirectToSignIn } from '../lib/session';
 
 // Developer user guide - the in-app version of SOP-DEV-001
 // (SOP-Developer-Workflow.docx at the repo root). Keep the two in sync
@@ -179,7 +180,7 @@ export default function TrackerSopPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);

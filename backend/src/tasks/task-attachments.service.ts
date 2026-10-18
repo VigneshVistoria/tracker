@@ -13,6 +13,9 @@ import {
   detectAttachmentType,
 } from '../client-portal/attachment-types';
 import { UserRole } from '../users/user.entity';
+import { ReturnToQaService } from './return-to-qa.service';
+import { RETURNED_TO_QA_STATUS, RETURN_TO_QA_AUDIT } from './return-to-qa';
+import { AuditLogService } from '../audit/audit-log.service';
 
 export const TASK_ATTACHMENTS_BUCKET = 'task-attachments';
 // Screenshots per defect, in total - same number as one portal upload.
@@ -36,6 +39,8 @@ export class TaskAttachmentsService {
     private tasksService: TasksService,
     private storage: StorageService,
     private dataSource: DataSource,
+    private returnToQa: ReturnToQaService,
+    private auditLogService: AuditLogService,
   ) {}
 
   // Every file is checked before any is stored, so an upload is
@@ -44,8 +49,11 @@ export class TaskAttachmentsService {
     // Must still be able to view it (e.g. not once it's Junk) - checked
     // before anything is stored.
     const task = await this.findViewable(currentUser, tenantId, taskId);
-    if (!task.isDefect || currentUser.role !== UserRole.QA || task.createdByUserId !== currentUser.id) {
-      throw new ForbiddenException('Only the QA user who filed this defect can attach screenshots to it.');
+    // The raiser, or the QA a PM returned the defect to (Return to QA).
+    const isRaiser = task.isDefect && currentUser.role === UserRole.QA && task.createdByUserId === currentUser.id;
+    if (!isRaiser) {
+      if (task.isDefect && task.status === RETURNED_TO_QA_STATUS) await this.returnToQa.assertCanEditEvidence(task, currentUser);
+      else throw new ForbiddenException('Only the QA user who filed this defect can attach screenshots to it.');
     }
     if (!files?.length) throw new BadRequestException('Choose at least one screenshot.');
     const existing = await this.attachmentsRepository.count({ where: { taskId: task.id, tenantId } });
@@ -116,6 +124,30 @@ export class TaskAttachmentsService {
     await this.findViewable(currentUser, tenantId, file.taskId);
     const data = await this.storage.get(TASK_ATTACHMENTS_BUCKET, file.storageKey);
     return { fileName: file.fileName, mimeType: file.mimeType, data };
+  }
+
+  // Return to QA: the QA a defect was returned to removes a wrong
+  // screenshot. The row and audit entry go first; the stored file after.
+  async remove(currentUser: any, tenantId: number, taskId: number, attachmentId: number) {
+    const task = await this.findViewable(currentUser, tenantId, taskId);
+    await this.returnToQa.assertCanEditEvidence(task, currentUser);
+    const file = await this.attachmentsRepository.findOne({ where: { id: attachmentId, taskId, tenantId } });
+    if (!file) throw new NotFoundException('That screenshot is no longer on this defect - reload to see it.');
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(TaskAttachment, { id: file.id, tenantId });
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        tenantId,
+        entityType: 'ProjectTask',
+        entityId: taskId,
+        action: RETURN_TO_QA_AUDIT.SCREENSHOT_REMOVED,
+        details: { attachmentId: file.id, fileName: file.fileName, storageKey: file.storageKey },
+      });
+    });
+    await this.storage.remove(TASK_ATTACHMENTS_BUCKET, file.storageKey).catch(() => undefined);
+    return this.list(currentUser, tenantId, taskId);
   }
 
   private async findViewable(currentUser: any, tenantId: number, taskId: number) {

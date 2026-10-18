@@ -1139,6 +1139,7 @@ td.empty::before,
    LEGEND_ITEMS comment. */
 .rowTintHold { background: var(--ds-color-info-tint); }
 .rowTintClosed { background: var(--ds-color-gray-300); }
+.rowTintReturnedToQa { background: var(--ds-color-primary-100); }
 
 .statusLegend {
   display: flex;
@@ -1296,6 +1297,7 @@ td.empty::before,
 .taskTile.railSlate { border-left-color: var(--color-slate); }
 .taskTile.railHold { border-left-color: var(--ds-color-info); }
 .taskTile.railClosed { border-left-color: var(--ds-color-gray-500); }
+.taskTile.railReturnedToQa { border-left-color: var(--ds-color-primary-500); }
 .taskTile.railDependency { border-left-color: var(--ds-color-warning); }
 
 /* "Filed by Salman on #98 ..." under a dependency's tile/table Title

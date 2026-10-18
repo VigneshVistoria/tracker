@@ -23,6 +23,7 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
 import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 import { isPastEffectiveDue } from './pm-review';
+import { RETURNED_TO_QA_STATUS } from './return-to-qa';
 
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
@@ -239,7 +240,8 @@ const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
 // once it comes back for QA's decision. Without this, a QA person who
 // just raised a defect would see nothing in My Defects until the
 // Developer submitted it - every non-terminal status counts as open here.
-const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated'];
+// 'Returned to QA' (2026-10-18): a PM sent it back to QA - still open.
+const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA'];
 
 // "Resolved" for a *linked* defect (assertNoOpenLinkedDefects() below) -
 // deliberately not OPEN_DEFECT_STATUSES's complement. That constant
@@ -389,6 +391,10 @@ export class TasksService {
   // submit a Held, Closed or already-Passed task and pull it straight
   // back into review, around the PM.
   assertSubmittable(task: ProjectTask): void {
+    // Return to QA: the ticket is with QA until they send it back.
+    if (task.status === RETURNED_TO_QA_STATUS) {
+      throw new BadRequestException(`#${task.id} was sent back to QA by a PM - you can submit it once QA returns it to you.`);
+    }
     if (task.status === 'Hold' || task.status === 'Closed') {
       throw new BadRequestException(`Task #${task.id} is ${task.status === 'Hold' ? 'on Hold' : 'Closed'} - it cannot be submitted for review.`);
     }

@@ -46,7 +46,13 @@ const QA_LEGEND_ITEMS = LEGEND_ITEMS.filter(
 // QA review round is actually pending. See OPEN_DEFECT_STATUSES on the
 // backend (TasksService.findDefectQueue()).
 const DEFECT_LEGEND_ITEMS = LEGEND_ITEMS.filter(
-  (item) => item.label === 'Development' || item.label.includes('Feedback') || item.label === statusLabel('Escalated') || item.label === 'Pass' || item.label.startsWith('Failed'),
+  (item) =>
+    item.label === 'Development' ||
+    item.label.includes('Feedback') ||
+    item.label === statusLabel('Escalated') ||
+    item.label === 'Pass' ||
+    item.label.startsWith('Failed') ||
+    item.label === 'Returned to QA',
 );
 
 const CARD_DEFS = [
@@ -354,6 +360,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
                 <option value="Feedback">Feedback</option>
                 <option value="Re-Feedback">Re-Feedback</option>
                 {showDefectColumns && <option value="Escalated">{statusLabel('Escalated')}</option>}
+                {showDefectColumns && <option value="Returned to QA">Returned to QA</option>}
                 <option value="Pass">Approved</option>
                 <option value="Failed">Rejected</option>
               </select>

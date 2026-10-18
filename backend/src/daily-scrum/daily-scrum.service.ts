@@ -34,7 +34,7 @@ const BLOCKING_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk', 'Closed'];
 // QA's queue numbers - same definitions the QA Review and My Defects pages
 // count with.
 const QA_PENDING_STATUSES = ['Feedback', 'Re-Feedback'];
-const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated'];
+const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA'];
 
 // Audit actions that tell us a ticket was given to someone.
 const ASSIGNMENT_ACTIONS = [

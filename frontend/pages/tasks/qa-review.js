@@ -4,6 +4,7 @@ import AppShell from '../../components/AppShell';
 import QaReviewWorkboard from '../../components/QaReviewWorkboard';
 import QaReviewSummary from '../../components/QaReviewSummary';
 import styles from '../../styles/issues.module.css';
+import ReturnedToQaList from '../../components/ReturnedToQaList';
 import { redirectToSignIn } from '../../lib/session';
 
 const ACTIVE_CARD_STORAGE_KEY = 'qaReviewActiveCard';
@@ -41,6 +42,8 @@ export default function QaReviewQueuePage() {
           </p>
         </div>
       </div>
+
+      {user.role === 'qa' && <ReturnedToQaList />}
 
       <QaReviewSummary user={user} />
 

@@ -20,6 +20,7 @@ import { formatDate, formatDateTime } from '../../lib/formatDate';
 import JunkReasonModal from '../../components/JunkReasonModal';
 import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
 import SendBackToDeveloperModal from '../../components/SendBackToDeveloperModal';
+import ReturnToQaPanel from '../../components/ReturnToQaPanel';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
@@ -28,6 +29,7 @@ import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
 import Avatar from '../../components/ui/Avatar';
 import DefectScreenshots from '../../components/DefectScreenshots';
+import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
 // Admin and Executive both get full view access (VIEW_ROLES above) but
@@ -69,6 +71,8 @@ const STATUS_COLOR = {
   // PM review gate (2026-10-13). Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
   'Pending PM Review': { bg: 'var(--ds-color-warning-tint)', fg: 'var(--ds-color-warning-dark)' },
   'PM Feedback': { bg: 'var(--ds-color-error-tint)', fg: 'var(--ds-color-error-dark)' },
+  // Return to QA (2026-10-18). Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
+  'Returned to QA': { bg: 'var(--ds-color-primary-100)', fg: 'var(--ds-color-primary-800)' },
 };
 
 function StatusBadge({ status }) {
@@ -378,6 +382,8 @@ export default function TaskDetailPage() {
   // Evidence QA attached at Create Defect time - only fetched/shown for
   // defect tickets.
   const [defectArtifacts, setDefectArtifacts] = useState([]);
+  // Bumped when Return to QA changes a defect's screenshots, to reload them.
+  const [screenshotsVersion, setScreenshotsVersion] = useState(0);
   const [resolution, setResolution] = useState('');
   const [artifacts, setArtifacts] = useState([{ type: '', url: '' }]);
   const [actualHours, setActualHours] = useState('');
@@ -522,7 +528,7 @@ export default function TaskDetailPage() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      router.replace('/');
+      redirectToSignIn(router);
       return;
     }
     const parsed = JSON.parse(storedUser);
@@ -759,7 +765,8 @@ export default function TaskDetailPage() {
   const latestDecidedReview = qaReviews.find((r) => r.status !== 'pending' && r.reviewType !== 'pm');
   const isAlreadyApproved = latestDecidedReview?.status === 'approved';
   const canSubmitForReview =
-    !isAlreadyApproved && !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers'].includes(task.status);
+    !isAlreadyApproved &&
+    !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Returned to QA'].includes(task.status);
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit() - a defect always goes to QA, whatever its Peer Review flag.
   const usesPeerReview = !!task.peerReviewEnabled && !task.isDefect;
@@ -1209,6 +1216,17 @@ export default function TaskDetailPage() {
       `Task #${task.id} sent back to ${refreshedTask.assigneeFullName || refreshedTask.assigneeEmail || 'the developer'} - out of the QA queue`,
       'success',
     );
+  };
+
+  // Return to QA (ReturnToQaPanel): reload what it may have changed.
+  const refreshAfterReturnToQa = async (message) => {
+    const refreshedTask = await apiFetch(`/tasks/${task.id}`);
+    setTask(refreshedTask);
+    if (refreshedTask.isDefect) {
+      apiFetch(`/tasks/${task.id}/defect-artifacts`).then(setDefectArtifacts).catch(() => {});
+      setScreenshotsVersion((v) => v + 1);
+    }
+    if (message) showToast(message, 'success');
   };
 
   const handleRestoreJunk = async () => {
@@ -2030,7 +2048,7 @@ export default function TaskDetailPage() {
             <QaArtifactIcons artifacts={defectArtifacts} />
           </div>
         )}
-        {task.isDefect && <DefectScreenshots taskId={task.id} />}
+        {task.isDefect && <DefectScreenshots key={screenshotsVersion} taskId={task.id} />}
         {canEditDefectScope && !editingDefectFields && (
           <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
             <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDefectFields(true)}>
@@ -2291,6 +2309,8 @@ export default function TaskDetailPage() {
           />
         </div>
       )}
+
+      {!isJunk && <ReturnToQaPanel task={task} user={user} onChanged={refreshAfterReturnToQa} />}
 
       {(canRevertQaDecision || canSendBackFromQa) && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-pm-actions">

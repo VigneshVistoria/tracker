@@ -22,7 +22,8 @@ export const BUCKET_STATUSES: Record<StatusBucket, string[]> = {
   // 'PM Feedback': the PM sent it back - the developer is working on it.
   development: ['Development', 'PM Feedback'],
   // 'Pending PM Review' (PM review gate) is with a reviewer too.
-  qa: ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'],
+  // 'Returned to QA': a PM sent it back to QA (tasks/return-to-qa.ts).
+  qa: ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA'],
   intervention: ['Escalated'],
 };
 

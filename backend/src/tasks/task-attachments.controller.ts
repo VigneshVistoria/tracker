@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe, Post, Req, Res, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Controller, Delete, Get, Param, ParseIntPipe, Post, Req, Res, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -35,6 +35,12 @@ export class TaskAttachmentsController {
   async list(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.attachments.list(currentUser, req.user.tenantId, id);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  async remove(@Param('id', ParseIntPipe) id: number, @Param('attachmentId', ParseIntPipe) attachmentId: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.attachments.remove(currentUser, req.user.tenantId, id, attachmentId);
   }
 
   // Served by the backend after the view check - no public or signed

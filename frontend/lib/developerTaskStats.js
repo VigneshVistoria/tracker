@@ -16,7 +16,9 @@ export function yesterdayISO() {
 // TasksService.findTeam() computes server-side for Team Tasks' "Overdue"
 // stat card (tasks.service.ts) - kept in sync by hand, same as every
 // other frontend/backend status-list duplication in this codebase.
-const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed'];
+// 'Returned to QA' (2026-10-18): with QA, not the developer - mirrors
+// isPastEffectiveDue() in backend/src/tasks/pm-review.ts.
+const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Returned to QA'];
 export function isOverdueTask(task, today = todayISO()) {
   return Boolean(task.dueDate && task.dueDate < today && !NEVER_OVERDUE_STATUSES.includes(task.status));
 }
