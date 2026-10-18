@@ -1,0 +1,27 @@
+.neutral,
+.error {
+  margin: var(--ds-space-1) 0 var(--ds-space-2);
+  font-size: var(--ds-text-sm, 13px);
+  line-height: var(--ds-leading-normal);
+}
+
+.neutral {
+  color: var(--ds-text-secondary);
+}
+
+/* error-dark on the dialog surface passes 4.5:1 (STYLE.md). */
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  color: var(--ds-color-error-dark);
+  font-weight: var(--ds-weight-medium);
+}
+
+.icon {
+  flex: none;
+}
+
+.hidden {
+  margin: 0;
+}

@@ -21,6 +21,7 @@ import JunkReasonModal from '../../components/JunkReasonModal';
 import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
 import SendBackToDeveloperModal from '../../components/SendBackToDeveloperModal';
 import ReturnToQaPanel from '../../components/ReturnToQaPanel';
+import ReasonHint from '../../components/ReasonHint';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
@@ -401,6 +402,8 @@ export default function TaskDetailPage() {
   // PM review gate (2026-10-13).
   const [pmToQaComment, setPmToQaComment] = useState('');
   const [pmSendBackComment, setPmSendBackComment] = useState('');
+  // Confirm clicked with no feedback - shows the hint under the box.
+  const [pmSendBackAttempted, setPmSendBackAttempted] = useState(false);
   const [showPmSendBack, setShowPmSendBack] = useState(false);
   const [pmBusy, setPmBusy] = useState(false);
   // QA's own evidence artifacts - optional, shared between Approve and
@@ -1419,7 +1422,7 @@ export default function TaskDetailPage() {
     e.preventDefault();
     setError('');
     if (!stripHtmlForPreview(pmSendBackComment).trim()) {
-      setError('Feedback for the developer is required to send it back.');
+      setPmSendBackAttempted(true);
       return;
     }
     setPmBusy(true);
@@ -2997,12 +3000,27 @@ export default function TaskDetailPage() {
                   value={pmSendBackComment}
                   onChange={setPmSendBackComment}
                 />
+                <ReasonHint
+                  id="tdPmSendBackHint"
+                  length={stripHtmlForPreview(pmSendBackComment).trim().length}
+                  min={1}
+                  attempted={pmSendBackAttempted}
+                  emptyMessage="Write feedback for the developer before sending it back."
+                />
               </div>
               <div className={styles.actions}>
                 <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={pmBusy}>
                   {pmBusy ? 'Working...' : 'Confirm send back'}
                 </button>
-                <button className={styles.button} type="button" onClick={() => setShowPmSendBack(false)} disabled={pmBusy}>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => {
+                    setShowPmSendBack(false);
+                    setPmSendBackAttempted(false);
+                  }}
+                  disabled={pmBusy}
+                >
                   Cancel
                 </button>
               </div>

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import styles from '../styles/issues.module.css';
+import ReasonHint from './ReasonHint';
 
 // Mirrors REVERT_REASON_MIN/MAX in backend/src/task-qa-reviews/dto/qa-revert-decision.dto.ts.
 const REASON_MIN = 3;
@@ -15,10 +16,14 @@ export default function RevertQaDecisionModal({ open, taskId, decision, decidedB
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Set when Confirm is clicked with too short a reason - shows the hint.
+  const [attempted, setAttempted] = useState(false);
+  const reasonRef = useRef(null);
 
   useEffect(() => {
     if (open) {
       setReason('');
+      setAttempted(false);
       setError('');
       setBusy(false);
     }
@@ -29,7 +34,12 @@ export default function RevertQaDecisionModal({ open, taskId, decision, decidedB
   const what = decision === 'approved' ? 'approval' : 'rejection';
 
   const handleConfirm = async () => {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      reasonRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -50,7 +60,7 @@ export default function RevertQaDecisionModal({ open, taskId, decision, decidedB
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleConfirm} disabled={!valid} loading={busy}>
+          <Button variant="danger" onClick={handleConfirm} aria-disabled={!valid} loading={busy}>
             Revert {what}
           </Button>
         </>
@@ -67,19 +77,18 @@ export default function RevertQaDecisionModal({ open, taskId, decision, decidedB
       </label>
       <textarea
         id="revertReason"
+        ref={reasonRef}
         className={styles.textarea}
         rows={3}
         maxLength={REASON_MAX}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         aria-required="true"
-        aria-invalid={reason.length > 0 && !valid}
+        aria-invalid={(reason.length > 0 || attempted) && !valid}
         aria-describedby="revertReasonHint"
         placeholder="e.g. QA rejected this by mistake"
       />
-      <p id="revertReasonHint" className={styles.issueMeta} style={{ marginBottom: 0 }}>
-        At least {REASON_MIN} characters. {trimmed.length}/{REASON_MAX}
-      </p>
+      <ReasonHint id="revertReasonHint" length={trimmed.length} min={REASON_MIN} max={REASON_MAX} attempted={attempted} />
       {error && (
         <div className={styles.error} role="alert" style={{ marginTop: 'var(--ds-space-3)', marginBottom: 0 }}>
           {error}

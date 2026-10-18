@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import styles from '../styles/issues.module.css';
+import ReasonHint, { ChoiceHint } from './ReasonHint';
 
 // Mirrors QA_SEND_BACK_REASON_MIN/MAX in backend/src/task-qa-reviews/dto/qa-send-back.dto.ts.
 const REASON_MIN = 10;
@@ -21,6 +22,10 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
   const [otherId, setOtherId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Set when Send back is clicked with something missing - shows the hints.
+  const [attempted, setAttempted] = useState(false);
+  const reasonRef = useRef(null);
+  const otherRef = useRef(null);
 
   const hasCurrent = !!currentDeveloper?.id;
 
@@ -29,6 +34,7 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
       setReason('');
       setSendTo(hasCurrent ? 'current' : 'other');
       setOtherId('');
+      setAttempted(false);
       setError('');
       setBusy(false);
     }
@@ -41,7 +47,12 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
   const others = (developers || []).filter((d) => d.id !== currentDeveloper?.id).sort((a, b) => a.name.localeCompare(b.name));
 
   const handleConfirm = async () => {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      (reasonValid ? otherRef : reasonRef).current?.focus();
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -62,7 +73,7 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleConfirm} disabled={!valid} loading={busy}>
+          <Button variant="danger" onClick={handleConfirm} aria-disabled={!valid} loading={busy}>
             Send back
           </Button>
         </>
@@ -78,19 +89,18 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
       </label>
       <textarea
         id="sendBackReason"
+        ref={reasonRef}
         className={styles.textarea}
         rows={4}
         maxLength={REASON_MAX}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         aria-required="true"
-        aria-invalid={reason.length > 0 && !reasonValid}
+        aria-invalid={(reason.length > 0 || attempted) && !reasonValid}
         aria-describedby="sendBackReasonHint"
         placeholder="e.g. The description is not clear - add the expected behaviour"
       />
-      <p id="sendBackReasonHint" className={styles.issueMeta}>
-        At least {REASON_MIN} characters. {trimmed.length}/{REASON_MAX}
-      </p>
+      <ReasonHint id="sendBackReasonHint" length={trimmed.length} min={REASON_MIN} max={REASON_MAX} attempted={attempted} />
 
       <fieldset style={{ border: 0, padding: 0, margin: 'var(--ds-space-3) 0 0' }}>
         <legend className={styles.label}>Send to</legend>
@@ -111,7 +121,16 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
                 <label className={styles.label} htmlFor="sendBackOther">
                   Developer
                 </label>
-                <select id="sendBackOther" className={styles.input} value={otherId} onChange={(e) => setOtherId(e.target.value)} aria-required="true">
+                <select
+                  id="sendBackOther"
+                  ref={otherRef}
+                  className={styles.input}
+                  value={otherId}
+                  onChange={(e) => setOtherId(e.target.value)}
+                  aria-required="true"
+                  aria-invalid={attempted && !otherId}
+                  aria-describedby="sendBackOtherHint"
+                >
                   <option value="">Choose a developer...</option>
                   {others.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -119,6 +138,9 @@ export default function SendBackToDeveloperModal({ open, taskId, currentDevelope
                     </option>
                   ))}
                 </select>
+                <ChoiceHint id="sendBackOtherHint" show={attempted && !otherId}>
+                  Choose the developer to send it to.
+                </ChoiceHint>
               </>
             )}
           </>

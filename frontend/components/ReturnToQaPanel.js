@@ -6,6 +6,7 @@ import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 import { formatDate } from '../lib/formatDate';
 import { MAX_SCREENSHOTS, prepareScreenshot, uploadDefectScreenshots } from '../lib/defectScreenshots';
+import ReasonHint, { ChoiceHint } from './ReasonHint';
 
 // Mirrors backend/src/tasks/return-to-qa.ts and dto/return-to-qa.dto.ts.
 export const RETURNED_TO_QA_STATUS = 'Returned to QA';
@@ -120,11 +121,16 @@ function ReturnModal({ open, task, defaultQa, onClose, submit }) {
   const [qaUsers, setQaUsers] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Set when the button is clicked with something missing - shows the hints.
+  const [attempted, setAttempted] = useState(false);
+  const reasonRef = useRef(null);
+  const qaRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     setReason('');
     setQaId(defaultQa ? String(defaultQa.id) : '');
+    setAttempted(false);
     setError('');
     setBusy(false);
     apiFetch('/users/assignable?role=qa')
@@ -133,10 +139,16 @@ function ReturnModal({ open, task, defaultQa, onClose, submit }) {
   }, [open, defaultQa]);
 
   const trimmed = reason.trim();
-  const valid = trimmed.length >= REASON_MIN && trimmed.length <= TEXT_MAX && !!qaId;
+  const reasonValid = trimmed.length >= REASON_MIN && trimmed.length <= TEXT_MAX;
+  const valid = reasonValid && !!qaId;
 
   const handleConfirm = async () => {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      (reasonValid ? qaRef : reasonRef).current?.focus();
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -157,7 +169,7 @@ function ReturnModal({ open, task, defaultQa, onClose, submit }) {
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!valid} loading={busy}>
+          <Button onClick={handleConfirm} aria-disabled={!valid} loading={busy}>
             Send back to QA
           </Button>
         </>
@@ -172,23 +184,31 @@ function ReturnModal({ open, task, defaultQa, onClose, submit }) {
       </label>
       <textarea
         id="returnToQaReason"
+        ref={reasonRef}
         className={styles.textarea}
         rows={4}
         maxLength={TEXT_MAX}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         aria-required="true"
-        aria-invalid={reason.length > 0 && trimmed.length < REASON_MIN}
+        aria-invalid={(reason.length > 0 || attempted) && !reasonValid}
         aria-describedby="returnToQaReasonHint"
         placeholder="e.g. The wrong evidence is attached - please replace it"
       />
-      <p id="returnToQaReasonHint" className={styles.issueMeta}>
-        At least {REASON_MIN} characters. {trimmed.length}/{TEXT_MAX}
-      </p>
+      <ReasonHint id="returnToQaReasonHint" length={trimmed.length} min={REASON_MIN} max={TEXT_MAX} attempted={attempted} />
       <label className={styles.label} htmlFor="returnToQaUser">
         Send to
       </label>
-      <select id="returnToQaUser" className={styles.input} value={qaId} onChange={(e) => setQaId(e.target.value)} aria-required="true">
+      <select
+        id="returnToQaUser"
+        ref={qaRef}
+        className={styles.input}
+        value={qaId}
+        onChange={(e) => setQaId(e.target.value)}
+        aria-required="true"
+        aria-invalid={attempted && !qaId}
+        aria-describedby="returnToQaUserHint"
+      >
         {!defaultQa && <option value="">Choose a QA...</option>}
         {defaultQa && <option value={defaultQa.id}>{defaultQa.fullName || defaultQa.email} ({task.isDefect ? 'raised this defect' : 'last reviewed it'})</option>}
         {qaUsers
@@ -199,6 +219,9 @@ function ReturnModal({ open, task, defaultQa, onClose, submit }) {
             </option>
           ))}
       </select>
+      <ChoiceHint id="returnToQaUserHint" show={attempted && !qaId}>
+        Choose the QA to send it to.
+      </ChoiceHint>
       {!defaultQa && (
         <p className={styles.issueMeta} style={{ marginBottom: 0 }}>
           No QA has worked on this yet - pick one on its project.

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import styles from '../styles/issues.module.css';
+import ReasonHint from './ReasonHint';
 import { statusLabel } from '../lib/taskTableShared';
 
 // Mirrors JUNK_REASON_MIN/MAX in backend/src/tasks/dto/mark-junk.dto.ts.
@@ -18,10 +19,14 @@ export default function JunkReasonModal({ open, tasks, onClose, submit, title })
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Set when Confirm is clicked with too short a reason - shows the hint.
+  const [attempted, setAttempted] = useState(false);
+  const reasonRef = useRef(null);
 
   useEffect(() => {
     if (open) {
       setReason('');
+      setAttempted(false);
       setError('');
       setBusy(false);
     }
@@ -32,7 +37,12 @@ export default function JunkReasonModal({ open, tasks, onClose, submit, title })
   const count = tasks?.length || 0;
 
   const handleConfirm = async () => {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      setAttempted(true);
+      reasonRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -53,7 +63,7 @@ export default function JunkReasonModal({ open, tasks, onClose, submit, title })
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleConfirm} disabled={!valid} loading={busy}>
+          <Button variant="danger" onClick={handleConfirm} aria-disabled={!valid} loading={busy}>
             {count === 1 ? 'Mark as Junk' : `Mark ${count} as Junk`}
           </Button>
         </>
@@ -83,19 +93,18 @@ export default function JunkReasonModal({ open, tasks, onClose, submit, title })
       </label>
       <textarea
         id="junkReason"
+        ref={reasonRef}
         className={styles.textarea}
         rows={3}
         maxLength={REASON_MAX}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         aria-required="true"
-        aria-invalid={reason.length > 0 && !valid}
+        aria-invalid={(reason.length > 0 || attempted) && !valid}
         aria-describedby="junkReasonHint"
         placeholder="e.g. Created by mistake - duplicate of #48"
       />
-      <p id="junkReasonHint" className={styles.issueMeta} style={{ marginBottom: 0 }}>
-        At least {REASON_MIN} characters. {trimmed.length}/{REASON_MAX}
-      </p>
+      <ReasonHint id="junkReasonHint" length={trimmed.length} min={REASON_MIN} max={REASON_MAX} attempted={attempted} />
       {error && (
         <div className={styles.error} role="alert" style={{ marginTop: 'var(--ds-space-3)', marginBottom: 0 }}>
           {error}
