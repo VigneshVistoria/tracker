@@ -19,3 +19,10 @@ Fixed by making the frontend build atomic (`scripts/build-frontend-atomic.sh`, c
 Separately, `pages/_app.js` installs a client-side chunk-load-error handler (`lib/chunkErrorRecovery.js`) that auto-reloads a tab if it fails to load a stale asset reference - this covers a *different*, unavoidable case atomic builds can't fix: a browser tab left open from before a deploy still has old HTML referencing the old build's buildId, and that old buildId's files stop existing the moment a newer build goes live. Not a deploy-process bug, just how Next.js versions its output.
 
 See `PROJECT.md` §4 for the full technical writeup.
+
+# Rules
+
+- Only change the files I mention unless I say otherwise.
+- Keep changes small. Don't refactor unrelated code.
+- Ask me before adding new libraries.
+- After a change, run the tests once (`cd backend && npm test`). Don't loop more than twice.
