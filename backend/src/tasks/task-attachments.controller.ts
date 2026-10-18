@@ -4,6 +4,7 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { TaskAttachmentsService, UploadedTaskFile } from './task-attachments.service';
+import { QaReviewAttachmentsService } from './qa-review-attachments.service';
 import { MAX_ATTACHMENTS_PER_UPLOAD, MAX_ATTACHMENT_BYTES } from '../client-portal/attachment-types';
 
 // Defect screenshots - see TaskAttachmentsService. Registered before
@@ -14,8 +15,24 @@ import { MAX_ATTACHMENTS_PER_UPLOAD, MAX_ATTACHMENT_BYTES } from '../client-port
 export class TaskAttachmentsController {
   constructor(
     private attachments: TaskAttachmentsService,
+    private qaReviewAttachments: QaReviewAttachmentsService,
     private usersService: UsersService,
   ) {}
+
+  // Same headers for every image this controller serves: inline, nosniff,
+  // and a CSP so a file can never run anything.
+  private sendImage(res: Response, file: { fileName: string; mimeType: string; data: Buffer }) {
+    const asciiName = file.fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    res.set({
+      'Content-Type': file.mimeType,
+      'Content-Length': String(file.data.length),
+      'Content-Disposition': `inline; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
+      'Cache-Control': 'private, no-store',
+    });
+    res.send(file.data);
+  }
 
   // Multipart upload, field "files". Limits are enforced while reading the
   // upload (same as the client portal), then checked again with the file
@@ -50,15 +67,36 @@ export class TaskAttachmentsController {
   async download(@Param('attachmentId', ParseIntPipe) attachmentId: number, @Req() req: any, @Res() res: Response) {
     const currentUser = await this.usersService.findById(req.user.sub);
     const file = await this.attachments.get(currentUser, req.user.tenantId, attachmentId);
-    const asciiName = file.fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
-    res.set({
-      'Content-Type': file.mimeType,
-      'Content-Length': String(file.data.length),
-      'Content-Disposition': `inline; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
-      'Cache-Control': 'private, no-store',
-    });
-    res.send(file.data);
+    this.sendImage(res, file);
+  }
+
+  // Screenshots on a QA decision (approve/reject/escalate) - uploaded to
+  // the round right after the decision; see QaReviewAttachmentsService.
+  @Post(':id/qa-reviews/:reviewId/attachments')
+  @UseInterceptors(
+    FilesInterceptor('files', MAX_ATTACHMENTS_PER_UPLOAD, {
+      limits: { fileSize: MAX_ATTACHMENT_BYTES, files: MAX_ATTACHMENTS_PER_UPLOAD, fields: 5 },
+    }),
+  )
+  async addToDecision(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('reviewId', ParseIntPipe) reviewId: number,
+    @UploadedFiles() files: UploadedTaskFile[],
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.qaReviewAttachments.add(currentUser, req.user.tenantId, id, reviewId, files);
+  }
+
+  @Get(':id/qa-review-attachments')
+  async listDecisionScreenshots(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.qaReviewAttachments.list(currentUser, req.user.tenantId, id);
+  }
+
+  @Get('qa-review-attachments/:attachmentId')
+  async downloadDecisionScreenshot(@Param('attachmentId', ParseIntPipe) attachmentId: number, @Req() req: any, @Res() res: Response) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    this.sendImage(res, await this.qaReviewAttachments.get(currentUser, req.user.tenantId, attachmentId));
   }
 }

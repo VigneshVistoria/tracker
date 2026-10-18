@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, Plus, ImagePlus } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
 import Modal from './ui/Modal';
 import Button from './ui/Button';
 import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 import { formatDate } from '../lib/formatDate';
-import { MAX_SCREENSHOTS, prepareScreenshot, uploadDefectScreenshots } from '../lib/defectScreenshots';
+import { MAX_SCREENSHOTS } from '../lib/defectScreenshots';
+import ScreenshotUploader from './ScreenshotUploader';
 import ReasonHint, { ChoiceHint } from './ReasonHint';
 
 // Mirrors backend/src/tasks/return-to-qa.ts and dto/return-to-qa.dto.ts.
@@ -310,7 +311,6 @@ function EvidenceEditor({ taskId, onChanged }) {
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const fileInput = useRef(null);
 
   const load = useCallback(() => {
     apiFetch(`/tasks/${taskId}/defect-artifacts`).then(setArtifacts).catch(() => setArtifacts([]));
@@ -424,26 +424,14 @@ function EvidenceEditor({ taskId, onChanged }) {
         </>
       )}
       {shots.length < MAX_SCREENSHOTS && (
-        <>
-          <Button type="button" variant="secondary" leftIcon={ImagePlus} disabled={busy} onClick={() => fileInput.current?.click()}>
-            Add screenshot
-          </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              e.target.value = '';
-              if (!file) return;
-              run(async () => {
-                const blob = await prepareScreenshot(file);
-                await uploadDefectScreenshots(taskId, [{ blob, name: file.name }]);
-              });
-            }}
-          />
-        </>
+        <ScreenshotUploader
+          uploadPath={`/tasks/${taskId}/attachments`}
+          max={MAX_SCREENSHOTS - shots.length}
+          onUploaded={() => {
+            load();
+            onChanged();
+          }}
+        />
       )}
       {error && (
         <div className={styles.error} role="alert" style={{ marginTop: 'var(--ds-space-3)' }}>

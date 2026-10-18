@@ -105,6 +105,7 @@ import { UserNotification } from './user-notifications/user-notification.entity'
 import { UserNotificationsModule } from './user-notifications/user-notifications.module';
 import { SearchModule } from './search/search.module';
 import { RefreshSession } from './auth/refresh-session.entity';
+import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -123,6 +124,7 @@ import { RefreshSession } from './auth/refresh-session.entity';
         entities: [
           UserNotification,
           RefreshSession,
+          TaskQaReviewAttachment,
           User,
           Issue,
           Project,

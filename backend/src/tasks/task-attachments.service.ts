@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { TaskAttachment } from './task-attachment.entity';
 import { TasksService } from './tasks.service';
 import { StorageService } from '../storage/storage.service';
@@ -25,6 +25,52 @@ export interface UploadedTaskFile {
   originalname: string;
   size: number;
   buffer: Buffer;
+}
+
+export interface PreparedImageUpload {
+  fileName: string;
+  mimeType: string;
+  data: Buffer;
+  storageKey: string;
+}
+
+// Checks every uploaded file before anything is stored (images only, 10 MB
+// each, type from the content) - shared by defect screenshots and QA
+// decision screenshots. Throws a 400 naming the first bad file.
+export function prepareImageUploads(files: UploadedTaskFile[], keyPrefix: string): PreparedImageUpload[] {
+  return files.map((f) => {
+    // multer reads names as latin1; browsers send UTF-8.
+    const fileName = cleanFileName(Buffer.from(f.originalname || '', 'latin1').toString('utf8'));
+    if (f.size > MAX_ATTACHMENT_BYTES || f.buffer.length > MAX_ATTACHMENT_BYTES) {
+      throw new BadRequestException(`${fileName} is larger than 10 MB.`);
+    }
+    const mimeType = detectAttachmentType(fileName, f.buffer);
+    if (!mimeType || !INLINE_MIME_TYPES.includes(mimeType)) {
+      throw new BadRequestException(`${fileName} is not an allowed image type (PNG, JPEG, WebP or GIF).`);
+    }
+    return { fileName, mimeType, data: f.buffer, storageKey: `${keyPrefix}/${randomUUID()}` };
+  });
+}
+
+// Stores the files, then saves their rows in one transaction; if anything
+// fails part-way, the files already stored are removed again.
+export async function storeImageUploads(
+  storage: StorageService,
+  prepared: PreparedImageUpload[],
+  saveRows: (manager: EntityManager) => Promise<unknown>,
+  dataSource: DataSource,
+): Promise<void> {
+  const stored: string[] = [];
+  try {
+    for (const p of prepared) {
+      await storage.put(TASK_ATTACHMENTS_BUCKET, p.storageKey, p.data, p.mimeType);
+      stored.push(p.storageKey);
+    }
+    await dataSource.transaction((manager) => saveRows(manager));
+  } catch (err) {
+    for (const key of stored) await storage.remove(TASK_ATTACHMENTS_BUCKET, key).catch(() => undefined);
+    throw err;
+  }
 }
 
 // Defect screenshots - reuses the client portal's pipeline as-is (private
@@ -61,26 +107,13 @@ export class TaskAttachmentsService {
       throw new BadRequestException(`A defect can have at most ${MAX_ATTACHMENTS_PER_TASK} screenshots.`);
     }
 
-    const prepared = files.map((f) => {
-      // multer reads names as latin1; browsers send UTF-8.
-      const fileName = cleanFileName(Buffer.from(f.originalname || '', 'latin1').toString('utf8'));
-      if (f.size > MAX_ATTACHMENT_BYTES || f.buffer.length > MAX_ATTACHMENT_BYTES) {
-        throw new BadRequestException(`${fileName} is larger than 10 MB.`);
-      }
-      const mimeType = detectAttachmentType(fileName, f.buffer);
-      if (!mimeType || !INLINE_MIME_TYPES.includes(mimeType)) {
-        throw new BadRequestException(`${fileName} is not an allowed image type (PNG, JPEG, WebP or GIF).`);
-      }
-      return { fileName, mimeType, data: f.buffer, storageKey: `${tenantId}/${task.id}/${randomUUID()}` };
-    });
+    const prepared = prepareImageUploads(files, `${tenantId}/${task.id}`);
 
-    const stored: string[] = [];
-    try {
-      for (const p of prepared) {
-        await this.storage.put(TASK_ATTACHMENTS_BUCKET, p.storageKey, p.data, p.mimeType);
-        stored.push(p.storageKey);
-      }
-      await this.dataSource.transaction(async (manager) => {
+    await storeImageUploads(
+      this.storage,
+      prepared,
+      async (manager) => {
+        // One at a time, so the rows keep the upload order.
         for (const p of prepared) {
           await manager.save(
             manager.create(TaskAttachment, {
@@ -94,12 +127,9 @@ export class TaskAttachmentsService {
             }),
           );
         }
-      });
-    } catch (err) {
-      // Don't leave orphaned files behind if storing or saving failed part-way.
-      for (const key of stored) await this.storage.remove(TASK_ATTACHMENTS_BUCKET, key).catch(() => undefined);
-      throw err;
-    }
+      },
+      this.dataSource,
+    );
     return this.list(currentUser, tenantId, task.id);
   }
 

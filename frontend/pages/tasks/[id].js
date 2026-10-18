@@ -8,7 +8,7 @@ import RichTextEditor from '../../components/ui/RichTextEditor';
 import RichTextDisplay from '../../components/ui/RichTextDisplay';
 import Badge from '../../components/ui/Badge';
 import styles from '../../styles/issues.module.css';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, apiUpload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { isQaReviewOverdue, isOverdueTask } from '../../lib/developerTaskStats';
@@ -21,6 +21,8 @@ import JunkReasonModal from '../../components/JunkReasonModal';
 import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
 import SendBackToDeveloperModal from '../../components/SendBackToDeveloperModal';
 import ReturnToQaPanel from '../../components/ReturnToQaPanel';
+import ScreenshotAttach from '../../components/ScreenshotAttach';
+import ScreenshotUploader from '../../components/ScreenshotUploader';
 import ReasonHint from '../../components/ReasonHint';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
@@ -409,6 +411,16 @@ export default function TaskDetailPage() {
   // QA's own evidence artifacts - optional, shared between Approve and
   // Reject since only one of those actions is taken per round.
   const [qaArtifacts, setQaArtifacts] = useState([]);
+  // Screenshots for the QA decision (approve/reject/escalate) - uploaded
+  // to the decided round right after the decision (2026-10-18).
+  const [qaShots, setQaShots] = useState([]);
+  // One screenshot list per linked-defect row (same order as
+  // linkedDefectDrafts) - kept out of the text draft, images can't go there.
+  const [linkedDefectShots, setLinkedDefectShots] = useState([]);
+  // Screenshots already attached to decisions, shown in Review history.
+  const [decisionShots, setDecisionShots] = useState([]);
+  // Uploads that failed after a decision went through - kept for Retry.
+  const [failedShotUploads, setFailedShotUploads] = useState([]);
   // Peer Review reviewer picker - only used when task.peerReviewEnabled.
   const [peerReviewer, setPeerReviewer] = useState(null);
   // Review Routing card - the Peer Review checkbox on an already-assigned
@@ -627,6 +639,12 @@ export default function TaskDetailPage() {
     if (!task?.isDefect) return;
     apiFetch(`/tasks/${task.id}/defect-artifacts`).then(setDefectArtifacts).catch(() => setDefectArtifacts([]));
   }, [task?.id, task?.isDefect]);
+
+  // Screenshots attached to QA decisions, for Review history.
+  useEffect(() => {
+    if (!task?.id) return;
+    apiFetch(`/tasks/${task.id}/qa-review-attachments`).then(setDecisionShots).catch(() => setDecisionShots([]));
+  }, [task?.id]);
 
   // Backend mirror: ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS (TasksService).
   const canLinkBlocking = !!user && ['qa', 'program_manager'].includes(user.role);
@@ -1347,7 +1365,18 @@ export default function TaskDetailPage() {
   };
 
   const removeLinkedDefectDraft = (index) => {
-    setLinkedDefectDrafts((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+    if (linkedDefectDrafts.length === 1) return;
+    setLinkedDefectDrafts((prev) => prev.filter((_, i) => i !== index));
+    setLinkedDefectShots((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const setLinkedDefectShotsAt = (index, shots) => {
+    setLinkedDefectShots((prev) => {
+      const next = [...prev];
+      while (next.length <= index) next.push([]);
+      next[index] = shots;
+      return next;
+    });
   };
 
   // Clones title/description/assignee into a new row right after the
@@ -1360,6 +1389,13 @@ export default function TaskDetailPage() {
       { ...prev[index] },
       ...prev.slice(index + 1),
     ]);
+    // The copy starts without screenshots.
+    setLinkedDefectShots((prev) => {
+      const next = [...prev];
+      while (next.length <= index) next.push([]);
+      next.splice(index + 1, 0, []);
+      return next;
+    });
   };
 
   // Checks a batch row's title against this task's existing open defects
@@ -1394,6 +1430,39 @@ export default function TaskDetailPage() {
     setCreateLinkedDefect(false);
     setLinkedDefectDrafts([{ title: '', description: '', assignee: null }]);
     setLinkedDefectArtifacts([]);
+    setLinkedDefectShots([]);
+  };
+
+  const loadDecisionShots = () =>
+    apiFetch(`/tasks/${task.id}/qa-review-attachments`).then(setDecisionShots).catch(() => setDecisionShots([]));
+
+  // Uploads screenshots that belong to something just created (a decided
+  // round, a linked defect). The decision itself already went through, so
+  // a failure never undoes it: the screenshots are kept for Retry.
+  const uploadShotsAfterDecision = async (jobs) => {
+    const failed = [];
+    for (const job of jobs) {
+      if (!job.shots.length) continue;
+      try {
+        const form = new FormData();
+        for (const shot of job.shots) form.append('files', shot.blob, shot.name);
+        // eslint-disable-next-line no-await-in-loop
+        await apiUpload(job.path, form);
+      } catch (err) {
+        failed.push({ ...job, error: err.message });
+      }
+    }
+    if (failed.length) setFailedShotUploads((prev) => [...prev, ...failed]);
+    return failed.length;
+  };
+
+  const retryFailedShotUploads = async () => {
+    const jobs = failedShotUploads;
+    setFailedShotUploads([]);
+    const failed = await uploadShotsAfterDecision(jobs);
+    loadDecisionShots();
+    setScreenshotsVersion((v) => v + 1);
+    if (!failed) showToast('Screenshots attached', 'success');
   };
 
   const refreshAfterPmDecision = async () => {
@@ -1525,13 +1594,18 @@ export default function TaskDetailPage() {
     }
     setQaActionBusy(true);
     try {
-      await apiFetch(`/tasks/${task.id}/qa-approve`, {
+      const decided = await apiFetch(`/tasks/${task.id}/qa-approve`, {
         method: 'PATCH',
         body: JSON.stringify({ comment: approveComment.trim() || undefined, artifacts: payloadArtifacts }),
       });
-      showToast('Task approved', 'success');
+      const failedShots = await uploadShotsAfterDecision([
+        { path: `/tasks/${task.id}/qa-reviews/${decided.id}/attachments`, shots: qaShots, label: 'your approval' },
+      ]);
+      showToast(failedShots ? 'Task approved - some screenshots were not attached, see Retry above' : 'Task approved', 'success');
       setApproveComment('');
       setQaArtifacts([]);
+      setQaShots([]);
+      loadDecisionShots();
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
         apiFetch(`/tasks/${task.id}/qa-reviews`),
@@ -1592,12 +1666,20 @@ export default function TaskDetailPage() {
           linkedDefectArtifacts: linkedDefectArtifactsPayload,
         }),
       });
+      const created = result.linkedDefects || [];
+      const failedShots = await uploadShotsAfterDecision([
+        { path: `/tasks/${task.id}/qa-reviews/${result.id}/attachments`, shots: qaShots, label: 'your rejection' },
+        // Linked defects come back in the order they were sent.
+        ...created.map((d, i) => ({ path: `/tasks/${d.id}/attachments`, shots: linkedDefectShots[i] || [], label: `defect #${d.id}` })),
+      ]);
       showToast(
-        result.linkedDefects && result.linkedDefects.length > 0
-          ? `Task rejected - ${result.linkedDefects.length} linked defect${result.linkedDefects.length > 1 ? 's' : ''} created`
-          : 'Task rejected',
+        `${created.length > 0 ? `Task rejected - ${created.length} linked defect${created.length > 1 ? 's' : ''} created` : 'Task rejected'}${
+          failedShots ? ' - some screenshots were not attached, see Retry above' : ''
+        }`,
         'success',
       );
+      setQaShots([]);
+      loadDecisionShots();
       if (linkedDefectArtifactsPayload && linkedDefectArtifactsPayload.length > 0) {
         setArtifactUrlHistory(recordArtifactUrlHistory(linkedDefectArtifactsPayload.map((a) => a.url)));
       }
@@ -1631,11 +1713,16 @@ export default function TaskDetailPage() {
     }
     setQaActionBusy(true);
     try {
-      await apiFetch(`/tasks/${task.id}/qa-escalate`, {
+      const decided = await apiFetch(`/tasks/${task.id}/qa-escalate`, {
         method: 'PATCH',
         body: JSON.stringify({ comment: escalateComment }),
       });
-      showToast('Task sent to PM for intervention', 'success');
+      const failedShots = await uploadShotsAfterDecision([
+        { path: `/tasks/${task.id}/qa-reviews/${decided.id}/attachments`, shots: qaShots, label: 'your intervention request' },
+      ]);
+      showToast(failedShots ? 'Task sent to PM - some screenshots were not attached, see Retry above' : 'Task sent to PM for intervention', 'success');
+      setQaShots([]);
+      loadDecisionShots();
       setEscalateComment('');
       setShowEscalateForm(false);
       const [refreshedTask, refreshedReviews] = await Promise.all([
@@ -2052,6 +2139,9 @@ export default function TaskDetailPage() {
           </div>
         )}
         {task.isDefect && <DefectScreenshots key={screenshotsVersion} taskId={task.id} />}
+        {task.isDefect && !isJunk && user.role === 'qa' && task.createdByUserId === user.id && task.status !== 'Returned to QA' && (
+          <ScreenshotUploader collapsed uploadPath={`/tasks/${task.id}/attachments`} onUploaded={() => setScreenshotsVersion((v) => v + 1)} />
+        )}
         {canEditDefectScope && !editingDefectFields && (
           <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
             <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDefectFields(true)}>
@@ -3029,8 +3119,32 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {failedShotUploads.length > 0 && (
+        <div className={styles.card} role="alert" style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
+          <h2 className={styles.cardTitle}>Some screenshots were not attached</h2>
+          <p className={styles.helpText} style={{ marginTop: 0 }}>
+            Your decision was saved. These screenshots are still here - try again, or discard them.
+          </p>
+          <ul style={{ margin: '0 0 var(--space-3)', paddingLeft: 'var(--space-5)' }}>
+            {failedShotUploads.map((job) => (
+              <li key={job.path}>
+                {job.shots.length} screenshot{job.shots.length === 1 ? '' : 's'} for {job.label}: {job.error}
+              </li>
+            ))}
+          </ul>
+          <div className={styles.actions}>
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="button" onClick={retryFailedShotUploads}>
+              Retry upload
+            </button>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setFailedShotUploads([])}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {canActOnQaReview && hasPendingQaReview && (
-        <div id="task-action-qa-review" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <div id="task-action-qa-review" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }} data-screenshot-scope>
           <h2 className={styles.cardTitle}>
             QA Review
           </h2>
@@ -3083,11 +3197,17 @@ export default function TaskDetailPage() {
                 </div>
               </div>
             ))}
-            <div className={styles.actions}>
+            <ScreenshotAttach
+              screenshots={qaShots}
+              onChange={setQaShots}
+              disabled={qaActionBusy}
+              itemNoun="decision"
+              hint="They're attached to your Approve, Reject or Intervention."
+            >
               <button className={styles.buttonSecondary} type="button" onClick={addQaArtifactRow}>
                 + Add Artifact
               </button>
-            </div>
+            </ScreenshotAttach>
           </div>
 
           {!showRejectForm && !showEscalateForm && (
@@ -3197,6 +3317,7 @@ export default function TaskDetailPage() {
                   {linkedDefectDrafts.map((draft, index) => (
                     <div
                       key={index}
+                      data-screenshot-scope
                       style={{ padding: 'var(--space-3)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-3)' }}
                     >
                       <div className={styles.actions} style={{ justifyContent: 'space-between', marginTop: 0 }}>
@@ -3257,6 +3378,15 @@ export default function TaskDetailPage() {
                           value={draft.assignee}
                           onChange={(value) => updateLinkedDefectDraft(index, 'assignee', value)}
                           options={developers}
+                        />
+                      </div>
+                      <div className={styles.field}>
+                        <span className={styles.label}>Screenshots for defect {index + 1} (optional)</span>
+                        <ScreenshotAttach
+                          screenshots={linkedDefectShots[index] || []}
+                          onChange={(shots) => setLinkedDefectShotsAt(index, shots)}
+                          disabled={qaActionBusy}
+                          hint="They're attached to this defect when you confirm the rejection."
                         />
                       </div>
                     </div>
@@ -3445,7 +3575,7 @@ export default function TaskDetailPage() {
         <h2 className={styles.cardTitle}>
           Timeline
         </h2>
-        <ReviewTimeline reviews={qaReviews} />
+        <ReviewTimeline reviews={qaReviews} decisionScreenshots={decisionShots} />
         <h2 className={styles.cardTitle}>
           All rounds
         </h2>

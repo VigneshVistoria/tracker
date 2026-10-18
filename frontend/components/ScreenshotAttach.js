@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, PenLine, X } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { Camera, ImagePlus, PenLine, X } from 'lucide-react';
 import Modal from './ui/Modal';
 import ScreenshotMarkup from './ScreenshotMarkup';
 import styles from '../styles/issues.module.css';
@@ -13,13 +13,76 @@ import {
 
 const isEditable = (el) => !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
 
-// Screenshots for Create Defect: paste an image anywhere on the page
-// (Ctrl+V), or "Capture screen" (one frame, previewed first). Controlled:
-// `screenshots` is an array of { id, blob, name, url } kept in the page's
-// state until the defect is created - they're never in the draft.
-// `children` (the page's own "+ Add Artifact" button) is rendered first in
-// the same row, so Capture screen sits right next to it.
-export default function ScreenshotAttach({ screenshots, onChange, disabled = false, children }) {
+// Several boxes can be on one page (a QA decision plus each linked defect,
+// 2026-10-18). Ctrl+V goes to ONE of them: the box whose section of the
+// page (its closest [data-screenshot-scope], else the box itself) was
+// last clicked or typed in; before any of that, the first box on the page.
+const boxes = new Map(); // id -> () => the box's scope element
+let activeBoxId = null;
+let tracking = false;
+function scopeOf(id) {
+  return boxes.get(id)?.() || null;
+}
+// The innermost section wins: a linked-defect row inside the QA card
+// takes the paste, not the card around it.
+function trackActivity(e) {
+  let best = null;
+  for (const id of boxes.keys()) {
+    const scope = scopeOf(id);
+    if (scope && scope.contains(e.target) && (!best || best.scope.contains(scope))) best = { id, scope };
+  }
+  if (best) activeBoxId = best.id;
+}
+function pasteTarget() {
+  if (activeBoxId && boxes.has(activeBoxId) && scopeOf(activeBoxId)?.isConnected) return activeBoxId;
+  let first = null;
+  for (const id of boxes.keys()) {
+    const scope = scopeOf(id);
+    if (!scope?.isConnected) continue;
+    if (!first || first.scope.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_PRECEDING) first = { id, scope };
+  }
+  return first?.id ?? null;
+}
+function register(id, getScope) {
+  boxes.set(id, getScope);
+  if (!tracking) {
+    document.addEventListener('pointerdown', trackActivity, true);
+    document.addEventListener('focusin', trackActivity, true);
+    tracking = true;
+  }
+  return () => {
+    boxes.delete(id);
+    if (activeBoxId === id) activeBoxId = null;
+    if (boxes.size === 0 && tracking) {
+      document.removeEventListener('pointerdown', trackActivity, true);
+      document.removeEventListener('focusin', trackActivity, true);
+      tracking = false;
+    }
+  };
+}
+
+// Screenshots for Create Defect and every QA action (2026-10-18): Capture
+// screen (one frame, previewed first), paste (Ctrl+V), Choose file, or
+// drag a file in - each can be marked up (highlight, arrow, blur, crop...)
+// before it's sent. Controlled: `screenshots` is an array of
+// { id, blob, name, url } kept in the page's state until the page uploads
+// them. `children` (e.g. the page's own "+ Add Artifact" button) is
+// rendered first in the same row. `itemNoun` names what they attach to
+// ("defect", "decision") in the limit message; `hint` replaces the help
+// line's last sentence.
+export default function ScreenshotAttach({
+  screenshots,
+  onChange,
+  disabled = false,
+  children,
+  max = MAX_SCREENSHOTS,
+  itemNoun = 'defect',
+  hint = "Screenshots aren't saved in drafts, so they'll be lost if you leave or refresh this page.",
+}) {
+  const boxId = useId();
+  const rootRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
   const [captureSupported, setCaptureSupported] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [preview, setPreview] = useState(null);
@@ -56,8 +119,8 @@ export default function ScreenshotAttach({ screenshots, onChange, disabled = fal
   const add = async (blob, replaceId = null) => {
     setError('');
     setNotice('');
-    if (!replaceId && latest.current.length >= MAX_SCREENSHOTS) {
-      setError(`You can attach at most ${MAX_SCREENSHOTS} screenshots to one defect.`);
+    if (!replaceId && latest.current.length >= max) {
+      setError(`You can attach at most ${max} screenshots to one ${itemNoun}.`);
       return;
     }
     try {
@@ -90,7 +153,9 @@ export default function ScreenshotAttach({ screenshots, onChange, disabled = fal
   // image on the clipboard, and that text must still land in the field.
   useEffect(() => {
     if (disabled) return undefined;
+    const unregister = register(boxId, () => rootRef.current?.closest('[data-screenshot-scope]') || rootRef.current);
     const onPaste = (e) => {
+      if (pasteTarget() !== boxId) return;
       const items = Array.from(e.clipboardData?.items || []);
       const image = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'));
       if (!image) return;
@@ -101,14 +166,46 @@ export default function ScreenshotAttach({ screenshots, onChange, disabled = fal
       if (file) add(file);
     };
     document.addEventListener('paste', onPaste);
-    return () => document.removeEventListener('paste', onPaste);
+    return () => {
+      document.removeEventListener('paste', onPaste);
+      unregister();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);
 
+  // Choose file / drag and drop: images only, added one by one through the
+  // same checks as a paste (type, size, the limit).
+  const addFiles = async (fileList) => {
+    const images = Array.from(fileList || []).filter((f) => f.type.startsWith('image/'));
+    if (fileList?.length && images.length === 0) {
+      setError('Only PNG, JPEG, WebP or GIF images can be attached.');
+      return;
+    }
+    for (const file of images) {
+      if (latest.current.length >= max) {
+        setError(`You can attach at most ${max} screenshots to one ${itemNoun}.`);
+        break;
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await add(file);
+    }
+  };
+  const onDragOver = (e) => {
+    if (disabled || !Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    e.preventDefault();
+    setDragOver(true);
+  };
+  const onDrop = (e) => {
+    if (disabled) return;
+    e.preventDefault();
+    setDragOver(false);
+    addFiles(e.dataTransfer?.files);
+  };
+
   const capture = async () => {
     setError('');
-    if (latest.current.length >= MAX_SCREENSHOTS) {
-      setError(`You can attach at most ${MAX_SCREENSHOTS} screenshots to one defect.`);
+    if (latest.current.length >= max) {
+      setError(`You can attach at most ${max} screenshots to one ${itemNoun}.`);
       return;
     }
     setCapturing(true);
@@ -167,7 +264,14 @@ export default function ScreenshotAttach({ screenshots, onChange, disabled = fal
   };
 
   return (
-    <div className={styles.screenshotAttach}>
+    <div
+      ref={rootRef}
+      className={styles.screenshotAttach}
+      onDragOver={onDragOver}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+      style={dragOver ? { outline: '2px dashed var(--ds-border-focus)', outlineOffset: 4 } : undefined}
+    >
       <div className={styles.screenshotControls}>
         {children}
         {captureSupported && (
@@ -175,17 +279,32 @@ export default function ScreenshotAttach({ screenshots, onChange, disabled = fal
             <Camera size={16} aria-hidden="true" /> {capturing ? 'Choose a window or tab...' : 'Capture screen'}
           </button>
         )}
+        <button className={styles.buttonSecondary} type="button" onClick={() => fileInputRef.current?.click()} disabled={disabled}>
+          <ImagePlus size={16} aria-hidden="true" /> Choose file
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          hidden
+          onChange={(e) => {
+            const files = e.target.files;
+            addFiles(files).finally(() => {
+              e.target.value = '';
+            });
+          }}
+        />
       </div>
       <p className={styles.helpText}>
-        Or paste a screenshot (Ctrl+V) anywhere on this page – up to {MAX_SCREENSHOTS}, 10 MB each. Screenshots
-        aren&apos;t saved in drafts, so they&apos;ll be lost if you leave or refresh this page.
+        Or paste (Ctrl+V) or drag a screenshot here – up to {max}, 10 MB each. {hint}
       </p>
       {error && <p className={styles.fieldErrorText} role="alert">{error}</p>}
       {notice && <p className={styles.helpText}>{notice}</p>}
       <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
-      {screenshots.length > 0 && <span className={styles.label} id="ndScreenshotsLabel" style={{ marginTop: 'var(--ds-space-3)' }}>Screenshots to attach</span>}
+      {screenshots.length > 0 && <span className={styles.label} id={`${boxId}-label`} style={{ marginTop: 'var(--ds-space-3)' }}>Screenshots to attach</span>}
       {screenshots.length > 0 && (
-        <ul className={styles.screenshotList} aria-labelledby="ndScreenshotsLabel" style={{ marginTop: 0 }}>
+        <ul className={styles.screenshotList} aria-labelledby={`${boxId}-label`} style={{ marginTop: 0 }}>
           {screenshots.map((shot) => (
             <li key={shot.id} className={styles.screenshotItem}>
               <img src={shot.url} alt={shot.name} className={styles.screenshotThumb} />

@@ -31,6 +31,9 @@ const TIMELINE_TICKETS_MIGRATION = path.resolve(__dirname, '../../migrations/202
 // Web sign-in sessions - same: real migration, checked against the entity.
 const REFRESH_SESSION_ENTITY = path.join(SRC, 'auth', 'refresh-session.entity.ts');
 const REFRESH_SESSIONS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-refresh-sessions.sql');
+// QA decision screenshots - same: real migration, checked against the entity.
+const QA_REVIEW_ATTACHMENT_ENTITY = path.join(SRC, 'tasks', 'task-qa-review-attachment.entity.ts');
+const QA_REVIEW_ATTACHMENTS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-qa-review-attachments.sql');
 const JUNK_COLUMNS =['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
 // Revert QA decision columns on task_qa_reviews - same treatment as the
 // Junk columns: re-added by the real migration and checked against the entity.
@@ -66,7 +69,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && !f.startsWith(TIMELINE_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && !f.startsWith(TIMELINE_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -95,6 +98,7 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(TIMELINE_TICKETS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(EXTERNAL_WAITS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(REFRESH_SESSIONS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(QA_REVIEW_ATTACHMENTS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -115,7 +119,9 @@ export async function buildTestSchema() {
   if (!externalWaitMeta) problems.push('scrum_external_waits: entity missing');
   const refreshSessionMeta = check.entityMetadatas.find((m) => m.tableName === 'refresh_sessions');
   if (!refreshSessionMeta) problems.push('refresh_sessions: entity missing');
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : [])]) {
+  const qaReviewAttachmentMeta = check.entityMetadatas.find((m) => m.tableName === 'task_qa_review_attachments');
+  if (!qaReviewAttachmentMeta) problems.push('task_qa_review_attachments: entity missing');
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : [])]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

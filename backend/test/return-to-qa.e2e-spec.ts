@@ -95,7 +95,7 @@ describe('Return to QA (e2e)', () => {
     tokenFor = t.tokenFor;
     storage = t.storage;
     f = await seedFixtures(ds);
-    await ds.query(`TRUNCATE project_tasks, task_qa_reviews, task_defect_artifacts, task_attachments, user_notifications, audit_logs RESTART IDENTITY CASCADE`);
+    await ds.query(`TRUNCATE project_tasks, task_dependency_tickets, task_blocking_defects, task_qa_reviews, task_defect_artifacts, task_attachments, user_notifications, audit_logs RESTART IDENTITY CASCADE`);
     phaseId = (
       await ds.query(
         `INSERT INTO phases ("tenantId", "projectId", "projectName", "moduleId", "moduleName", "name") VALUES ($1, $2, 'LMS', $3, 'Medical Claim', 'UAT') RETURNING id`,

@@ -5,12 +5,12 @@ import { apiBlob, apiFetch } from '../lib/api';
 
 // Image loaded with the login token - defect screenshots are never public,
 // so a plain <img src> to the API can't work.
-function useAuthedImage(attachmentId) {
+function useAuthedImage(path) {
   const [url, setUrl] = useState(null);
   useEffect(() => {
     let objectUrl = null;
     let cancelled = false;
-    apiBlob(`/tasks/attachments/${attachmentId}`)
+    apiBlob(path)
       .then((blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);
@@ -21,12 +21,12 @@ function useAuthedImage(attachmentId) {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachmentId]);
+  }, [path]);
   return url;
 }
 
-function Thumbnail({ file, onOpen }) {
-  const url = useAuthedImage(file.id);
+function Thumbnail({ file, filePath, onOpen }) {
+  const url = useAuthedImage(filePath(file.id));
   return (
     <li className={styles.screenshotItem}>
       <button type="button" className={styles.screenshotOpen} onClick={() => onOpen(file, url)} disabled={!url} aria-label={`View ${file.fileName}`}>
@@ -42,20 +42,26 @@ function Thumbnail({ file, onOpen }) {
 // when there are none.
 export default function DefectScreenshots({ taskId }) {
   const [files, setFiles] = useState([]);
-  const [open, setOpen] = useState(null);
 
   useEffect(() => {
     apiFetch(`/tasks/${taskId}/attachments`).then(setFiles).catch(() => setFiles([]));
   }, [taskId]);
 
-  if (files.length === 0) return null;
+  return <ScreenshotGallery id={`defectScreenshots-${taskId}`} files={files} filePath={(id) => `/tasks/attachments/${id}`} />;
+}
 
+// Thumbnails (click to enlarge) for any list of stored screenshots -
+// `filePath(id)` is the API path that serves one. Renders nothing for an
+// empty list. Also used for QA decision screenshots (ReviewTimeline).
+export function ScreenshotGallery({ id, files, filePath, label = 'Screenshots:' }) {
+  const [open, setOpen] = useState(null);
+  if (!files || files.length === 0) return null;
   return (
     <div style={{ marginTop: 'var(--space-2)' }}>
-      <span className={styles.issueMeta} id={`defectScreenshots-${taskId}`}>Screenshots:</span>
-      <ul className={styles.screenshotList} aria-labelledby={`defectScreenshots-${taskId}`}>
+      <span className={styles.issueMeta} id={id}>{label}</span>
+      <ul className={styles.screenshotList} aria-labelledby={id}>
         {files.map((file) => (
-          <Thumbnail key={file.id} file={file} onOpen={(f, url) => setOpen({ file: f, url })} />
+          <Thumbnail key={file.id} file={file} filePath={filePath} onOpen={(f, url) => setOpen({ file: f, url })} />
         ))}
       </ul>
       <Modal open={!!open} onClose={() => setOpen(null)} title={open?.file.fileName} size="lg">

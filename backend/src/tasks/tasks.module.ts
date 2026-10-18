@@ -4,6 +4,8 @@ import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
 import { TaskBlockingDefect } from './task-blocking-defect.entity';
 import { TaskAttachment } from './task-attachment.entity';
+import { TaskQaReviewAttachment } from './task-qa-review-attachment.entity';
+import { QaReviewAttachmentsService } from './qa-review-attachments.service';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { ProjectModule as ProjectModuleEntity } from '../modules/project-module.entity';
@@ -30,7 +32,7 @@ import { ReturnToQaService } from './return-to-qa.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, ProjectModuleEntity, Phase, TeamSettings]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,
@@ -47,7 +49,7 @@ import { ReturnToQaService } from './return-to-qa.service';
   // TaskAttachmentsController (defect screenshots) likewise goes first.
   // ReturnToQaController likewise ('returned-to-qa' vs ':id').
   controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, TasksController],
-  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService],
+  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService],
   exports: [TasksService],
 })
 export class TasksModule {}

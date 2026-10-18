@@ -4,6 +4,7 @@ import { stripHtmlForPreview } from '../lib/richText';
 import { statusLabel } from '../lib/taskTableShared';
 import Avatar from './ui/Avatar';
 import styles from '../styles/reviewTimeline.module.css';
+import { ScreenshotGallery } from './DefectScreenshots';
 
 const OUTCOME = {
   pending: { icon: Clock, tone: styles.pending, text: 'Awaiting review' },
@@ -23,7 +24,9 @@ const PM_OUTCOME_TEXT = { pending: 'Waiting for PM', approved: 'Sent to QA', rej
 // Review rounds (QA and Peer) as a vertical timeline, oldest first - the
 // same data as the Review History table, read as a story. Outcome is
 // always icon + text, never colour alone.
-export default function ReviewTimeline({ reviews }) {
+// `decisionScreenshots` (2026-10-18): screenshots QA attached to a
+// decision - GET /tasks/:id/qa-review-attachments - shown under their round.
+export default function ReviewTimeline({ reviews, decisionScreenshots = [] }) {
   const rounds = [...reviews].sort((a, b) => a.roundNumber - b.roundNumber);
   if (rounds.length === 0) {
     return <p className={styles.empty}>No review rounds yet. Rounds appear here once the task is submitted for review.</p>;
@@ -66,6 +69,12 @@ export default function ReviewTimeline({ reviews }) {
                 </p>
               )}
               {comment && <blockquote className={styles.comment}>{comment}</blockquote>}
+              <ScreenshotGallery
+                id={`roundScreenshots-${r.id}`}
+                label="QA screenshots:"
+                files={decisionScreenshots.filter((a) => a.taskQaReviewId === r.id)}
+                filePath={(id) => `/tasks/qa-review-attachments/${id}`}
+              />
               {r.status === 'reverted' && (
                 <p className={styles.meta}>
                   <Undo2 size={12} aria-hidden="true" />
