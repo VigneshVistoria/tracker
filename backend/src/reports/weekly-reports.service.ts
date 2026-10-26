@@ -1,89 +1,112 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, LessThan, Not, Repository } from 'typeorm';
+import { Between, In, LessThan, Not, Repository } from 'typeorm';
 import { WeeklyReport } from './weekly-report.entity';
-import { Issue, IssueStatus, IssueCategory } from '../issues/issue.entity';
+import { ProjectTask } from '../tasks/project-task.entity';
+import { TaskPriority } from '../tasks/task-priority.enum';
+import { HOLD_CLOSED_STATUSES, JUNK_STATUS } from '../tasks/tasks.service';
+import {
+  TaskStatusPercent,
+  TASK_STATUSES,
+  TASK_STATUS_PERCENT_DEFAULTS,
+} from '../task-status-config/task-status-percent.entity';
+import { TeamSettings } from '../team-settings/team-settings.entity';
+import { TEAM_SETTINGS_DEFAULTS, dateInZone, isValidTimeZone, startOfDayInZone } from '../team-settings/time-zone';
 import { MailService } from '../mail/mail.service';
 import { PdfPerformanceReportService, AssigneePerformanceStat } from './pdf-performance-report.service';
 import { UsersService } from '../users/users.service';
 
-// A simple, tunable heuristic turning an issue's current status into a
-// "how healthy is this work" score. Not a precise measurement - just a
-// consistent way to roll up status distribution into one number per
-// assignee. Adjust the weights here if the team wants a different feel.
-const STATUS_HEALTH_WEIGHT: Record<IssueStatus, number> = {
-  [IssueStatus.BACKLOG]: 20,
-  [IssueStatus.IN_PROGRESS]: 60,
-  [IssueStatus.IN_REVIEW]: 90,
-  [IssueStatus.QA_TESTING]: 95,
-  [IssueStatus.QA_FAILED]: 40,
-  [IssueStatus.READY_FOR_PRODUCTION]: 100,
-};
+// Reads project_tasks (tasks and defects, isDefect) - the old issues table
+// this used to read is empty since the move to project tasks (fixed
+// 2026-10-26). Done = Pass/Released, dated by completedAt. Junk is left
+// out everywhere, same as the rest of the app. Hold/Closed are neither
+// open nor done (same rule as TasksService/KPI): they only show in the
+// status breakdown, never in open/carry-forward/delayed counts.
+const DONE_STATUSES = ['Pass', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+const NOT_OPEN_STATUSES = [...DONE_STATUSES, ...HOLD_CLOSED_STATUSES, JUNK_STATUS];
+
+// YYYY-MM-DD arithmetic in UTC, so the server's own zone never matters.
+function addDays(date: string, n: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 @Injectable()
 export class WeeklyReportsService {
   constructor(
     @InjectRepository(WeeklyReport)
     private reportsRepository: Repository<WeeklyReport>,
-    @InjectRepository(Issue)
-    private issuesRepository: Repository<Issue>,
+    @InjectRepository(ProjectTask)
+    private tasksRepository: Repository<ProjectTask>,
+    @InjectRepository(TeamSettings)
+    private teamSettingsRepository: Repository<TeamSettings>,
+    @InjectRepository(TaskStatusPercent)
+    private statusPercentRepository: Repository<TaskStatusPercent>,
     private mailService: MailService,
     private pdfPerformanceReportService: PdfPerformanceReportService,
     private usersService: UsersService,
   ) {}
 
-  // Business week = Monday through Friday. Given any date, returns the
-  // Monday..Friday range for the week it falls in.
-  private getBusinessWeekRange(date: Date): { start: Date; end: Date } {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    const day = d.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
-    const diffToMonday = day === 0 ? -6 : 1 - day;
-    const start = new Date(d);
-    start.setDate(d.getDate() + diffToMonday);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 4); // Friday
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-  }
-
-  private toDateOnly(d: Date): string {
-    return d.toISOString().slice(0, 10);
+  // Business week = Monday 00:00 through Friday 23:59:59.999 in the team's
+  // time zone (team_settings, default Africa/Addis_Ababa) - not the
+  // server's zone, which is UTC. Returns the instants for the queries and
+  // the YYYY-MM-DD Monday/Friday for display.
+  private async getBusinessWeekRange(
+    date: Date,
+    tenantId: number,
+  ): Promise<{ start: Date; end: Date; mondayDate: string; fridayDate: string }> {
+    const settings = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    const timeZone = isValidTimeZone(settings?.timeZone) ? settings!.timeZone : TEAM_SETTINGS_DEFAULTS.timeZone;
+    const today = dateInZone(date, timeZone);
+    const mondayDate = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
+    const fridayDate = addDays(mondayDate, 4);
+    const start = startOfDayInZone(mondayDate, timeZone);
+    const end = new Date(startOfDayInZone(addDays(mondayDate, 5), timeZone).getTime() - 1);
+    return { start, end, mondayDate, fridayDate };
   }
 
   async generate(referenceDate: Date, tenantId: number, generatedByUserId?: number): Promise<WeeklyReport> {
-    const { start: weekStart, end: weekEnd } = this.getBusinessWeekRange(referenceDate);
-    const prevWeekStart = new Date(weekStart);
-    prevWeekStart.setDate(prevWeekStart.getDate() - 7);
-    const prevWeekEnd = new Date(weekEnd);
-    prevWeekEnd.setDate(prevWeekEnd.getDate() - 7);
+    const week = await this.getBusinessWeekRange(referenceDate, tenantId);
+    const { start: weekStart, end: weekEnd } = week;
+    const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const prevWeekEnd = new Date(weekEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const [completedPreviousWeek, newThisWeek, carryForward, allActive] = await Promise.all([
-      this.issuesRepository.find({
-        where: { status: IssueStatus.READY_FOR_PRODUCTION, closedOn: Between(prevWeekStart, prevWeekEnd), tenantId },
-        order: { closedOn: 'ASC' },
+    const [completedPreviousWeek, newThisWeek, carryForward, allActive, allCompletedEver, holdClosed] = await Promise.all([
+      this.tasksRepository.find({
+        where: { status: In(DONE_STATUSES), completedAt: Between(prevWeekStart, prevWeekEnd), tenantId },
+        order: { completedAt: 'ASC' },
       }),
-      this.issuesRepository.find({
-        where: { createdAt: Between(weekStart, weekEnd), tenantId },
+      this.tasksRepository.find({
+        where: { status: Not(JUNK_STATUS), createdAt: Between(weekStart, weekEnd), tenantId },
         order: { createdAt: 'ASC' },
       }),
-      // Existed before this week and still not completed - rolled forward.
-      this.issuesRepository.find({
-        where: { status: Not(IssueStatus.READY_FOR_PRODUCTION), createdAt: LessThan(weekStart), tenantId },
+      // Existed before this week and still open - rolled forward.
+      this.tasksRepository.find({
+        where: { status: Not(In(NOT_OPEN_STATUSES)), createdAt: LessThan(weekStart), tenantId },
         order: { createdAt: 'ASC' },
       }),
-      // Every non-completed issue right now, for the assignee/performance
+      // Every open task/defect right now, for the assignee/performance
       // breakdown below.
-      this.issuesRepository.find({ where: { status: Not(IssueStatus.READY_FOR_PRODUCTION), tenantId } }),
+      this.tasksRepository.find({ where: { status: Not(In(NOT_OPEN_STATUSES)), tenantId } }),
+      this.tasksRepository.find({ where: { status: In(DONE_STATUSES), tenantId } }),
+      this.tasksRepository.find({ where: { status: In(HOLD_CLOSED_STATUSES), tenantId } }),
     ]);
 
-    const allCompletedEver = await this.issuesRepository.find({ where: { status: IssueStatus.READY_FOR_PRODUCTION, tenantId } });
+    // Per-status "how far along" weights for the performance score - the
+    // admin-editable Task Status % config, falling back to its seed
+    // defaults for any status with no row.
+    const percentRows = await this.statusPercentRepository.find({ where: { tenantId } });
+    const statusWeight: Record<string, number> = {
+      ...TASK_STATUS_PERCENT_DEFAULTS,
+      ...Object.fromEntries(percentRows.map((r) => [r.status, r.percent])),
+    };
 
     // Most recent prior report (any week before this one) - used purely to
     // compute a week-over-week trend per assignee below. Best-effort: if
     // there isn't one yet (first report ever), everyone is just "new".
     const prevReport = await this.reportsRepository.findOne({
-      where: { weekStartDate: LessThan(this.toDateOnly(weekStart)), tenantId },
+      where: { weekStartDate: LessThan(week.mondayDate), tenantId },
       order: { weekStartDate: 'DESC' },
     });
     const prevStatsByEmail = new Map<string, any>(
@@ -98,22 +121,20 @@ export class WeeklyReportsService {
     // Dependency Log lookups: only OPEN children can still be "blocking" -
     // a completed dependency ticket no longer holds anything up. Built from
     // allActive so this stays a simple in-memory index, no extra query.
-    const openChildrenByParentId = new Map<number, Issue[]>();
+    const openChildrenByParentId = new Map<number, ProjectTask[]>();
     for (const issue of allActive) {
-      if (issue.parentIssueId == null) continue;
-      if (!openChildrenByParentId.has(issue.parentIssueId)) {
-        openChildrenByParentId.set(issue.parentIssueId, []);
+      if (issue.parentTaskId == null) continue;
+      if (!openChildrenByParentId.has(issue.parentTaskId)) {
+        openChildrenByParentId.set(issue.parentTaskId, []);
       }
-      openChildrenByParentId.get(issue.parentIssueId).push(issue);
+      openChildrenByParentId.get(issue.parentTaskId).push(issue);
     }
 
     const DELAYED_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days with no status movement
     const now = new Date();
-    const isDelayed = (issue: Issue) => now.getTime() - new Date(issue.updatedAt).getTime() >= DELAYED_AFTER_MS;
-    const isRiskCategory = (issue: Issue) =>
-      issue.showstopper === true ||
-      issue.category === IssueCategory.CRITICAL ||
-      issue.category === IssueCategory.SHOWSTOPPER;
+    const isDelayed = (issue: ProjectTask) => now.getTime() - new Date(issue.updatedAt).getTime() >= DELAYED_AFTER_MS;
+    const isRiskCategory = (issue: ProjectTask) =>
+      issue.priority === TaskPriority.IMMEDIATE || issue.status === 'Escalated';
 
     // Assignee-wise stats: completion percentage (all-time), the existing
     // status-weighted "performance" score, plus the richer breakdown the
@@ -127,8 +148,8 @@ export class WeeklyReportsService {
         assigneeEmail: string;
         totalAssigned: number;
         completedAllTime: number;
-        currentOpen: Issue[];
-        completedThisWeek: Issue[];
+        currentOpen: ProjectTask[];
+        completedThisWeek: ProjectTask[];
       }
     >();
 
@@ -156,7 +177,7 @@ export class WeeklyReportsService {
       const entry = touch(issue.assigneeEmail);
       entry.totalAssigned += 1;
       entry.completedAllTime += 1;
-      if (issue.closedOn && issue.closedOn >= weekStart && issue.closedOn <= weekEnd) {
+      if (issue.completedAt && issue.completedAt >= weekStart && issue.completedAt <= weekEnd) {
         entry.completedThisWeek.push(issue);
       }
     }
@@ -168,7 +189,7 @@ export class WeeklyReportsService {
         const performancePercent =
           entry.currentOpen.length > 0
             ? Math.round(
-                entry.currentOpen.reduce((sum, i) => sum + (STATUS_HEALTH_WEIGHT[i.status] ?? 0), 0) /
+                entry.currentOpen.reduce((sum, i) => sum + (statusWeight[i.status] ?? 0), 0) /
                   entry.currentOpen.length,
               )
             : 100; // nothing open = nothing dragging their score down
@@ -227,27 +248,38 @@ export class WeeklyReportsService {
       })
       .sort((a, b) => a.assigneeEmail.localeCompare(b.assigneeEmail));
 
+    // Completion % is done / (open + done) - Hold/Closed sit outside it,
+    // shown only in the breakdown. Breakdown keys are the real task
+    // statuses in workflow order, Junk left out, zero-count ones dropped.
     const totalIssues = allActive.length + allCompletedEver.length;
+    const everyCounted = [...allActive, ...allCompletedEver, ...holdClosed];
+    const countSplit = (isDefect: boolean) => ({
+      open: allActive.filter((i) => i.isDefect === isDefect).length,
+      completed: allCompletedEver.filter((i) => i.isDefect === isDefect).length,
+      newThisWeek: newThisWeek.filter((i) => i.isDefect === isDefect).length,
+      completedThisWeek: allCompletedEver.filter(
+        (i) => i.isDefect === isDefect && i.completedAt && i.completedAt >= weekStart && i.completedAt <= weekEnd,
+      ).length,
+    });
     const overall = {
       totalIssues,
       totalCompleted: allCompletedEver.length,
       totalOpen: allActive.length,
       completionPercent: totalIssues > 0 ? Math.round((allCompletedEver.length / totalIssues) * 100) : 0,
-      statusBreakdown: {
-        [IssueStatus.BACKLOG]: allActive.filter((i) => i.status === IssueStatus.BACKLOG).length,
-        [IssueStatus.IN_PROGRESS]: allActive.filter((i) => i.status === IssueStatus.IN_PROGRESS).length,
-        [IssueStatus.IN_REVIEW]: allActive.filter((i) => i.status === IssueStatus.IN_REVIEW).length,
-        [IssueStatus.QA_TESTING]: allActive.filter((i) => i.status === IssueStatus.QA_TESTING).length,
-        [IssueStatus.QA_FAILED]: allActive.filter((i) => i.status === IssueStatus.QA_FAILED).length,
-        [IssueStatus.READY_FOR_PRODUCTION]: allCompletedEver.length,
-      },
+      tasks: countSplit(false),
+      defects: countSplit(true),
+      statusBreakdown: Object.fromEntries(
+        TASK_STATUSES.filter((s) => s !== JUNK_STATUS)
+          .map((s) => [s, everyCounted.filter((i) => i.status === s).length] as const)
+          .filter(([, n]) => n > 0),
+      ),
     };
 
     const data = {
-      weekStartDate: this.toDateOnly(weekStart),
-      weekEndDate: this.toDateOnly(weekEnd),
-      previousWeekStartDate: this.toDateOnly(prevWeekStart),
-      previousWeekEndDate: this.toDateOnly(prevWeekEnd),
+      weekStartDate: week.mondayDate,
+      weekEndDate: week.fridayDate,
+      previousWeekStartDate: addDays(week.mondayDate, -7),
+      previousWeekEndDate: addDays(week.fridayDate, -7),
       completedPreviousWeek: completedPreviousWeek.map(this.toSummary),
       carryForward: carryForward.map(this.toSummary),
       newThisWeek: newThisWeek.map(this.toSummary),
@@ -256,8 +288,8 @@ export class WeeklyReportsService {
     };
 
     const report = this.reportsRepository.create({
-      weekStartDate: this.toDateOnly(weekStart),
-      weekEndDate: this.toDateOnly(weekEnd),
+      weekStartDate: week.mondayDate,
+      weekEndDate: week.fridayDate,
       data,
       generatedByUserId: generatedByUserId ?? null,
       tenantId,
@@ -266,27 +298,32 @@ export class WeeklyReportsService {
     return this.reportsRepository.save(report);
   }
 
-  private toSummary(issue: Issue) {
+  private toSummary(issue: ProjectTask) {
     return {
       id: issue.id,
       title: issue.title,
       status: issue.status,
+      isDefect: issue.isDefect,
       assigneeEmail: issue.assigneeEmail,
       projectName: issue.projectName,
-      storyPoints: issue.storyPoints,
       createdAt: issue.createdAt,
-      closedOn: issue.closedOn,
+      closedOn: issue.completedAt,
       // Additive fields for the per-assignee PDF performance report -
       // existing consumers (admin Weekly Reports UI) simply ignore these.
       updatedAt: issue.updatedAt,
-      category: issue.category,
-      showstopper: issue.showstopper,
-      parentIssueId: issue.parentIssueId,
+      priority: issue.priority,
+      parentIssueId: issue.parentTaskId,
     };
   }
 
   findHistory(tenantId: number, limit = 20): Promise<WeeklyReport[]> {
-    return this.reportsRepository.find({ where: { tenantId }, order: { weekStartDate: 'DESC' }, take: limit });
+    // Newest generation first within a week - a week can have several
+    // saved reports (Monday job, Saturday job, manual regenerate).
+    return this.reportsRepository.find({
+      where: { tenantId },
+      order: { weekStartDate: 'DESC', generatedAt: 'DESC' },
+      take: limit,
+    });
   }
 
   async findOne(id: number, tenantId: number): Promise<WeeklyReport | null> {

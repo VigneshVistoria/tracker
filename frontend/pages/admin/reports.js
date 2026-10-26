@@ -23,7 +23,7 @@ function IssueList({ items }) {
     <ul className={styles.suggestionList}>
       {items.map((i) => (
         <li key={i.id}>
-          #{i.id} {i.title} {i.assigneeEmail ? `\u2014 ${i.assigneeEmail}` : ''}
+          #{i.id} {i.isDefect ? '[Defect] ' : ''}{i.title} {i.assigneeEmail ? `\u2014 ${i.assigneeEmail}` : ''}
           {i.storyPoints != null ? ` (${i.storyPoints} pts)` : ''}
         </li>
       ))}
@@ -94,8 +94,17 @@ function ReportCard({ report, defaultOpen }) {
             <p className={styles.issueMeta}>
               {d.overall.totalCompleted} of {d.overall.totalIssues} issues completed ({d.overall.completionPercent}%)
             </p>
+            {/* tasks/defects only exist on reports generated from project
+                tasks (2026-10-26 on); older saved reports skip this line. */}
+            {d.overall.tasks && d.overall.defects && (
+              <p className={styles.issueMeta}>
+                Tasks: {d.overall.tasks.completedThisWeek} completed, {d.overall.tasks.newThisWeek} new this week, {d.overall.tasks.open} open &middot; Defects: {d.overall.defects.completedThisWeek} completed, {d.overall.defects.newThisWeek} new this week, {d.overall.defects.open} open
+              </p>
+            )}
             <p className={styles.issueMeta}>
-              Backlog: {d.overall.statusBreakdown.Backlog} &middot; In Progress: {d.overall.statusBreakdown['In Progress']} &middot; In Review: {d.overall.statusBreakdown['In Review']} &middot; QA Testing: {d.overall.statusBreakdown['QA Testing']} &middot; QA Failed: {d.overall.statusBreakdown['QA Failed']} &middot; Ready for Production: {d.overall.statusBreakdown['Ready for Production']}
+              {Object.entries(d.overall.statusBreakdown)
+                .map(([status, count]) => `${status}: ${count}`)
+                .join(' · ')}
             </p>
           </Section>
         </div>
