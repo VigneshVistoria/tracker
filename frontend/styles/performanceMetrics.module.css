@@ -1,0 +1,125 @@
+/* Performance metrics section of the Non-Compliance Report (2026-10-27).
+   Tokens only (STYLE.md); statuses are always shown as text, never by
+   colour alone. */
+
+.section {
+  margin-bottom: var(--ds-space-4);
+}
+
+.heading {
+  margin: 0 0 var(--ds-space-1);
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+
+.meta {
+  margin: 0 0 var(--ds-space-1);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.rules {
+  margin: var(--ds-space-2) 0 var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  background: var(--ds-bg-surface-sunken);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-3);
+}
+
+.cellValue {
+  display: block;
+  font-weight: var(--ds-weight-semibold);
+}
+
+.cellSub {
+  display: block;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.cellStatus {
+  display: block;
+  margin-top: var(--ds-space-1);
+}
+
+.toggle {
+  background: none;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  font: inherit;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-link);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  color: var(--ds-text-link-hover);
+  border-color: var(--ds-border-strong);
+}
+
+.toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+
+.drill {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-3) 0;
+}
+
+.drillTitle {
+  margin: 0 0 var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+
+.drillList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.drillList li {
+  padding: var(--ds-space-1) 0;
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.drillList a {
+  color: var(--ds-text-link);
+  font-weight: var(--ds-weight-semibold);
+}
+
+.drillEmpty {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+.tag {
+  display: inline-block;
+  margin-left: var(--ds-space-1);
+  padding: 0 var(--ds-space-1);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-secondary);
+}
+
+@media (max-width: 640px) {
+  .drill {
+    grid-template-columns: 1fr;
+  }
+}

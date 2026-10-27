@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
 import { DeveloperNonComplianceRow, NonComplianceReportResult } from './non-compliance-report.service';
+import { PerformanceMetricsReport } from '../performance-metrics/performance-metrics.service';
+import { MetricStatus } from '../performance-metrics/performance-metrics.compute';
 
 const MISSED_SLA_REASON_LABEL: Record<string, string> = {
   resolved_late: 'Resolved late',
@@ -14,6 +16,7 @@ const MISSED_SLA_REASON_LABEL: Record<string, string> = {
 // browser stylesheet and a pdfkit render in this codebase).
 const CRITICAL = '#b91c1c'; // --ds-color-error-dark
 const GOOD = '#15803d'; // --ds-color-success-dark
+const WARNING = '#b45309'; // --ds-color-warning-dark
 const MUTED = '#8a7d72';
 const INK = '#362b23';
 const INK_SOFT = '#6b5f55';
@@ -33,7 +36,7 @@ function devName(dev: DeveloperNonComplianceRow): string {
 // browser) - bars are drawn as plain filled rectangles.
 @Injectable()
 export class PdfNonComplianceReportService {
-  async buildReport(report: NonComplianceReportResult): Promise<Buffer> {
+  async buildReport(report: NonComplianceReportResult, metrics?: PerformanceMetricsReport): Promise<Buffer> {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -91,6 +94,7 @@ export class PdfNonComplianceReportService {
     this.renderFlaggedDetail(doc, report);
     this.renderCompliantList(doc, report);
     this.renderDeferredDimensions(doc, report);
+    if (metrics) this.renderPerformanceMetrics(doc, metrics);
 
     doc.end();
     return done;
@@ -386,6 +390,61 @@ export class PdfNonComplianceReportService {
     doc.font('Helvetica');
     report.deferredDimensions.forEach((dim) => {
       doc.fontSize(9).fillColor(MUTED).text(`${dim.label}: ${dim.reason}`);
+    });
+  }
+
+  // Performance metrics (2026-10-27) - the same per-person table as the
+  // dashboard's Performance metrics section, on its own page.
+  private renderPerformanceMetrics(doc: PDFKit.PDFDocument, metrics: PerformanceMetricsReport) {
+    const statusLabel: Record<MetricStatus, string> = { ok: 'OK', needs_attention: 'Needs attention', not_enough_data: 'Not enough data' };
+    const statusColor: Record<MetricStatus, string> = { ok: GOOD, needs_attention: WARNING, not_enough_data: MUTED };
+    const s = metrics.settings;
+    const left = doc.page.margins.left;
+    doc.addPage();
+    doc.fontSize(16).font('Helvetica-Bold').fillColor(INK).text('Performance Metrics', left, doc.y);
+    doc.font('Helvetica').fontSize(9.5).fillColor(INK_SOFT);
+    doc.text(`${metrics.window.days} days ending ${metrics.window.to} (from ${metrics.window.from}), ${metrics.window.timeZone}.`);
+    doc.text(
+      `OK when: Due date set within ${s.dueDateWorkingDays} working day(s) of assignment in ${s.onTimeOkPercent}%+ of cases; ` +
+        `${s.changesOkPerTask} or fewer Due date changes per task; QA acceptance ${s.qaAcceptanceOkPercent}%+. ` +
+        `Fewer than ${s.minSample} tasks or submissions = not enough data.`,
+    );
+    doc.text(
+      `History starts on ${metrics.history.startsOn ?? '-'} (reconstructed from the audit log` +
+        (metrics.history.liveSince ? `; recorded live since ${metrics.history.liveSince}` : '') +
+        `). QA history from ${metrics.history.qaStartsOn ?? '-'}.`,
+    );
+    doc.moveDown(0.5);
+    this.hr(doc);
+    doc.moveDown(0.3);
+
+    const rate = (v: number | null) => (v === null ? '-' : `${v}%`);
+    metrics.people.forEach((p) => {
+      if (doc.y > doc.page.height - doc.page.margins.bottom - 70) doc.addPage();
+      doc
+        .fontSize(10.5)
+        .font('Helvetica-Bold')
+        .fillColor(INK)
+        .text(`${p.fullName || p.email}  `, left, doc.y, { continued: true })
+        .fillColor(statusColor[p.status])
+        .text(statusLabel[p.status]);
+      doc.font('Helvetica');
+      const line = (label: string, value: string, status: MetricStatus) => {
+        doc.fontSize(9).fillColor(INK_SOFT).text(`   ${label}: `, { continued: true }).fillColor(INK).text(`${value}  `, { continued: true });
+        doc.fillColor(statusColor[status]).text(statusLabel[status]);
+      };
+      line('Date set on time', `${rate(p.onTime.percent)} (${p.onTime.onTime} of ${p.onTime.counted})`, p.onTime.status);
+      line(
+        'Due date changes',
+        `${p.dueChanges.perTask ?? '-'} per task (${p.dueChanges.changes} on ${p.dueChanges.tasks} tasks; ${p.dueChanges.later} later, ${p.dueChanges.earlier} earlier)`,
+        p.dueChanges.status,
+      );
+      line(
+        'QA acceptance',
+        `${rate(p.qa.acceptedPercent)} accepted, ${rate(p.qa.rejectedPercent)} rejected of ${p.qa.decided}; first submission ${rate(p.qa.firstSubmission.acceptedPercent)} of ${p.qa.firstSubmission.decided}`,
+        p.qa.status,
+      );
+      doc.moveDown(0.3);
     });
   }
 

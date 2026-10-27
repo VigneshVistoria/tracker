@@ -87,6 +87,10 @@ import { PeerReviewsModule } from './peer-reviews/peer-reviews.module';
 import { OpsModule } from './ops/ops.module';
 import { KpiModule } from './kpi/kpi.module';
 import { NonComplianceReportModule } from './non-compliance-report/non-compliance-report.module';
+import { PerformanceMetricsModule } from './performance-metrics/performance-metrics.module';
+import { TaskCommitmentEvent } from './performance-metrics/task-commitment-event.entity';
+import { PerformanceMetricSettings } from './performance-metrics/performance-metric-settings.entity';
+import { PerformanceHoliday } from './performance-metrics/performance-holiday.entity';
 import { PermissionsModule } from './permissions/permissions.module';
 import { Release } from './release-logs/release.entity';
 import { ReleaseItem } from './release-logs/release-item.entity';
@@ -176,6 +180,9 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           ClientTicketAttachment,
           TaskAttachment,
           TeamSettings,
+          TaskCommitmentEvent,
+          PerformanceMetricSettings,
+          PerformanceHoliday,
           ScrumExternalWait,
           ProjectTimelineRow,
           ProjectTimelineTeam,
@@ -228,6 +235,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     OpsModule,
     KpiModule,
     NonComplianceReportModule,
+    PerformanceMetricsModule,
     PermissionsModule,
     ReleaseLogsModule,
     StatusReviewModule,

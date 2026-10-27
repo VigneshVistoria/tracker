@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck } from 'lucide-react';
+import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck, Gauge } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
@@ -356,6 +356,19 @@ export default function AppShell({ children, fullScreen = false }) {
                 aria-current={router.pathname === '/daily-scrum' ? 'page' : undefined}
               >
                 <CalendarCheck size={18} aria-hidden="true" />
+              </Link>
+            )}
+            {/* Own performance metrics (PerformanceMetricsController.ROLES_ALLOWED_TO_VIEW_OWN_METRICS) -
+                the Non-Compliance Report page shows a developer only their own figures. */}
+            {hideSidebar && (
+              <Link
+                href="/reports/non-compliance"
+                className={styles.iconButton}
+                aria-label="My performance metrics"
+                title="My performance metrics"
+                aria-current={router.pathname === '/reports/non-compliance' ? 'page' : undefined}
+              >
+                <Gauge size={18} aria-hidden="true" />
               </Link>
             )}
             {/* Client portal tickets for client-team members (Stage 2). */}

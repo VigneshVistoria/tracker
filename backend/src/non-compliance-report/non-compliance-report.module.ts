@@ -7,9 +7,10 @@ import { NonComplianceReportController } from './non-compliance-report.controlle
 import { PdfNonComplianceReportService } from './pdf-non-compliance-report.service';
 import { UsersModule } from '../users/users.module';
 import { GuardsModule } from '../common/guards.module';
+import { PerformanceMetricsModule } from '../performance-metrics/performance-metrics.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProjectTask, TaskQaReview]), UsersModule, GuardsModule],
+  imports: [TypeOrmModule.forFeature([ProjectTask, TaskQaReview]), UsersModule, GuardsModule, PerformanceMetricsModule],
   controllers: [NonComplianceReportController],
   providers: [NonComplianceReportService, PdfNonComplianceReportService],
 })

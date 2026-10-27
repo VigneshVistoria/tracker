@@ -169,6 +169,8 @@ export const NAV_SECTIONS = [
       // Matches DailyScrumController.ROLES_ALLOWED_TO_EDIT_SCRUM_SETTINGS -
       // the one Admin-section page Program Manager also gets (2026-10-12).
       { href: '/admin/daily-scrum-settings', label: 'Daily Scrum Settings', icon: CalendarClock, roles: [ADMIN, PM] },
+      // Matches PerformanceMetricsController.ROLES_ALLOWED_TO_EDIT_METRIC_SETTINGS (2026-10-27).
+      { href: '/admin/performance-metrics-settings', label: 'Performance Metrics Settings', icon: SlidersHorizontal, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

@@ -10,11 +10,16 @@ import { useToast } from '../../lib/toast';
 import { formatDate } from '../../lib/formatDate';
 import LoadingState from '../../components/ui/LoadingState';
 import { redirectToSignIn } from '../../lib/session';
+import PerformanceMetricsSection from '../../components/reports/PerformanceMetricsSection';
 
 // Same tier as KPI Matrix (GET /kpi/report) - Admin/Executive/Program
 // Manager only. A developer never sees this report about themselves or
 // teammates (confirmed with the user).
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
+// Performance metrics (2026-10-27): a Developer/Designer/DevOps opens this
+// page too, but sees only their own Performance metrics section - none of
+// the report above it (backend: PerformanceMetricsController).
+const OWN_METRICS_ROLES = ['developer', 'designer', 'devops'];
 
 const MISSED_SLA_REASON_LABEL = {
   resolved_late: 'Resolved late',
@@ -79,11 +84,15 @@ export default function NonComplianceReportPage() {
       return;
     }
     const parsed = JSON.parse(storedUser);
-    if (!VIEW_ROLES.includes(parsed.role)) {
+    if (!VIEW_ROLES.includes(parsed.role) && !OWN_METRICS_ROLES.includes(parsed.role)) {
       router.replace('/dashboard');
       return;
     }
     setUser(parsed);
+    if (!VIEW_ROLES.includes(parsed.role)) {
+      setLoading(false);
+      return;
+    }
     apiFetch('/projects').then(setProjects).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -97,7 +106,7 @@ export default function NonComplianceReportPage() {
   };
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !VIEW_ROLES.includes(user.role)) return;
     setLoading(true);
     setError('');
     apiFetch(`/non-compliance-report?${buildParams().toString()}`)
@@ -108,6 +117,26 @@ export default function NonComplianceReportPage() {
   }, [user, project, from, to]);
 
   if (!user) return null;
+
+  if (!VIEW_ROLES.includes(user.role)) {
+    return (
+      <AppShell>
+        <div className={styles.pageHeader}>
+          <div>
+            <h1 className={styles.pageTitle}>My Performance Metrics</h1>
+            <p className={styles.pageSubtitle}>Your own figures only - Due date set on time, Due date changes and QA acceptance.</p>
+          </div>
+        </div>
+        <div className={styles.filterBar}>
+          <div className={styles.filterGroup}>
+            <label className={styles.filterLabel} htmlFor="ncrToOwn">Period ending</label>
+            <input id="ncrToOwn" type="date" className={styles.filterSelect} value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+        </div>
+        <PerformanceMetricsSection to={to} role={user.role} />
+      </AppShell>
+    );
+  }
 
   const applyPreset = (preset) => {
     if (preset === 'week') {
@@ -201,6 +230,8 @@ export default function NonComplianceReportPage() {
           <button className={styles.buttonSecondary} type="button" onClick={() => applyPreset('all')}>All Time</button>
         </div>
       </div>
+
+      <PerformanceMetricsSection projectId={project?.id} to={to} role={user.role} />
 
       {loading && <LoadingState />}
 

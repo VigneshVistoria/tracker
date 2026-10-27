@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards, Req, Res, ForbiddenException } from 
 import { Response } from 'express';
 import { NonComplianceReportService } from './non-compliance-report.service';
 import { PdfNonComplianceReportService } from './pdf-non-compliance-report.service';
+import { PerformanceMetricsService } from '../performance-metrics/performance-metrics.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
@@ -18,6 +19,7 @@ export class NonComplianceReportController {
     private reportService: NonComplianceReportService,
     private pdfService: PdfNonComplianceReportService,
     private usersService: UsersService,
+    private performanceMetricsService: PerformanceMetricsService,
   ) {}
 
   @Get()
@@ -51,7 +53,13 @@ export class NonComplianceReportController {
       throw new ForbiddenException('Only Admins, Program Managers, and Executives can view the Non-Compliance Report.');
     }
     const report = await this.reportService.computeReport(req.user.tenantId, projectId ? Number(projectId) : undefined, from, to);
-    const buffer = await this.pdfService.buildReport(report);
+    // Performance metrics section: 4 weeks (per settings) ending on the To
+    // date, same as the dashboard.
+    const metrics = await this.performanceMetricsService.computeReport(req.user.tenantId, {
+      projectId: projectId ? Number(projectId) : undefined,
+      to: to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : undefined,
+    });
+    const buffer = await this.pdfService.buildReport(report, metrics);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'attachment; filename="developer-non-compliance-report.pdf"',

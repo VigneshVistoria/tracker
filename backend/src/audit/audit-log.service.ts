@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, Repository } from 'typeorm';
 import { AuditLog } from './audit-log.entity';
+import { TaskCommitmentEvent } from '../performance-metrics/task-commitment-event.entity';
+import { commitmentEventFromAudit } from '../performance-metrics/commitment-events';
 
 // Known action strings, kept as constants (not a Postgres enum - see the
 // entity for why) so later phases spell them consistently instead of each
@@ -152,6 +154,11 @@ export const AuditActions = {
   TEST_CASE_CUSTOM_FIELD_DEACTIVATED: 'test_case_custom_field_deactivated',
   TEST_CASE_CUSTOM_FIELD_DELETED: 'test_case_custom_field_deleted',
   TEST_CASE_TEMPLATE_COLUMN_ORDER_UPDATED: 'test_case_template_column_order_updated',
+  // Performance metrics (2026-10-27). Settings: { before, after };
+  // holidays: { date, name }.
+  PERFORMANCE_METRIC_SETTINGS_UPDATED: 'performance_metric_settings_updated',
+  PERFORMANCE_HOLIDAY_ADDED: 'performance_holiday_added',
+  PERFORMANCE_HOLIDAY_REMOVED: 'performance_holiday_removed',
 } as const;
 
 export interface RecordAuditEntryInput {
@@ -172,7 +179,36 @@ export class AuditLogService {
   constructor(
     @InjectRepository(AuditLog)
     private auditLogRepository: Repository<AuditLog>,
+    @InjectRepository(TaskCommitmentEvent)
+    private commitmentEventsRepository: Repository<TaskCommitmentEvent>,
   ) {}
+
+  // Performance metrics Stage 1: an assignment or Due date audit entry
+  // also becomes a task_commitment_events row, linked to it by
+  // auditLogId (rules in commitmentEventFromAudit()). `details` goes
+  // through JSON exactly as stored, so a live row always equals what the
+  // backfill script would make from the same entry.
+  private commitmentEventFor(saved: AuditLog, details: Record<string, unknown> | undefined): Partial<TaskCommitmentEvent> | null {
+    const values = commitmentEventFromAudit({
+      id: saved.id,
+      tenantId: saved.tenantId,
+      action: saved.action,
+      entityType: saved.entityType,
+      entityId: saved.entityId,
+      userId: saved.userId,
+      userRole: saved.userRole,
+      createdAt: saved.createdAt,
+      details: details ? JSON.parse(JSON.stringify(details)) : null,
+    });
+    return values ? { ...values, source: 'live' } : null;
+  }
+
+  // ON CONFLICT DO NOTHING: if the backfill script (re-run after a
+  // deploy) got to this audit entry first, its row stands and this
+  // request isn't failed over it.
+  private async insertCommitmentEvent(em: EntityManager, event: Partial<TaskCommitmentEvent>): Promise<void> {
+    await em.createQueryBuilder().insert().into(TaskCommitmentEvent).values(event).orIgnore().execute();
+  }
 
   // Deliberately swallows its own errors (logged, not thrown) - a broken
   // audit write should never be the reason a real request fails. Callers
@@ -189,7 +225,13 @@ export class AuditLogService {
         details: input.details ? JSON.stringify(input.details) : null,
         tenantId: input.tenantId,
       });
-      await this.auditLogRepository.save(entry);
+      const saved = await this.auditLogRepository.save(entry);
+      try {
+        const event = this.commitmentEventFor(saved, input.details);
+        if (event) await this.insertCommitmentEvent(this.commitmentEventsRepository.manager, event);
+      } catch (err: any) {
+        this.logger.error(`Failed to write commitment event (auditLogId=${saved.id}): ${err.message}`);
+      }
     } catch (err: any) {
       this.logger.error(`Failed to write audit log entry (action=${input.action}): ${err.message}`);
     }
@@ -198,10 +240,11 @@ export class AuditLogService {
   // Same entry as record(), but written through the caller's transaction
   // and NOT error-swallowing - for changes that must never happen without
   // their audit row (Junk mark/restore): if the audit insert fails, the
-  // whole change rolls back.
+  // whole change rolls back. Its commitment event, if any, goes in the
+  // same transaction.
   async recordWithin(em: EntityManager, input: RecordAuditEntryInput): Promise<void> {
     const repo = em.getRepository(AuditLog);
-    await repo.save(
+    const saved = await repo.save(
       repo.create({
         userId: input.userId ?? null,
         userEmail: input.userEmail ?? null,
@@ -213,6 +256,8 @@ export class AuditLogService {
         tenantId: input.tenantId,
       }),
     );
+    const event = this.commitmentEventFor(saved, input.details);
+    if (event) await this.insertCommitmentEvent(em, event);
   }
 
   // Entries for one entity, oldest first, limited to the given actions,
