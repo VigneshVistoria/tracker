@@ -20,7 +20,9 @@ export type StatusBucket = 'failed' | 'development' | 'qa' | 'intervention';
 export const BUCKET_STATUSES: Record<StatusBucket, string[]> = {
   failed: ['Failed', 'Released - With Showstoppers'],
   // 'PM Feedback': the PM sent it back - the developer is working on it.
-  development: ['Development', 'PM Feedback'],
+  // 'Not Ready for Testing' (2026-10-27): QA could not test it - back with
+  // the developer, not a QA failure.
+  development: ['Development', 'PM Feedback', 'Not Ready for Testing'],
   // 'Pending PM Review' (PM review gate) is with a reviewer too.
   // 'Returned to QA': a PM sent it back to QA (tasks/return-to-qa.ts).
   qa: ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA'],

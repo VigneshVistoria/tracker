@@ -303,6 +303,18 @@ describe('computePerformanceMetrics', () => {
       expect(wide).toMatchObject({ decided: 2, accepted: 1, rejected: 0, acceptedPercent: 50 });
     });
 
+    it('a "Not ready for testing" return is no decision, and the resubmission is still the first submission', () => {
+      const r = run(
+        [task(1)],
+        [],
+        [round(1, '2026-10-10T09:00:00+03:00', 'not_ready'), round(1, '2026-10-15T09:00:00+03:00', 'rejected')],
+      );
+      const q = dev(r).qa;
+      expect(q).toMatchObject({ decided: 1, accepted: 0, rejected: 1 });
+      expect(q.firstSubmission).toMatchObject({ decided: 1, rejected: 1 });
+      expect(q.items).toEqual([expect.objectContaining({ taskId: 1, decision: 'rejected', isFirstSubmission: true })]);
+    });
+
     it('counts a submission in the window by its decision time', () => {
       const r = run([task(1)], [], [round(1, '2026-09-20T09:00:00+03:00', 'approved', { reviewedAt: at('2026-09-21T09:00:00+03:00') })]);
       expect(dev(r).qa.decided).toBe(0);

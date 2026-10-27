@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Send, XCircle, AlertTriangle, Undo2 } from 'lucide-react';
+import { CheckCircle2, Clock, Send, XCircle, AlertTriangle, Undo2, PackageX } from 'lucide-react';
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
 import { statusLabel } from '../lib/taskTableShared';
@@ -17,6 +17,9 @@ const OUTCOME = {
   // A PM/Admin pulled the task back from QA before QA decided it - not a
   // QA verdict; "Reviewed by" below is the PM, the comment their reason.
   withdrawn: { icon: Undo2, tone: styles.reverted, text: 'Sent back by PM before QA review' },
+  // QA could not start testing (2026-10-27) - not a rejection; the reason
+  // QA picked is added to the text below.
+  not_ready: { icon: PackageX, tone: styles.rejected, text: 'Not ready for testing' },
 };
 
 const PM_OUTCOME_TEXT = { pending: 'Waiting for PM', approved: 'Sent to QA', rejected: 'Sent back by PM' };
@@ -40,6 +43,7 @@ export default function ReviewTimeline({ reviews, decisionScreenshots = [] }) {
         // For a reverted round, the "Reviewed by" line still shows what QA
         // actually decided (approved / sent back).
         const decided = r.status === 'reverted' ? OUTCOME[r.revertedDecision] || outcome : outcome;
+        const reasonSuffix = r.notReadyReason ? `: ${r.notReadyReason}` : '';
         const comment = stripHtmlForPreview(r.qaComment);
         const resolution = stripHtmlForPreview(r.resolution);
         return (
@@ -53,7 +57,9 @@ export default function ReviewTimeline({ reviews, decisionScreenshots = [] }) {
                   Round {r.roundNumber} · {r.reviewType === 'peer' ? 'Peer review' : r.reviewType === 'pm' ? 'PM review' : 'QA review'}
                 </span>
                 <span className={`${styles.outcome} ${outcome.tone}`}>
-                  {r.status === 'reverted' && OUTCOME[r.revertedDecision] ? `${OUTCOME[r.revertedDecision].text}, then reverted` : outcome.text}
+                  {r.status === 'reverted' && OUTCOME[r.revertedDecision]
+                    ? `${OUTCOME[r.revertedDecision].text}${reasonSuffix}, then reverted`
+                    : `${outcome.text}${r.status === 'not_ready' ? reasonSuffix : ''}`}
                 </span>
               </div>
               <p className={styles.meta}>

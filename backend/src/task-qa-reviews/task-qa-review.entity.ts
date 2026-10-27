@@ -34,12 +34,18 @@ export enum TaskArtifactType {
 // qaComment hold who did it and why, as on a 'pm' round. Not a QA
 // decision: it counts nowhere, and it doesn't make the next submit a
 // resubmission (the task goes back to Feedback, not Re-Feedback).
-export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated' | 'reverted' | 'withdrawn';
+// 'not_ready' (2026-10-27) - QA could not start testing ("Not ready for
+// testing", TaskQaReviewsService.markNotReady()); notReadyReason holds the
+// reason picked from the list and qaComment QA's comment. Not a QA
+// decision either: never a rejection, and the resubmission is a first-time
+// Feedback. Counted only as an "incomplete submission" (see
+// backend/src/tasks/qa-not-ready.ts).
+export type TaskQaReviewStatus = 'pending' | 'approved' | 'rejected' | 'escalated' | 'reverted' | 'withdrawn' | 'not_ready';
 
 // Rounds that never stood as a review verdict - left out of the first-
 // time vs resubmission count (Feedback vs Re-Feedback) and of every
 // "earlier decision" check.
-export const NON_VERDICT_ROUND_STATUSES: TaskQaReviewStatus[] = ['reverted', 'withdrawn'];
+export const NON_VERDICT_ROUND_STATUSES: TaskQaReviewStatus[] = ['reverted', 'withdrawn', 'not_ready'];
 
 // 'qa' (default) is a round any QA teammate can pick up from the tenant-
 // wide QA queue - reviewerUserId/Email stay null. 'peer' is a Peer Review
@@ -119,6 +125,12 @@ export class TaskQaReview {
   @Column({ type: 'text', nullable: true })
   qaComment: string;
 
+  // Set only on a 'not_ready' round - the reason QA picked, copied as text
+  // so editing the reasons list later never changes history
+  // (migrations/2026-10-qa-not-ready.sql).
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  notReadyReason: string | null;
+
   // Set only on a 'reverted' round - see TaskQaReviewStatus above
   // (migrations/2026-10-qa-decision-revert.sql).
   @Column({ type: 'int', nullable: true })
@@ -130,10 +142,11 @@ export class TaskQaReview {
   @Column({ type: 'text', nullable: true })
   revertReason: string | null;
 
-  // The decision that was undone ('approved' | 'rejected') - status itself
-  // now says 'reverted', so the history needs this to say what QA did.
+  // The decision that was undone ('approved' | 'rejected' | 'not_ready') -
+  // status itself now says 'reverted', so the history needs this to say
+  // what QA did.
   @Column({ type: 'varchar', nullable: true })
-  revertedDecision: 'approved' | 'rejected' | null;
+  revertedDecision: 'approved' | 'rejected' | 'not_ready' | null;
 
   // 'pm' rounds only - when the waiting-too-long reminder went to the PMs
   // / to the Admins, so each goes out once.

@@ -38,6 +38,10 @@ const QA_REVIEW_ATTACHMENTS_MIGRATION = path.resolve(__dirname, '../../migration
 const PERFORMANCE_DIR = path.join(SRC, 'performance-metrics');
 const PERFORMANCE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-performance-metrics.sql');
 const NC_FLAG_SETTINGS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-non-compliance-flag-settings.sql');
+// QA "Not ready for testing" (2026-10-27): task_qa_reviews.notReadyReason is
+// dropped from what synchronize made and re-added by the real migration;
+// team_settings.qaNotReadyReasons is checked with the rest of team_settings.
+const QA_NOT_READY_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-qa-not-ready.sql');
 const PERFORMANCE_TABLES = ['task_commitment_events', 'performance_metric_settings', 'performance_holidays'];
 const JUNK_COLUMNS =['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
 // Revert QA decision columns on task_qa_reviews - same treatment as the
@@ -106,6 +110,10 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(QA_REVIEW_ATTACHMENTS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(PERFORMANCE_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(NC_FLAG_SETTINGS_MIGRATION, 'utf8'));
+  await base.query(`ALTER TABLE "task_qa_reviews" DROP COLUMN "notReadyReason"`);
+  await base.query(fs.readFileSync(QA_NOT_READY_MIGRATION, 'utf8'));
+  // Safe to run twice, as its header says.
+  await base.query(fs.readFileSync(QA_NOT_READY_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -181,6 +189,14 @@ export async function buildTestSchema() {
   const reviewCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
     `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = 'task_qa_reviews'`,
   );
+  {
+    const col = reviewMeta.columns.find((c) => c.databaseName === 'notReadyReason');
+    const db = reviewCols.find((c) => c.column_name === 'notReadyReason');
+    if (!col || !db) problems.push(`task_qa_reviews.notReadyReason: missing from ${col ? 'migration' : 'entity'}`);
+    else if (db.is_nullable !== 'YES' || !col.isNullable || check.driver.normalizeType(col) !== db.data_type) {
+      problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
+    }
+  }
   for (const [table, cols] of Object.entries(PM_REVIEW_COLUMNS)) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(

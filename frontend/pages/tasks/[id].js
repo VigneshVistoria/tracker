@@ -23,7 +23,7 @@ import SendBackToDeveloperModal from '../../components/SendBackToDeveloperModal'
 import ReturnToQaPanel from '../../components/ReturnToQaPanel';
 import ScreenshotAttach from '../../components/ScreenshotAttach';
 import ScreenshotUploader from '../../components/ScreenshotUploader';
-import ReasonHint from '../../components/ReasonHint';
+import ReasonHint, { ChoiceHint } from '../../components/ReasonHint';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
@@ -76,7 +76,15 @@ const STATUS_COLOR = {
   'PM Feedback': { bg: 'var(--ds-color-error-tint)', fg: 'var(--ds-color-error-dark)' },
   // Return to QA (2026-10-18). Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
   'Returned to QA': { bg: 'var(--ds-color-primary-100)', fg: 'var(--ds-color-primary-800)' },
+  // QA could not start testing (2026-10-27) - back with the developer, same
+  // hue as PM Feedback. Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
+  'Not Ready for Testing': { bg: 'var(--ds-color-error-tint)', fg: 'var(--ds-color-error-dark)' },
 };
+
+// QA "Not ready for testing" (2026-10-27). Mirrors NOT_READY_STATUS and
+// QA_NOT_READY_COMMENT_MIN in backend/src/tasks/qa-not-ready.ts.
+const NOT_READY_STATUS = 'Not Ready for Testing';
+const NOT_READY_COMMENT_MIN = 10;
 
 function StatusBadge({ status }) {
   const color = STATUS_COLOR[status] || { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' };
@@ -393,6 +401,15 @@ export default function TaskDetailPage() {
   const [submittingQa, setSubmittingQa] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
+  // Reject asks which kind first (2026-10-27): 'failed' (Test failed - the
+  // form below, unchanged) or 'not_ready' (Not ready for testing - a reason
+  // from the list plus a comment, both required). '' until QA picks.
+  const [rejectKind, setRejectKind] = useState('');
+  const [rejectKindAttempted, setRejectKindAttempted] = useState(false);
+  const [notReadyReasons, setNotReadyReasons] = useState([]);
+  const [notReadyReason, setNotReadyReason] = useState('');
+  const [notReadyComment, setNotReadyComment] = useState('');
+  const [notReadyAttempted, setNotReadyAttempted] = useState(false);
   // Optional note on Approve - unlike rejectComment above, never required
   // and never gated behind a toggle, since there's no decision to
   // confirm. Shared between the QA Feedback and Peer Review panels the
@@ -682,6 +699,8 @@ export default function TaskDetailPage() {
         );
         setLinkedDefectArtifacts(Array.isArray(draft.linkedDefectArtifacts) ? draft.linkedDefectArtifacts : []);
         setShowRejectForm(true);
+        // The draft is only ever a "Test failed" rejection.
+        setRejectKind('failed');
       } catch {
         sessionStorage.removeItem(rejectDraftKey);
       }
@@ -708,6 +727,18 @@ export default function TaskDetailPage() {
       JSON.stringify({ rejectComment, createLinkedDefect, linkedDefectDrafts, linkedDefectArtifacts }),
     );
   }, [rejectDraftKey, rejectDraftHydrated, rejectComment, createLinkedDefect, linkedDefectDrafts, linkedDefectArtifacts]);
+
+  // The "Not ready for testing" reasons QA picks from (editable setting).
+  useEffect(() => {
+    if (user?.role !== 'qa') return undefined;
+    let cancelled = false;
+    apiFetch('/qa-review/not-ready-reasons')
+      .then((res) => !cancelled && setNotReadyReasons(res.reasons || []))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role]);
 
   if (!user || loading) {
     return (
@@ -758,7 +789,9 @@ export default function TaskDetailPage() {
     ['program_manager', 'admin'].includes(user.role) &&
     !isJunk &&
     latestRound?.reviewType === 'qa' &&
-    ((latestRound.status === 'rejected' && task.status === 'Failed') || (latestRound.status === 'approved' && task.status === 'Pass'));
+    ((latestRound.status === 'rejected' && task.status === 'Failed') ||
+      (latestRound.status === 'approved' && task.status === 'Pass') ||
+      (latestRound.status === 'not_ready' && task.status === NOT_READY_STATUS));
   // Backend mirror: ROLES_ALLOWED_TO_SET_QA_REVIEW_DUE_DATE
   // (TasksController) - QA, Program Manager, or Admin only.
   const canEditQaReviewDueDate = (user.role === 'qa' || canManage || user.role === 'admin') && !isJunk;
@@ -808,6 +841,9 @@ export default function TaskDetailPage() {
   const latestPmSendBack =
     task.status === 'PM Feedback' ? qaReviews.find((r) => (r.reviewType === 'pm' && r.status === 'rejected') || r.status === 'withdrawn') : null;
   const pmSendBackFromQa = latestPmSendBack?.status === 'withdrawn';
+  // QA could not start testing (2026-10-27) - its reason and comment are
+  // shown at the top of the task until the developer resubmits.
+  const latestNotReady = task.status === NOT_READY_STATUS ? qaReviews.find((r) => r.status === 'not_ready') : null;
   // Backend mirror: TaskQaReviewsService.sendBackFromQa() + the controller's
   // ROLES_ALLOWED_TO_SEND_BACK_FROM_QA - PM/Admin, a task (not a defect)
   // waiting for QA with a pending QA round. Picking another developer is
@@ -842,6 +878,16 @@ export default function TaskDetailPage() {
           : 'The Program Manager sent this back - see their feedback below, refine it, and submit again.',
         cta: 'See feedback',
         target: 'task-pm-feedback',
+      };
+    }
+    if (isAssignee && latestNotReady) {
+      return {
+        tone: 'error',
+        icon: AlertTriangle,
+        title: 'Not ready for testing',
+        detail: `QA could not start testing: ${latestNotReady.notReadyReason || 'see their comment'}. Fix what is missing and submit again.`,
+        cta: 'See details',
+        target: 'task-qa-not-ready',
       };
     }
     if (isAssignee && hasPendingQaReview && isPmRound) {
@@ -897,7 +943,9 @@ export default function TaskDetailPage() {
       width: 96,
       render: (r) =>
         r.status === 'reverted' && r.revertedDecision
-          ? `${r.revertedDecision === 'approved' ? 'Approved' : 'Rejected'}, reverted`
+          ? `${r.revertedDecision === 'approved' ? 'Approved' : r.revertedDecision === 'not_ready' ? 'Not ready for testing' : 'Rejected'}, reverted`
+          : r.status === 'not_ready'
+            ? `Not ready for testing${r.notReadyReason ? `: ${r.notReadyReason}` : ''}`
           : r.status === 'withdrawn'
             ? 'Sent back by PM before QA review'
             : r.reviewType === 'pm' && r.status !== 'pending'
@@ -1684,6 +1732,7 @@ export default function TaskDetailPage() {
       }
       setRejectComment('');
       setShowRejectForm(false);
+      resetRejectKind();
       setQaArtifacts([]);
       resetLinkedDefectForm();
       const [refreshedTask, refreshedReviews] = await Promise.all([
@@ -1703,6 +1752,61 @@ export default function TaskDetailPage() {
   // QA Feedback escalation to PM - an alternative to Approve/Reject, not
   // available on the Peer Review panel below (that path has its own,
   // separate approve/reject and no escalate option at all).
+  const resetRejectKind = () => {
+    setRejectKind('');
+    setRejectKindAttempted(false);
+    setNotReadyReason('');
+    setNotReadyComment('');
+    setNotReadyAttempted(false);
+  };
+
+  // Reject -> "Not ready for testing" (2026-10-27): QA could not start
+  // testing. Backend: TaskQaReviewsService.markNotReady().
+  const handleQaNotReady = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!notReadyReason || stripHtmlForPreview(notReadyComment).trim().length < NOT_READY_COMMENT_MIN) {
+      setNotReadyAttempted(true);
+      return;
+    }
+    let payloadArtifacts;
+    try {
+      payloadArtifacts = buildQaArtifactsPayload();
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+    setQaActionBusy(true);
+    try {
+      const result = await apiFetch(`/tasks/${task.id}/qa-not-ready`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reason: notReadyReason, comment: notReadyComment, artifacts: payloadArtifacts }),
+      });
+      const failedShots = await uploadShotsAfterDecision([
+        { path: `/tasks/${task.id}/qa-reviews/${result.id}/attachments`, shots: qaShots, label: 'your decision' },
+      ]);
+      showToast(
+        `Returned to the developer as not ready for testing${failedShots ? ' - some screenshots were not attached, see Retry above' : ''}`,
+        'success',
+      );
+      setQaShots([]);
+      loadDecisionShots();
+      setShowRejectForm(false);
+      resetRejectKind();
+      setQaArtifacts([]);
+      const [refreshedTask, refreshedReviews] = await Promise.all([
+        apiFetch(`/tasks/${task.id}`),
+        apiFetch(`/tasks/${task.id}/qa-reviews`),
+      ]);
+      setTask(refreshedTask);
+      setQaReviews(refreshedReviews);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setQaActionBusy(false);
+    }
+  };
+
   const handleQaEscalate = async (e) => {
     e.preventDefault();
     setError('');
@@ -2026,6 +2130,28 @@ export default function TaskDetailPage() {
               {pmSendBackFromQa
                 ? `Taken back from QA before review. Refine the task, then submit it again below - it goes ${task.pmReviewGateOn ? 'to the Program Manager first, then QA' : 'back to QA'}. This is not a QA rejection.`
                 : 'Refine the task, then submit it again below - it goes back to the Program Manager. This is not a QA rejection.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {latestNotReady && (
+        <div id="task-qa-not-ready" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
+          <h2 className={styles.cardTitle}>
+            Not ready for testing
+          </h2>
+          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
+            From {latestNotReady.reviewedByFullName || 'QA'}
+            {latestNotReady.reviewedAt ? ` · ${formatDate(latestNotReady.reviewedAt)}` : ''}
+          </p>
+          <p style={{ margin: '0 0 var(--space-2)' }}>
+            <strong>Reason:</strong> {latestNotReady.notReadyReason || 'Not given'}
+          </p>
+          <RichTextDisplay value={latestNotReady.qaComment} />
+          {isAssignee && (
+            <p className={styles.helpText} style={{ marginBottom: 0 }}>
+              QA could not start testing, so this is not a QA rejection. Fix what is missing, then submit it again below - it goes back to
+              QA as a first-time submission.
             </p>
           )}
         </div>
@@ -3237,7 +3363,131 @@ export default function TaskDetailPage() {
           )}
 
           {showRejectForm && (
-            <form onSubmit={handleQaReject} style={{ marginTop: 'var(--space-3)' }}>
+            <fieldset style={{ border: 0, padding: 0, margin: 'var(--space-3) 0 0' }}>
+              <legend className={styles.label}>What happened? (required)</legend>
+              {[
+                {
+                  value: 'failed',
+                  label: 'Test failed',
+                  help: 'You tested it and it does not work. Counts as a QA rejection.',
+                },
+                {
+                  value: 'not_ready',
+                  label: 'Not ready for testing',
+                  help: 'You could not start testing (for example the build is not deployed). Not counted as a rejection - it goes back to the developer with your reason.',
+                },
+              ].map((opt) => (
+                <label
+                  key={opt.value}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', cursor: 'pointer' }}
+                >
+                  <input
+                    type="radio"
+                    name="tdRejectKind"
+                    value={opt.value}
+                    checked={rejectKind === opt.value}
+                    onChange={() => setRejectKind(opt.value)}
+                    disabled={qaActionBusy}
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <strong>{opt.label}</strong>
+                    <span className={styles.helpText} style={{ display: 'block', margin: 0 }}>{opt.help}</span>
+                  </span>
+                </label>
+              ))}
+              {rejectKind === '' && (
+                <>
+                  <ChoiceHint id="tdRejectKindHint" show={rejectKindAttempted}>Choose Test failed or Not ready for testing.</ChoiceHint>
+                  <div className={styles.actions}>
+                    <button
+                      className={`${styles.button} ${styles.buttonAccent}`}
+                      type="button"
+                      aria-disabled="true"
+                      aria-describedby="tdRejectKindHint"
+                      onClick={() => setRejectKindAttempted(true)}
+                    >
+                      Continue
+                    </button>
+                    <button
+                      className={styles.button}
+                      type="button"
+                      onClick={() => {
+                        setShowRejectForm(false);
+                        resetRejectKind();
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </fieldset>
+          )}
+
+          {showRejectForm && rejectKind === 'not_ready' && (
+            <form onSubmit={handleQaNotReady} style={{ marginTop: 'var(--space-2)' }} noValidate>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="tdNotReadyReason">Reason (required)</label>
+                <select
+                  className={styles.select}
+                  id="tdNotReadyReason"
+                  value={notReadyReason}
+                  onChange={(e) => setNotReadyReason(e.target.value)}
+                  aria-describedby="tdNotReadyReasonHint"
+                  aria-invalid={notReadyAttempted && !notReadyReason}
+                >
+                  <option value="" disabled>— Select a reason —</option>
+                  {notReadyReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <ChoiceHint id="tdNotReadyReasonHint" show={notReadyAttempted && !notReadyReason}>Choose a reason.</ChoiceHint>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="tdNotReadyComment">Comment (required)</label>
+                <RichTextEditor
+                  id="tdNotReadyComment"
+                  placeholder="Say exactly what is missing, so the developer can fix it (e.g. which build, which steps)"
+                  value={notReadyComment}
+                  onChange={setNotReadyComment}
+                />
+                <ReasonHint
+                  id="tdNotReadyCommentHint"
+                  length={stripHtmlForPreview(notReadyComment).trim().length}
+                  min={NOT_READY_COMMENT_MIN}
+                  attempted={notReadyAttempted}
+                  emptyMessage="Write a comment saying what is missing."
+                />
+              </div>
+              <p className={styles.helpText} style={{ marginTop: 0 }}>
+                The task goes back to the developer as Not Ready for Testing, with your reason at the top of the page. The QA review clock
+                stops until they submit it again.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="submit"
+                  disabled={qaActionBusy}
+                  aria-disabled={!notReadyReason || stripHtmlForPreview(notReadyComment).trim().length < NOT_READY_COMMENT_MIN}
+                >
+                  {qaActionBusy ? 'Working...' : 'Return as not ready'}
+                </button>
+                <button
+                  className={styles.button}
+                  type="button"
+                  onClick={() => {
+                    setShowRejectForm(false);
+                    resetRejectKind();
+                  }}
+                  disabled={qaActionBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {showRejectForm && rejectKind === 'failed' && (
+            <form onSubmit={handleQaReject} style={{ marginTop: 'var(--space-2)' }}>
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="tdRejectComment">Rejection Comment</label>
                 <RichTextEditor
@@ -3409,6 +3659,7 @@ export default function TaskDetailPage() {
                   type="button"
                   onClick={() => {
                     setShowRejectForm(false);
+                    resetRejectKind();
                     resetLinkedDefectForm();
                   }}
                   disabled={qaActionBusy}

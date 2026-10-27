@@ -173,6 +173,9 @@ export const NAV_SECTIONS = [
       { href: '/admin/daily-scrum-settings', label: 'Daily Scrum Settings', icon: CalendarClock, roles: [ADMIN, PM] },
       // Matches PerformanceMetricsController.ROLES_ALLOWED_TO_EDIT_METRIC_SETTINGS (2026-10-27).
       { href: '/admin/performance-metrics-settings', label: 'Performance Metrics Settings', icon: SlidersHorizontal, roles: [ADMIN, PM] },
+      // QA "Not ready for testing" reasons (2026-10-27) - matches
+      // QaReviewSettingsController's ROLES_ALLOWED_TO_EDIT_NOT_READY_REASONS.
+      { href: '/admin/qa-review-settings', label: 'QA Review Settings', icon: FlaskConical, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

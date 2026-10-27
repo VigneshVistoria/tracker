@@ -30,8 +30,57 @@ const LATE_TO_QA_REASON_LABEL = {
 // are counted" note (2026-10-27, approved by the user).
 const LATE_TO_QA_RULE =
   'Tasks whose final submission for review came after their Due date (plus any days waiting on the PM), or that are still with the developer past it; each task counts once, and time waiting on QA, a peer or the PM is not counted.';
-const OVERDUE_IN_REVIEW_RULE =
-  "Tasks this developer submitted that are still waiting for QA or a peer reviewer after the 5-working-day QA Review Due Date - the reviewers' deadline, shown for information and never counted against the developer.";
+
+// QA "Not ready for testing" (2026-10-27, approved by the user) - shown for
+// information only, never part of Flagged.
+const INCOMPLETE_RULE =
+  'Submissions QA returned as "Not ready for testing" (could not start testing: build not deployed, steps or evidence missing, ...). Not a rejection and never flagged.';
+const TEST_FAILED_RULE =
+  'QA and Peer Review rejections where the test was run and failed - the same rejections the Rejection Rate counts. Shown for information, never flagged on its own.';
+
+function TestFailedList({ items }) {
+  if (items.length === 0) return null;
+  return (
+    <details className={nc.taskList}>
+      <summary>view {items.length}</summary>
+      <ul>
+        {items.map((item, i) => (
+          <li key={`${item.taskId}-${i}`}>
+            <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a> {item.title}{' '}
+            <span className={nc.tag}>
+              {item.reviewType === 'peer' ? 'Peer review' : 'QA'}
+              {item.reviewerName ? `, by ${item.reviewerName}` : ''}
+              {item.rejectedAt ? ` on ${formatDate(item.rejectedAt)}` : ''}
+            </span>
+            {item.comment ? <span className={nc.tag}> - &quot;{item.comment}&quot;</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function IncompleteList({ items }) {
+  if (items.length === 0) return null;
+  return (
+    <details className={nc.taskList}>
+      <summary>view {items.length}</summary>
+      <ul>
+        {items.map((item, i) => (
+          <li key={`${item.taskId}-${i}`}>
+            <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a> {item.title}{' '}
+            <span className={nc.tag}>
+              {item.reason || 'Not ready'}
+              {item.qaName ? `, by ${item.qaName}` : ''}
+              {item.markedAt ? ` on ${formatDate(item.markedAt)}` : ''}
+            </span>
+            {item.comment ? <span className={nc.tag}> - &quot;{item.comment}&quot;</span> : null}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -385,7 +434,10 @@ export default function NonComplianceReportPage() {
                   <strong>Late to QA:</strong> {LATE_TO_QA_RULE} Hold, Closed and Escalated tasks are left out.
                 </li>
                 <li>
-                  <strong>Overdue in review:</strong> {OVERDUE_IN_REVIEW_RULE}
+                  <strong>Test failed (QA + peer review, info):</strong> {TEST_FAILED_RULE}
+                </li>
+                <li>
+                  <strong>Not ready for testing (info):</strong> {INCOMPLETE_RULE} Both are counted by submission date, like the Rejection Rate.
                 </li>
                 <li>
                   <strong>Flagged</strong> if any of: {report.thresholds.lateToQaCount}+ tasks late to QA; rejection rate over{' '}
@@ -407,7 +459,8 @@ export default function NonComplianceReportPage() {
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Rejection Rate</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Interventions</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Vague Notes</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={OVERDUE_IN_REVIEW_RULE}>Overdue in review (info)</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={TEST_FAILED_RULE}>Test failed (QA + peer review)</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={INCOMPLETE_RULE}>Not ready for testing</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Status</th>
                   </tr>
                 </thead>
@@ -483,23 +536,12 @@ export default function NonComplianceReportPage() {
                         )}
                       </td>
                       <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
-                        <span className={nc.metricValue}>{dev.overdueInReview.count}</span>
-                        {dev.overdueInReview.items.length > 0 && (
-                          <details className={nc.taskList}>
-                            <summary>view {dev.overdueInReview.items.length}</summary>
-                            <ul>
-                              {dev.overdueInReview.items.map((item) => (
-                                <li key={item.taskId}>
-                                  <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a>{' '}
-                                  {item.title}{' '}
-                                  <span className={nc.tag}>
-                                    {item.status}, {item.daysOverdue} day{item.daysOverdue === 1 ? '' : 's'} past {formatDate(item.qaReviewDueDate)}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        )}
+                        <span className={nc.metricValue}>{dev.testFailed.count}</span>
+                        <TestFailedList items={dev.testFailed.items} />
+                      </td>
+                      <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                        <span className={nc.metricValue}>{dev.incompleteSubmissions.count}</span>
+                        <IncompleteList items={dev.incompleteSubmissions.items} />
                       </td>
                       <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
                         <Badge tone="error">Flagged</Badge>
@@ -509,6 +551,9 @@ export default function NonComplianceReportPage() {
                 </tbody>
               </table>
             )}
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-2) 0 0' }}>
+              Not ready counts start on {formatDate(report.notReadySince)}; earlier returns were recorded as rejections and are not reclassified.
+            </p>
           </div>
 
           {/* --- compliant chips --- */}
@@ -530,12 +575,73 @@ export default function NonComplianceReportPage() {
                           ? `${dev.rejectionRate.rate}% rate`
                           : 'n/a rate'}{' '}
                         &middot; {dev.escalations.count} interventions &middot; {dev.resolutionQuality.count} vague &middot;{' '}
-                        {dev.overdueInReview.count} overdue in review
+                        {dev.testFailed.count} test failed &middot; {dev.incompleteSubmissions.count} not ready
                       </span>
                     </span>
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* --- "Not ready for testing" - information only (2026-10-27) --- */}
+          <div className={styles.card} style={{ marginTop: 'var(--space-4)' }}>
+            <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-1)', fontWeight: 600 }}>All developers - test failed and not ready (information only)</h2>
+            <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-3)' }}>
+              Every developer, flagged or not, by submission date. Never flagged. Not ready counts start on {formatDate(report.notReadySince)}.
+            </p>
+
+            {report.developers.length === 0 ? (
+              <div className={styles.empty}>No developers found.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 'var(--space-4)' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Developer</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={TEST_FAILED_RULE}>Test failed (QA + peer review)</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={INCOMPLETE_RULE}>Not ready for testing</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...report.developers]
+                    .sort(
+                      (a, b) =>
+                        b.incompleteSubmissions.count - a.incompleteSubmissions.count ||
+                        b.testFailed.count - a.testFailed.count ||
+                        devName(a).localeCompare(devName(b)),
+                    )
+                    .map((dev) => (
+                      <tr key={dev.userId}>
+                        <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)' }}>{devName(dev)}</td>
+                        <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                          <span className={nc.metricValue}>{dev.testFailed.count}</span>
+                          <TestFailedList items={dev.testFailed.items} />
+                        </td>
+                        <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                          <span className={nc.metricValue}>{dev.incompleteSubmissions.count}</span>
+                          <IncompleteList items={dev.incompleteSubmissions.items} />
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+
+            <h3 className={styles.label} style={{ margin: '0 0 var(--space-2)' }}>&quot;Not ready&quot; returns by QA</h3>
+            <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-2)' }}>
+              Out of each QA&apos;s approvals, rejections and not-ready returns on submissions in this period - to see if the option is overused. Never flagged.
+            </p>
+            {(report.qaNotReadyUsage || []).length === 0 ? (
+              <div className={styles.empty}>No QA users found.</div>
+            ) : (
+              <ul style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>
+                {report.qaNotReadyUsage.map((qa) => (
+                  <li key={qa.userId}>
+                    <strong>{qa.name}</strong>: {qa.notReady} not ready of {qa.decisions} decision{qa.decisions === 1 ? '' : 's'}
+                    {qa.percent !== null ? ` (${qa.percent}%)` : ''}
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </>

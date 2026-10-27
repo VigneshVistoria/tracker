@@ -14,9 +14,9 @@ import {
   storeImageUploads,
 } from './task-attachments.service';
 
-// Decisions a QA can back with screenshots (approve, reject, escalate -
-// a retest is the same thing on a later round).
-const DECIDED_STATUSES = ['approved', 'rejected', 'escalated'];
+// Decisions a QA can back with screenshots (approve, reject, escalate,
+// not ready for testing - a retest is the same thing on a later round).
+const DECIDED_STATUSES = ['approved', 'rejected', 'escalated', 'not_ready'];
 
 // Screenshots on a QA decision (2026-10-18). The QA approves/rejects/
 // escalates first, then the page uploads that decision's screenshots to

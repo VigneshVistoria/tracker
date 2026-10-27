@@ -26,7 +26,8 @@ export const EXCLUDED_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Released - 
 // 'Returned to QA': a PM sent it back to QA - with QA, not the developer.
 export const REVIEW_STATUSES = ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA'];
 // 'PM Feedback': the PM sent it back for the developer to refine.
-export const SENT_BACK_STATUSES = ['Failed', 'Released - With Showstoppers', 'PM Feedback'];
+// 'Not Ready for Testing' (2026-10-27): QA could not start testing it.
+export const SENT_BACK_STATUSES = ['Failed', 'Released - With Showstoppers', 'PM Feedback', 'Not Ready for Testing'];
 // A dependency whose parent ticket is one of these isn't shown at all.
 export const DEPENDENCY_HIDDEN_PARENT_STATUSES = ['Junk', 'Hold', 'Closed'];
 

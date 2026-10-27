@@ -24,6 +24,9 @@ import { resolveQaSummaryPeriod, ResolvedPeriod } from './qa-summary-period';
 // - Approved / Rejected: tickets with at least one QA-round approval /
 //   rejection by the QA in the period (Peer Review rounds never count).
 //   Escalations to PM are not rejections and are left out.
+// - Not ready (2026-10-27): tickets the QA returned as "Not ready for
+//   testing" in the period - its own tile, never a rejection, and left out
+//   of the pass rate.
 // - Waiting / Re-feedback (right now, no dates): the QA Review list
 //   (TasksService.findQaQueue() with defects) split by status, so they
 //   never overlap and together equal the page and its sidebar badge.
@@ -36,7 +39,7 @@ import { resolveQaSummaryPeriod, ResolvedPeriod } from './qa-summary-period';
 // - The period is resolved here, in the team's time zone (team_settings),
 //   not in the viewer's browser - see qa-summary-period.ts (2026-10-13).
 
-export const QA_SUMMARY_TILES = ['defectsRaised', 'approved', 'rejected', 'waiting', 'refeedback'] as const;
+export const QA_SUMMARY_TILES = ['defectsRaised', 'approved', 'rejected', 'notReady', 'waiting', 'refeedback'] as const;
 export type QaSummaryTile = (typeof QA_SUMMARY_TILES)[number];
 
 const VIEW_ROLES: UserRole[] = [UserRole.QA, UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE];
@@ -73,6 +76,10 @@ export interface QaSummaryRow {
   rejections: number | null;
   // Approved: approvals by the QA in the period, else null.
   approvals: number | null;
+  // Not ready: times the QA returned it as not ready in the period, and
+  // the latest reason. Otherwise null.
+  notReadyCount: number | null;
+  notReadyReason: string | null;
 }
 
 interface Scope {
@@ -92,6 +99,7 @@ interface DecidedRound {
   reviewedByUserId: number;
   submittedByUserId: number;
   reviewedAt: Date;
+  notReadyReason: string | null;
 }
 
 @Injectable()
@@ -175,16 +183,18 @@ export class QaSummaryService {
   // the filter dropdowns are built from the unfiltered rows so picking a
   // project never empties its own dropdown.
   private async buildTiles(scope: Scope, currentUser: { id: number; role: UserRole }) {
-    const [defectsRaised, approved, rejected, waitingAll] = await Promise.all([
+    const [defectsRaised, approved, rejected, notReady, waitingAll] = await Promise.all([
       this.defectsRaisedRows(scope),
       this.decidedRows(scope, 'approved'),
       this.decidedRows(scope, 'rejected'),
+      this.decidedRows(scope, 'not_ready'),
       this.waitingRows(scope, currentUser),
     ]);
     const unfiltered: Record<QaSummaryTile, QaSummaryRow[]> = {
       defectsRaised,
       approved,
       rejected,
+      notReady,
       waiting: waitingAll.filter((r) => r.status === 'Feedback'),
       refeedback: waitingAll.filter((r) => r.status === 'Re-Feedback'),
     };
@@ -224,11 +234,11 @@ export class QaSummaryService {
   // One row per ticket with at least one QA-round decision of this kind by
   // the QA in the period. "When" and "QA" come from the latest such
   // decision; the developer is whoever submitted that round.
-  private async decidedRows(scope: Scope, decision: 'approved' | 'rejected'): Promise<QaSummaryRow[]> {
+  private async decidedRows(scope: Scope, decision: 'approved' | 'rejected' | 'not_ready'): Promise<QaSummaryRow[]> {
     const qb = this.qaReviewsRepository
       .createQueryBuilder('r')
       .innerJoin(ProjectTask, 't', 't.id = r.taskId AND t.tenantId = r.tenantId')
-      .select(['r.taskId AS "taskId"', 'r.reviewedByUserId AS "reviewedByUserId"', 'r.submittedByUserId AS "submittedByUserId"', 'r.reviewedAt AS "reviewedAt"'])
+      .select(['r.taskId AS "taskId"', 'r.reviewedByUserId AS "reviewedByUserId"', 'r.submittedByUserId AS "submittedByUserId"', 'r.reviewedAt AS "reviewedAt"', 'r.notReadyReason AS "notReadyReason"'])
       .where("r.tenantId = :tenantId AND r.reviewType = 'qa' AND r.status = :decision", { tenantId: scope.tenantId, decision })
       .andWhere('r.reviewedAt >= :from AND r.reviewedAt < :to', { from: scope.from, to: scope.to })
       .andWhere('t.status NOT IN (:...excluded)', { excluded: EXCLUDED_STATUSES })
@@ -255,6 +265,8 @@ export class QaSummaryService {
         happenedAt: r.reviewedAt,
         rejections: decision === 'rejected' ? decisions.get(t.id)! : null,
         approvals: decision === 'approved' ? decisions.get(t.id)! : null,
+        notReadyCount: decision === 'not_ready' ? decisions.get(t.id)! : null,
+        notReadyReason: decision === 'not_ready' ? r.notReadyReason : null,
       });
     });
   }
@@ -304,6 +316,8 @@ export class QaSummaryService {
       round?: number | null;
       rejections?: number | null;
       approvals?: number | null;
+      notReadyCount?: number | null;
+      notReadyReason?: string | null;
     },
   ): QaSummaryRow {
     return {
@@ -322,6 +336,8 @@ export class QaSummaryService {
       round: extra.round ?? null,
       rejections: extra.rejections ?? null,
       approvals: extra.approvals ?? null,
+      notReadyCount: extra.notReadyCount ?? null,
+      notReadyReason: extra.notReadyReason ?? null,
     };
   }
 

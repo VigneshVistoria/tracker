@@ -4,7 +4,7 @@ import { DataSource } from 'typeorm';
 import { createTestApp } from './setup/test-app';
 import { seedFixtures, Fixtures, FixtureUser } from './setup/fixtures';
 
-// QA Review summary (2026-10-13): five read-only tiles and their
+// QA Review summary (2026-10-13): read-only tiles (six since Not ready, 2026-10-27) and their
 // drill-down lists. Every tile's number must equal its list, Junk/Hold and
 // Peer Review rounds never count, escalations aren't rejections, Waiting
 // is the QA Review list itself, QA only sees their own numbers. Periods
@@ -32,7 +32,7 @@ describe('QA Review summary (e2e)', () => {
     (await get(u, `/tasks/qa-summary/items?tile=${tile}&${PERIOD}${extra}`).expect(200)).body;
   const idsOf = (rows: any[]) => rows.map((r) => r.id).sort((a, b) => a - b);
   const keys = (...names: string[]) => names.map((n) => ids[n]).sort((a, b) => a - b);
-  const TILES = ['defectsRaised', 'approved', 'rejected', 'waiting', 'refeedback'];
+  const TILES = ['defectsRaised', 'approved', 'rejected', 'notReady', 'waiting', 'refeedback'];
 
   const task = async (key: string, values: Record<string, any> = {}) => {
     const row = {
@@ -136,6 +136,13 @@ describe('QA Review summary (e2e)', () => {
     // Project B, submitted by another developer.
     await task('T10', { status: 'Pass', projectId: f.projects.pB, projectName: 'Project B', assigneeUserId: devNone.id, assigneeEmail: devNone.email });
     await round('T10', 1, 'approved', qaB, IN, { submittedBy: devNone });
+    // "Not ready for testing" (2026-10-27) - its own tile, never a rejection.
+    await task('T11', { status: 'Not Ready for Testing' });
+    await round('T11', 1, 'not_ready', qaB, IN);
+    // Not ready, then resubmitted: a first-time Waiting, not Re-feedback.
+    await task('T12', { status: 'Feedback' });
+    await round('T12', 1, 'not_ready', qaB, IN);
+    await round('T12', 2, 'pending', null, null);
 
     await defect('D1', qaB, IN);
     await defect('D2', qaB, IN, { status: 'Feedback' });
@@ -179,14 +186,15 @@ describe('QA Review summary (e2e)', () => {
 
   it("QA: their own numbers, each tile equal to its list", async () => {
     const s = await summary(f.users.qaB);
-    expect(s.counts).toEqual({ defectsRaised: 2, approved: 2, rejected: 3, waiting: 2, refeedback: 1 });
+    expect(s.counts).toEqual({ defectsRaised: 2, approved: 2, rejected: 3, notReady: 2, waiting: 3, refeedback: 1 });
     expect(s.passRate).toBe(40);
     expect(s.qas).toEqual([]);
     expect(s.range).toEqual({ period: 'custom', from: '2026-10-01', to: '2026-10-31', timeZone: 'Africa/Addis_Ababa' });
     expect(idsOf(await items(f.users.qaB, 'defectsRaised'))).toEqual(keys('D1', 'D2'));
     expect(idsOf(await items(f.users.qaB, 'approved'))).toEqual(keys('T1', 'T10'));
     expect(idsOf(await items(f.users.qaB, 'rejected'))).toEqual(keys('T1', 'T2', 'D3'));
-    expect(idsOf(await items(f.users.qaB, 'waiting'))).toEqual(keys('T3', 'D2'));
+    expect(idsOf(await items(f.users.qaB, 'notReady'))).toEqual(keys('T11', 'T12'));
+    expect(idsOf(await items(f.users.qaB, 'waiting'))).toEqual(keys('T3', 'T12', 'D2'));
     expect(idsOf(await items(f.users.qaB, 'refeedback'))).toEqual(keys('T2'));
     // Even asking for "All", a QA gets only their own.
     expect((await summary(f.users.qaB, '&qaUserId=all')).counts).toEqual(s.counts);
@@ -209,6 +217,8 @@ describe('QA Review summary (e2e)', () => {
     expect(refeedback.find((r: any) => r.id === ids.T2)).toMatchObject({ round: 2, rejections: 1, qaUserId: null, status: 'Re-Feedback' });
     expect(rows.find((r: any) => r.id === ids.T3)).toMatchObject({ round: 1, rejections: 0, qaUserId: null });
     expect(rows.find((r: any) => r.id === ids.D2)).toMatchObject({ round: 1, isDefect: true, qaUserId: f.users.qaB.id });
+    // A not-ready return is no rejection.
+    expect(rows.find((r: any) => r.id === ids.T12)).toMatchObject({ rejections: 0, status: 'Feedback' });
   });
 
   it('Waiting + Re-feedback never overlap and together equal the QA Review list and its badge', async () => {
@@ -228,7 +238,7 @@ describe('QA Review summary (e2e)', () => {
 
   it('the other QA, picked by PM, gets only their decisions and the shared tasks', async () => {
     const s = await summary(f.users.pm, `&qaUserId=${qaOther.id}`);
-    expect(s.counts).toEqual({ defectsRaised: 0, approved: 1, rejected: 0, waiting: 1, refeedback: 1 });
+    expect(s.counts).toEqual({ defectsRaised: 0, approved: 1, rejected: 0, notReady: 0, waiting: 2, refeedback: 1 });
     expect(s.passRate).toBe(100);
     expect(idsOf(await items(f.users.pm, 'approved', `&qaUserId=${qaOther.id}`))).toEqual(keys('T4'));
     expect((await summary(qaOther)).counts).toEqual(s.counts);
@@ -237,7 +247,7 @@ describe('QA Review summary (e2e)', () => {
   it('PM and Admin see All, with the QA picker list', async () => {
     for (const u of [f.users.pm, f.users.admin]) {
       const s = await summary(u);
-      expect(s.counts).toEqual({ defectsRaised: 2, approved: 3, rejected: 3, waiting: 2, refeedback: 1 });
+      expect(s.counts).toEqual({ defectsRaised: 2, approved: 3, rejected: 3, notReady: 2, waiting: 3, refeedback: 1 });
       expect(s.passRate).toBe(50);
       expect(s.qas.map((q: any) => q.id).sort()).toEqual([f.users.qaB.id, qaOther.id].sort());
       for (const tile of TILES) expect((await items(u, tile)).length).toBe(s.counts[tile]);
@@ -260,13 +270,13 @@ describe('QA Review summary (e2e)', () => {
   it('Executive sees All, tasks only', async () => {
     const s = await summary(f.users.exec);
     expect(s.includeDefects).toBe(false);
-    expect(s.counts).toEqual({ defectsRaised: 0, approved: 3, rejected: 2, waiting: 1, refeedback: 1 });
+    expect(s.counts).toEqual({ defectsRaised: 0, approved: 3, rejected: 2, notReady: 2, waiting: 2, refeedback: 1 });
     expect(idsOf(await items(f.users.exec, 'rejected'))).toEqual(keys('T1', 'T2'));
   });
 
   it('Project and Developer filters narrow every tile, and the options cover all rows', async () => {
     const s = await summary(f.users.pm, `&projectId=${f.projects.pB}`);
-    expect(s.counts).toEqual({ defectsRaised: 0, approved: 1, rejected: 0, waiting: 0, refeedback: 0 });
+    expect(s.counts).toEqual({ defectsRaised: 0, approved: 1, rejected: 0, notReady: 0, waiting: 0, refeedback: 0 });
     expect(s.projects.map((p: any) => p.id).sort()).toEqual([f.projects.pA, f.projects.pB].sort());
     const d = await summary(f.users.pm, `&developerUserId=${f.users.devNone.id}`);
     expect(d.counts.approved).toBe(1);

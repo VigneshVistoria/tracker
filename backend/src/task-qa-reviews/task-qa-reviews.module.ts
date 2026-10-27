@@ -4,7 +4,7 @@ import { TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
 import { TaskQaReviewsService } from './task-qa-reviews.service';
-import { TaskQaReviewsController } from './task-qa-reviews.controller';
+import { QaReviewSettingsController, TaskQaReviewsController } from './task-qa-reviews.controller';
 import { PmReviewsService } from './pm-reviews.service';
 import { PmReviewsController } from './pm-reviews.controller';
 import { PmReviewReminderService } from './pm-review-reminder.service';
@@ -28,7 +28,7 @@ import { NoteQualityModule } from '../note-quality/note-quality.module';
     GuardsModule,
     NoteQualityModule,
   ],
-  controllers: [TaskQaReviewsController, PmReviewsController],
+  controllers: [TaskQaReviewsController, QaReviewSettingsController, PmReviewsController],
   providers: [TaskQaReviewsService, PmReviewsService, PmReviewReminderService],
   exports: [TaskQaReviewsService],
 })

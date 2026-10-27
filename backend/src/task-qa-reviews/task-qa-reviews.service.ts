@@ -11,14 +11,17 @@ import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
 import { QaSendBackDto, QA_SEND_BACK_REASON_MIN } from './dto/qa-send-back.dto';
+import { QaNotReadyTaskDto } from './dto/qa-not-ready.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { Project } from '../projects/project.entity';
 import { PM_FEEDBACK_STATUS, PM_REVIEW_STATUS } from '../tasks/pm-review';
+import { DEFAULT_QA_NOT_READY_REASONS, NOT_READY_STATUS, QA_NOT_READY_COMMENT_MIN, QA_NOT_READY_REASON_MAX } from '../tasks/qa-not-ready';
+import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { DEVELOPER_EQUIVALENT_ROLES, User, UserRole } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
-import { sanitizeRichText } from '../common/sanitize-rich-text';
+import { richTextToPlainText, sanitizeRichText } from '../common/sanitize-rich-text';
 import { NoteQualityService } from '../note-quality/note-quality.service';
 
 export type TaskQaReviewWithArtifacts = TaskQaReview & { artifacts: TaskQaReviewArtifact[] };
@@ -59,6 +62,8 @@ export class TaskQaReviewsService {
     private tasksRepository: Repository<ProjectTask>,
     @InjectRepository(Project)
     private projectsRepository: Repository<Project>,
+    @InjectRepository(TeamSettings)
+    private teamSettingsRepository: Repository<TeamSettings>,
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
@@ -526,6 +531,138 @@ export class TaskQaReviewsService {
     return savedReview;
   }
 
+  // QA Reject as "Not ready for testing" (2026-10-27, confirmed with the
+  // user) - QA could not start testing. The other kind of Reject, "Test
+  // failed", is reject() above, unchanged. See backend/src/tasks/
+  // qa-not-ready.ts for the rules. Same who-may-act checks as reject(); a
+  // reason from the editable list and a real comment are both required.
+  // The round closes as 'not_ready' and the task goes to Not Ready for
+  // Testing with the QA review due date cleared (the next submit starts a
+  // fresh one). Guarded updates, so a PM send-back or another QA acting
+  // meanwhile can't be overwritten.
+  async markNotReady(
+    taskId: number,
+    dto: QaNotReadyTaskDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskQaReviewWithQaArtifacts> {
+    if (currentUser.role !== UserRole.QA) {
+      throw new ForbiddenException('Only QA can mark a task not ready for testing.');
+    }
+    const task = await this.tasksService.findOne(taskId, tenantId);
+    this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReviewDecidable(task);
+    if (task.isDefect && task.createdByUserId !== currentUser.id) {
+      throw new ForbiddenException('Only the QA who raised this defect can mark it not ready for testing.');
+    }
+    const reason = (dto.reason || '').trim();
+    const reasons = await this.notReadyReasons(tenantId);
+    if (!reasons.includes(reason)) {
+      throw new BadRequestException(`Pick a reason from the list (${reasons.join(', ')}).`);
+    }
+    if (richTextToPlainText(dto.comment || '').length < QA_NOT_READY_COMMENT_MIN) {
+      throw new BadRequestException(`Write a comment saying what is missing (at least ${QA_NOT_READY_COMMENT_MIN} characters).`);
+    }
+    // findPendingRound() refuses a PM or Peer Review round.
+    const pending = await this.findPendingRound(taskId, tenantId);
+    const fromStatus = task.status;
+
+    pending.status = 'not_ready';
+    pending.notReadyReason = reason;
+    pending.qaComment = sanitizeRichText(dto.comment);
+    pending.reviewedByUserId = currentUser.id;
+    pending.reviewedByEmail = currentUser.email;
+    pending.reviewedAt = new Date();
+
+    const savedQaArtifacts = await this.qaReviewsRepository.manager.transaction(async (em) => {
+      await this.closePendingRoundWithin(em, pending, taskId);
+      const taskUpdate = await em.update(
+        ProjectTask,
+        { id: taskId, tenantId, status: fromStatus },
+        { status: NOT_READY_STATUS, qaReviewDueDate: null as any },
+      );
+      if (!taskUpdate.affected) {
+        throw new BadRequestException(`Task #${taskId} changed while you were on it - reload and try again.`);
+      }
+      const saved = await em.save(
+        TaskQaReviewQaArtifact,
+        (dto.artifacts || []).map((item) => em.create(TaskQaReviewQaArtifact, { taskQaReviewId: pending.id, type: item.type, url: item.url })),
+      );
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: AuditActions.TASK_QA_NOT_READY,
+        tenantId,
+        entityType: 'ProjectTask',
+        entityId: taskId,
+        details: {
+          roundNumber: pending.roundNumber,
+          reason,
+          comment: dto.comment,
+          statusFrom: fromStatus,
+          statusTo: NOT_READY_STATUS,
+          artifactTypes: (dto.artifacts || []).map((a) => a.type),
+        },
+      });
+      return saved;
+    });
+
+    this.eventEmitter.emit('task.reviewDecided', {
+      tenantId,
+      taskId,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      actorUserId: currentUser.id,
+      actorEmail: currentUser.email,
+      decision: 'not_ready',
+      reviewType: 'qa',
+      reason,
+    });
+
+    return { ...pending, qaArtifacts: savedQaArtifacts };
+  }
+
+  // The reasons QA picks from - the saved list, or the defaults when it
+  // was never saved.
+  async notReadyReasons(tenantId: number): Promise<string[]> {
+    const settings = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    const saved = Array.isArray(settings?.qaNotReadyReasons) ? settings!.qaNotReadyReasons : [];
+    return saved.length > 0 ? saved : [...DEFAULT_QA_NOT_READY_REASONS];
+  }
+
+  // Admin / Program Manager edit the list (role gate in the controller).
+  // Trimmed, blanks and repeats dropped. Rounds keep the reason as text, so
+  // renaming or removing one never changes history.
+  async setNotReadyReasons(input: string[], currentUser: { id: number; email: string; role: UserRole }, tenantId: number): Promise<string[]> {
+    const reasons: string[] = [];
+    for (const raw of input) {
+      const r = (raw || '').trim();
+      if (r && r.length <= QA_NOT_READY_REASON_MAX && !reasons.some((x) => x.toLowerCase() === r.toLowerCase())) reasons.push(r);
+    }
+    if (reasons.length === 0) {
+      throw new BadRequestException('Keep at least one reason.');
+    }
+    const before = await this.notReadyReasons(tenantId);
+    const existing = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    if (existing) {
+      await this.teamSettingsRepository.update({ tenantId }, { qaNotReadyReasons: reasons, updatedByUserId: currentUser.id });
+    } else {
+      await this.teamSettingsRepository.save(this.teamSettingsRepository.create({ tenantId, qaNotReadyReasons: reasons, updatedByUserId: currentUser.id }));
+    }
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.QA_NOT_READY_REASONS_UPDATED,
+      tenantId,
+      entityType: 'TeamSettings',
+      entityId: tenantId,
+      details: { before, after: reasons },
+    });
+    return reasons;
+  }
+
   // Writes QA's verdict onto the round only if it is still pending. QA
   // works from a page loaded earlier: a PM may have sent the task back to
   // the developer (sendBackFromQa) or another QA decided it meanwhile -
@@ -540,6 +677,7 @@ export class TaskQaReviewsService {
         reviewedByUserId: round.reviewedByUserId,
         reviewedByEmail: round.reviewedByEmail,
         reviewedAt: round.reviewedAt,
+        ...(round.notReadyReason ? { notReadyReason: round.notReadyReason } : {}),
       },
     );
     if (!upd.affected) {
@@ -738,11 +876,14 @@ export class TaskQaReviewsService {
     if (latest.status === 'withdrawn') {
       throw new BadRequestException(`Task #${taskId} was sent back to the developer before QA decided it - there is no QA decision to revert.`);
     }
-    const decision = latest.status;
-    const leftAt = decision === 'approved' ? 'Pass' : 'Failed';
+    // 'not_ready' (2026-10-27): QA picked "Not ready for testing" by
+    // mistake - revertible the same way, back to the QA queue.
+    const decision = latest.status as 'approved' | 'rejected' | 'not_ready';
+    const leftAt = decision === 'approved' ? 'Pass' : decision === 'not_ready' ? NOT_READY_STATUS : 'Failed';
     if (task.status !== leftAt) {
+      const did = decision === 'approved' ? 'approved' : decision === 'not_ready' ? 'marked it not ready for testing' : 'rejected';
       throw new BadRequestException(
-        `Task #${taskId} has moved on since QA ${decision === 'approved' ? 'approved' : 'rejected'} it (it is now ${task.status}) - the decision can no longer be reverted.`,
+        `Task #${taskId} has moved on since QA ${decision === 'not_ready' ? did : `${did} it`} (it is now ${task.status}) - the decision can no longer be reverted.`,
       );
     }
     if (decision === 'approved') {
@@ -807,7 +948,13 @@ export class TaskQaReviewsService {
       const taskUpdate = await em.update(
         ProjectTask,
         { id: taskId, tenantId, status: leftAt },
-        decision === 'approved' ? { status: newStatus, completedAt: null } : { status: newStatus },
+        decision === 'approved'
+          ? { status: newStatus, completedAt: null }
+          : decision === 'not_ready'
+            ? // Not ready cleared the QA review due date - restore the one
+              // this submission had.
+              { status: newStatus, qaReviewDueDate: this.tasksService.computeQaReviewDueDate(new Date(latest.submittedAt)) }
+            : { status: newStatus },
       );
       if (!taskUpdate.affected) {
         throw new BadRequestException(`Task #${taskId} changed while you were reverting it - reload and try again.`);

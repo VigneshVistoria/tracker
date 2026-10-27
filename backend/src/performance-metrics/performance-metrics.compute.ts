@@ -24,7 +24,9 @@
 //    time. Accepted / decided and rejected / decided, plus the same for
 //    each task's first submission only. PM review rounds, withdrawn rounds
 //    (PM pulled back / sent back) and reverted decisions are never QA
-//    rejections. Peer Review and escalated rounds per settings.
+//    rejections. Peer Review and escalated rounds per settings. A round QA
+//    returned as "Not ready for testing" is never a decision either, and
+//    doesn't stop the resubmission from being the first submission.
 //
 // Status per person over the window: OK or Needs attention per measure,
 // "not enough data" below minSample; overall Needs attention if any
@@ -363,6 +365,9 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
   }
   const firstSubmitByTask = new Map<number, number>();
   for (const rounds of submissions.values()) {
+    // A submission QA returned as "Not ready for testing" (2026-10-27) was
+    // never tested - the resubmission is still the first one QA judged.
+    if (rounds.every((r) => r.status === 'not_ready')) continue;
     const at = t(rounds[0].submittedAt);
     const prev = firstSubmitByTask.get(rounds[0].taskId);
     if (prev === undefined || at < prev) firstSubmitByTask.set(rounds[0].taskId, at);

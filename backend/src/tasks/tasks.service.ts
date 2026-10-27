@@ -24,6 +24,7 @@ import { sanitizeRichText } from '../common/sanitize-rich-text';
 import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 import { isPastEffectiveDue } from './pm-review';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
+import { NOT_READY_STATUS } from './qa-not-ready';
 
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
@@ -145,7 +146,9 @@ export interface TeamDependencyRow {
 
 export interface QaQueueResult {
   tasks: ProjectTaskWithComputed[];
-  statCounts: { pending: number; resubmissions: number; overdue: number; approved: number; rejected: number };
+  // notReady (2026-10-27): tickets QA marked "Not ready for testing" that
+  // are still with the developer - not a rejection, so its own card.
+  statCounts: { pending: number; resubmissions: number; overdue: number; approved: number; rejected: number; notReady: number };
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -241,7 +244,9 @@ const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
 // just raised a defect would see nothing in My Defects until the
 // Developer submitted it - every non-terminal status counts as open here.
 // 'Returned to QA' (2026-10-18): a PM sent it back to QA - still open.
-const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA'];
+// 'Not Ready for Testing' (2026-10-27): QA could not test it - back with the
+// developer, still open.
+const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA', NOT_READY_STATUS];
 
 // "Resolved" for a *linked* defect (assertNoOpenLinkedDefects() below) -
 // deliberately not OPEN_DEFECT_STATUSES's complement. That constant
@@ -852,10 +857,22 @@ export class TasksService {
       overdue: pendingTasks.filter((t) => t.qaReviewDueDate && t.qaReviewDueDate < today).length,
       approved: (await this.qaDecidedTasksQuery(tenantId, 'Pass').getCount()) + (await countDecidedDefects('Pass')),
       rejected: (await this.qaDecidedTasksQuery(tenantId, 'Failed').getCount()) + (await countDecidedDefects('Failed')),
+      // Only QA ever sets Not Ready for Testing, so no Peer Review filter.
+      notReady:
+        (await this.tasksRepository.count({ where: { tenantId, isDefect: false, status: NOT_READY_STATUS } })) +
+        (defectWhere ? await this.tasksRepository.count({ where: { ...defectWhere, status: NOT_READY_STATUS } }) : 0),
     };
 
     let tasks: ProjectTask[];
-    if (status === 'Pass' || status === 'Failed') {
+    if (status === NOT_READY_STATUS) {
+      const taskNotReady = { tenantId, isDefect: false, status: NOT_READY_STATUS };
+      tasks = this.sortByPriority(
+        await this.tasksRepository.find({
+          where: defectWhere ? [taskNotReady, { ...defectWhere, status: NOT_READY_STATUS }] : taskNotReady,
+          order: { createdAt: 'DESC', id: 'DESC' },
+        }),
+      );
+    } else if (status === 'Pass' || status === 'Failed') {
       const decided = [
         ...(await this.qaDecidedTasksQuery(tenantId, status).orderBy('t.createdAt', 'DESC').addOrderBy('t.id', 'DESC').getMany()),
         ...(await decidedDefects(status)),
@@ -930,6 +947,7 @@ export class TasksService {
       overdue: openTasks.filter((t) => t.qaReviewDueDate && t.qaReviewDueDate < today).length,
       approved: await this.tasksRepository.count({ where: { ...baseWhere, status: 'Pass' } }),
       rejected: await this.tasksRepository.count({ where: { ...baseWhere, status: 'Failed' } }),
+      notReady: openTasks.filter((t) => t.status === NOT_READY_STATUS).length,
     };
 
     let tasks: ProjectTask[];

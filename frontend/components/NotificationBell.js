@@ -27,6 +27,7 @@ const TYPE_ICON = {
   'defect.assigned': Bug,
   'task.reviewApproved': CheckCircle2,
   'task.reviewRejected': XCircle,
+  'task.reviewNotReady': XCircle,
   'task.peerReviewRequested': Users,
   'task.escalated': AlertTriangle,
   'dependency.assigned': Link2,
@@ -49,6 +50,7 @@ const TYPE_ICON = {
 
 const TYPE_TONE = {
   'task.reviewRejected': 'error',
+  'task.reviewNotReady': 'error',
   'issue.rejected': 'error',
   'issue.qaRejected': 'error',
   'testCase.rejected': 'error',

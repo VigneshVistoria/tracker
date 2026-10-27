@@ -34,8 +34,11 @@ export interface TaskReviewDecidedEvent {
   assigneeUserId: number | null;
   actorUserId: number;
   actorEmail: string;
-  decision: 'approved' | 'rejected';
+  // 'not_ready' (2026-10-27): QA could not start testing - not a rejection.
+  decision: 'approved' | 'rejected' | 'not_ready';
   reviewType: 'qa' | 'peer';
+  // 'not_ready' only - the reason QA picked.
+  reason?: string;
 }
 
 // TaskQaReviewsService.revertDecision() (2026-10-13).
@@ -47,7 +50,7 @@ export interface TaskQaDecisionRevertedEvent {
   qaUserId: number | null;
   actorUserId: number;
   actorEmail: string;
-  decision: 'approved' | 'rejected';
+  decision: 'approved' | 'rejected' | 'not_ready';
 }
 
 // TaskQaReviewsService.sendBackFromQa() (2026-10-16) - a PM/Admin pulled
@@ -148,6 +151,19 @@ export class UserNotificationListenersService {
     return this.safely('task.reviewDecided', async () => {
       if (!e.assigneeUserId) return;
       const review = e.reviewType === 'peer' ? 'Peer review' : 'QA';
+      if (e.decision === 'not_ready') {
+        await this.notifications.create({
+          tenantId: e.tenantId,
+          userId: e.assigneeUserId,
+          type: 'task.reviewNotReady',
+          title: `QA could not test task #${e.taskId}: ${e.reason ?? 'not ready for testing'}`,
+          body: e.title,
+          link: `/tasks/${e.taskId}`,
+          actorUserId: e.actorUserId,
+          actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
+        });
+        return;
+      }
       await this.notifications.create({
         tenantId: e.tenantId,
         userId: e.assigneeUserId,
@@ -167,7 +183,7 @@ export class UserNotificationListenersService {
   onTaskQaDecisionReverted(e: TaskQaDecisionRevertedEvent) {
     return this.safely('task.qaDecisionReverted', async () => {
       const actorName = await this.actorName(e.actorUserId, e.actorEmail, e.tenantId);
-      const what = e.decision === 'approved' ? 'approval' : 'rejection';
+      const what = e.decision === 'approved' ? 'approval' : e.decision === 'not_ready' ? '"not ready for testing"' : 'rejection';
       const recipients = [...new Set([e.assigneeUserId, e.qaUserId].filter((id): id is number => !!id && id !== e.actorUserId))];
       await Promise.all(
         recipients.map((userId) =>

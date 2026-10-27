@@ -7,6 +7,7 @@ import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { effectiveDueDate, isPastEffectiveDue, PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { RETURNED_TO_QA_STATUS } from '../tasks/return-to-qa';
+import { NOT_READY_SINCE } from '../tasks/qa-not-ready';
 import { PerformanceMetricsService } from '../performance-metrics/performance-metrics.service';
 
 // A task in one of these is done and can no longer be "missed" - mirrors
@@ -57,6 +58,46 @@ export interface OverdueInReviewItem {
   daysOverdue: number;
 }
 
+// QA could not start testing - "Not ready for testing" (2026-10-27). Info
+// only: never part of `flagged`, the rejection rate or Late to QA's
+// hand-over (see backend/src/tasks/qa-not-ready.ts).
+export interface IncompleteSubmissionItem {
+  taskId: number;
+  title: string;
+  reason: string | null;
+  comment: string | null;
+  qaUserId: number | null;
+  qaName: string | null;
+  markedAt: string | null;
+  // The submission QA returned (YYYY-MM-DD) - what the period filters on.
+  submittedAt: string | null;
+  // Where the ticket is now (resubmitted, still waiting, ...).
+  status: string;
+}
+
+// A QA or Peer Review rejection - "Test failed" (2026-10-27). Exactly the
+// rejections the rejection rate counts, listed. Info only.
+export interface TestFailedItem {
+  taskId: number;
+  title: string;
+  reviewType: 'qa' | 'peer';
+  reviewerName: string | null;
+  submittedAt: string | null;
+  rejectedAt: string | null;
+  comment: string | null;
+}
+
+// How often each QA used "Not ready for testing", next to all of their QA
+// decisions in the same tasks and period - to spot overuse. Info only.
+export interface QaNotReadyUsageRow {
+  userId: number;
+  name: string;
+  notReady: number;
+  // approved + rejected + not ready (escalations aren't a test outcome).
+  decisions: number;
+  percent: number | null;
+}
+
 export interface EscalationItem {
   taskId: number;
   title: string;
@@ -86,6 +127,11 @@ export interface DeveloperNonComplianceRow {
   // counted against the developer or in `flagged`.
   overdueInReview: { count: number; items: OverdueInReviewItem[] };
   rejectionRate: { submissions: number; rejections: number; rate: number; flagged: boolean };
+  // Information only (2026-10-27) - never counted in `flagged`. testFailed
+  // lists the rejection rate's rejections; incompleteSubmissions is "Not
+  // ready for testing". Both by submission date.
+  testFailed: { count: number; items: TestFailedItem[] };
+  incompleteSubmissions: { count: number; items: IncompleteSubmissionItem[] };
   escalations: { count: number; flagged: boolean; items: EscalationItem[] };
   // Pilot dimension - `checked` is how many of this developer's in-range
   // submissions actually got a Gemini verdict (excludes ones skipped by
@@ -115,6 +161,11 @@ export interface NonComplianceReportResult {
   projectId: number | null;
   summary: NonComplianceReportSummary;
   developers: DeveloperNonComplianceRow[];
+  // Information only (2026-10-27): every QA user, most "not ready" first.
+  qaNotReadyUsage: QaNotReadyUsageRow[];
+  // First day "Not ready for testing" existed - earlier QA returns were
+  // all recorded as rejections and aren't reclassified.
+  notReadySince: string;
   thresholds: {
     lateToQaCount: number;
     rejectionRatePercent: number;
@@ -205,6 +256,7 @@ export class NonComplianceReportService {
       (u) => DEVELOPER_EQUIVALENT_ROLES.includes(u.role) && u.email !== smokeTestEmail,
     );
     const developerIds = developers.map((d) => d.id);
+    const userById = new Map(allUsers.map((u) => [u.id, u]));
 
     // Same Not('Junk') exclusion as KpiService.computeMetrics() - a task
     // that turned out not to be a real issue shouldn't count against the
@@ -250,7 +302,9 @@ export class NonComplianceReportService {
       const lateToQaItems: LateToQaItem[] = [];
       const overdueInReviewItems: OverdueInReviewItem[] = [];
       for (const task of devTasks) {
-        const rounds = (reviewsByTaskId.get(task.id) ?? []).filter((r) => r.reviewType !== 'pm' && r.status !== 'withdrawn');
+        // A submission QA marked "not ready for testing" was no hand-over
+        // either - the developer's due date kept running.
+        const rounds = (reviewsByTaskId.get(task.id) ?? []).filter((r) => r.reviewType !== 'pm' && r.status !== 'withdrawn' && r.status !== 'not_ready');
         const finalSubmit = rounds.reduce<Date | null>((latest, r) => (!latest || r.submittedAt > latest ? r.submittedAt : latest), null);
         const finalSubmitDate = finalSubmit ? toDateOnly(finalSubmit) : null;
 
@@ -310,6 +364,48 @@ export class NonComplianceReportService {
       const rejections = rejectionsInRange.length;
       const rate = submissions > 0 ? round2((rejections / submissions) * 100) : 0;
 
+      // --- Test failed (info only, 2026-10-27) ---
+      // The same rejections as the rate above, listed for the "view" link.
+      const testFailedItems: TestFailedItem[] = [...rejectionsInRange]
+        .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+        .map((r) => {
+          const reviewer = r.reviewedByUserId ? userById.get(r.reviewedByUserId) : undefined;
+          return {
+            taskId: r.taskId,
+            title: devTasks.find((t) => t.id === r.taskId)!.title,
+            reviewType: r.reviewType === 'peer' ? 'peer' : 'qa',
+            reviewerName: reviewer ? reviewer.fullName || reviewer.email : r.reviewedByEmail ?? null,
+            submittedAt: toDateOnly(r.submittedAt),
+            rejectedAt: r.reviewedAt ? toDateOnly(r.reviewedAt) : null,
+            comment: r.qaComment ? excerptText(r.qaComment) : null,
+          };
+        });
+
+      // --- Not ready for testing (info only, 2026-10-27) ---
+      // Submissions QA returned as "Not ready for testing", by submission
+      // date like the rejection rate, so both columns cover the same work.
+      // Left out of the rejection rate above (NON_VERDICT_ROUND_STATUSES)
+      // and of every flag.
+      const incompleteItems: IncompleteSubmissionItem[] = devTasks
+        .flatMap((t) => reviewsByTaskId.get(t.id) ?? [])
+        .filter((r) => r.status === 'not_ready' && r.reviewType !== 'pm' && inRange(toDateOnly(r.submittedAt), from, to))
+        .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+        .map((r) => {
+          const task = devTasks.find((t) => t.id === r.taskId)!;
+          const qa = r.reviewedByUserId ? userById.get(r.reviewedByUserId) : undefined;
+          return {
+            taskId: r.taskId,
+            title: task.title,
+            reason: r.notReadyReason ?? null,
+            comment: r.qaComment ? excerptText(r.qaComment) : null,
+            qaUserId: r.reviewedByUserId ?? null,
+            qaName: qa ? qa.fullName || qa.email : r.reviewedByEmail ?? null,
+            markedAt: r.reviewedAt ? toDateOnly(r.reviewedAt) : null,
+            submittedAt: toDateOnly(r.submittedAt),
+            status: task.status,
+          };
+        });
+
       // --- Dimension 3: escalations ---
       // Only ever a Program Manager tier in this codebase today - no
       // Executive escalation path exists (TaskQaReviewsService.escalate()
@@ -368,6 +464,14 @@ export class NonComplianceReportService {
           rate,
           flagged: rejectionRateFlagged,
         },
+        testFailed: {
+          count: testFailedItems.length,
+          items: testFailedItems,
+        },
+        incompleteSubmissions: {
+          count: incompleteItems.length,
+          items: incompleteItems,
+        },
         escalations: {
           count: escalationItems.length,
           flagged: escalationsFlagged,
@@ -381,6 +485,36 @@ export class NonComplianceReportService {
         },
       };
     });
+
+    // Per QA, over the same tasks (developers' tickets, project filter) and
+    // period: QA-round test outcomes, by submission date like the
+    // developer columns, so the not-ready totals match.
+    const usage = new Map<number, { notReady: number; decisions: number }>();
+    for (const r of reviews) {
+      if (r.reviewType !== 'qa' || !r.reviewedByUserId || !inRange(toDateOnly(r.submittedAt), from, to)) continue;
+      // A reverted decision was undone as a mistake - it counts nowhere,
+      // same as everywhere else.
+      const outcome = r.status;
+      if (outcome !== 'approved' && outcome !== 'rejected' && outcome !== 'not_ready') continue;
+      const row = usage.get(r.reviewedByUserId) ?? { notReady: 0, decisions: 0 };
+      row.decisions += 1;
+      if (outcome === 'not_ready') row.notReady += 1;
+      usage.set(r.reviewedByUserId, row);
+    }
+    const qaIds = new Set([...allUsers.filter((u) => u.role === UserRole.QA && u.email !== smokeTestEmail).map((u) => u.id), ...usage.keys()]);
+    const qaNotReadyUsage: QaNotReadyUsageRow[] = [...qaIds]
+      .map((id) => {
+        const u = userById.get(id);
+        const row = usage.get(id) ?? { notReady: 0, decisions: 0 };
+        return {
+          userId: id,
+          name: u ? u.fullName || u.email : `User #${id}`,
+          notReady: row.notReady,
+          decisions: row.decisions,
+          percent: row.decisions > 0 ? round2((row.notReady / row.decisions) * 100) : null,
+        };
+      })
+      .sort((a, b) => b.notReady - a.notReady || a.name.localeCompare(b.name));
 
     const flaggedRows = developerRows.filter((d) => d.flagged);
     const lateToQaTotal = flaggedRows.reduce((sum, d) => sum + d.lateToQa.count, 0);
@@ -405,6 +539,8 @@ export class NonComplianceReportService {
       projectId: projectId ?? null,
       summary,
       developers: developerRows,
+      qaNotReadyUsage,
+      notReadySince: NOT_READY_SINCE,
       thresholds,
       deferredDimensions: [],
     };

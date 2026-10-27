@@ -6,6 +6,7 @@ import { QaRejectTaskDto } from './dto/qa-reject-task.dto';
 import { QaEscalateTaskDto } from './dto/qa-escalate-task.dto';
 import { QaRevertDecisionDto } from './dto/qa-revert-decision.dto';
 import { QaSendBackDto } from './dto/qa-send-back.dto';
+import { QaNotReadyTaskDto, SetQaNotReadyReasonsDto } from './dto/qa-not-ready.dto';
 import { UserRole } from '../users/user.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -24,6 +25,10 @@ const ROLES_ALLOWED_TO_REVERT_QA_DECISION: UserRole[] = [UserRole.PROGRAM_MANAGE
 // pair; sending it to a different developer is Program Manager only
 // (checked in the service).
 const ROLES_ALLOWED_TO_SEND_BACK_FROM_QA: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+// QA "Not ready for testing" reasons (2026-10-27): QA reads them to pick
+// one, Admin and Program Manager edit them.
+const ROLES_ALLOWED_TO_READ_NOT_READY_REASONS: UserRole[] = [UserRole.QA, UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
+const ROLES_ALLOWED_TO_EDIT_NOT_READY_REASONS: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.ADMIN];
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -62,6 +67,13 @@ export class TaskQaReviewsController {
     return this.qaReviewsService.reject(id, dto, currentUser, req.user.tenantId);
   }
 
+  // The other kind of Reject - QA could not start testing (2026-10-27).
+  @Patch(':id/qa-not-ready')
+  async markNotReady(@Param('id', ParseIntPipe) id: number, @Body() dto: QaNotReadyTaskDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.qaReviewsService.markNotReady(id, dto, currentUser, req.user.tenantId);
+  }
+
   @Patch(':id/qa-escalate')
   async escalate(@Param('id', ParseIntPipe) id: number, @Body() dto: QaEscalateTaskDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -84,5 +96,34 @@ export class TaskQaReviewsController {
       throw new ForbiddenException('Only a Program Manager or Admin can send a task back from QA to the developer.');
     }
     return this.qaReviewsService.sendBackFromQa(id, dto, currentUser, req.user.tenantId);
+  }
+}
+
+// Its own 'qa-review' prefix - a 'tasks/qa-not-ready-reasons' route would
+// be swallowed by TasksController's 'tasks/:id'.
+@Controller('qa-review')
+@UseGuards(JwtAuthGuard)
+export class QaReviewSettingsController {
+  constructor(
+    private qaReviewsService: TaskQaReviewsService,
+    private usersService: UsersService,
+  ) {}
+
+  @Get('not-ready-reasons')
+  async notReadyReasons(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_READ_NOT_READY_REASONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA, a Program Manager or Admin can see the not-ready reasons.');
+    }
+    return { reasons: await this.qaReviewsService.notReadyReasons(req.user.tenantId) };
+  }
+
+  @Patch('not-ready-reasons')
+  async setNotReadyReasons(@Body() dto: SetQaNotReadyReasonsDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_EDIT_NOT_READY_REASONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only a Program Manager or Admin can edit the not-ready reasons.');
+    }
+    return { reasons: await this.qaReviewsService.setNotReadyReasons(dto.reasons, currentUser, req.user.tenantId) };
   }
 }

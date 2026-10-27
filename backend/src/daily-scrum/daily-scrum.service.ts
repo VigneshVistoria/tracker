@@ -34,7 +34,7 @@ const BLOCKING_DEFECT_RESOLVED_STATUSES = ['Pass', 'Junk', 'Closed'];
 // QA's queue numbers - same definitions the QA Review and My Defects pages
 // count with.
 const QA_PENDING_STATUSES = ['Feedback', 'Re-Feedback'];
-const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA'];
+const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA', 'Not Ready for Testing'];
 
 // Audit actions that tell us a ticket was given to someone.
 const ASSIGNMENT_ACTIONS = [
@@ -296,6 +296,18 @@ export class DailyScrumService {
       if (r.status === 'withdrawn') {
         if (r.reviewedAt && r.reviewedAt >= since) {
           raw.push({ userId: r.submittedByUserId, at: r.reviewedAt, kind: 'review_sent_back', taskId: r.taskId, title: '', detail: 'PM, before QA review' });
+        }
+        continue;
+      }
+      // QA could not start testing (2026-10-27) - sent back to the
+      // developer, but not a review verdict.
+      if (r.status === 'not_ready') {
+        if (r.reviewedAt && r.reviewedAt >= since) {
+          const detail = `QA, not ready for testing${r.notReadyReason ? `: ${r.notReadyReason}` : ''}`;
+          raw.push({ userId: r.submittedByUserId, at: r.reviewedAt, kind: 'review_sent_back', taskId: r.taskId, title: '', detail });
+          if (r.reviewedByUserId) {
+            raw.push({ userId: r.reviewedByUserId, at: r.reviewedAt, kind: 'reviewed_not_ready', taskId: r.taskId, title: '', detail });
+          }
         }
         continue;
       }

@@ -42,6 +42,9 @@ const TILES = [
   { key: 'defectsRaised', label: 'Defects raised', when: 'Raised', defectsOnly: true },
   { key: 'approved', label: 'Approved', when: 'Approved' },
   { key: 'rejected', label: 'Rejected', when: 'Last rejected', accent: 'danger' },
+  // 2026-10-27: QA could not start testing - not a rejection, not in the
+  // pass rate.
+  { key: 'notReady', label: 'Not ready', when: 'Last returned', accent: 'warning', hint: 'Returned as not ready for testing - not a rejection' },
   { key: 'waiting', label: 'Waiting for QA', when: 'Submitted', rightNow: true, accent: 'warning', hint: 'First-time submissions' },
   { key: 'refeedback', label: 'Re-feedback', when: 'Resubmitted', rightNow: true, accent: 'warning', hint: 'Resubmitted after an earlier QA round' },
 ];
@@ -154,6 +157,7 @@ export default function QaReviewSummary({ user }) {
     const showRounds = activeTile === 'refeedback';
     const showRejections = activeTile === 'rejected' || activeTile === 'refeedback';
     const showApprovals = activeTile === 'approved';
+    const showNotReady = activeTile === 'notReady';
     return [
       {
         key: 'id',
@@ -218,6 +222,12 @@ export default function QaReviewSummary({ user }) {
         : []),
       ...(showApprovals
         ? [{ key: 'approvals', header: <ColHeader icon={Repeat} label="Approvals" />, width: 100, sortable: true, render: (r) => r.approvals ?? '—' }]
+        : []),
+      ...(showNotReady
+        ? [
+            { key: 'notReadyReason', header: <ColHeader icon={Tag} label="Reason" />, sortable: true, render: (r) => r.notReadyReason || '—' },
+            { key: 'notReadyCount', header: <ColHeader icon={Repeat} label="Times" />, width: 80, sortable: true, render: (r) => r.notReadyCount ?? '—' },
+          ]
         : []),
     ];
   }, [activeTile, activeDef, timeZone, soleQaName]);

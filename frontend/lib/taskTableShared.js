@@ -18,6 +18,8 @@ export const TASK_STATUSES = [
   'PM Feedback',
   // Return to QA (2026-10-18) - see backend/src/tasks/return-to-qa.ts.
   'Returned to QA',
+  // QA could not start testing (2026-10-27) - see backend/src/tasks/qa-not-ready.ts.
+  'Not Ready for Testing',
   'Escalated',
   'Failed',
   'Pass',
@@ -82,7 +84,9 @@ export const LEGEND_ITEMS = [
   { label: 'Closed', swatch: 'var(--ds-color-gray-300)', dot: 'var(--ds-color-gray-500)' },
   // PM review gate (2026-10-13) - --ds-* tokens, same reason as Hold/Closed.
   { label: 'Pending PM Review', swatch: 'var(--ds-color-warning-tint)', dot: 'var(--ds-color-warning)' },
-  { label: 'PM Feedback', swatch: 'var(--ds-color-error-tint)', dot: 'var(--ds-color-error)' },
+  // Not Ready for Testing (2026-10-27) shares PM Feedback's hue - both are
+  // "sent back to the developer, not a QA rejection".
+  { label: 'PM Feedback / Not Ready for Testing', swatch: 'var(--ds-color-error-tint)', dot: 'var(--ds-color-error)' },
   // Return to QA (2026-10-18) - --ds-* tokens, same reason as Hold/Closed.
   { label: 'Returned to QA', swatch: 'var(--ds-color-primary-100)', dot: 'var(--ds-color-primary-500)' },
 ];
@@ -107,6 +111,7 @@ export function buildRowTintClass(styles) {
     Closed: styles.rowTintClosed,
     'Pending PM Review': styles.rowTintPmReview,
     'PM Feedback': styles.rowTintPmFeedback,
+    'Not Ready for Testing': styles.rowTintPmFeedback,
     'Returned to QA': styles.rowTintReturnedToQa,
   };
 }
@@ -128,6 +133,7 @@ export function buildRowRailClass(styles) {
     Closed: styles.railClosed,
     'Pending PM Review': styles.railPmReview,
     'PM Feedback': styles.railPmFeedback,
+    'Not Ready for Testing': styles.railPmFeedback,
     'Returned to QA': styles.railReturnedToQa,
   };
 }
@@ -155,6 +161,7 @@ const STATUS_BADGE_STYLE = {
   'Pending PM Review': { background: 'var(--ds-color-warning-tint)', color: 'var(--ds-color-warning-dark)' },
   'PM Feedback': { background: 'var(--ds-color-error-tint)', color: 'var(--ds-color-error-dark)' },
   'Returned to QA': { background: 'var(--ds-color-primary-100)', color: 'var(--ds-color-primary-800)' },
+  'Not Ready for Testing': { background: 'var(--ds-color-error-tint)', color: 'var(--ds-color-error-dark)' },
 };
 
 export function statusBadgeStyle(status) {
@@ -174,7 +181,8 @@ export const STATUS_TAB_GROUPS = [
     key: 'DevelopmentFailed',
     label: 'Development / Failed',
     // PM Feedback: the PM sent it back - the developer's to work on too.
-    statuses: ['Development', 'Failed', 'Released - With Showstoppers', 'PM Feedback'],
+    // Not Ready for Testing (2026-10-27): QA could not test it - same.
+    statuses: ['Development', 'Failed', 'Released - With Showstoppers', 'PM Feedback', 'Not Ready for Testing'],
   },
   // PM review gate (2026-10-13) - waiting for a Program Manager before QA.
   { key: 'PmReview', label: 'PM Review', statuses: ['Pending PM Review'] },

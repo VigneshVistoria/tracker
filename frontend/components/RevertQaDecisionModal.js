@@ -10,8 +10,8 @@ const REASON_MAX = 500;
 
 // PM/Admin undoing a mistaken QA approve/reject (2026-10-13). Same shape as
 // JunkReasonModal: a required reason, the server's error shown in place,
-// and the dialog stays open on failure. `decision` is 'approved' or
-// 'rejected'; `submit` receives the trimmed reason.
+// and the dialog stays open on failure. `decision` is 'approved',
+// 'rejected' or 'not_ready'; `submit` receives the trimmed reason.
 export default function RevertQaDecisionModal({ open, taskId, decision, decidedBy, onClose, submit }) {
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -31,7 +31,7 @@ export default function RevertQaDecisionModal({ open, taskId, decision, decidedB
 
   const trimmed = reason.trim();
   const valid = trimmed.length >= REASON_MIN && trimmed.length <= REASON_MAX;
-  const what = decision === 'approved' ? 'approval' : 'rejection';
+  const what = decision === 'approved' ? 'approval' : decision === 'not_ready' ? '"not ready for testing" decision' : 'rejection';
 
   const handleConfirm = async () => {
     if (busy) return;

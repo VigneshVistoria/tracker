@@ -33,6 +33,14 @@ export class TeamSettings {
   @Column({ default: true })
   pmReminderToAdmin: boolean;
 
+  // QA Reject as "Not ready for testing" (2026-10-27): the reasons QA picks
+  // from, edited by Admin and Program Manager from Admin -> QA Review
+  // Settings. No row, or an empty list (never saved), means
+  // DEFAULT_QA_NOT_READY_REASONS (tasks/qa-not-ready.ts); saving needs at
+  // least one reason.
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  qaNotReadyReasons: string[];
+
   @UpdateDateColumn()
   updatedAt: Date;
 

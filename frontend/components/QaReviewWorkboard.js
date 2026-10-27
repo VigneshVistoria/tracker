@@ -61,6 +61,9 @@ const CARD_DEFS = [
   { key: 'overdue', label: 'Overdue', statusFilter: 'All', overdue: true },
   { key: 'approved', label: 'Approved', statusFilter: 'Pass' },
   { key: 'rejected', label: 'Rejected', statusFilter: 'Failed' },
+  // QA could not start testing (2026-10-27) - back with the developer, not
+  // a rejection, so its own card.
+  { key: 'notReady', label: 'Not ready', statusFilter: 'Not Ready for Testing' },
 ];
 
 // Same 5 cards as QA Review, just the first one relabeled - "Open" (not
@@ -96,7 +99,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
   const [onlyReviewOverdue, setOnlyReviewOverdue] = useState(false);
 
   const [tasks, setTasks] = useState([]);
-  const [statCounts, setStatCounts] = useState({ pending: 0, resubmissions: 0, overdue: 0, approved: 0, rejected: 0 });
+  const [statCounts, setStatCounts] = useState({ pending: 0, resubmissions: 0, overdue: 0, approved: 0, rejected: 0, notReady: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -363,6 +366,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
                 {showDefectColumns && <option value="Returned to QA">Returned to QA</option>}
                 <option value="Pass">Approved</option>
                 <option value="Failed">Rejected</option>
+                <option value="Not Ready for Testing">Not ready for testing</option>
               </select>
             </div>
 

@@ -92,6 +92,7 @@ export class PdfNonComplianceReportService {
     }
     this.renderFlaggedDetail(doc, report);
     this.renderCompliantList(doc, report);
+    this.renderQaNotReadyUsage(doc, report);
     this.renderDeferredDimensions(doc, report);
     if (metrics) this.renderPerformanceMetrics(doc, metrics);
 
@@ -318,6 +319,28 @@ export class PdfNonComplianceReportService {
         dev.rejectionRate.flagged,
       );
 
+      this.renderMetricLine(doc, 'Test failed (QA + peer review, info only)', `${dev.testFailed.count}`, false);
+      dev.testFailed.items.slice(0, 8).forEach((item) => {
+        doc
+          .fontSize(8.5)
+          .fillColor(INK_SOFT)
+          .text(`   #${item.taskId} ${item.title} - ${item.reviewType === 'peer' ? 'peer review' : 'QA'}${item.reviewerName ? ` (${item.reviewerName})` : ''}${item.rejectedAt ? ` on ${item.rejectedAt}` : ''}`);
+      });
+      if (dev.testFailed.items.length > 8) {
+        doc.fontSize(8.5).fillColor(MUTED).text(`   ...and ${dev.testFailed.items.length - 8} more.`);
+      }
+
+      this.renderMetricLine(doc, 'Not ready for testing (info only)', `${dev.incompleteSubmissions.count}`, false);
+      dev.incompleteSubmissions.items.slice(0, 8).forEach((item) => {
+        doc
+          .fontSize(8.5)
+          .fillColor(INK_SOFT)
+          .text(`   #${item.taskId} ${item.title} - ${item.reason ?? 'not ready'}${item.qaName ? `, by ${item.qaName}` : ''} on ${item.markedAt}${item.comment ? `: "${item.comment}"` : ''}`);
+      });
+      if (dev.incompleteSubmissions.items.length > 8) {
+        doc.fontSize(8.5).fillColor(MUTED).text(`   ...and ${dev.incompleteSubmissions.items.length - 8} more.`);
+      }
+
       this.renderMetricLine(doc, 'PM Interventions', `${dev.escalations.count}`, dev.escalations.flagged);
       dev.escalations.items.forEach((item) => {
         doc.fontSize(8.5).fillColor(INK_SOFT).text(`   #${item.taskId} ${item.title} on ${item.escalatedAt}`);
@@ -377,7 +400,29 @@ export class PdfNonComplianceReportService {
         .text(`${devName(dev)}  `, { continued: true })
         .font('Helvetica')
         .fillColor(INK_SOFT)
-        .text(`- ${dev.lateToQa.count} late to QA, ${rateText}, ${dev.escalations.count} interventions, ${dev.overdueInReview.count} overdue in review (info)`);
+        .text(`- ${dev.lateToQa.count} late to QA, ${rateText}, ${dev.escalations.count} interventions, ${dev.testFailed.count} test failed, ${dev.incompleteSubmissions.count} not ready for testing (info), ${dev.overdueInReview.count} overdue in review (info)`);
+    });
+  }
+
+  // Information only (2026-10-27): how often each QA returned a task as
+  // "Not ready for testing", out of their QA test outcomes in the period.
+  private renderQaNotReadyUsage(doc: PDFKit.PDFDocument, report: NonComplianceReportResult) {
+    doc.moveDown(0.6);
+    this.hr(doc);
+    doc.moveDown(0.3);
+    doc.fontSize(13).font('Helvetica-Bold').fillColor(INK).text('QA "Not ready" returns (information only)');
+    doc.font('Helvetica');
+    doc.fontSize(9).fillColor(INK_SOFT).text(`Out of each QA's approvals, rejections and not-ready returns on submissions in the period. Never flagged. Not ready counts start on ${report.notReadySince}.`);
+    doc.moveDown(0.2);
+    if (report.qaNotReadyUsage.length === 0) {
+      doc.fontSize(9).fillColor(MUTED).text('No QA users found.');
+      return;
+    }
+    report.qaNotReadyUsage.forEach((qa) => {
+      doc
+        .fontSize(9.5)
+        .fillColor(INK_SOFT)
+        .text(`${qa.name} - ${qa.notReady} not ready of ${qa.decisions} decision(s)${qa.percent !== null ? ` (${qa.percent}%)` : ''}`);
     });
   }
 

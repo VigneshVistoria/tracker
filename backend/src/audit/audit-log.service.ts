@@ -110,6 +110,10 @@ export const AuditActions = {
   // PM/Admin undid a mistaken QA approve/reject (2026-10-13).
   TASK_QA_DECISION_REVERTED: 'task_qa_decision_reverted',
   TASK_PM_SENT_BACK_FROM_QA: 'task_pm_sent_back_from_qa',
+  // QA Reject as "Not ready for testing" (2026-10-27) - not a rejection;
+  // see backend/src/tasks/qa-not-ready.ts.
+  TASK_QA_NOT_READY: 'task_qa_not_ready',
+  QA_NOT_READY_REASONS_UPDATED: 'qa_not_ready_reasons_updated',
   // PM review gate (2026-10-13): developer submitted into PM review;
   // PM sent it on to QA / back to the developer; the gate was switched
   // on/off for a project.
