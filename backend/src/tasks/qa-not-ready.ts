@@ -28,6 +28,9 @@ export const DEFAULT_QA_NOT_READY_REASONS = [
   'Environment not available',
   'Blocked by a dependency',
   'Description unclear',
+  // Defect triage Stage 2 (2026-10-27): the developer's submission
+  // checklist was filled in but not usable.
+  'Submission incomplete',
 ];
 
 export const QA_NOT_READY_REASON_MAX = 100;

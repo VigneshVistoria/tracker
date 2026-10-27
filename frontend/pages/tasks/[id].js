@@ -33,6 +33,14 @@ import Breadcrumbs from '../../components/ui/Breadcrumbs';
 import Avatar from '../../components/ui/Avatar';
 import DefectScreenshots from '../../components/DefectScreenshots';
 import DefectTriagePanel from '../../components/DefectTriagePanel';
+import {
+  EMPTY_CHECKLIST,
+  SubmissionChecklistFields,
+  SubmissionChecklistSummary,
+  checklistFromRound,
+  checklistPayload,
+  missingChecklist,
+} from '../../components/SubmissionChecklist';
 import DefectClassificationFields, {
   EMPTY_CLASSIFICATION,
   classificationPayload,
@@ -377,6 +385,14 @@ export default function TaskDetailPage() {
   // Defect triage (2026-10-27): lists + which projects have it on - linked
   // defects of a rejection are classified when the task's project does.
   const [triageOptions, setTriageOptions] = useState(null);
+  // Submission checklist (defect triage Stage 2, 2026-10-27): the lists and
+  // rules, the developer's answers (pre-filled from the last round once),
+  // and screenshots pasted as self-test evidence - uploaded to the round
+  // right after Submit.
+  const [checklistOptions, setChecklistOptions] = useState(null);
+  const [checklist, setChecklist] = useState(EMPTY_CHECKLIST);
+  const [selfTestShots, setSelfTestShots] = useState([]);
+  const checklistPrefilledRef = useRef(null);
   const [linkedClassificationAttempted, setLinkedClassificationAttempted] = useState(false);
   // Loaded once on mount (not per-task) - see loadArtifactUrlHistory/
   // recordArtifactUrlHistory above.
@@ -583,6 +599,7 @@ export default function TaskDetailPage() {
     apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map((u) => ({ ...userToOption(u), role: u.role })))).catch(() => {});
     apiFetch('/projects').then(setProjects).catch(() => {});
     if (parsed.role === 'qa') apiFetch('/defect-triage/options').then(setTriageOptions).catch(() => {});
+    apiFetch('/submission-checklist/options').then(setChecklistOptions).catch(() => {});
     if (MANAGE_ROLES.includes(parsed.role)) {
       apiFetch('/users/assignable').then((rows) => setAssignableUsers(rows.map(userToOption))).catch(() => {});
     }
@@ -752,6 +769,15 @@ export default function TaskDetailPage() {
     };
   }, [user?.role]);
 
+  // A resubmission starts from the previous round's checklist (once per task).
+  useEffect(() => {
+    if (!task || checklistPrefilledRef.current === task.id) return;
+    const last = qaReviews.find((r) => r.submissionChecklist);
+    if (!last) return;
+    checklistPrefilledRef.current = task.id;
+    setChecklist(checklistFromRound(last.submissionChecklist));
+  }, [task, qaReviews]);
+
   if (!user || loading) {
     return (
       <AppShell>
@@ -835,6 +861,8 @@ export default function TaskDetailPage() {
     !(task.isDefect && task.triageStatus === 'pending') &&
     !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Returned to QA', 'Disputed'].includes(task.status);
   const linkedTriageOn = !!triageOptions?.enabledProjectIds?.includes(task.projectId);
+  // Submission checklist - QA submissions only (Peer Review is not affected).
+  const checklistOn = !!checklistOptions?.enabledProjectIds?.includes(task.projectId);
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit() - a defect always goes to QA, whatever its Peer Review flag.
   const usesPeerReview = !!task.peerReviewEnabled && !task.isDefect;
@@ -1578,6 +1606,14 @@ export default function TaskDetailPage() {
       setError('Resolution, a Type and URL for every artifact, and Actual Hours are all required to submit for QA testing.');
       return;
     }
+    const checklistCtx = { options: checklistOptions, isDefect: task.isDefect, artifactTypes: artifacts.map((row) => row.type), screenshotCount: selfTestShots.length };
+    if (checklistOn) {
+      const missing = missingChecklist(checklist, checklistCtx);
+      if (missing.length > 0) {
+        setError(`The submission checklist is not complete. Missing: ${missing.join('; ')}.`);
+        return;
+      }
+    }
     setSubmittingQa(true);
     try {
       const submitted = await apiFetch(`/tasks/${task.id}/qa-submit`, {
@@ -1586,12 +1622,24 @@ export default function TaskDetailPage() {
           resolution,
           actualHours: Number(actualHours),
           artifacts: artifacts.map((row) => ({ type: row.type, url: row.url.trim() })),
+          ...(checklistOn ? { checklist: checklistPayload(checklist, checklistCtx) } : {}),
         }),
       });
-      showToast(submitted?.reviewType === 'pm' ? 'Submitted - a Program Manager reviews it before QA' : 'Submitted for QA testing', 'success');
+      // Self-test screenshots go on the new round; a failure keeps them for Retry.
+      const failedShots = checklistOn
+        ? await uploadShotsAfterDecision([{ path: `/tasks/${task.id}/qa-reviews/${submitted.id}/attachments`, shots: selfTestShots, label: 'your self-test evidence' }])
+        : 0;
+      showToast(
+        `${submitted?.reviewType === 'pm' ? 'Submitted - a Program Manager reviews it before QA' : 'Submitted for QA testing'}${
+          failedShots ? ' - some screenshots were not attached, see Retry above' : ''
+        }`,
+        'success',
+      );
       setResolution('');
       setArtifacts([{ type: '', url: '' }]);
       setActualHours('');
+      setSelfTestShots([]);
+      if (checklistOn) loadDecisionShots();
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
         apiFetch(`/tasks/${task.id}/qa-reviews`),
@@ -3027,7 +3075,7 @@ export default function TaskDetailPage() {
             {task.pmReviewGateOn ? 'Submit for review (PM first, then QA)' : 'Submit for QA Testing'}
           </h2>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdResolution">Resolution</label>
+            <label className={styles.label} htmlFor="tdResolution">{checklistOn ? 'What changed (resolution)' : 'Resolution'}</label>
             <RichTextEditor
               id="tdResolution"
               placeholder="Describe what was done / fixed"
@@ -3082,6 +3130,17 @@ export default function TaskDetailPage() {
               + Add Another Artifact
             </button>
           </div>
+          {checklistOn && (
+            <SubmissionChecklistFields
+              value={checklist}
+              onChange={setChecklist}
+              options={checklistOptions}
+              isDefect={task.isDefect}
+              screenshots={selfTestShots}
+              onScreenshotsChange={setSelfTestShots}
+              disabled={submittingQa}
+            />
+          )}
           <div className={styles.field} style={{ maxWidth: '260px' }}>
             <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
             <input
@@ -3208,6 +3267,7 @@ export default function TaskDetailPage() {
           </p>
           <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
           <RichTextDisplay value={latestQaReview.resolution} />
+          <SubmissionChecklistSummary checklist={latestQaReview.submissionChecklist} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Evidence: {artifact.type} &middot;{' '}
@@ -3277,7 +3337,7 @@ export default function TaskDetailPage() {
         <div className={styles.card} role="alert" style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
           <h2 className={styles.cardTitle}>Some screenshots were not attached</h2>
           <p className={styles.helpText} style={{ marginTop: 0 }}>
-            Your decision was saved. These screenshots are still here - try again, or discard them.
+            Your decision or submission was saved. These screenshots are still here - try again, or discard them.
           </p>
           <ul style={{ margin: '0 0 var(--space-3)', paddingLeft: 'var(--space-5)' }}>
             {failedShotUploads.map((job) => (
@@ -3304,6 +3364,7 @@ export default function TaskDetailPage() {
           </h2>
           <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
           <RichTextDisplay value={latestQaReview.resolution} />
+          <SubmissionChecklistSummary checklist={latestQaReview.submissionChecklist} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Artifact: {artifact.type} &middot;{' '}
@@ -3738,6 +3799,7 @@ export default function TaskDetailPage() {
           </h2>
           <p style={{ margin: 0, fontWeight: 600 }}>Resolution:</p>
           <RichTextDisplay value={latestQaReview.resolution} />
+          <SubmissionChecklistSummary checklist={latestQaReview.submissionChecklist} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Artifact: {artifact.type} &middot;{' '}

@@ -69,6 +69,16 @@ const DEFECT_TRIAGE_COLUMNS: Record<string, string[]> = {
   project_tasks: ['severity', 'defectType', 'defectOrigin', 'foundInBuild', 'foundInEnvironment', 'triageStatus'],
 };
 
+// Submission checklist (defect triage Stage 2, 2026-10-27) - same: the new
+// columns are dropped from what synchronize made and re-added by the real
+// migration; team_settings.submissionChecklistSettings is checked with the
+// rest of team_settings.
+const SUBMISSION_CHECKLIST_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-submission-checklist.sql');
+const SUBMISSION_CHECKLIST_COLUMNS: Record<string, string[]> = {
+  projects: ['submissionChecklistEnabled'],
+  task_qa_reviews: ['submissionChecklist'],
+};
+
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
     const p = path.join(dir, d.name);
@@ -132,6 +142,11 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(DEFECT_TRIAGE_MIGRATION, 'utf8'));
   // Safe to run twice too.
   await base.query(fs.readFileSync(DEFECT_TRIAGE_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(SUBMISSION_CHECKLIST_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(SUBMISSION_CHECKLIST_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(SUBMISSION_CHECKLIST_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -217,7 +232,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS)]) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,

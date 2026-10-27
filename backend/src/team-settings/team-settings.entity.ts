@@ -50,6 +50,13 @@ export class TeamSettings {
   @Column({ type: 'jsonb', default: () => "'{}'" })
   defectTriageSettings: Record<string, unknown>;
 
+  // Developer submission checklist (2026-10-27): root causes, which items
+  // are required per kind, which artifact types count as link / evidence,
+  // minimum text length. '{}' or a missing key means the defaults
+  // (tasks/submission-checklist.ts, resolveSubmissionChecklistSettings()).
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  submissionChecklistSettings: Record<string, unknown>;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

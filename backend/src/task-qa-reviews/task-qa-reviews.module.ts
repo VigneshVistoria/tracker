@@ -8,6 +8,8 @@ import { QaReviewSettingsController, TaskQaReviewsController } from './task-qa-r
 import { PmReviewsService } from './pm-reviews.service';
 import { PmReviewsController } from './pm-reviews.controller';
 import { PmReviewReminderService } from './pm-review-reminder.service';
+import { SubmissionChecklistService } from './submission-checklist.service';
+import { SubmissionChecklistController } from './submission-checklist.controller';
 import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TenantsModule } from '../tenants/tenants.module';
 import { ProjectTask } from '../tasks/project-task.entity';
@@ -28,8 +30,8 @@ import { NoteQualityModule } from '../note-quality/note-quality.module';
     GuardsModule,
     NoteQualityModule,
   ],
-  controllers: [TaskQaReviewsController, QaReviewSettingsController, PmReviewsController],
-  providers: [TaskQaReviewsService, PmReviewsService, PmReviewReminderService],
+  controllers: [TaskQaReviewsController, QaReviewSettingsController, PmReviewsController, SubmissionChecklistController],
+  providers: [TaskQaReviewsService, PmReviewsService, PmReviewReminderService, SubmissionChecklistService],
   exports: [TaskQaReviewsService],
 })
 export class TaskQaReviewsModule {}

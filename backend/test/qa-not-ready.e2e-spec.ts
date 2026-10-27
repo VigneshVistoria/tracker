@@ -337,7 +337,7 @@ describe('QA "Not ready for testing" (e2e)', () => {
   describe('reasons setting', () => {
     const reasonsUrl = '/qa-review/not-ready-reasons';
 
-    it('QA, PM and Admin read the six defaults; others get 403', async () => {
+    it('QA, PM and Admin read the seven defaults; others get 403', async () => {
       for (const u of [f.users.qaB, f.users.pm, f.users.admin]) {
         expect((await get(u, reasonsUrl).expect(200)).body.reasons).toEqual([
           'Build not deployed',
@@ -346,6 +346,7 @@ describe('QA "Not ready for testing" (e2e)', () => {
           'Environment not available',
           'Blocked by a dependency',
           'Description unclear',
+          'Submission incomplete',
         ]);
       }
       await get(f.users.devA, reasonsUrl).expect(403);

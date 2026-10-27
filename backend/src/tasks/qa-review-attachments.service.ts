@@ -39,13 +39,21 @@ export class QaReviewAttachmentsService {
     const task = await this.findViewable(currentUser, tenantId, taskId);
     const round = await this.reviewsRepository.findOne({ where: { id: reviewId, taskId: task.id, tenantId } });
     if (!round) throw new NotFoundException('That review round is not on this task.');
-    if (currentUser.role !== UserRole.QA || round.reviewType !== 'qa' || !DECIDED_STATUSES.includes(round.status) || round.reviewedByUserId !== currentUser.id) {
+    // Submission checklist (2026-10-27): the developer's self-test
+    // screenshots go on their own round, while it waits for review, and
+    // only when the checklist said there would be some.
+    const promised = Number((round.submissionChecklist as any)?.selfTestScreenshots) || 0;
+    const isSubmitterEvidence = round.submittedByUserId === currentUser.id && round.status === 'pending' && promised > 0;
+    const isQaDecision =
+      currentUser.role === UserRole.QA && round.reviewType === 'qa' && DECIDED_STATUSES.includes(round.status) && round.reviewedByUserId === currentUser.id;
+    if (!isSubmitterEvidence && !isQaDecision) {
       throw new ForbiddenException('Only the QA who made this decision can attach screenshots to it.');
     }
     if (!files?.length) throw new BadRequestException('Choose at least one screenshot.');
-    const existing = await this.attachmentsRepository.count({ where: { taskQaReviewId: round.id, tenantId } });
+    // Each side has its own limit of MAX_ATTACHMENTS_PER_TASK per round.
+    const existing = await this.attachmentsRepository.count({ where: { taskQaReviewId: round.id, tenantId, uploadedByUserId: currentUser.id } });
     if (existing + files.length > MAX_ATTACHMENTS_PER_TASK) {
-      throw new BadRequestException(`A decision can have at most ${MAX_ATTACHMENTS_PER_TASK} screenshots.`);
+      throw new BadRequestException(`A ${isSubmitterEvidence ? 'submission' : 'decision'} can have at most ${MAX_ATTACHMENTS_PER_TASK} screenshots.`);
     }
 
     const prepared = prepareImageUploads(files, `${tenantId}/${task.id}/qa-review-${round.id}`);

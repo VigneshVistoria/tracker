@@ -182,6 +182,8 @@ export const NAV_SECTIONS = [
       { href: '/admin/qa-review-settings', label: 'QA Review Settings', icon: FlaskConical, roles: [ADMIN, PM] },
       // Defect triage (2026-10-27) - matches DEFECT_TRIAGE_SETTINGS_ROLES.
       { href: '/admin/defect-triage-settings', label: 'Defect Triage Settings', icon: ShieldQuestion, roles: [ADMIN, PM] },
+      // Defect triage Stage 2 (2026-10-27) - matches SUBMISSION_CHECKLIST_SETTINGS_ROLES.
+      { href: '/admin/submission-checklist-settings', label: 'Submission Checklist Settings', icon: ListChecks, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

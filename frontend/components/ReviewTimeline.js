@@ -5,6 +5,7 @@ import { statusLabel } from '../lib/taskTableShared';
 import Avatar from './ui/Avatar';
 import styles from '../styles/reviewTimeline.module.css';
 import { ScreenshotGallery } from './DefectScreenshots';
+import { SubmissionChecklistSummary } from './SubmissionChecklist';
 
 const OUTCOME = {
   pending: { icon: Clock, tone: styles.pending, text: 'Awaiting review' },
@@ -67,6 +68,14 @@ export default function ReviewTimeline({ reviews, decisionScreenshots = [] }) {
                 Submitted by <Avatar name={r.submittedByFullName} size="xs" /> {r.submittedByFullName || 'Unknown'} · {formatDate(r.submittedAt)}
               </p>
               {resolution && <p className={styles.text}>{resolution}</p>}
+              {/* Submission checklist (2026-10-27) - null before Stage 2 or with it off. */}
+              <SubmissionChecklistSummary checklist={r.submissionChecklist} />
+              <ScreenshotGallery
+                id={`roundSelfTest-${r.id}`}
+                label="Self-test screenshots:"
+                files={decisionScreenshots.filter((a) => a.taskQaReviewId === r.id && a.uploadedByUserId === r.submittedByUserId)}
+                filePath={(id) => `/tasks/qa-review-attachments/${id}`}
+              />
               {r.status !== 'pending' && (
                 <p className={styles.meta}>
                   <decided.icon size={12} aria-hidden="true" />
@@ -78,7 +87,7 @@ export default function ReviewTimeline({ reviews, decisionScreenshots = [] }) {
               <ScreenshotGallery
                 id={`roundScreenshots-${r.id}`}
                 label="QA screenshots:"
-                files={decisionScreenshots.filter((a) => a.taskQaReviewId === r.id)}
+                files={decisionScreenshots.filter((a) => a.taskQaReviewId === r.id && a.uploadedByUserId !== r.submittedByUserId)}
                 filePath={(id) => `/tasks/qa-review-attachments/${id}`}
               />
               {r.status === 'reverted' && (

@@ -30,6 +30,13 @@ export class Project {
   @Column({ default: false })
   defectTriageEnabled: boolean;
 
+  // Developer submission checklist (defect triage Stage 2, 2026-10-27):
+  // when on, Submit for QA needs the checklist complete
+  // (backend/src/tasks/submission-checklist.ts). Admin or Program Manager
+  // switches it per project; default off.
+  @Column({ default: false })
+  submissionChecklistEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

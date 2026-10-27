@@ -1,6 +1,11 @@
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  Max,
+  MaxLength,
   IsEnum,
   IsNumber,
   IsString,
@@ -14,6 +19,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TaskArtifactType } from '../task-qa-review.entity';
+import { CHECKLIST_SHORT_MAX, CHECKLIST_TEXT_MAX, MAX_SELF_TEST_SCREENSHOTS } from '../../tasks/submission-checklist';
 
 export class QaSubmitTaskArtifactDto {
   @IsEnum(TaskArtifactType, { message: 'A valid Artifact Type is required.' })
@@ -39,6 +45,60 @@ class UniqueTaskArtifactTypesConstraint implements ValidatorConstraintInterface 
   }
 }
 
+// Developer submission checklist (defect triage Stage 2, 2026-10-27) - only
+// checked when the task's project has it on; see tasks/submission-checklist.ts.
+export class SubmissionChecklistDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_SHORT_MAX)
+  rootCause?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_TEXT_MAX)
+  rootCauseNote?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_TEXT_MAX)
+  testSteps?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_TEXT_MAX)
+  testData?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_TEXT_MAX)
+  affectedAreas?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  noAreasAffected?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_SHORT_MAX)
+  build?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(CHECKLIST_SHORT_MAX)
+  environment?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmedBuild?: boolean;
+
+  // Screenshots pasted on the form, uploaded to the round right after.
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_SELF_TEST_SCREENSHOTS)
+  selfTestScreenshots?: number;
+}
+
 export class QaSubmitTaskDto {
   @IsString()
   @MinLength(1, { message: 'Resolution is required.' })
@@ -56,4 +116,9 @@ export class QaSubmitTaskDto {
   @Type(() => QaSubmitTaskArtifactDto)
   @Validate(UniqueTaskArtifactTypesConstraint)
   artifacts: QaSubmitTaskArtifactDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SubmissionChecklistDto)
+  checklist?: SubmissionChecklistDto;
 }

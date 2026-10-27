@@ -16,6 +16,7 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { Project } from '../projects/project.entity';
 import { PM_FEEDBACK_STATUS, PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { DEFAULT_QA_NOT_READY_REASONS, NOT_READY_STATUS, QA_NOT_READY_COMMENT_MIN, QA_NOT_READY_REASON_MAX } from '../tasks/qa-not-ready';
+import { SubmissionChecklistService } from './submission-checklist.service';
 import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { DEVELOPER_EQUIVALENT_ROLES, User, UserRole } from '../users/user.entity';
@@ -69,6 +70,7 @@ export class TaskQaReviewsService {
     private auditLogService: AuditLogService,
     private eventEmitter: EventEmitter2,
     private noteQualityService: NoteQualityService,
+    private submissionChecklistService: SubmissionChecklistService,
   ) {}
 
   // Combined task detail view - every past QA review round for a task,
@@ -177,6 +179,10 @@ export class TaskQaReviewsService {
       );
     }
     await this.tasksService.assertNotAlreadyApproved(task, tenantId);
+    // Submission checklist (defect triage Stage 2, 2026-10-27): null when
+    // the project has it off, otherwise complete or a 400 naming what's
+    // missing - checked before anything is saved.
+    const checklist = await this.submissionChecklistService.check(task, dto.checklist, dto.artifacts.map((a) => a.type));
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
     // PM review gate (2026-10-13): a task (never a defect - those go back
@@ -205,6 +211,7 @@ export class TaskQaReviewsService {
         submittedByEmail: currentUser.email,
         status: 'pending',
         reviewType: viaPm ? 'pm' : 'qa',
+        submissionChecklist: (checklist as unknown as Record<string, unknown>) ?? null,
       });
       const savedReview = await manager.save(TaskQaReview, review);
 
@@ -241,7 +248,7 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber, artifactTypes: dto.artifacts.map((a) => a.type) },
+      details: { roundNumber: savedReview.roundNumber, artifactTypes: dto.artifacts.map((a) => a.type), ...(checklist ? { checklist } : {}) },
     });
     if (viaPm) {
       this.eventEmitter.emit('task.pmReviewRequested', { tenantId, taskId, title: task.title, actorUserId: currentUser.id, actorEmail: currentUser.email });

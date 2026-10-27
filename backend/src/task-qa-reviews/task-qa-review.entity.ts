@@ -131,6 +131,12 @@ export class TaskQaReview {
   @Column({ type: 'varchar', length: 100, nullable: true })
   notReadyReason: string | null;
 
+  // The developer's submission checklist on this round (defect triage
+  // Stage 2, 2026-10-27, see tasks/submission-checklist.ts) - null when the
+  // project had it off or before it existed.
+  @Column({ type: 'jsonb', nullable: true })
+  submissionChecklist: Record<string, unknown> | null;
+
   // Set only on a 'reverted' round - see TaskQaReviewStatus above
   // (migrations/2026-10-qa-decision-revert.sql).
   @Column({ type: 'int', nullable: true })
