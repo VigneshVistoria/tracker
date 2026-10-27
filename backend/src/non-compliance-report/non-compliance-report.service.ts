@@ -5,7 +5,9 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
-import { effectiveDueDate, isPastEffectiveDue } from '../tasks/pm-review';
+import { effectiveDueDate, isPastEffectiveDue, PM_REVIEW_STATUS } from '../tasks/pm-review';
+import { RETURNED_TO_QA_STATUS } from '../tasks/return-to-qa';
+import { PerformanceMetricsService } from '../performance-metrics/performance-metrics.service';
 
 // A task in one of these is done and can no longer be "missed" - mirrors
 // COMPLETED_STATUSES in TasksService/DeveloperTaskWorkboard.js exactly
@@ -19,35 +21,40 @@ const TERMINAL_TASK_STATUSES = ['Pass', 'Released - No Showstoppers', 'Released 
 // mirrors QA_REVIEW_PENDING_STATUSES in frontend/lib/developerTaskStats.js.
 const QA_REVIEW_PENDING_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
 
-// Fixed thresholds (confirmed with the user) rather than an admin-
-// configurable setting, same choice made for
-// TasksService.QA_REVIEW_DUE_DATE_BUSINESS_DAYS - simplest to build, easy
-// to change in code later if these numbers turn out wrong.
-const MISSED_SLA_FLAG_THRESHOLD = 3;
-const REJECTION_RATE_FLAG_PERCENT = 20;
-// Below this many submissions in the period, a rejection rate is noise
-// (e.g. 1 rejection out of 1 submission = 100%) - not enough signal to
-// flag someone off of.
-const REJECTION_RATE_MIN_SUBMISSIONS = 3;
-// Unlike the other two dimensions, a single escalation is already a
-// notable event worth surfacing - no grace count.
-const ESCALATION_FLAG_THRESHOLD = 1;
-// Pilot threshold for dimension 4 (Vague/Poor Resolution Notes) - same
-// "fixed for now, easy to change in code later" reasoning as the other
-// three. This dimension is flag-only (NoteQualityService never blocks a
-// submission), so this threshold only affects whether a developer shows
-// up in the Flagged Developers table, not whether their work is accepted.
-const VAGUE_NOTES_FLAG_THRESHOLD = 3;
+// Not counted for Late to QA (2026-10-27, confirmed with the user): parked
+// (Hold), closed without finishing (Closed) or with the PM (Escalated).
+const LATE_TO_QA_EXCLUDED_STATUSES = ['Hold', 'Closed', 'Escalated'];
 
-export type MissedSlaReason = 'resolved_late' | 'open_past_due' | 'review_overdue';
+// The "Flagged" thresholds are editable settings (Admin -> Performance
+// Metrics Settings, PerformanceMetricSettings) since 2026-10-27 - read per
+// report, never fixed here. Flagged if ANY dimension meets its threshold.
 
-export interface MissedSlaItem {
+// 'submitted_late': the final submission for review came after the
+// effective Due date. 'still_with_developer': not submitted (or sent back
+// and not resubmitted) and the effective Due date has passed.
+export type LateToQaReason = 'submitted_late' | 'still_with_developer';
+
+export interface LateToQaItem {
   taskId: number;
   title: string;
-  reason: MissedSlaReason;
-  dueDate: string | null;
-  qaReviewDueDate: string | null;
-  completedAt: string | null;
+  reason: LateToQaReason;
+  dueDate: string;
+  // dueDate plus the working days spent waiting for the PM.
+  effectiveDueDate: string;
+  // The final submission for review (YYYY-MM-DD), or null if none.
+  submittedAt: string | null;
+  // Calendar days past the effective Due date (to the submission, or to
+  // today if still with the developer).
+  daysLate: number;
+}
+
+export interface OverdueInReviewItem {
+  taskId: number;
+  title: string;
+  status: string;
+  submittedAt: string | null;
+  qaReviewDueDate: string;
+  daysOverdue: number;
 }
 
 export interface EscalationItem {
@@ -74,7 +81,10 @@ export interface DeveloperNonComplianceRow {
   // computed once here so the dashboard/PDF never need to re-derive it
   // (and can't drift out of sync with the per-dimension flags).
   flagged: boolean;
-  missedSla: { count: number; flagged: boolean; items: MissedSlaItem[] };
+  lateToQa: { count: number; flagged: boolean; items: LateToQaItem[] };
+  // Information only - the reviewers' 5-working-day deadline, never
+  // counted against the developer or in `flagged`.
+  overdueInReview: { count: number; items: OverdueInReviewItem[] };
   rejectionRate: { submissions: number; rejections: number; rate: number; flagged: boolean };
   escalations: { count: number; flagged: boolean; items: EscalationItem[] };
   // Pilot dimension - `checked` is how many of this developer's in-range
@@ -92,7 +102,7 @@ export interface NonComplianceReportSummary {
   // The three totals below are summed across FLAGGED developers only -
   // "how bad is the problem we're flagging", not a whole-team average
   // diluted by developers with nothing wrong.
-  missedSlaTotal: number;
+  lateToQaTotal: number;
   rejectionsTotal: number;
   submissionsTotal: number;
   blendedRejectionRate: number;
@@ -106,7 +116,7 @@ export interface NonComplianceReportResult {
   summary: NonComplianceReportSummary;
   developers: DeveloperNonComplianceRow[];
   thresholds: {
-    missedSlaCount: number;
+    lateToQaCount: number;
     rejectionRatePercent: number;
     rejectionRateMinSubmissions: number;
     escalationCount: number;
@@ -135,6 +145,10 @@ function inRange(dateStr: string | null, from?: string, to?: string): boolean {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+// Calendar days from one YYYY-MM-DD to a later one.
+const daysBetween = (fromDate: string, toDate: string): number =>
+  Math.round((new Date(`${toDate}T00:00:00Z`).getTime() - new Date(`${fromDate}T00:00:00Z`).getTime()) / 86400000);
+
 // `resolution` is sanitizeRichText()'d HTML - strip tags and cap length so
 // a flagged item's excerpt in the report is plain, scannable text, not a
 // wall of markup.
@@ -151,6 +165,7 @@ export class NonComplianceReportService {
     @InjectRepository(TaskQaReview)
     private qaReviewsRepository: Repository<TaskQaReview>,
     private usersService: UsersService,
+    private performanceMetricsService: PerformanceMetricsService,
   ) {}
 
   // Live query over current data for whatever range is selected -
@@ -169,6 +184,14 @@ export class NonComplianceReportService {
     to: string | undefined,
   ): Promise<NonComplianceReportResult> {
     const today = toDateOnly(new Date());
+    const settings = await this.performanceMetricsService.getSettings(tenantId);
+    const thresholds = {
+      lateToQaCount: settings.lateToQaFlagCount,
+      rejectionRatePercent: settings.rejectionRateFlagPercent,
+      rejectionRateMinSubmissions: settings.rejectionRateMinSubmissions,
+      escalationCount: settings.escalationFlagCount,
+      vagueNotesCount: settings.vagueNotesFlagCount,
+    };
 
     // SMOKE_TEST_EMAIL is the one automated test account this codebase
     // already documents (scripts/smoke-check.sh, run after every deploy/
@@ -216,58 +239,53 @@ export class NonComplianceReportService {
     const developerRows: DeveloperNonComplianceRow[] = developers.map((dev) => {
       const devTasks = tasksByDeveloper.get(dev.id) ?? [];
 
-      // --- Dimension 1: missed SLA / due dates ---
-      // Three independent sub-cases, all in scope at once - a task can
-      // legitimately appear under more than one reason (e.g. still
-      // pending review past both its own Due Date and its QA Review Due
-      // Date), which is two distinct problems, not a duplicate.
-      const missedSlaItems: MissedSlaItem[] = [];
+      // --- Dimension 1: Late to QA (2026-10-27, replaces "Missed SLA") ---
+      // Did the developer hand the work over for review by the effective
+      // Due date (dueDate + working days waiting for the PM)? Judged on the
+      // FINAL submission, so a rejection fixed after the Due date is late
+      // (rework is the developer's time), but time waiting on QA, a peer
+      // or the PM never counts. One entry per task at most. Still-open
+      // work is judged as of today; a task waiting for a reviewer or done
+      // is judged on its final submission.
+      const lateToQaItems: LateToQaItem[] = [];
+      const overdueInReviewItems: OverdueInReviewItem[] = [];
       for (const task of devTasks) {
-        // Effective due date: dueDate + working days spent waiting for a
-        // PM (PM review gate) - PM time never counts against the developer.
+        const rounds = (reviewsByTaskId.get(task.id) ?? []).filter((r) => r.reviewType !== 'pm' && r.status !== 'withdrawn');
+        const finalSubmit = rounds.reduce<Date | null>((latest, r) => (!latest || r.submittedAt > latest ? r.submittedAt : latest), null);
+        const finalSubmitDate = finalSubmit ? toDateOnly(finalSubmit) : null;
+
+        // Information only: waiting for QA / a peer past the QA Review Due
+        // Date - the reviewers' deadline, not the developer's.
+        if (task.qaReviewDueDate && task.qaReviewDueDate < today && QA_REVIEW_PENDING_STATUSES.includes(task.status) && inRange(task.qaReviewDueDate, from, to)) {
+          overdueInReviewItems.push({
+            taskId: task.id,
+            title: task.title,
+            status: task.status,
+            submittedAt: finalSubmitDate,
+            qaReviewDueDate: task.qaReviewDueDate,
+            daysOverdue: daysBetween(task.qaReviewDueDate, today),
+          });
+        }
+
         const dueBy = effectiveDueDate(task);
-        if (task.completedAt && dueBy) {
-          const completedDate = toDateOnly(task.completedAt);
-          if (completedDate > dueBy && inRange(completedDate, from, to)) {
-            missedSlaItems.push({
-              taskId: task.id,
-              title: task.title,
-              reason: 'resolved_late',
-              dueDate: task.dueDate,
-              qaReviewDueDate: task.qaReviewDueDate,
-              completedAt: completedDate,
-            });
+        if (!dueBy || LATE_TO_QA_EXCLUDED_STATUSES.includes(task.status)) continue;
+        // With the PM or QA right now (not the developer's turn) - judged
+        // on the submission that put it there.
+        const handedOver =
+          QA_REVIEW_PENDING_STATUSES.includes(task.status) ||
+          TERMINAL_TASK_STATUSES.includes(task.status) ||
+          task.status === PM_REVIEW_STATUS ||
+          task.status === RETURNED_TO_QA_STATUS;
+        const base = { taskId: task.id, title: task.title, dueDate: task.dueDate, effectiveDueDate: dueBy, submittedAt: finalSubmitDate };
+        if (handedOver) {
+          // A finished task with no review round (closed out directly) is
+          // judged on when it was completed.
+          const handedOverOn = finalSubmitDate ?? (task.completedAt ? toDateOnly(task.completedAt) : null);
+          if (handedOverOn && handedOverOn > dueBy && inRange(handedOverOn, from, to)) {
+            lateToQaItems.push({ ...base, reason: 'submitted_late', daysLate: daysBetween(dueBy, handedOverOn) });
           }
-        }
-        if (
-          task.dueDate &&
-          isPastEffectiveDue(task, today) &&
-          !TERMINAL_TASK_STATUSES.includes(task.status) &&
-          inRange(task.dueDate, from, to)
-        ) {
-          missedSlaItems.push({
-            taskId: task.id,
-            title: task.title,
-            reason: 'open_past_due',
-            dueDate: task.dueDate,
-            qaReviewDueDate: task.qaReviewDueDate,
-            completedAt: null,
-          });
-        }
-        if (
-          task.qaReviewDueDate &&
-          task.qaReviewDueDate < today &&
-          QA_REVIEW_PENDING_STATUSES.includes(task.status) &&
-          inRange(task.qaReviewDueDate, from, to)
-        ) {
-          missedSlaItems.push({
-            taskId: task.id,
-            title: task.title,
-            reason: 'review_overdue',
-            dueDate: task.dueDate,
-            qaReviewDueDate: task.qaReviewDueDate,
-            completedAt: null,
-          });
+        } else if (isPastEffectiveDue(task, today) && inRange(dueBy, from, to)) {
+          lateToQaItems.push({ ...base, reason: 'still_with_developer', daysLate: daysBetween(dueBy, today) });
         }
       }
 
@@ -324,21 +342,25 @@ export class NonComplianceReportService {
           submittedAt: r.submittedAt ? toDateOnly(r.submittedAt) : null,
         }));
 
-      const missedSlaFlagged = missedSlaItems.length >= MISSED_SLA_FLAG_THRESHOLD;
-      const rejectionRateFlagged = submissions >= REJECTION_RATE_MIN_SUBMISSIONS && rate > REJECTION_RATE_FLAG_PERCENT;
-      const escalationsFlagged = escalationItems.length >= ESCALATION_FLAG_THRESHOLD;
-      const resolutionQualityFlagged = vagueNoteItems.length >= VAGUE_NOTES_FLAG_THRESHOLD;
+      const lateToQaFlagged = lateToQaItems.length >= thresholds.lateToQaCount;
+      const rejectionRateFlagged = submissions >= thresholds.rejectionRateMinSubmissions && rate > thresholds.rejectionRatePercent;
+      const escalationsFlagged = escalationItems.length >= thresholds.escalationCount;
+      const resolutionQualityFlagged = vagueNoteItems.length >= thresholds.vagueNotesCount;
 
       return {
         userId: dev.id,
         email: dev.email,
         fullName: dev.fullName ?? null,
         role: dev.role,
-        flagged: missedSlaFlagged || rejectionRateFlagged || escalationsFlagged || resolutionQualityFlagged,
-        missedSla: {
-          count: missedSlaItems.length,
-          flagged: missedSlaFlagged,
-          items: missedSlaItems,
+        flagged: lateToQaFlagged || rejectionRateFlagged || escalationsFlagged || resolutionQualityFlagged,
+        lateToQa: {
+          count: lateToQaItems.length,
+          flagged: lateToQaFlagged,
+          items: lateToQaItems,
+        },
+        overdueInReview: {
+          count: overdueInReviewItems.length,
+          items: overdueInReviewItems,
         },
         rejectionRate: {
           submissions,
@@ -361,7 +383,7 @@ export class NonComplianceReportService {
     });
 
     const flaggedRows = developerRows.filter((d) => d.flagged);
-    const missedSlaTotal = flaggedRows.reduce((sum, d) => sum + d.missedSla.count, 0);
+    const lateToQaTotal = flaggedRows.reduce((sum, d) => sum + d.lateToQa.count, 0);
     const rejectionsTotal = flaggedRows.reduce((sum, d) => sum + d.rejectionRate.rejections, 0);
     const submissionsTotal = flaggedRows.reduce((sum, d) => sum + d.rejectionRate.submissions, 0);
     const escalationsTotal = flaggedRows.reduce((sum, d) => sum + d.escalations.count, 0);
@@ -370,7 +392,7 @@ export class NonComplianceReportService {
       totalDevelopers: developerRows.length,
       flaggedCount: flaggedRows.length,
       flaggedNames: flaggedRows.map((d) => d.fullName || d.email),
-      missedSlaTotal,
+      lateToQaTotal,
       rejectionsTotal,
       submissionsTotal,
       blendedRejectionRate: submissionsTotal > 0 ? round2((rejectionsTotal / submissionsTotal) * 100) : 0,
@@ -383,13 +405,7 @@ export class NonComplianceReportService {
       projectId: projectId ?? null,
       summary,
       developers: developerRows,
-      thresholds: {
-        missedSlaCount: MISSED_SLA_FLAG_THRESHOLD,
-        rejectionRatePercent: REJECTION_RATE_FLAG_PERCENT,
-        rejectionRateMinSubmissions: REJECTION_RATE_MIN_SUBMISSIONS,
-        escalationCount: ESCALATION_FLAG_THRESHOLD,
-        vagueNotesCount: VAGUE_NOTES_FLAG_THRESHOLD,
-      },
+      thresholds,
       deferredDimensions: [],
     };
   }

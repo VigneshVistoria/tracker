@@ -31,6 +31,15 @@ const NUMBER_FIELDS = [
   { key: 'minSample', label: 'Minimum tasks or submissions for a status', step: 1, min: 1, max: 1000, help: 'Below this, the report shows "Not enough data".' },
 ];
 
+// Non-Compliance Report "Flagged" thresholds - flagged if ANY is met.
+const FLAG_FIELDS = [
+  { key: 'lateToQaFlagCount', label: 'Late to QA: tasks (or more)', step: 1, min: 1, max: 1000 },
+  { key: 'rejectionRateFlagPercent', label: 'Rejection rate above (%)', step: 0.5, min: 0, max: 100 },
+  { key: 'rejectionRateMinSubmissions', label: '...with at least (submissions)', step: 1, min: 1, max: 1000 },
+  { key: 'escalationFlagCount', label: 'PM interventions (or more)', step: 1, min: 1, max: 1000 },
+  { key: 'vagueNotesFlagCount', label: 'Vague resolution notes (or more)', step: 1, min: 1, max: 1000 },
+];
+
 const SWITCHES = [
   { key: 'alreadyDatedCountsOnTime', label: 'A task that already has a Due date when assigned (e.g. reassigned) counts as on time' },
   { key: 'othersSettingDateCountsOnTime', label: 'A Due date set by a PM (not the assignee) counts as on time for the assignee' },
@@ -96,7 +105,7 @@ export default function PerformanceMetricsSettingsPage() {
       .split(',')
       .map((x) => x.trim())
       .filter(Boolean),
-    ...Object.fromEntries(NUMBER_FIELDS.map((n) => [n.key, Number(f[n.key])])),
+    ...Object.fromEntries([...NUMBER_FIELDS, ...FLAG_FIELDS].map((n) => [n.key, Number(f[n.key])])),
     ...Object.fromEntries(SWITCHES.map((n) => [n.key, !!f[n.key]])),
   });
   const unchanged = settings && form && JSON.stringify(payloadFrom(form)) === JSON.stringify(payloadFrom(toForm(settings)));
@@ -158,7 +167,7 @@ export default function PerformanceMetricsSettingsPage() {
         <div>
           <h1 className={styles.pageTitle}>Performance Metrics Settings</h1>
           <p className={styles.pageSubtitle}>
-            Rules and thresholds for the Performance metrics on the Non-Compliance Report. Every change is recorded in the audit log and applies to
+            Rules and thresholds for the Performance metrics and the &quot;Flagged&quot; status on the Non-Compliance Report. Every change is recorded in the audit log and applies to
             the whole history straight away.
           </p>
         </div>
@@ -246,6 +255,30 @@ export default function PerformanceMetricsSettingsPage() {
                   {f.label}
                 </label>
               ))}
+            </fieldset>
+
+            <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend className={styles.label}>Non-Compliance Report: Flagged when any of these is met</legend>
+              <div className={styles.fieldGrid2}>
+                {FLAG_FIELDS.map((f) => (
+                  <div key={f.key} className={styles.field}>
+                    <label className={styles.label} htmlFor={`pm-${f.key}`}>
+                      {f.label}
+                    </label>
+                    <input
+                      id={`pm-${f.key}`}
+                      className={styles.input}
+                      type="number"
+                      step={f.step}
+                      min={f.min}
+                      max={f.max}
+                      value={form[f.key]}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      required
+                    />
+                  </div>
+                ))}
+              </div>
             </fieldset>
 
             <p className={styles.issueMeta}>

@@ -257,10 +257,10 @@ describe('Task Junk (e2e)', () => {
       expect(Number(rows.find((r) => r.assigneeUserId === f.users.devNone.id)!.outboundDependencyOverduePercent)).toBe(0);
     });
 
-    it('Non-compliance report: no missed-SLA item for a Junk ticket', async () => {
+    it('Non-compliance report: no Late to QA item for a Junk ticket', async () => {
       const report: any = await app.get(NonComplianceReportService).computeReport(f.tenants.t1, f.projects.pA, '2026-10-01', '2026-10-31');
       const devA = report.developers.find((d: any) => d.userId === f.users.devA.id);
-      const missed = devA.missedSla.items.map((i: any) => i.taskId);
+      const missed = devA.lateToQa.items.map((i: any) => i.taskId);
       for (const id of toMark()) expect(missed).not.toContain(id);
       expect(missed).toContain(ids.keep);
     });

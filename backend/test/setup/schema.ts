@@ -37,6 +37,7 @@ const QA_REVIEW_ATTACHMENTS_MIGRATION = path.resolve(__dirname, '../../migration
 // Performance metrics tables - same: real migration, checked against the entities.
 const PERFORMANCE_DIR = path.join(SRC, 'performance-metrics');
 const PERFORMANCE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-performance-metrics.sql');
+const NC_FLAG_SETTINGS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-non-compliance-flag-settings.sql');
 const PERFORMANCE_TABLES = ['task_commitment_events', 'performance_metric_settings', 'performance_holidays'];
 const JUNK_COLUMNS =['statusBeforeJunk', 'junkReason', 'junkedAt', 'junkedByUserId', 'junkedByEmail'];
 // Revert QA decision columns on task_qa_reviews - same treatment as the
@@ -104,6 +105,7 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(REFRESH_SESSIONS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(QA_REVIEW_ATTACHMENTS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(PERFORMANCE_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(NC_FLAG_SETTINGS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);

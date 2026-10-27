@@ -4,10 +4,9 @@ import { DeveloperNonComplianceRow, NonComplianceReportResult } from './non-comp
 import { PerformanceMetricsReport } from '../performance-metrics/performance-metrics.service';
 import { MetricStatus } from '../performance-metrics/performance-metrics.compute';
 
-const MISSED_SLA_REASON_LABEL: Record<string, string> = {
-  resolved_late: 'Resolved late',
-  open_past_due: 'Open, past due',
-  review_overdue: 'Pending review, past QA Review Due Date',
+const LATE_TO_QA_REASON_LABEL: Record<string, string> = {
+  submitted_late: 'Submitted for review late',
+  still_with_developer: 'Not yet submitted, past due',
 };
 
 // Same color roles as the dashboard (frontend/pages/reports/non-compliance.js),
@@ -47,10 +46,10 @@ export class PdfNonComplianceReportService {
     if (report.developers.length > 0) {
       this.renderBarChart(
         doc,
-        'Missed SLA / Due Dates (by developer)',
-        [...report.developers].sort((a, b) => b.missedSla.count - a.missedSla.count),
-        (dev) => ({ value: dev.missedSla.count, flagged: dev.missedSla.flagged, label: `${dev.missedSla.count}`, eligible: true }),
-        report.thresholds.missedSlaCount,
+        'Late to QA (by developer)',
+        [...report.developers].sort((a, b) => b.lateToQa.count - a.lateToQa.count),
+        (dev) => ({ value: dev.lateToQa.count, flagged: dev.lateToQa.flagged, label: `${dev.lateToQa.count}`, eligible: true }),
+        report.thresholds.lateToQaCount,
       );
       doc.moveDown(0.5);
       const isRateEligible = (dev: DeveloperNonComplianceRow) => dev.rejectionRate.submissions >= report.thresholds.rejectionRateMinSubmissions;
@@ -106,7 +105,7 @@ export class PdfNonComplianceReportService {
     const rangeLabel = report.range.from || report.range.to ? `${report.range.from ?? 'Start'} to ${report.range.to ?? 'Now'}` : 'All Time';
     doc.fontSize(10).fillColor(INK_SOFT).text(`Period: ${rangeLabel}`);
     doc.text(
-      `Thresholds: ${report.thresholds.missedSlaCount}+ missed SLA/due dates, rejection rate > ${report.thresholds.rejectionRatePercent}% (min ${report.thresholds.rejectionRateMinSubmissions} submissions), ${report.thresholds.escalationCount}+ PM intervention(s), ${report.thresholds.vagueNotesCount}+ vague resolution note(s).`,
+      `Flagged if any: ${report.thresholds.lateToQaCount}+ tasks late to QA, rejection rate > ${report.thresholds.rejectionRatePercent}% (min ${report.thresholds.rejectionRateMinSubmissions} submissions), ${report.thresholds.escalationCount}+ PM intervention(s), ${report.thresholds.vagueNotesCount}+ vague resolution note(s).`,
     );
     doc.moveDown(0.8);
     this.hr(doc);
@@ -132,8 +131,8 @@ export class PdfNonComplianceReportService {
         critical: summary.flaggedCount > 0,
       },
       {
-        label: 'MISSED SLA / DUE DATES',
-        value: `${summary.missedSlaTotal}`,
+        label: 'LATE TO QA',
+        value: `${summary.lateToQaTotal}`,
         sub: 'across flagged developers',
         critical: false,
       },
@@ -297,16 +296,17 @@ export class PdfNonComplianceReportService {
       doc.font('Helvetica').fontSize(9).fillColor(INK_SOFT).text(dev.email);
       doc.moveDown(0.2);
 
-      this.renderMetricLine(doc, 'Missed SLA / Due Dates', `${dev.missedSla.count}`, dev.missedSla.flagged);
-      dev.missedSla.items.slice(0, 8).forEach((item) => {
+      this.renderMetricLine(doc, 'Late to QA', `${dev.lateToQa.count}`, dev.lateToQa.flagged);
+      dev.lateToQa.items.slice(0, 8).forEach((item) => {
         doc
           .fontSize(8.5)
           .fillColor(INK_SOFT)
-          .text(`   #${item.taskId} ${item.title} - ${MISSED_SLA_REASON_LABEL[item.reason] ?? item.reason}`);
+          .text(`   #${item.taskId} ${item.title} - ${LATE_TO_QA_REASON_LABEL[item.reason] ?? item.reason}, ${item.daysLate} day(s) after ${item.effectiveDueDate}`);
       });
-      if (dev.missedSla.items.length > 8) {
-        doc.fontSize(8.5).fillColor(MUTED).text(`   ...and ${dev.missedSla.items.length - 8} more.`);
+      if (dev.lateToQa.items.length > 8) {
+        doc.fontSize(8.5).fillColor(MUTED).text(`   ...and ${dev.lateToQa.items.length - 8} more.`);
       }
+      this.renderMetricLine(doc, 'Overdue in review (reviewers, info only)', `${dev.overdueInReview.count}`, false);
 
       const belowMin = dev.rejectionRate.submissions < report.thresholds.rejectionRateMinSubmissions;
       this.renderMetricLine(
@@ -377,7 +377,7 @@ export class PdfNonComplianceReportService {
         .text(`${devName(dev)}  `, { continued: true })
         .font('Helvetica')
         .fillColor(INK_SOFT)
-        .text(`- ${dev.missedSla.count} missed, ${rateText}, ${dev.escalations.count} interventions`);
+        .text(`- ${dev.lateToQa.count} late to QA, ${rateText}, ${dev.escalations.count} interventions, ${dev.overdueInReview.count} overdue in review (info)`);
     });
   }
 

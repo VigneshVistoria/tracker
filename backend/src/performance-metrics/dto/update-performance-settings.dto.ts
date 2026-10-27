@@ -73,4 +73,35 @@ export class UpdatePerformanceSettingsDto {
   @IsOptional()
   @IsBoolean()
   othersSettingDateCountsOnTime?: boolean;
+
+  // Non-Compliance Report "Flagged" thresholds.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  lateToQaFlagCount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  rejectionRateFlagPercent?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  rejectionRateMinSubmissions?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  escalationFlagCount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  vagueNotesFlagCount?: number;
 }

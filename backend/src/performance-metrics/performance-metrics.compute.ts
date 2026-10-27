@@ -48,6 +48,13 @@ export interface PerformanceSettings {
   countEscalatedAsDecided: boolean;
   alreadyDatedCountsOnTime: boolean;
   othersSettingDateCountsOnTime: boolean;
+  // Non-Compliance Report "Flagged" thresholds - used by
+  // NonComplianceReportService, kept here so all rules live in one place.
+  lateToQaFlagCount: number;
+  rejectionRateFlagPercent: number;
+  rejectionRateMinSubmissions: number;
+  escalationFlagCount: number;
+  vagueNotesFlagCount: number;
 }
 
 export const PERFORMANCE_SETTINGS_DEFAULTS: PerformanceSettings = {
@@ -64,6 +71,11 @@ export const PERFORMANCE_SETTINGS_DEFAULTS: PerformanceSettings = {
   countEscalatedAsDecided: false,
   alreadyDatedCountsOnTime: true,
   othersSettingDateCountsOnTime: true,
+  lateToQaFlagCount: 3,
+  rejectionRateFlagPercent: 20,
+  rejectionRateMinSubmissions: 3,
+  escalationFlagCount: 1,
+  vagueNotesFlagCount: 3,
 };
 
 export type MetricStatus = 'ok' | 'needs_attention' | 'not_enough_data';

@@ -21,11 +21,17 @@ const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 // the report above it (backend: PerformanceMetricsController).
 const OWN_METRICS_ROLES = ['developer', 'designer', 'devops'];
 
-const MISSED_SLA_REASON_LABEL = {
-  resolved_late: 'Resolved late',
-  open_past_due: 'Open, past due',
-  review_overdue: 'Pending review, past QA Review Due Date',
+const LATE_TO_QA_REASON_LABEL = {
+  submitted_late: 'Submitted late',
+  still_with_developer: 'Not yet submitted',
 };
+
+// One-sentence rules, shown as the column tooltips and in the "How these
+// are counted" note (2026-10-27, approved by the user).
+const LATE_TO_QA_RULE =
+  'Tasks whose final submission for review came after their Due date (plus any days waiting on the PM), or that are still with the developer past it; each task counts once, and time waiting on QA, a peer or the PM is not counted.';
+const OVERDUE_IN_REVIEW_RULE =
+  "Tasks this developer submitted that are still waiting for QA or a peer reviewer after the 5-working-day QA Review Due Date - the reviewers' deadline, shown for information and never counted against the developer.";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -168,9 +174,9 @@ export default function NonComplianceReportPage() {
   const flaggedDevelopers = developers.filter((d) => d.flagged);
   const compliantDevelopers = developers.filter((d) => !d.flagged);
 
-  const missedSlaSorted = [...developers].sort((a, b) => b.missedSla.count - a.missedSla.count);
-  const missedSlaMax = Math.max(...missedSlaSorted.map((d) => d.missedSla.count), 1);
-  const missedSlaThresholdPos = report ? thresholdPositionPercent(report.thresholds.missedSlaCount, missedSlaMax) : null;
+  const lateSorted = [...developers].sort((a, b) => b.lateToQa.count - a.lateToQa.count);
+  const lateMax = Math.max(...lateSorted.map((d) => d.lateToQa.count), 1);
+  const lateThresholdPos = report ? thresholdPositionPercent(report.thresholds.lateToQaCount, lateMax) : null;
 
   const rateEligible = developers.filter((d) => d.rejectionRate.submissions >= (report?.thresholds.rejectionRateMinSubmissions ?? 3));
   const rateIneligible = developers.filter((d) => d.rejectionRate.submissions < (report?.thresholds.rejectionRateMinSubmissions ?? 3));
@@ -188,7 +194,7 @@ export default function NonComplianceReportPage() {
         <div>
           <h1 className={styles.pageTitle}>Developer Non-Compliance Report</h1>
           <p className={styles.pageSubtitle}>
-            Missed SLA/due dates, QA/Peer Review rejection rate, PM interventions, and vague resolution notes, per developer.
+            Late to QA, QA/Peer Review rejection rate, PM interventions, and vague resolution notes, per developer.
           </p>
         </div>
         <div className={styles.actions}>
@@ -248,8 +254,8 @@ export default function NonComplianceReportPage() {
               <div className={nc.kpiSub}>{report.summary.flaggedNames.join(', ') || 'None'}</div>
             </div>
             <div className={nc.kpiTile}>
-              <div className={nc.kpiLabel}>Missed SLA / Due Dates</div>
-              <div className={nc.kpiValue}>{report.summary.missedSlaTotal}</div>
+              <div className={nc.kpiLabel} title={LATE_TO_QA_RULE}>Late to QA</div>
+              <div className={nc.kpiValue}>{report.summary.lateToQaTotal}</div>
               <div className={nc.kpiSub}>across flagged developers</div>
             </div>
             <div className={nc.kpiTile}>
@@ -280,18 +286,18 @@ export default function NonComplianceReportPage() {
             </p>
             <div className={nc.chartGrid}>
               <div>
-                <h3 className={nc.chartTitle}>Missed SLA / Due Dates</h3>
-                {missedSlaSorted.map((dev) => (
+                <h3 className={nc.chartTitle} title={LATE_TO_QA_RULE}>Late to QA</h3>
+                {lateSorted.map((dev) => (
                   <div key={dev.userId} className={nc.barRow}>
                     <div className={nc.barName} title={devName(dev)}>{devName(dev)}</div>
                     <div className={nc.barTrack}>
-                      {missedSlaThresholdPos && <div className={nc.thresholdLine} style={{ left: missedSlaThresholdPos }} />}
+                      {lateThresholdPos && <div className={nc.thresholdLine} style={{ left: lateThresholdPos }} />}
                       <div
-                        className={`${nc.barFill} ${dev.missedSla.flagged ? nc.critical : nc.good}`}
-                        style={{ width: barWidthPercent(dev.missedSla.count, missedSlaMax) }}
+                        className={`${nc.barFill} ${dev.lateToQa.flagged ? nc.critical : nc.good}`}
+                        style={{ width: barWidthPercent(dev.lateToQa.count, lateMax) }}
                       />
                     </div>
-                    <div className={nc.barValue}>{dev.missedSla.count}</div>
+                    <div className={nc.barValue}>{dev.lateToQa.count}</div>
                   </div>
                 ))}
               </div>
@@ -371,7 +377,24 @@ export default function NonComplianceReportPage() {
           {/* --- flagged detail table --- */}
           <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
             <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-1)', fontWeight: 600 }}>Flagged Developers - Detail</h2>
-            <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-3)' }}>Click a task list to expand.</p>
+            <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-2)' }}>Click a task list to expand.</p>
+            <details className={nc.taskList} style={{ margin: '0 0 var(--space-3)' }}>
+              <summary>How these are counted</summary>
+              <ul>
+                <li>
+                  <strong>Late to QA:</strong> {LATE_TO_QA_RULE} Hold, Closed and Escalated tasks are left out.
+                </li>
+                <li>
+                  <strong>Overdue in review:</strong> {OVERDUE_IN_REVIEW_RULE}
+                </li>
+                <li>
+                  <strong>Flagged</strong> if any of: {report.thresholds.lateToQaCount}+ tasks late to QA; rejection rate over{' '}
+                  {report.thresholds.rejectionRatePercent}% with at least {report.thresholds.rejectionRateMinSubmissions} submissions;{' '}
+                  {report.thresholds.escalationCount}+ PM interventions; {report.thresholds.vagueNotesCount}+ vague notes. Thresholds are set in
+                  Admin &rarr; Performance Metrics Settings.
+                </li>
+              </ul>
+            </details>
 
             {flaggedDevelopers.length === 0 && <div className={styles.empty}>No developers are flagged for this period.</div>}
 
@@ -380,10 +403,11 @@ export default function NonComplianceReportPage() {
                 <thead>
                   <tr>
                     <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Developer</th>
-                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Missed SLA</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={LATE_TO_QA_RULE}>Late to QA</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Rejection Rate</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Interventions</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Vague Notes</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={OVERDUE_IN_REVIEW_RULE}>Overdue in review (info)</th>
                     <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Status</th>
                   </tr>
                 </thead>
@@ -395,15 +419,19 @@ export default function NonComplianceReportPage() {
                         <span style={{ display: 'block', fontSize: 10.5, color: 'var(--color-ink-soft)' }}>{dev.email}</span>
                       </td>
                       <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
-                        <span className={`${nc.metricValue} ${dev.missedSla.flagged ? nc.flag : ''}`}>{dev.missedSla.count}</span>
-                        {dev.missedSla.items.length > 0 && (
+                        <span className={`${nc.metricValue} ${dev.lateToQa.flagged ? nc.flag : ''}`}>{dev.lateToQa.count}</span>
+                        {dev.lateToQa.items.length > 0 && (
                           <details className={nc.taskList}>
-                            <summary>view {dev.missedSla.items.length}</summary>
+                            <summary>view {dev.lateToQa.items.length}</summary>
                             <ul>
-                              {dev.missedSla.items.map((item, i) => (
-                                <li key={`${item.taskId}-${item.reason}-${i}`}>
+                              {dev.lateToQa.items.map((item) => (
+                                <li key={item.taskId}>
                                   <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a>{' '}
-                                  {item.title} <span className={nc.tag}>{MISSED_SLA_REASON_LABEL[item.reason] || item.reason}</span>
+                                  {item.title}{' '}
+                                  <span className={nc.tag}>
+                                    {LATE_TO_QA_REASON_LABEL[item.reason] || item.reason}, {item.daysLate} day{item.daysLate === 1 ? '' : 's'} after{' '}
+                                    {formatDate(item.effectiveDueDate)}
+                                  </span>
                                 </li>
                               ))}
                             </ul>
@@ -455,6 +483,25 @@ export default function NonComplianceReportPage() {
                         )}
                       </td>
                       <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                        <span className={nc.metricValue}>{dev.overdueInReview.count}</span>
+                        {dev.overdueInReview.items.length > 0 && (
+                          <details className={nc.taskList}>
+                            <summary>view {dev.overdueInReview.items.length}</summary>
+                            <ul>
+                              {dev.overdueInReview.items.map((item) => (
+                                <li key={item.taskId}>
+                                  <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a>{' '}
+                                  {item.title}{' '}
+                                  <span className={nc.tag}>
+                                    {item.status}, {item.daysOverdue} day{item.daysOverdue === 1 ? '' : 's'} past {formatDate(item.qaReviewDueDate)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
                         <Badge tone="error">Flagged</Badge>
                       </td>
                     </tr>
@@ -478,11 +525,12 @@ export default function NonComplianceReportPage() {
                     <span className={nc.compliantWho}>
                       {devName(dev)}
                       <span>
-                        {dev.missedSla.count} missed &middot;{' '}
+                        {dev.lateToQa.count} late to QA &middot;{' '}
                         {dev.rejectionRate.submissions >= report.thresholds.rejectionRateMinSubmissions
                           ? `${dev.rejectionRate.rate}% rate`
                           : 'n/a rate'}{' '}
-                        &middot; {dev.escalations.count} interventions &middot; {dev.resolutionQuality.count} vague
+                        &middot; {dev.escalations.count} interventions &middot; {dev.resolutionQuality.count} vague &middot;{' '}
+                        {dev.overdueInReview.count} overdue in review
                       </span>
                     </span>
                   </div>

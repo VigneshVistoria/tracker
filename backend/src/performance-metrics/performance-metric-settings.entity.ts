@@ -66,6 +66,28 @@ export class PerformanceMetricSettings {
   @Column({ default: true })
   othersSettingDateCountsOnTime: boolean;
 
+  // Non-Compliance Report "Flagged" thresholds (2026-10-27, migrations/
+  // 2026-10-non-compliance-flag-settings.sql) - flagged if ANY is met.
+  // Late to QA: this many tasks or more.
+  @Column({ type: 'int', default: 3 })
+  lateToQaFlagCount: number;
+
+  // QA/Peer rejection rate above this percent...
+  @Column({ type: 'decimal', precision: 5, scale: 2, default: 20 })
+  rejectionRateFlagPercent: string;
+
+  // ...with at least this many submissions.
+  @Column({ type: 'int', default: 3 })
+  rejectionRateMinSubmissions: number;
+
+  // PM interventions (QA escalated to the PM): this many or more.
+  @Column({ type: 'int', default: 1 })
+  escalationFlagCount: number;
+
+  // Vague resolution notes: this many or more.
+  @Column({ type: 'int', default: 3 })
+  vagueNotesFlagCount: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 
