@@ -29,10 +29,13 @@ import { UsersModule } from '../users/users.module';
 import { StorageModule } from '../storage/storage.module';
 import { ReturnToQaController } from './return-to-qa.controller';
 import { ReturnToQaService } from './return-to-qa.service';
+import { DefectTriage } from './defect-triage.entity';
+import { DefectTriageController } from './defect-triage.controller';
+import { DefectTriageService } from './defect-triage.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings, DefectTriage]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,
@@ -48,8 +51,9 @@ import { ReturnToQaService } from './return-to-qa.service';
   // `:id` catch-all below (same ordering precedent as IssuesModule).
   // TaskAttachmentsController (defect screenshots) likewise goes first.
   // ReturnToQaController likewise ('returned-to-qa' vs ':id').
-  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, TasksController],
-  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService],
+  // DefectTriageController has its own 'defect-triage' prefix.
+  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, DefectTriageController, TasksController],
+  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService],
   exports: [TasksService],
 })
 export class TasksModule {}

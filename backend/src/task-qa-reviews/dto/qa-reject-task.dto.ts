@@ -24,6 +24,35 @@ export class RejectLinkedDefectDto {
 
   @IsInt()
   assigneeUserId: number;
+
+  // Defect classification (2026-10-27, see tasks/defect-triage.ts) -
+  // required (per the editable settings) only when the project has defect
+  // triage switched on (the rejected task's project), ignored otherwise. The service checks each value
+  // against its list.
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  severity?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  defectType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  defectOrigin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  foundInBuild?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  foundInEnvironment?: string;
 }
 
 export class QaRejectTaskDto {

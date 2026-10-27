@@ -93,6 +93,7 @@ export class PdfNonComplianceReportService {
     this.renderFlaggedDetail(doc, report);
     this.renderCompliantList(doc, report);
     this.renderQaNotReadyUsage(doc, report);
+    this.renderDefectTriage(doc, report);
     this.renderDeferredDimensions(doc, report);
     if (metrics) this.renderPerformanceMetrics(doc, metrics);
 
@@ -423,6 +424,41 @@ export class PdfNonComplianceReportService {
         .fontSize(9.5)
         .fillColor(INK_SOFT)
         .text(`${qa.name} - ${qa.notReady} not ready of ${qa.decisions} decision(s)${qa.percent !== null ? ` (${qa.percent}%)` : ''}`);
+    });
+  }
+
+  // Information only (2026-10-27): late defect triage and disputes, every
+  // developer with either. See tasks/defect-triage.ts.
+  private renderDefectTriage(doc: PDFKit.PDFDocument, report: NonComplianceReportResult) {
+    doc.moveDown(0.6);
+    this.hr(doc);
+    doc.moveDown(0.3);
+    doc.fontSize(13).font('Helvetica-Bold').fillColor(INK).text('Defect triage (information only)');
+    doc.font('Helvetica');
+    doc
+      .fontSize(9)
+      .fillColor(INK_SOFT)
+      .text('Late triage: Accept/Dispute after the due date, or still waiting past it, by triage due date. Disputes: raised in the period and the PM\'s decision. Never flagged.');
+    doc.moveDown(0.2);
+    const rows = report.developers.filter((d) => d.lateTriage.count > 0 || d.disputes.raised > 0);
+    if (rows.length === 0) {
+      doc.fontSize(9).fillColor(MUTED).text('No late triage or disputes in this period.');
+      return;
+    }
+    rows.forEach((dev) => {
+      const d = dev.disputes;
+      doc
+        .fontSize(9.5)
+        .fillColor(INK_SOFT)
+        .text(
+          `${dev.fullName || dev.email} - ${dev.lateTriage.count} late triage; ${d.raised} dispute(s): ${d.agreed} agreed, ${d.rejected} rejected, ${d.waiting} waiting`,
+        );
+      dev.lateTriage.items.slice(0, 8).forEach((item) => {
+        doc
+          .fontSize(8.5)
+          .fillColor(MUTED)
+          .text(`   #${item.taskId} ${item.title} - due ${item.dueDate}, ${item.decidedAt ? `${item.decision} ${item.decidedAt}` : 'still waiting'}, ${item.workingDaysLate} working day(s) late`);
+      });
     });
   }
 

@@ -49,6 +49,7 @@ import { TaskQaReviewArtifact } from './task-qa-reviews/task-qa-review-artifact.
 import { TaskQaReviewQaArtifact } from './task-qa-reviews/task-qa-review-qa-artifact.entity';
 import { TaskDefectArtifact } from './tasks/task-defect-artifact.entity';
 import { TaskBlockingDefect } from './tasks/task-blocking-defect.entity';
+import { DefectTriage } from './tasks/defect-triage.entity';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -164,6 +165,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TaskQaReviewQaArtifact,
           TaskDefectArtifact,
           TaskBlockingDefect,
+          DefectTriage,
           KpiConfig,
           KpiPeriodScore,
           Role,

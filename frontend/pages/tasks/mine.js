@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import DeveloperTaskWorkboard from '../../components/DeveloperTaskWorkboard';
+import DefectTriageList from '../../components/DefectTriageList';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
@@ -73,6 +74,8 @@ export default function MyTasksPage() {
       {error && <div className={styles.error}>{error}</div>}
 
       {loading && <LoadingState />}
+
+      {DEVELOPER_EQUIVALENT_ROLES.includes(user.role) && <DefectTriageList />}
 
       {!loading && (
         <DeveloperTaskWorkboard

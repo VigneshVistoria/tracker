@@ -41,6 +41,15 @@ export class TeamSettings {
   @Column({ type: 'jsonb', default: () => "'[]'" })
   qaNotReadyReasons: string[];
 
+  // Defect classification + triage (2026-10-27): the editable lists and
+  // rules (severities, types, origins, environments, dispute reasons,
+  // required fields, triage working days), edited by Admin and Program
+  // Manager from Admin -> Defect Triage Settings. '{}' (never saved) or any
+  // missing key means DEFAULT_DEFECT_TRIAGE_SETTINGS
+  // (tasks/defect-triage.ts, resolveDefectTriageSettings()).
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  defectTriageSettings: Record<string, unknown>;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

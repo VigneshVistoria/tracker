@@ -24,7 +24,8 @@
 export const EXCLUDED_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Released - No Showstoppers'];
 // 'Pending PM Review' (PM review gate, 2026-10-13) is with a reviewer too.
 // 'Returned to QA': a PM sent it back to QA - with QA, not the developer.
-export const REVIEW_STATUSES = ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA'];
+// 'Disputed' (2026-10-27): a disputed defect, waiting for the PM.
+export const REVIEW_STATUSES = ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA', 'Disputed'];
 // 'PM Feedback': the PM sent it back for the developer to refine.
 // 'Not Ready for Testing' (2026-10-27): QA could not start testing it.
 export const SENT_BACK_STATUSES = ['Failed', 'Released - With Showstoppers', 'PM Feedback', 'Not Ready for Testing'];
@@ -161,7 +162,7 @@ export function reasonsFor(task: ScrumTaskInput, blocked: Set<number>, waiting: 
   if (task.status === 'Escalated') reasons.add('intervention');
   // dueDate is the effective one (+ PM wait, see the service); never
   // overdue while waiting for a PM.
-  if (task.status !== 'Pending PM Review' && task.dueDate && task.dueDate < today) reasons.add('overdue');
+  if (task.status !== 'Pending PM Review' && task.status !== 'Disputed' && task.dueDate && task.dueDate < today) reasons.add('overdue');
   return REASON_ORDER.filter((r) => reasons.has(r));
 }
 

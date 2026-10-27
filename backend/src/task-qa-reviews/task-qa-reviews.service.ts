@@ -387,6 +387,12 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only the QA who raised this defect can reject it.');
     }
     const pending = await this.findPendingRound(taskId, tenantId);
+    // Defect triage (2026-10-27): every linked defect's classification is
+    // checked before the rejection is recorded, so a missing field can't
+    // leave the task rejected with only some of its defects filed.
+    for (const linkedDefect of dto.linkedDefects || []) {
+      await this.tasksService.prepareDefectClassification(task.projectId, linkedDefect, tenantId);
+    }
 
     pending.status = 'rejected';
     pending.qaComment = sanitizeRichText(dto.comment);
@@ -433,6 +439,11 @@ export class TaskQaReviewsService {
           title: linkedDefect.title,
           description: linkedDefect.description,
           assigneeUserId: linkedDefect.assigneeUserId,
+          severity: linkedDefect.severity,
+          defectType: linkedDefect.defectType,
+          defectOrigin: linkedDefect.defectOrigin,
+          foundInBuild: linkedDefect.foundInBuild,
+          foundInEnvironment: linkedDefect.foundInEnvironment,
           artifacts: dto.linkedDefectArtifacts,
         },
         currentUser,

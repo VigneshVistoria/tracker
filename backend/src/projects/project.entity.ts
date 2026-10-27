@@ -23,6 +23,13 @@ export class Project {
   @Column({ default: false })
   pmReviewEnabled: boolean;
 
+  // Defect classification + triage (2026-10-27): when on, QA classifies
+  // new defects and the developer must Accept or Dispute each one
+  // (backend/src/tasks/defect-triage.ts). Admin or Program Manager
+  // switches it per project; default off.
+  @Column({ default: false })
+  defectTriageEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

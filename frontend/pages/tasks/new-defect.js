@@ -4,6 +4,11 @@ import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
 import RichTextEditor from '../../components/ui/RichTextEditor';
 import ScreenshotAttach from '../../components/ScreenshotAttach';
+import DefectClassificationFields, {
+  EMPTY_CLASSIFICATION,
+  classificationPayload,
+  missingClassification,
+} from '../../components/DefectClassificationFields';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
@@ -19,7 +24,9 @@ function userToOption(u) {
   return { id: u.id, name: u.fullName || u.email };
 }
 
-const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', assignee: null };
+// classification: defect triage (2026-10-27) - only sent, and required per
+// the settings, when the picked project has triage on.
+const EMPTY_FORM = { project: null, module: null, phase: null, title: '', description: '', assignee: null, classification: EMPTY_CLASSIFICATION };
 
 // Same list as QA_ARTIFACT_TYPES on the task detail page (pages/tasks/[id].js)
 // - this is the same "QA's own evidence" concept, just captured at
@@ -117,6 +124,9 @@ export default function NewDefectPage() {
   const screenshotsUploadedRef = useRef(false);
   const [error, setError] = useState('');
   const [optionsLoaded, setOptionsLoaded] = useState(false);
+  // Defect triage lists + which projects have it on (GET /defect-triage/options).
+  const [triageOptions, setTriageOptions] = useState(null);
+  const [classificationAttempted, setClassificationAttempted] = useState(false);
 
   // Draft autosave state - see the comment on DRAFT_SAVE_DELAY_MS above.
   // draftReady stays false while a saved draft is waiting on Restore /
@@ -158,6 +168,7 @@ export default function NewDefectPage() {
             title: current.title,
             description: current.description,
             assignee: pickOption(current.assignee),
+            classification: current.classification,
           },
           artifacts: currentArtifacts,
         }),
@@ -184,6 +195,7 @@ export default function NewDefectPage() {
     Promise.all([
       apiFetch('/projects').then(setProjects).catch(() => {}),
       apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map(userToOption))).catch(() => {}),
+      apiFetch('/defect-triage/options').then(setTriageOptions).catch(() => {}),
     ]).then(() => setOptionsLoaded(true));
     if (parsed.id && !localStorage.getItem('impersonator')) {
       const key = draftKeyFor(parsed.id);
@@ -247,6 +259,8 @@ export default function NewDefectPage() {
 
   if (!user) return null;
 
+  const triageOn = !!form.project && !!triageOptions?.enabledProjectIds?.includes(form.project.id);
+
   // Restores the saved draft, re-matching Project/Module/Phase/Assignee
   // against what's currently selectable - anything deleted or
   // deactivated since (and whatever sits below it) is left blank with a
@@ -278,6 +292,7 @@ export default function NewDefectPage() {
       title: saved.title || '',
       description: saved.description || '',
       assignee,
+      classification: { ...EMPTY_CLASSIFICATION, ...(saved.classification || {}) },
     });
     setArtifacts(Array.isArray(pendingDraft.artifacts) ? pendingDraft.artifacts : []);
     setDraftNotice(
@@ -327,6 +342,14 @@ export default function NewDefectPage() {
       setError('Project, Module, Phase, Description, and Assignee are all required.');
       return;
     }
+    if (triageOn) {
+      const missing = missingClassification(form.classification, triageOptions);
+      if (missing.length > 0) {
+        setClassificationAttempted(true);
+        setError(`Classification is missing: ${missing.join(', ')}.`);
+        return;
+      }
+    }
     let payloadArtifacts;
     try {
       payloadArtifacts = buildArtifactsPayload();
@@ -345,6 +368,7 @@ export default function NewDefectPage() {
           title: form.title.trim(),
           description: form.description,
           assigneeUserId: form.assignee.id,
+          ...(triageOn ? classificationPayload(form.classification) : {}),
           artifacts: payloadArtifacts,
         }),
       });
@@ -479,6 +503,23 @@ export default function NewDefectPage() {
             placeholder="Describe the defect..."
           />
         </div>
+
+        {triageOn && (
+          <>
+            <DefectClassificationFields
+              idPrefix="ndClass"
+              value={form.classification}
+              onChange={(classification) => setForm({ ...form, classification })}
+              options={triageOptions}
+              attempted={classificationAttempted}
+              disabled={saving}
+            />
+            <p className={styles.helpText} style={{ marginTop: 0 }}>
+              {form.project.name} uses defect triage: the developer accepts or disputes this defect within{' '}
+              {triageOptions.triageWorkingDays} working day{triageOptions.triageWorkingDays === 1 ? '' : 's'}.
+            </p>
+          </>
+        )}
 
         <div className={styles.fieldNarrow}>
           <SearchSelectField

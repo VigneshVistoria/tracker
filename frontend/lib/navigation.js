@@ -41,6 +41,8 @@ import {
   PackageCheck,
   LifeBuoy,
   UserCheck,
+  Scale,
+  ShieldQuestion,
   GanttChart,
 } from 'lucide-react';
 
@@ -94,6 +96,8 @@ export const NAV_SECTIONS = [
       { href: '/tasks/backlog', label: 'Task Backlog', icon: Inbox, roles: [ADMIN, PM] },
       // PM review gate (2026-10-13) - matches PmReviewsController's PM_REVIEW_ROLES.
       { href: '/tasks/pm-review', label: 'PM Review', icon: UserCheck, roles: [ADMIN, PM], countKey: 'pmReview' },
+      // Defect triage (2026-10-27) - matches DefectTriageController's DEFECT_DISPUTE_DECIDE_ROLES.
+      { href: '/tasks/defect-disputes', label: 'Defect Disputes', icon: Scale, roles: [ADMIN, PM], countKey: 'defectDisputes' },
       { href: '/tasks/escalations', label: 'Interventions', icon: AlertTriangle, roles: [ADMIN, PM] },
       // Matches TasksController.ROLES_ALLOWED_TO_VIEW_JUNK - PM restores, Admin views.
       { href: '/tasks/junk', label: 'Junk', icon: ArchiveX, roles: [ADMIN, PM] },
@@ -176,6 +180,8 @@ export const NAV_SECTIONS = [
       // QA "Not ready for testing" reasons (2026-10-27) - matches
       // QaReviewSettingsController's ROLES_ALLOWED_TO_EDIT_NOT_READY_REASONS.
       { href: '/admin/qa-review-settings', label: 'QA Review Settings', icon: FlaskConical, roles: [ADMIN, PM] },
+      // Defect triage (2026-10-27) - matches DEFECT_TRIAGE_SETTINGS_ROLES.
+      { href: '/admin/defect-triage-settings', label: 'Defect Triage Settings', icon: ShieldQuestion, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

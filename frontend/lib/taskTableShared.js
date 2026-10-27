@@ -20,6 +20,8 @@ export const TASK_STATUSES = [
   'Returned to QA',
   // QA could not start testing (2026-10-27) - see backend/src/tasks/qa-not-ready.ts.
   'Not Ready for Testing',
+  // Disputed defect, waiting for the PM (2026-10-27) - see backend/src/tasks/defect-triage.ts.
+  'Disputed',
   'Escalated',
   'Failed',
   'Pass',
@@ -83,7 +85,8 @@ export const LEGEND_ITEMS = [
   { label: 'Hold', swatch: 'var(--ds-color-info-tint)', dot: 'var(--ds-color-info)' },
   { label: 'Closed', swatch: 'var(--ds-color-gray-300)', dot: 'var(--ds-color-gray-500)' },
   // PM review gate (2026-10-13) - --ds-* tokens, same reason as Hold/Closed.
-  { label: 'Pending PM Review', swatch: 'var(--ds-color-warning-tint)', dot: 'var(--ds-color-warning)' },
+  // Disputed (2026-10-27) shares Pending PM Review's hue - both wait for a PM.
+  { label: 'Pending PM Review / Disputed', swatch: 'var(--ds-color-warning-tint)', dot: 'var(--ds-color-warning)' },
   // Not Ready for Testing (2026-10-27) shares PM Feedback's hue - both are
   // "sent back to the developer, not a QA rejection".
   { label: 'PM Feedback / Not Ready for Testing', swatch: 'var(--ds-color-error-tint)', dot: 'var(--ds-color-error)' },
@@ -110,6 +113,7 @@ export function buildRowTintClass(styles) {
     Hold: styles.rowTintHold,
     Closed: styles.rowTintClosed,
     'Pending PM Review': styles.rowTintPmReview,
+    Disputed: styles.rowTintPmReview,
     'PM Feedback': styles.rowTintPmFeedback,
     'Not Ready for Testing': styles.rowTintPmFeedback,
     'Returned to QA': styles.rowTintReturnedToQa,
@@ -132,6 +136,7 @@ export function buildRowRailClass(styles) {
     Hold: styles.railHold,
     Closed: styles.railClosed,
     'Pending PM Review': styles.railPmReview,
+    Disputed: styles.railPmReview,
     'PM Feedback': styles.railPmFeedback,
     'Not Ready for Testing': styles.railPmFeedback,
     'Returned to QA': styles.railReturnedToQa,
@@ -159,6 +164,7 @@ const STATUS_BADGE_STYLE = {
   Closed: { background: 'var(--ds-color-gray-300)', color: 'var(--ds-text-primary)' },
   // PM review gate (2026-10-13) - mirrored in tasks/[id].js's STATUS_COLOR.
   'Pending PM Review': { background: 'var(--ds-color-warning-tint)', color: 'var(--ds-color-warning-dark)' },
+  Disputed: { background: 'var(--ds-color-warning-tint)', color: 'var(--ds-color-warning-dark)' },
   'PM Feedback': { background: 'var(--ds-color-error-tint)', color: 'var(--ds-color-error-dark)' },
   'Returned to QA': { background: 'var(--ds-color-primary-100)', color: 'var(--ds-color-primary-800)' },
   'Not Ready for Testing': { background: 'var(--ds-color-error-tint)', color: 'var(--ds-color-error-dark)' },
@@ -186,6 +192,8 @@ export const STATUS_TAB_GROUPS = [
   },
   // PM review gate (2026-10-13) - waiting for a Program Manager before QA.
   { key: 'PmReview', label: 'PM Review', statuses: ['Pending PM Review'] },
+  // Defect triage (2026-10-27) - a disputed defect waiting for the PM.
+  { key: 'Disputed', label: 'Disputed', statuses: ['Disputed'] },
   { key: 'Feedback', label: 'QA', statuses: ['Feedback', 'Re-Feedback'] },
   // Return to QA (2026-10-18) - a PM sent it back to QA.
   { key: 'ReturnedToQa', label: 'Returned to QA', statuses: ['Returned to QA'] },

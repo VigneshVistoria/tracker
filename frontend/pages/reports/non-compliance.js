@@ -38,6 +38,54 @@ const INCOMPLETE_RULE =
 const TEST_FAILED_RULE =
   'QA and Peer Review rejections where the test was run and failed - the same rejections the Rejection Rate counts. Shown for information, never flagged on its own.';
 
+// Defect triage (2026-10-27) - information only, never part of Flagged and
+// never a KPI penalty. See backend/src/tasks/defect-triage.ts.
+const LATE_TRIAGE_RULE =
+  'Defects accepted or disputed after their triage due date, or still waiting past it (not on Hold or Closed), by due date. A defect that moved to another developer, or a dispute whose reason never counts (e.g. wrong assignee), is not counted.';
+const DISPUTES_RULE =
+  'Defects the developer disputed in the period, and how the PM decided: agreed (closed, reassigned or converted to a task), rejected (the developer fixes it) or still waiting. Never a QA rejection.';
+const PM_DISPUTE_DECISION_LABEL = { rejected: 'rejected', closed: 'agreed, closed', reassigned: 'agreed, reassigned', converted: 'agreed, converted to a task' };
+
+function LateTriageList({ items }) {
+  if (items.length === 0) return null;
+  return (
+    <details className={nc.taskList}>
+      <summary>view {items.length}</summary>
+      <ul>
+        {items.map((item, i) => (
+          <li key={`${item.taskId}-${i}`}>
+            <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a> {item.title}{' '}
+            <span className={nc.tag}>
+              due {formatDate(item.dueDate)}, {item.decidedAt ? `${item.decision} ${formatDate(item.decidedAt)}` : 'still waiting'} -{' '}
+              {item.workingDaysLate} working day{item.workingDaysLate === 1 ? '' : 's'} late
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function DisputeList({ items }) {
+  if (items.length === 0) return null;
+  return (
+    <details className={nc.taskList}>
+      <summary>view {items.length}</summary>
+      <ul>
+        {items.map((item, i) => (
+          <li key={`${item.taskId}-${i}`}>
+            <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a> {item.title}{' '}
+            <span className={nc.tag}>
+              {item.reason || 'Disputed'}
+              {item.disputedAt ? ` on ${formatDate(item.disputedAt)}` : ''} - {item.pmDecision ? PM_DISPUTE_DECISION_LABEL[item.pmDecision] : 'waiting for the PM'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 function TestFailedList({ items }) {
   if (items.length === 0) return null;
   return (
@@ -643,6 +691,50 @@ export default function NonComplianceReportPage() {
                 ))}
               </ul>
             )}
+          </div>
+
+          {/* --- Defect triage - information only (2026-10-27) --- */}
+          <div className={styles.card} style={{ marginTop: 'var(--space-4)' }}>
+            <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-1)', fontWeight: 600 }}>All developers - defect triage (information only)</h2>
+            <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-3)' }}>
+              Projects with defect triage on. Never flagged and never a KPI penalty.
+            </p>
+            {report.developers.length === 0 ? (
+              <div className={styles.empty}>No developers found.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Developer</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={LATE_TRIAGE_RULE}>Late triage</th>
+                    <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }} title={DISPUTES_RULE}>Disputes (agreed / rejected / waiting)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...report.developers]
+                    .sort((a, b) => b.lateTriage.count - a.lateTriage.count || b.disputes.raised - a.disputes.raised || devName(a).localeCompare(devName(b)))
+                    .map((dev) => (
+                      <tr key={dev.userId}>
+                        <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)' }}>{devName(dev)}</td>
+                        <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                          <span className={nc.metricValue}>{dev.lateTriage.count}</span>
+                          <LateTriageList items={dev.lateTriage.items} />
+                        </td>
+                        <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                          <span className={nc.metricValue}>{dev.disputes.raised}</span>
+                          <span className={nc.metricFrac}>
+                            {dev.disputes.agreed} / {dev.disputes.rejected} / {dev.disputes.waiting}
+                          </span>
+                          <DisputeList items={dev.disputes.items} />
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-2) 0 0' }}>
+              {LATE_TRIAGE_RULE} {DISPUTES_RULE}
+            </p>
           </div>
         </>
       )}

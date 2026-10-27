@@ -31,6 +31,35 @@ export class CreateDefectTaskDto {
   @IsInt()
   assigneeUserId: number;
 
+  // Defect classification (2026-10-27, see tasks/defect-triage.ts) -
+  // required (per the editable settings) only when the project has defect
+  // triage switched on, ignored otherwise. The service checks each value
+  // against its list.
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  severity?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  defectType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  defectOrigin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  foundInBuild?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  foundInEnvironment?: string;
+
   // Optional evidence QA attaches when filing the defect - reuses the
   // exact same DTO/validator TaskQaReviewsService's QA-side artifacts use
   // (QaApproveTaskDto/QaRejectTaskDto), same reasoning: optional, unlike

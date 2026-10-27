@@ -25,6 +25,19 @@ import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 import { isPastEffectiveDue } from './pm-review';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
 import { NOT_READY_STATUS } from './qa-not-ready';
+import {
+  CLASSIFICATION_FIELDS,
+  CLASSIFICATION_LABELS,
+  ClassificationField,
+  DefectClassification,
+  DefectTriageSettings,
+  DISPUTED_STATUS,
+  BUILD_MAX,
+  optionsFor,
+  resolveDefectTriageSettings,
+} from './defect-triage';
+import { DefectTriage } from './defect-triage.entity';
+import { TeamSettings } from '../team-settings/team-settings.entity';
 
 export interface ProjectTaskWithComputed extends ProjectTask {
   percentComplete: number | null;
@@ -246,7 +259,9 @@ const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
 // 'Returned to QA' (2026-10-18): a PM sent it back to QA - still open.
 // 'Not Ready for Testing' (2026-10-27): QA could not test it - back with the
 // developer, still open.
-const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA', NOT_READY_STATUS];
+// 'Disputed' (2026-10-27): the developer disputed it, waiting for the PM -
+// still open.
+const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA', NOT_READY_STATUS, DISPUTED_STATUS];
 
 // "Resolved" for a *linked* defect (assertNoOpenLinkedDefects() below) -
 // deliberately not OPEN_DEFECT_STATUSES's complement. That constant
@@ -291,6 +306,10 @@ export class TasksService {
     private defectArtifactsRepository: Repository<TaskDefectArtifact>,
     @InjectRepository(TaskBlockingDefect)
     private blockingDefectsRepository: Repository<TaskBlockingDefect>,
+    @InjectRepository(DefectTriage)
+    private defectTriagesRepository: Repository<DefectTriage>,
+    @InjectRepository(TeamSettings)
+    private teamSettingsRepository: Repository<TeamSettings>,
     private projectsService: ProjectsService,
     private modulesService: ModulesService,
     private phasesService: PhasesService,
@@ -400,6 +419,13 @@ export class TasksService {
     if (task.status === RETURNED_TO_QA_STATUS) {
       throw new BadRequestException(`#${task.id} was sent back to QA by a PM - you can submit it once QA returns it to you.`);
     }
+    // Defect triage (2026-10-27, see ./defect-triage.ts).
+    if (task.status === DISPUTED_STATUS) {
+      throw new BadRequestException(`#${task.id} is disputed and waiting for the PM - you can submit it once the PM decides.`);
+    }
+    if (task.isDefect && task.triageStatus === 'pending') {
+      throw new BadRequestException(`Accept or dispute defect #${task.id} first - it can be submitted for QA once you have accepted it.`);
+    }
     if (task.status === 'Hold' || task.status === 'Closed') {
       throw new BadRequestException(`Task #${task.id} is ${task.status === 'Hold' ? 'on Hold' : 'Closed'} - it cannot be submitted for review.`);
     }
@@ -422,6 +448,94 @@ export class TasksService {
     if (task.isDefect || task.peerReviewEnabled) return false;
     const project = await this.projectsService.findOne(task.projectId, task.tenantId).catch(() => null);
     return !!project?.pmReviewEnabled;
+  }
+
+  // ---------- Defect triage (2026-10-27, see ./defect-triage.ts) ----------
+
+  async defectTriageSettings(tenantId: number): Promise<DefectTriageSettings> {
+    const row = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    return resolveDefectTriageSettings(row?.defectTriageSettings);
+  }
+
+  async defectTriageOn(projectId: number, tenantId: number): Promise<boolean> {
+    const project = await this.projectsService.findOne(projectId, tenantId).catch(() => null);
+    return !!project?.defectTriageEnabled;
+  }
+
+  // Checks a new defect's classification against the project's switch and
+  // the editable lists - called before anything is saved (Create Defect,
+  // and every linked defect before a rejection is recorded). Off: the
+  // classification is ignored and triage does not apply. On: required
+  // fields must be filled, list values must be on their list (stored as
+  // the list's own text), build is free text.
+  async prepareDefectClassification(
+    projectId: number,
+    input: DefectClassification,
+    tenantId: number,
+  ): Promise<{ on: boolean; values: Record<ClassificationField, string | null>; settings: DefectTriageSettings | null }> {
+    const empty = Object.fromEntries(CLASSIFICATION_FIELDS.map((f) => [f, null])) as Record<ClassificationField, string | null>;
+    if (!(await this.defectTriageOn(projectId, tenantId))) return { on: false, values: empty, settings: null };
+    const settings = await this.defectTriageSettings(tenantId);
+    return { on: true, values: this.cleanClassification(input, settings, true), settings };
+  }
+
+  // Validates and normalizes classification values; `enforceRequired`
+  // applies settings.requiredFields.
+  cleanClassification(input: DefectClassification, settings: DefectTriageSettings, enforceRequired: boolean): Record<ClassificationField, string | null> {
+    const values = {} as Record<ClassificationField, string | null>;
+    const missing: string[] = [];
+    for (const field of CLASSIFICATION_FIELDS) {
+      const raw = typeof input?.[field] === 'string' ? (input[field] as string).trim() : '';
+      if (!raw) {
+        values[field] = null;
+        if (enforceRequired && settings.requiredFields.includes(field)) missing.push(CLASSIFICATION_LABELS[field]);
+        continue;
+      }
+      const options = optionsFor(settings, field);
+      if (options) {
+        const match = options.find((o) => o.toLowerCase() === raw.toLowerCase());
+        if (!match) {
+          throw new BadRequestException(`"${raw}" is not on the ${CLASSIFICATION_LABELS[field]} list any more - reload the page and pick again.`);
+        }
+        values[field] = match;
+      } else {
+        if (raw.length > BUILD_MAX) throw new BadRequestException(`${CLASSIFICATION_LABELS[field]} must be ${BUILD_MAX} characters or fewer.`);
+        values[field] = raw;
+      }
+    }
+    if (missing.length > 0) {
+      throw new BadRequestException(`Classification is missing: ${missing.join(', ')}.`);
+    }
+    return values;
+  }
+
+  // Opens the triage clock for the defect's current assignee.
+  async startTriageWithin(em: EntityManager, task: ProjectTask, settings: DefectTriageSettings, startedAt = new Date()): Promise<DefectTriage> {
+    return em.save(
+      em.create(DefectTriage, {
+        tenantId: task.tenantId,
+        taskId: task.id,
+        assigneeUserId: task.assigneeUserId,
+        assigneeEmail: task.assigneeEmail,
+        startedAt,
+        dueDate: toDateOnlyString(addBusinessDays(startedAt, settings.triageWorkingDays)),
+        decision: null,
+      }),
+    );
+  }
+
+  // A defect still waiting for triage moved to another developer (or out
+  // of anyone's hands): the old clock is closed as 'superseded' - never
+  // late - and the new assignee gets a fresh one.
+  private async restartPendingTriage(task: ProjectTask, previousAssigneeUserId: number | null): Promise<void> {
+    if (!task.isDefect || task.triageStatus !== 'pending' || task.assigneeUserId === previousAssigneeUserId) return;
+    await this.defectTriagesRepository.update(
+      { tenantId: task.tenantId, taskId: task.id, decision: IsNull() },
+      { decision: 'superseded', decidedAt: new Date() },
+    );
+    if (task.assigneeUserId) {
+      await this.startTriageWithin(this.defectTriagesRepository.manager, task, await this.defectTriageSettings(task.tenantId));
+    }
   }
 
   async assertNotAlreadyApproved(task: ProjectTask, tenantId: number): Promise<void> {
@@ -1411,7 +1525,7 @@ export class TasksService {
   // In-app notification hook (UserNotificationListenersService) - fired
   // after the save + audit record, never awaited, so it can't affect the
   // request. Self-assignment is filtered out by the listener.
-  private emitAssigned(task: ProjectTask, actor: { id: number; email: string }, tenantId: number) {
+  emitAssigned(task: ProjectTask, actor: { id: number; email: string }, tenantId: number) {
     this.eventEmitter.emit('task.assigned', {
       tenantId,
       taskId: task.id,
@@ -1451,6 +1565,9 @@ export class TasksService {
     if (!DEVELOPER_EQUIVALENT_ROLES.includes(assignee.role)) {
       throw new BadRequestException('A defect can only be assigned to a Developer, Designer, or DevOps.');
     }
+    // Defect triage (2026-10-27): classification + the triage clock when
+    // the project has it switched on - checked before anything is saved.
+    const classification = await this.prepareDefectClassification(project.id, dto, tenantId);
 
     // Task row + its optional evidence artifacts are saved together in a
     // transaction, same reasoning as TaskQaReviewsService.submit() - a
@@ -1474,11 +1591,16 @@ export class TasksService {
         peerReviewEnabled: false,
         isDefect: true,
         parentTaskId,
+        ...classification.values,
+        triageStatus: classification.on ? 'pending' : null,
         createdByUserId: user.id,
         createdByEmail: user.email,
         tenantId,
       });
       const savedTask = await manager.save(ProjectTask, task);
+      if (classification.on) {
+        await this.startTriageWithin(manager, savedTask, classification.settings!);
+      }
 
       const artifacts = (dto.artifacts || []).map((item) =>
         manager.create(TaskDefectArtifact, {
@@ -1508,6 +1630,7 @@ export class TasksService {
         assigneeUserId: assignee.id,
         parentTaskId,
         artifactTypes: (dto.artifacts || []).map((a) => a.type),
+        ...(classification.on ? { classification: classification.values, triage: 'pending' } : {}),
       },
     });
 
@@ -1540,6 +1663,7 @@ export class TasksService {
     if (!assignee) {
       throw new NotFoundException(`User #${assigneeUserId} not found`);
     }
+    const previousAssigneeUserId = task.assigneeUserId;
 
     task.assigneeUserId = assignee.id;
     task.assigneeEmail = assignee.email;
@@ -1547,6 +1671,7 @@ export class TasksService {
       task.peerReviewEnabled = true;
     }
     const saved = await this.tasksRepository.save(task);
+    await this.restartPendingTriage(saved, previousAssigneeUserId);
 
     await this.auditLogService.record({
       userId: currentUser.id,
@@ -1623,6 +1748,7 @@ export class TasksService {
       }
     }
     const saved = await this.tasksRepository.save(task);
+    await this.restartPendingTriage(saved, previousAssigneeUserId);
 
     await this.auditLogService.record({
       userId: currentUser.id,

@@ -1,5 +1,6 @@
 import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
+import { DISPUTED_STATUS } from './defect-triage';
 
 // PM review gate (2026-10-13, confirmed with the user): when a project has
 // it switched on (Project.pmReviewEnabled), a developer's task submission
@@ -33,6 +34,8 @@ export function isPastEffectiveDue(
   if (task.status === PM_REVIEW_STATUS) return false;
   // Return to QA: with QA, not the developer (days added on send-back).
   if (task.status === RETURNED_TO_QA_STATUS) return false;
+  // Disputed defect: with the PM (days added on the decision).
+  if (task.status === DISPUTED_STATUS) return false;
   const due = effectiveDueDate(task);
   return !!due && due < today;
 }

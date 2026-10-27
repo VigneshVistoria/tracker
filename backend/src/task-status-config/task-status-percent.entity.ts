@@ -52,6 +52,9 @@ export const TASK_STATUSES = [
   'Returned to QA',
   // QA could not start testing (2026-10-27) - see backend/src/tasks/qa-not-ready.ts.
   'Not Ready for Testing',
+  // Developer disputed a defect, waiting for the PM (2026-10-27) - see
+  // backend/src/tasks/defect-triage.ts.
+  'Disputed',
   'Escalated',
   'Failed',
   'Pass',
@@ -76,6 +79,7 @@ export const TASK_STATUS_PERCENT_DEFAULTS: Record<TaskStatus, number> = {
   'PM Feedback': 0,
   'Returned to QA': 0,
   'Not Ready for Testing': 0,
+  Disputed: 0,
   Escalated: 50,
   Failed: 0,
   Pass: 100,

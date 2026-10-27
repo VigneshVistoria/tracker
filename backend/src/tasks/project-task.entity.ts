@@ -192,6 +192,31 @@ export class ProjectTask {
   @Column({ nullable: true })
   parentTaskId: number | null;
 
+  // Defect classification (2026-10-27, see ./defect-triage.ts) - set by QA
+  // when the defect is filed in a project with triage on, as the text
+  // picked from the editable lists (build is free text). Null on tasks and
+  // on defects filed before or without it.
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  severity: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  defectType: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  defectOrigin: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  foundInBuild: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  foundInEnvironment: string | null;
+
+  // Developer triage: null = does not apply (a task, or a defect filed
+  // while its project had triage off); 'pending' blocks Submit for QA until
+  // the assignee accepts or disputes; 'disputed' = with the PM or decided.
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  triageStatus: 'pending' | 'accepted' | 'disputed' | null;
+
   @Column({ nullable: true })
   createdByUserId: number;
 

@@ -32,6 +32,12 @@ import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
 import Avatar from '../../components/ui/Avatar';
 import DefectScreenshots from '../../components/DefectScreenshots';
+import DefectTriagePanel from '../../components/DefectTriagePanel';
+import DefectClassificationFields, {
+  EMPTY_CLASSIFICATION,
+  classificationPayload,
+  missingClassification,
+} from '../../components/DefectClassificationFields';
 import { redirectToSignIn } from '../../lib/session';
 
 const VIEW_ROLES = ['admin', 'executive', 'program_manager', 'qa', 'client', ...DEVELOPER_EQUIVALENT_ROLES];
@@ -73,6 +79,7 @@ const STATUS_COLOR = {
   Closed: { bg: 'var(--ds-color-gray-300)', fg: 'var(--ds-text-primary)' },
   // PM review gate (2026-10-13). Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
   'Pending PM Review': { bg: 'var(--ds-color-warning-tint)', fg: 'var(--ds-color-warning-dark)' },
+  Disputed: { bg: 'var(--ds-color-warning-tint)', fg: 'var(--ds-color-warning-dark)' },
   'PM Feedback': { bg: 'var(--ds-color-error-tint)', fg: 'var(--ds-color-error-dark)' },
   // Return to QA (2026-10-18). Mirrors taskTableShared.js's STATUS_BADGE_STYLE.
   'Returned to QA': { bg: 'var(--ds-color-primary-100)', fg: 'var(--ds-color-primary-800)' },
@@ -365,8 +372,12 @@ export default function TaskDetailPage() {
   const [blockingSelection, setBlockingSelection] = useState(null);
   const [savingBlockingLink, setSavingBlockingLink] = useState(false);
   const [createLinkedDefect, setCreateLinkedDefect] = useState(false);
-  const [linkedDefectDrafts, setLinkedDefectDrafts] = useState([{ title: '', description: '', assignee: null }]);
+  const [linkedDefectDrafts, setLinkedDefectDrafts] = useState([{ title: '', description: '', assignee: null, classification: EMPTY_CLASSIFICATION }]);
   const [linkedDefectArtifacts, setLinkedDefectArtifacts] = useState([]);
+  // Defect triage (2026-10-27): lists + which projects have it on - linked
+  // defects of a rejection are classified when the task's project does.
+  const [triageOptions, setTriageOptions] = useState(null);
+  const [linkedClassificationAttempted, setLinkedClassificationAttempted] = useState(false);
   // Loaded once on mount (not per-task) - see loadArtifactUrlHistory/
   // recordArtifactUrlHistory above.
   const [artifactUrlHistory, setArtifactUrlHistory] = useState([]);
@@ -571,6 +582,7 @@ export default function TaskDetailPage() {
     setArtifactUrlHistory(loadArtifactUrlHistory());
     apiFetch('/users/assignable?role=developer').then((rows) => setDevelopers(rows.map((u) => ({ ...userToOption(u), role: u.role })))).catch(() => {});
     apiFetch('/projects').then(setProjects).catch(() => {});
+    if (parsed.role === 'qa') apiFetch('/defect-triage/options').then(setTriageOptions).catch(() => {});
     if (MANAGE_ROLES.includes(parsed.role)) {
       apiFetch('/users/assignable').then((rows) => setAssignableUsers(rows.map(userToOption))).catch(() => {});
     }
@@ -694,8 +706,8 @@ export default function TaskDetailPage() {
         setCreateLinkedDefect(!!draft.createLinkedDefect);
         setLinkedDefectDrafts(
           Array.isArray(draft.linkedDefectDrafts) && draft.linkedDefectDrafts.length > 0
-            ? draft.linkedDefectDrafts
-            : [{ title: '', description: '', assignee: null }],
+            ? draft.linkedDefectDrafts.map((d) => ({ ...d, classification: { ...EMPTY_CLASSIFICATION, ...(d.classification || {}) } }))
+            : [{ title: '', description: '', assignee: null, classification: EMPTY_CLASSIFICATION }],
         );
         setLinkedDefectArtifacts(Array.isArray(draft.linkedDefectArtifacts) ? draft.linkedDefectArtifacts : []);
         setShowRejectForm(true);
@@ -817,9 +829,12 @@ export default function TaskDetailPage() {
   // PM review rounds are a gate before QA, never the task's verdict.
   const latestDecidedReview = qaReviews.find((r) => r.status !== 'pending' && r.reviewType !== 'pm');
   const isAlreadyApproved = latestDecidedReview?.status === 'approved';
+  // Defect triage (2026-10-27): not while Disputed or waiting for Accept.
   const canSubmitForReview =
     !isAlreadyApproved &&
-    !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Returned to QA'].includes(task.status);
+    !(task.isDefect && task.triageStatus === 'pending') &&
+    !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Returned to QA', 'Disputed'].includes(task.status);
+  const linkedTriageOn = !!triageOptions?.enabledProjectIds?.includes(task.projectId);
   // Backend mirror: TaskQaReviewsService.submit()/PeerReviewsService.
   // submit() - a defect always goes to QA, whatever its Peer Review flag.
   const usesPeerReview = !!task.peerReviewEnabled && !task.isDefect;
@@ -1408,7 +1423,7 @@ export default function TaskDetailPage() {
   };
 
   const addLinkedDefectDraft = () => {
-    setLinkedDefectDrafts((prev) => [...prev, { title: '', description: '', assignee: null }]);
+    setLinkedDefectDrafts((prev) => [...prev, { title: '', description: '', assignee: null, classification: EMPTY_CLASSIFICATION }]);
   };
 
   const removeLinkedDefectDraft = (index) => {
@@ -1475,7 +1490,7 @@ export default function TaskDetailPage() {
 
   const resetLinkedDefectForm = () => {
     setCreateLinkedDefect(false);
-    setLinkedDefectDrafts([{ title: '', description: '', assignee: null }]);
+    setLinkedDefectDrafts([{ title: '', description: '', assignee: null, classification: EMPTY_CLASSIFICATION }]);
     setLinkedDefectArtifacts([]);
     setLinkedDefectShots([]);
   };
@@ -1690,6 +1705,16 @@ export default function TaskDetailPage() {
         setError('Every linked defect needs a Title, Description, and Assignee.');
         return;
       }
+      if (linkedTriageOn) {
+        const unclassified = linkedDefectDrafts.findIndex((d) => missingClassification(d.classification, triageOptions).length > 0);
+        if (unclassified >= 0) {
+          setLinkedClassificationAttempted(true);
+          setError(
+            `Defect ${unclassified + 1}: classification is missing: ${missingClassification(linkedDefectDrafts[unclassified].classification, triageOptions).join(', ')}.`,
+          );
+          return;
+        }
+      }
       try {
         linkedDefectArtifactsPayload = buildLinkedDefectArtifactsPayload();
       } catch (err) {
@@ -1700,6 +1725,7 @@ export default function TaskDetailPage() {
         title: d.title.trim(),
         description: d.description,
         assigneeUserId: d.assignee.id,
+        ...(linkedTriageOn ? classificationPayload(d.classification) : {}),
       }));
     }
     setQaActionBusy(true);
@@ -2530,6 +2556,7 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {!isJunk && task.isDefect && <DefectTriagePanel task={task} onChanged={refreshAfterReturnToQa} />}
       {!isJunk && <ReturnToQaPanel task={task} user={user} onChanged={refreshAfterReturnToQa} />}
 
       {(canRevertQaDecision || canSendBackFromQa) && (
@@ -3631,6 +3658,16 @@ export default function TaskDetailPage() {
                           options={developers}
                         />
                       </div>
+                      {linkedTriageOn && (
+                        <DefectClassificationFields
+                          idPrefix={`tdLinkedClass-${index}`}
+                          value={draft.classification}
+                          onChange={(value) => updateLinkedDefectDraft(index, 'classification', value)}
+                          options={triageOptions}
+                          attempted={linkedClassificationAttempted}
+                          disabled={qaActionBusy}
+                        />
+                      )}
                       <div className={styles.field}>
                         <span className={styles.label}>Screenshots for defect {index + 1} (optional)</span>
                         <ScreenshotAttach

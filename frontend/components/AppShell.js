@@ -68,7 +68,7 @@ export default function AppShell({ children, fullScreen = false }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
   // Sidebar count badges (e.g. "My Tasks 6"); null = not loaded, no badge.
-  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null, pmReview: null });
+  const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null, pmReview: null, defectDisputes: null });
   // Client portal (Stage 2): whether to show Client tickets.
   const [canSeeClientTickets, setCanSeeClientTickets] = useState(false);
   // Developer/Designer/DevOps header badge - peer reviews waiting on me.
@@ -192,6 +192,11 @@ export default function AppShell({ children, fullScreen = false }) {
     if (visibleCountKeys.has('pmReview')) {
       apiFetch('/pm-review/queue')
         .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, pmReview: res.statCounts.pending })))
+        .catch(() => {});
+    }
+    if (visibleCountKeys.has('defectDisputes')) {
+      apiFetch('/defect-triage/queue')
+        .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, defectDisputes: res.items.length })))
         .catch(() => {});
     }
     if (visibleCountKeys.has('myDefects')) {

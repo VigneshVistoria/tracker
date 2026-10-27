@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
+import { DefectTriage } from '../tasks/defect-triage.entity';
 import { NonComplianceReportService } from './non-compliance-report.service';
 import { NonComplianceReportController } from './non-compliance-report.controller';
 import { PdfNonComplianceReportService } from './pdf-non-compliance-report.service';
@@ -10,7 +11,7 @@ import { GuardsModule } from '../common/guards.module';
 import { PerformanceMetricsModule } from '../performance-metrics/performance-metrics.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ProjectTask, TaskQaReview]), UsersModule, GuardsModule, PerformanceMetricsModule],
+  imports: [TypeOrmModule.forFeature([ProjectTask, TaskQaReview, DefectTriage]), UsersModule, GuardsModule, PerformanceMetricsModule],
   controllers: [NonComplianceReportController],
   providers: [NonComplianceReportService, PdfNonComplianceReportService],
 })

@@ -57,6 +57,18 @@ const PM_REVIEW_COLUMNS: Record<string, string[]> = {
   task_qa_reviews: ['reminderSentAt', 'adminReminderSentAt'],
 };
 
+// Defect triage Stage 1 (2026-10-27): defect_triages is created by the real
+// migration (its entity is left out of synchronize); the new columns on
+// projects/project_tasks are dropped from what synchronize made and re-added
+// by it; team_settings.defectTriageSettings is checked with the rest of
+// team_settings. All checked against the entities below.
+const DEFECT_TRIAGE_ENTITY = path.join(SRC, 'tasks', 'defect-triage.entity.ts');
+const DEFECT_TRIAGE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-defect-triage.sql');
+const DEFECT_TRIAGE_COLUMNS: Record<string, string[]> = {
+  projects: ['defectTriageEnabled'],
+  project_tasks: ['severity', 'defectType', 'defectOrigin', 'foundInBuild', 'foundInEnvironment', 'triageStatus'],
+};
+
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
     const p = path.join(dir, d.name);
@@ -78,7 +90,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -114,6 +126,12 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(QA_NOT_READY_MIGRATION, 'utf8'));
   // Safe to run twice, as its header says.
   await base.query(fs.readFileSync(QA_NOT_READY_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(DEFECT_TRIAGE_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(DEFECT_TRIAGE_MIGRATION, 'utf8'));
+  // Safe to run twice too.
+  await base.query(fs.readFileSync(DEFECT_TRIAGE_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -136,9 +154,11 @@ export async function buildTestSchema() {
   if (!refreshSessionMeta) problems.push('refresh_sessions: entity missing');
   const qaReviewAttachmentMeta = check.entityMetadatas.find((m) => m.tableName === 'task_qa_review_attachments');
   if (!qaReviewAttachmentMeta) problems.push('task_qa_review_attachments: entity missing');
+  const defectTriageMeta = check.entityMetadatas.find((m) => m.tableName === 'defect_triages');
+  if (!defectTriageMeta) problems.push('defect_triages: entity missing');
   const performanceMetas = check.entityMetadatas.filter((m) => PERFORMANCE_TABLES.includes(m.tableName));
   if (performanceMetas.length !== PERFORMANCE_TABLES.length) problems.push(`${PERFORMANCE_TABLES.join('/')}: entity missing`);
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...performanceMetas]) {
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns
@@ -197,7 +217,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of Object.entries(PM_REVIEW_COLUMNS)) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,

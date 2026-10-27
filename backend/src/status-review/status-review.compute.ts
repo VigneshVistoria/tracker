@@ -25,7 +25,8 @@ export const BUCKET_STATUSES: Record<StatusBucket, string[]> = {
   development: ['Development', 'PM Feedback', 'Not Ready for Testing'],
   // 'Pending PM Review' (PM review gate) is with a reviewer too.
   // 'Returned to QA': a PM sent it back to QA (tasks/return-to-qa.ts).
-  qa: ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA'],
+  // 'Disputed' (2026-10-27): a disputed defect, waiting for the PM.
+  qa: ['Pending PM Review', 'Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review', 'Returned to QA', 'Disputed'],
   intervention: ['Escalated'],
 };
 
@@ -197,7 +198,7 @@ export function computeStatusReview(input: ComputeInput): StatusReviewSummary {
       moduleName: t.moduleName,
       // Never while waiting for a PM (PM review gate); the service passes
       // the effective due date (dueDate + PM wait) as dueDate.
-      overdue: t.status !== 'Pending PM Review' && !!t.dueDate && t.dueDate < today,
+      overdue: t.status !== 'Pending PM Review' && t.status !== 'Disputed' && !!t.dueDate && t.dueDate < today,
       blocked: blocked.has(t.id),
       dueSoon: !!t.dueDate && t.dueDate >= today && t.dueDate <= dueSoonUntil,
       waitingOn: [],

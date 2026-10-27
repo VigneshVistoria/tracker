@@ -9,6 +9,8 @@ import { effectiveDueDate, isPastEffectiveDue, PM_REVIEW_STATUS } from '../tasks
 import { RETURNED_TO_QA_STATUS } from '../tasks/return-to-qa';
 import { NOT_READY_SINCE } from '../tasks/qa-not-ready';
 import { PerformanceMetricsService } from '../performance-metrics/performance-metrics.service';
+import { DefectTriage } from '../tasks/defect-triage.entity';
+import { businessDaysBetween, toDateOnlyString } from '../common/business-days';
 
 // A task in one of these is done and can no longer be "missed" - mirrors
 // COMPLETED_STATUSES in TasksService/DeveloperTaskWorkboard.js exactly
@@ -98,6 +100,32 @@ export interface QaNotReadyUsageRow {
   percent: number | null;
 }
 
+// Defect triage (2026-10-27, see tasks/defect-triage.ts). Info only -
+// never part of `flagged` and never a KPI penalty. A clock is late when
+// Accept/Dispute came after its due date, or it is still waiting past it
+// (not on Hold/Closed). Superseded clocks (the defect moved to someone
+// else) and dispute reasons marked "never late" are not counted. Filtered
+// by the triage due date.
+export interface LateTriageItem {
+  taskId: number;
+  title: string;
+  dueDate: string;
+  // null = still waiting.
+  decidedAt: string | null;
+  decision: 'accepted' | 'disputed' | null;
+  // Working days past the due date (to the decision, or to today).
+  workingDaysLate: number;
+}
+
+// The developer's disputes raised in the period and how the PM decided.
+export interface DisputeItem {
+  taskId: number;
+  title: string;
+  reason: string | null;
+  disputedAt: string | null;
+  pmDecision: 'rejected' | 'closed' | 'reassigned' | 'converted' | null;
+}
+
 export interface EscalationItem {
   taskId: number;
   title: string;
@@ -133,6 +161,11 @@ export interface DeveloperNonComplianceRow {
   testFailed: { count: number; items: TestFailedItem[] };
   incompleteSubmissions: { count: number; items: IncompleteSubmissionItem[] };
   escalations: { count: number; flagged: boolean; items: EscalationItem[] };
+  // Information only (2026-10-27) - see LateTriageItem/DisputeItem.
+  lateTriage: { count: number; items: LateTriageItem[] };
+  // agreed = the PM agreed (closed, reassigned or converted); rejected =
+  // the developer had to fix it after all; waiting = not decided yet.
+  disputes: { raised: number; agreed: number; rejected: number; waiting: number; items: DisputeItem[] };
   // Pilot dimension - `checked` is how many of this developer's in-range
   // submissions actually got a Gemini verdict (excludes ones skipped by
   // the rate limiter or lost to an API error), separate from `count`
@@ -215,6 +248,8 @@ export class NonComplianceReportService {
     private tasksRepository: Repository<ProjectTask>,
     @InjectRepository(TaskQaReview)
     private qaReviewsRepository: Repository<TaskQaReview>,
+    @InjectRepository(DefectTriage)
+    private triagesRepository: Repository<DefectTriage>,
     private usersService: UsersService,
     private performanceMetricsService: PerformanceMetricsService,
   ) {}
@@ -287,6 +322,20 @@ export class NonComplianceReportService {
       list.push(review);
       reviewsByTaskId.set(review.taskId, list);
     }
+
+    // Defect triage clocks of these developers (by who the clock was for,
+    // not who has the defect now), with their defects for the project
+    // filter, title and current state. Junk defects count nowhere.
+    const triageRows = developerIds.length
+      ? await this.triagesRepository.find({ where: { tenantId, assigneeUserId: In(developerIds) }, order: { id: 'ASC' } })
+      : [];
+    const triageTasks = triageRows.length
+      ? await this.tasksRepository.find({
+          where: { tenantId, id: In([...new Set(triageRows.map((r) => r.taskId))]), status: Not('Junk'), ...(projectId ? { projectId } : {}) },
+        })
+      : [];
+    const triageTaskById = new Map(triageTasks.map((t) => [t.id, t]));
+    const now = new Date();
 
     const developerRows: DeveloperNonComplianceRow[] = developers.map((dev) => {
       const devTasks = tasksByDeveloper.get(dev.id) ?? [];
@@ -438,6 +487,45 @@ export class NonComplianceReportService {
           submittedAt: r.submittedAt ? toDateOnly(r.submittedAt) : null,
         }));
 
+      // --- Defect triage (info only, 2026-10-27) ---
+      const devTriage = triageRows.filter((r) => r.assigneeUserId === dev.id && triageTaskById.has(r.taskId));
+      const lateTriageItems: LateTriageItem[] = [];
+      for (const r of devTriage) {
+        if (r.decision === 'superseded' || r.lateExempt || !inRange(r.dueDate, from, to)) continue;
+        const task = triageTaskById.get(r.taskId)!;
+        if (r.decision === 'accepted' || r.decision === 'disputed') {
+          const decidedOn = r.decidedAt ? toDateOnlyString(new Date(r.decidedAt)) : null;
+          if (decidedOn && decidedOn > r.dueDate) {
+            lateTriageItems.push({
+              taskId: task.id,
+              title: task.title,
+              dueDate: r.dueDate,
+              decidedAt: decidedOn,
+              decision: r.decision,
+              workingDaysLate: businessDaysBetween(new Date(`${r.dueDate}T00:00:00Z`), new Date(r.decidedAt!)),
+            });
+          }
+        } else if (task.triageStatus === 'pending' && !['Hold', 'Closed'].includes(task.status) && today > r.dueDate) {
+          lateTriageItems.push({
+            taskId: task.id,
+            title: task.title,
+            dueDate: r.dueDate,
+            decidedAt: null,
+            decision: null,
+            workingDaysLate: businessDaysBetween(new Date(`${r.dueDate}T00:00:00Z`), now),
+          });
+        }
+      }
+      const disputeItems: DisputeItem[] = devTriage
+        .filter((r) => r.decision === 'disputed' && inRange(r.decidedAt ? toDateOnlyString(new Date(r.decidedAt)) : null, from, to))
+        .map((r) => ({
+          taskId: r.taskId,
+          title: triageTaskById.get(r.taskId)!.title,
+          reason: r.disputeReason,
+          disputedAt: r.decidedAt ? toDateOnlyString(new Date(r.decidedAt)) : null,
+          pmDecision: r.pmDecision,
+        }));
+
       const lateToQaFlagged = lateToQaItems.length >= thresholds.lateToQaCount;
       const rejectionRateFlagged = submissions >= thresholds.rejectionRateMinSubmissions && rate > thresholds.rejectionRatePercent;
       const escalationsFlagged = escalationItems.length >= thresholds.escalationCount;
@@ -476,6 +564,17 @@ export class NonComplianceReportService {
           count: escalationItems.length,
           flagged: escalationsFlagged,
           items: escalationItems,
+        },
+        lateTriage: {
+          count: lateTriageItems.length,
+          items: lateTriageItems,
+        },
+        disputes: {
+          raised: disputeItems.length,
+          agreed: disputeItems.filter((d) => d.pmDecision && d.pmDecision !== 'rejected').length,
+          rejected: disputeItems.filter((d) => d.pmDecision === 'rejected').length,
+          waiting: disputeItems.filter((d) => !d.pmDecision).length,
+          items: disputeItems,
         },
         resolutionQuality: {
           checked: checkedInRange.length,
