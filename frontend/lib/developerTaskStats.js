@@ -16,11 +16,29 @@ export function yesterdayISO() {
 // TasksService.findTeam() computes server-side for Team Tasks' "Overdue"
 // stat card (tasks.service.ts) - kept in sync by hand, same as every
 // other frontend/backend status-list duplication in this codebase.
+//
+// PM review gate (2026-10-13): never overdue while 'Pending PM Review', and
+// judged against the effective due date - dueDate plus the working days
+// the task spent waiting for a PM (pmWaitWorkingDays). Mirrors
+// backend/src/tasks/pm-review.ts.
 // 'Returned to QA' (2026-10-18): with QA, not the developer - mirrors
 // isPastEffectiveDue() in backend/src/tasks/pm-review.ts.
-const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Returned to QA'];
+const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Pending PM Review', 'Returned to QA'];
+export function effectiveDueDate(task) {
+  if (!task.dueDate) return null;
+  let remaining = task.pmWaitWorkingDays || 0;
+  if (remaining <= 0) return task.dueDate;
+  const d = new Date(`${task.dueDate}T00:00:00Z`);
+  while (remaining > 0) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const day = d.getUTCDay();
+    if (day !== 0 && day !== 6) remaining -= 1;
+  }
+  return d.toISOString().slice(0, 10);
+}
 export function isOverdueTask(task, today = todayISO()) {
-  return Boolean(task.dueDate && task.dueDate < today && !NEVER_OVERDUE_STATUSES.includes(task.status));
+  const due = effectiveDueDate(task);
+  return Boolean(due && due < today && !NEVER_OVERDUE_STATUSES.includes(task.status));
 }
 
 // A task past its own QA Review Due Date (separate field from dueDate

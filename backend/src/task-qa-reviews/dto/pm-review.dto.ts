@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // PM review gate (2026-10-13). Comments are rich text (sanitized server-
 // side); the send-back comment is required, the send-to-QA one optional.
@@ -19,4 +19,16 @@ export class PmSendBackDto {
 export class SetPmReviewSwitchDto {
   @IsBoolean()
   enabled: boolean;
+}
+
+// Tenant-wide reminder settings (team_settings): remind the PMs after more
+// than workingDays working days, the Admins after twice that if toAdmin.
+export class SetPmReminderSettingsDto {
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  workingDays: number;
+
+  @IsBoolean()
+  toAdmin: boolean;
 }

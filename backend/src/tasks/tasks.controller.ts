@@ -273,7 +273,10 @@ export class TasksController {
     if (!(await this.tasksService.canView(task, currentUser))) {
       throw new ForbiddenException('You do not have access to this task.');
     }
-    return this.tasksService.findOneWithComputed(id, req.user.tenantId);
+    const withComputed = await this.tasksService.findOneWithComputed(id, req.user.tenantId);
+    // Does a submit go to the PM first (PM review gate)? Lets the task page
+    // word its submit form - same rule as TaskQaReviewsService.submit().
+    return { ...withComputed, pmReviewGateOn: await this.tasksService.pmReviewGateOn(task) };
   }
 
   // Evidence QA attached at Create Defect time - same view gate as the

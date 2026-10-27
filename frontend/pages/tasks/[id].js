@@ -11,7 +11,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch, apiUpload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
-import { isQaReviewOverdue, isOverdueTask } from '../../lib/developerTaskStats';
+import { isQaReviewOverdue, isOverdueTask, effectiveDueDate } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
@@ -443,7 +443,6 @@ export default function TaskDetailPage() {
   const loadDependencyHistory = () => {
     apiFetch(`/task-dependency-tickets/history?parentTaskId=${id}`).then(setDependencyHistory).catch(() => setDependencyHistory([]));
   };
-
 
   const loadLinkedDefects = () => {
     apiFetch(`/tasks/${id}/linked-defects`).then(setLinkedDefects).catch(() => {});
@@ -1853,7 +1852,9 @@ export default function TaskDetailPage() {
               {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
               {task.isDefect && <Badge tone="error">Defect</Badge>}
               <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
-                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(task.dueDate)}` : 'No due date'}
+                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(effectiveDueDate(task))}` : 'No due date'}
+                {/* PM review gate: the working days spent waiting for a PM extend it. */}
+                {task.dueDate && task.pmWaitWorkingDays > 0 && ` (${formatDate(task.dueDate)} + ${task.pmWaitWorkingDays} working ${task.pmWaitWorkingDays === 1 ? 'day' : 'days'} with PM)`}
               </span>
               <span className={`${styles.metaItem} ${styles.metaPerson}`}>
                 {(task.assigneeFullName || task.assigneeEmail) && <Avatar name={task.assigneeFullName || task.assigneeEmail} size="xs" />}
@@ -2850,7 +2851,7 @@ export default function TaskDetailPage() {
       {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && !usesPeerReview && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
         <div id="task-action-submit" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
-            Submit for QA Testing
+            {task.pmReviewGateOn ? 'Submit for review (PM first, then QA)' : 'Submit for QA Testing'}
           </h2>
           {openDependencyTickets.length > 0 && (
             <div className={styles.error}>
@@ -2870,7 +2871,7 @@ export default function TaskDetailPage() {
       {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && !usesPeerReview && openDependencyTickets.length === 0 && openLinkedDefects.length === 0 && (
         <form id="task-action-submit" tabIndex={-1} onSubmit={handleSubmitForQa} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
-            Submit for QA Testing
+            {task.pmReviewGateOn ? 'Submit for review (PM first, then QA)' : 'Submit for QA Testing'}
           </h2>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="tdResolution">Resolution</label>

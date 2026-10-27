@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { UserRole } from '../users/user.entity';
 import { OnEvent } from '@nestjs/event-emitter';
 import { UserNotificationsService } from './user-notifications.service';
 import { UsersService } from '../users/users.service';
@@ -71,6 +72,15 @@ export interface TaskPmReviewDecidedEvent {
   actorUserId: number;
   actorEmail: string;
   decision: 'sent_to_qa' | 'sent_back';
+}
+
+// PmReviewReminderService - a ticket waited too long for the PM.
+export interface TaskPmReviewReminderEvent {
+  tenantId: number;
+  taskId: number;
+  title: string;
+  waitingWorkingDays: number;
+  level: 'pm' | 'admin';
 }
 
 export interface TaskPeerReviewRequestedEvent {
@@ -232,6 +242,29 @@ export class UserNotificationListenersService {
         );
       }
       await Promise.all(sends);
+    });
+  }
+
+  // PM level: every Program Manager (Admins if there are none). Admin
+  // level: every Admin - the second reminder, at twice the wait.
+  @OnEvent('task.pmReviewReminder')
+  onTaskPmReviewReminder(e: TaskPmReviewReminderEvent) {
+    return this.safely('task.pmReviewReminder', async () => {
+      let recipients = e.level === 'pm' ? await this.usersService.findProgramManagers(e.tenantId) : [];
+      if (recipients.length === 0) recipients = await this.usersService.findByRole(UserRole.ADMIN, e.tenantId);
+      await Promise.all(
+        recipients.map((u) =>
+          this.notifications.create({
+            tenantId: e.tenantId,
+            userId: u.id,
+            type: 'task.pmReviewReminder',
+            title: `Task #${e.taskId} has waited ${e.waitingWorkingDays} working days for PM review`,
+            body: e.title,
+            link: `/tasks/${e.taskId}#pm-review`,
+            actorName: null,
+          }),
+        ),
+      );
     });
   }
 

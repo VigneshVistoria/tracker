@@ -410,6 +410,15 @@ export class TasksService {
   // go back into review, whatever its status says. A re-check needs a
   // PM/QA reopen (planned), not a resubmit. Call it after the pending-
   // round check so a task already in review keeps that clearer message.
+  // PM review gate (2026-10-13): would this task's next submit wait for a
+  // PM? Tasks only (not defects, not Peer Review), in a project with the
+  // switch on. Display only - TaskQaReviewsService.submit() decides.
+  async pmReviewGateOn(task: ProjectTask): Promise<boolean> {
+    if (task.isDefect || task.peerReviewEnabled) return false;
+    const project = await this.projectsService.findOne(task.projectId, task.tenantId).catch(() => null);
+    return !!project?.pmReviewEnabled;
+  }
+
   async assertNotAlreadyApproved(task: ProjectTask, tenantId: number): Promise<void> {
     const latestDecided = await this.qaReviewsRepository.findOne({
       // PM review rounds are a gate before QA, never the task's verdict.

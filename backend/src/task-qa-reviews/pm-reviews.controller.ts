@@ -3,7 +3,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 import { PmReviewsService } from './pm-reviews.service';
-import { PmSendBackDto, PmSendToQaDto, SetPmReviewSwitchDto } from './dto/pm-review.dto';
+import { PmSendBackDto, PmSendToQaDto, SetPmReminderSettingsDto, SetPmReviewSwitchDto } from './dto/pm-review.dto';
 
 // PM review gate (2026-10-13). Deciding and the queue: Program Manager or
 // Admin. The per-project switch: Admin only. Its own 'pm-review' prefix -
@@ -53,5 +53,11 @@ export class PmReviewsController {
   async setSwitch(@Param('id', ParseIntPipe) id: number, @Body() dto: SetPmReviewSwitchDto, @Req() req: any) {
     const user = await this.actor(req, [UserRole.ADMIN], 'an Admin');
     return this.pmReviewsService.setSwitch(id, dto.enabled, user, req.user.tenantId);
+  }
+
+  @Patch('reminder-settings')
+  async setReminderSettings(@Body() dto: SetPmReminderSettingsDto, @Req() req: any) {
+    const user = await this.actor(req, [UserRole.ADMIN], 'an Admin');
+    return this.pmReviewsService.setReminderSettings(dto.workingDays, dto.toAdmin, user, req.user.tenantId);
   }
 }

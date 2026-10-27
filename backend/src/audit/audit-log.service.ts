@@ -117,6 +117,7 @@ export const AuditActions = {
   TASK_PM_SENT_TO_QA: 'task_pm_sent_to_qa',
   TASK_PM_SENT_BACK: 'task_pm_sent_back',
   PROJECT_PM_REVIEW_SWITCHED: 'project_pm_review_switched',
+  PM_REVIEW_REMINDER_SETTINGS_UPDATED: 'pm_review_reminder_settings_updated',
   TASK_ESCALATION_REASSIGNED: 'task_escalation_reassigned',
   TASK_ESCALATION_CLOSED_JUNK: 'task_escalation_closed_junk',
   // details: { reason, previousStatus, newStatus: 'Junk', bulk }

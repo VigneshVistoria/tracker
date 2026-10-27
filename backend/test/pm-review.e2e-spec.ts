@@ -286,6 +286,66 @@ describe('PM review gate (e2e)', () => {
     expect(mine.qaRejectionCount).toBe(qa);
   });
 
+  describe('reminders and settings (Stage 3)', () => {
+    it('reminder settings: Admin only, validated, audited; settings show waiting counts', async () => {
+      await patch(f.users.pm, '/pm-review/reminder-settings', { workingDays: 3, toAdmin: true }).expect(403);
+      await patch(f.users.admin, '/pm-review/reminder-settings', { workingDays: 0, toAdmin: true }).expect(400);
+      await patch(f.users.admin, '/pm-review/reminder-settings', { workingDays: 2, toAdmin: true }).expect(200);
+      await setSwitch(f.users.admin, f.projects.pA, true).expect(200);
+      const t = await newTask();
+      await submit(t).expect(201);
+      const s = (await get(f.users.admin, '/pm-review/settings').expect(200)).body;
+      expect(s.reminder).toEqual({ workingDays: 2, toAdmin: true });
+      expect(s.projects.find((p: any) => p.id === f.projects.pA)).toMatchObject({ pmReviewEnabled: true, waitingCount: 1 });
+    });
+
+    it('the task page is told whether a submit goes to the PM first', async () => {
+      const t = await newTask();
+      expect((await get(f.users.devA, `/tasks/${t}`).expect(200)).body.pmReviewGateOn).toBe(true);
+      const peer = await newTask({ peerReviewEnabled: true });
+      expect((await get(f.users.devA, `/tasks/${peer}`).expect(200)).body.pmReviewGateOn).toBe(false);
+      const other = await newTask({ projectId: f.projects.pB, projectName: 'Project B' });
+      expect((await get(f.users.pm, `/tasks/${other}`).expect(200)).body.pmReviewGateOn).toBe(false);
+    });
+
+    it('reminds the PM after more than N working days, Admins after 2N, each once; skips Hold', async () => {
+      const { PmReviewReminderService } = await import('../src/task-qa-reviews/pm-review-reminder.service');
+      const reminders = app.get(PmReviewReminderService);
+      const fresh = await newTask();
+      await submit(fresh).expect(201);
+      const late = await newTask();
+      await submit(late).expect(201);
+      const veryLate = await newTask();
+      await submit(veryLate).expect(201);
+      const held = await newTask();
+      await submit(held).expect(201);
+      const backdate = (id: number, days: number) =>
+        ds.query(`UPDATE task_qa_reviews SET "submittedAt" = now() - ($2 || ' days')::interval WHERE "taskId" = $1 AND status = 'pending'`, [id, String(days)]);
+      // Calendar days chosen so the working-day count is safely past N=2 / 2N=4.
+      await backdate(late, 6);
+      await backdate(veryLate, 14);
+      await backdate(held, 14);
+      await ds.query(`UPDATE project_tasks SET status = 'Hold', "priorStatus" = 'Pending PM Review' WHERE id = $1`, [held]);
+
+      const first = await reminders.remindTenant(f.tenants.t1, new Date());
+      expect(first.pm.sort()).toEqual([late, veryLate].sort());
+      expect(first.admin).toEqual([veryLate]);
+      const again = await reminders.remindTenant(f.tenants.t1, new Date());
+      expect(again).toEqual({ pm: [], admin: [] });
+
+      await new Promise((r) => setTimeout(r, 300));
+      const pmNotes = await ds.query(`SELECT "userId" FROM user_notifications WHERE type = 'task.pmReviewReminder' AND link = $1`, [`/tasks/${veryLate}#pm-review`]);
+      expect(pmNotes.map((n: any) => n.userId).sort()).toEqual([f.users.pm.id, f.users.admin.id].sort());
+
+      // Admin reminder switched off: no admin level for a new very late one.
+      await patch(f.users.admin, '/pm-review/reminder-settings', { workingDays: 2, toAdmin: false }).expect(200);
+      const another = await newTask();
+      await submit(another).expect(201);
+      await backdate(another, 14);
+      expect(await reminders.remindTenant(f.tenants.t1, new Date())).toEqual({ pm: [another], admin: [] });
+    });
+  });
+
   describe('clock helpers', () => {
     it('effectiveDueDate adds the PM wait in working days; Pending PM Review is never past due', () => {
       expect(effectiveDueDate({ dueDate: '2026-10-09', pmWaitWorkingDays: 0 })).toBe('2026-10-09');

@@ -7,6 +7,9 @@ import { TaskQaReviewsService } from './task-qa-reviews.service';
 import { TaskQaReviewsController } from './task-qa-reviews.controller';
 import { PmReviewsService } from './pm-reviews.service';
 import { PmReviewsController } from './pm-reviews.controller';
+import { PmReviewReminderService } from './pm-review-reminder.service';
+import { TeamSettings } from '../team-settings/team-settings.entity';
+import { TenantsModule } from '../tenants/tenants.module';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { Project } from '../projects/project.entity';
 import { TasksModule } from '../tasks/tasks.module';
@@ -17,7 +20,8 @@ import { NoteQualityModule } from '../note-quality/note-quality.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([TaskQaReview, TaskQaReviewArtifact, TaskQaReviewQaArtifact, ProjectTask, Project]),
+    TypeOrmModule.forFeature([TaskQaReview, TaskQaReviewArtifact, TaskQaReviewQaArtifact, ProjectTask, Project, TeamSettings]),
+    TenantsModule,
     TasksModule,
     UsersModule,
     AuditModule,
@@ -25,7 +29,7 @@ import { NoteQualityModule } from '../note-quality/note-quality.module';
     NoteQualityModule,
   ],
   controllers: [TaskQaReviewsController, PmReviewsController],
-  providers: [TaskQaReviewsService, PmReviewsService],
+  providers: [TaskQaReviewsService, PmReviewsService, PmReviewReminderService],
   exports: [TaskQaReviewsService],
 })
 export class TaskQaReviewsModule {}

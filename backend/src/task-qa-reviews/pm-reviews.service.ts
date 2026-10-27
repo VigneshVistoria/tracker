@@ -14,6 +14,8 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText, richTextToPlainText } from '../common/sanitize-rich-text';
 import { businessDaysBetween } from '../common/business-days';
 import { PM_FEEDBACK_STATUS, PM_REVIEW_STATUS } from '../tasks/pm-review';
+import { TeamSettings } from '../team-settings/team-settings.entity';
+import { PM_REMINDER_DEFAULT_DAYS } from './pm-review-reminder.service';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -60,6 +62,8 @@ export class PmReviewsService {
     private tasksRepository: Repository<ProjectTask>,
     @InjectRepository(Project)
     private projectsRepository: Repository<Project>,
+    @InjectRepository(TeamSettings)
+    private teamSettingsRepository: Repository<TeamSettings>,
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
@@ -146,10 +150,48 @@ export class PmReviewsService {
     return { task: await this.tasksService.findOne(taskId, tenantId) };
   }
 
-  // Admin view of the per-project switch.
+  // Admin view: the per-project switch (with how many tickets each
+  // project has waiting, so turning one off can say what will move) and
+  // the tenant-wide reminder settings.
   async settings(tenantId: number) {
     const projects = await this.projectsRepository.find({ where: { tenantId }, order: { name: 'ASC' } });
-    return { projects: projects.map((p) => ({ id: p.id, name: p.name, pmReviewEnabled: !!p.pmReviewEnabled })) };
+    const waiting: Array<{ projectId: number; n: number }> = await this.tasksRepository.query(
+      `SELECT "projectId", count(*)::int AS n FROM project_tasks WHERE "tenantId" = $1 AND status = $2 GROUP BY "projectId"`,
+      [tenantId, PM_REVIEW_STATUS],
+    );
+    const s = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    return {
+      projects: projects.map((p) => ({
+        id: p.id,
+        name: p.name,
+        pmReviewEnabled: !!p.pmReviewEnabled,
+        waitingCount: waiting.find((w) => w.projectId === p.id)?.n ?? 0,
+      })),
+      reminder: { workingDays: s?.pmReminderWorkingDays ?? PM_REMINDER_DEFAULT_DAYS, toAdmin: s?.pmReminderToAdmin ?? true },
+    };
+  }
+
+  async setReminderSettings(workingDays: number, toAdmin: boolean, actor: Actor, tenantId: number) {
+    const existing = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    const before = { workingDays: existing?.pmReminderWorkingDays ?? PM_REMINDER_DEFAULT_DAYS, toAdmin: existing?.pmReminderToAdmin ?? true };
+    if (existing) {
+      await this.teamSettingsRepository.update({ tenantId }, { pmReminderWorkingDays: workingDays, pmReminderToAdmin: toAdmin, updatedByUserId: actor.id });
+    } else {
+      await this.teamSettingsRepository.save(
+        this.teamSettingsRepository.create({ tenantId, pmReminderWorkingDays: workingDays, pmReminderToAdmin: toAdmin, updatedByUserId: actor.id }),
+      );
+    }
+    await this.auditLogService.record({
+      userId: actor.id,
+      userEmail: actor.email,
+      userRole: actor.role,
+      action: AuditActions.PM_REVIEW_REMINDER_SETTINGS_UPDATED,
+      tenantId,
+      entityType: 'TeamSettings',
+      entityId: tenantId,
+      details: { before, after: { workingDays, toAdmin } },
+    });
+    return { workingDays, toAdmin };
   }
 
   // Admin switches the gate for one project. Turning it off sends every

@@ -11,6 +11,11 @@ export const TASK_STATUSES = [
   'Development',
   'Feedback',
   'Re-Feedback',
+  'Peer Review',
+  'Re-Peer-Review',
+  // PM review gate (2026-10-13) - see backend/src/tasks/pm-review.ts.
+  'Pending PM Review',
+  'PM Feedback',
   // Return to QA (2026-10-18) - see backend/src/tasks/return-to-qa.ts.
   'Returned to QA',
   'Escalated',
@@ -75,6 +80,9 @@ export const LEGEND_ITEMS = [
   // using every one of the 6 legacy hues this app has).
   { label: 'Hold', swatch: 'var(--ds-color-info-tint)', dot: 'var(--ds-color-info)' },
   { label: 'Closed', swatch: 'var(--ds-color-gray-300)', dot: 'var(--ds-color-gray-500)' },
+  // PM review gate (2026-10-13) - --ds-* tokens, same reason as Hold/Closed.
+  { label: 'Pending PM Review', swatch: 'var(--ds-color-warning-tint)', dot: 'var(--ds-color-warning)' },
+  { label: 'PM Feedback', swatch: 'var(--ds-color-error-tint)', dot: 'var(--ds-color-error)' },
   // Return to QA (2026-10-18) - --ds-* tokens, same reason as Hold/Closed.
   { label: 'Returned to QA', swatch: 'var(--ds-color-primary-100)', dot: 'var(--ds-color-primary-500)' },
 ];
@@ -97,6 +105,8 @@ export function buildRowTintClass(styles) {
     'Released - No Showstoppers': styles.rowTintTeal,
     Hold: styles.rowTintHold,
     Closed: styles.rowTintClosed,
+    'Pending PM Review': styles.rowTintPmReview,
+    'PM Feedback': styles.rowTintPmFeedback,
     'Returned to QA': styles.rowTintReturnedToQa,
   };
 }
@@ -116,6 +126,8 @@ export function buildRowRailClass(styles) {
     'Released - No Showstoppers': styles.railTeal,
     Hold: styles.railHold,
     Closed: styles.railClosed,
+    'Pending PM Review': styles.railPmReview,
+    'PM Feedback': styles.railPmFeedback,
     'Returned to QA': styles.railReturnedToQa,
   };
 }
@@ -161,8 +173,11 @@ export const STATUS_TAB_GROUPS = [
   {
     key: 'DevelopmentFailed',
     label: 'Development / Failed',
-    statuses: ['Development', 'Failed', 'Released - With Showstoppers'],
+    // PM Feedback: the PM sent it back - the developer's to work on too.
+    statuses: ['Development', 'Failed', 'Released - With Showstoppers', 'PM Feedback'],
   },
+  // PM review gate (2026-10-13) - waiting for a Program Manager before QA.
+  { key: 'PmReview', label: 'PM Review', statuses: ['Pending PM Review'] },
   { key: 'Feedback', label: 'QA', statuses: ['Feedback', 'Re-Feedback'] },
   // Return to QA (2026-10-18) - a PM sent it back to QA.
   { key: 'ReturnedToQa', label: 'Returned to QA', statuses: ['Returned to QA'] },

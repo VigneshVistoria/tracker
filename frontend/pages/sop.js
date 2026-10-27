@@ -63,6 +63,8 @@ const STATUSES = [
   ['Development', 'Assigned to you, not yet submitted', 'You'],
   ['Feedback', 'First submission waiting for QA', 'QA'],
   ['Re-Feedback', 'Resubmission after a rejection, waiting for QA', 'QA'],
+  ['Pending PM Review', 'Submitted in a project with PM review on - a Program Manager checks it before QA. Time here never counts against you', 'PM'],
+  ['PM Feedback', 'The PM sent it back with feedback (shown on the task) - refine it and submit again. Not a QA rejection', 'You'],
   ['Peer Review', 'First submission waiting for your peer reviewer', 'Peer reviewer'],
   ['Re-Peer-Review', 'Peer resubmission after a rejection', 'Peer reviewer'],
   ['Failed', 'Rejected by QA or peer reviewer', 'You'],
@@ -377,7 +379,8 @@ export default function TrackerSopPage() {
               </li>
               <li>
                 Click <strong>Mark Ready for Feedback</strong>. The task moves to Feedback (first round) or
-                Re-Feedback (resubmission).
+                Re-Feedback (resubmission). In a project with PM review switched on, it goes to Pending PM Review
+                first, and a Program Manager sends it on to QA or back to you with feedback.
               </li>
             </ol>
             <p>

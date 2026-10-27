@@ -450,7 +450,9 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
     {
       key: 'status',
       header: <ColHeader icon={Activity} label="Status" showLabel />,
-      width: 124,
+      // 150 fits the longest common label ("Pending PM Review") without
+      // running into the Due column.
+      width: 150,
       align: 'center',
       sortable: true,
       render: (t) =>
