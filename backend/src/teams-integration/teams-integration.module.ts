@@ -7,6 +7,7 @@ import { TeamsGraphService } from './teams-graph.service';
 import { TeamsMessageConverterService } from './teams-message-converter.service';
 import { TeamsRenewalService } from './teams-renewal.service';
 import { TeamsAssignmentNotifierService } from './teams-assignment-notifier.service';
+import { TeamsWorkflowWebhookService } from './teams-workflow-webhook.service';
 import { GuardsModule } from '../common/guards.module';
 import { IssuesModule } from '../issues/issues.module';
 import { UsersModule } from '../users/users.module';
@@ -20,6 +21,8 @@ import { UsersModule } from '../users/users.module';
     TeamsMessageConverterService,
     TeamsRenewalService,
     TeamsAssignmentNotifierService,
+    TeamsWorkflowWebhookService,
   ],
+  exports: [TeamsWorkflowWebhookService],
 })
 export class TeamsIntegrationModule {}
