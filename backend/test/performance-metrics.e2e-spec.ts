@@ -135,8 +135,9 @@ describe('Performance metrics (e2e)', () => {
     it('shows the Due date changes in the drill-down', async () => {
       const body = (await get(f.users.pm, `/performance-metrics?to=${new Date().toISOString().slice(0, 10)}`).expect(200)).body;
       const devA = body.people.find((p: any) => p.userId === f.users.devA.id);
-      expect(devA.dueChanges).toMatchObject({ changes: 2, later: 1, earlier: 1 });
-      expect(devA.dueChanges.items[0]).toMatchObject({ taskId, oldDueDate: '2026-11-10', newDueDate: '2026-11-20', byUserId: f.users.pm.id });
+      // Both changes were the PM's - shown, not charged (2026-10-28).
+      expect(devA.dueChanges).toMatchObject({ changes: 0, notCharged: { changes: 2 } });
+      expect(devA.dueChanges.notCharged.items[0]).toMatchObject({ taskId, oldDueDate: '2026-11-10', newDueDate: '2026-11-20', byUserId: f.users.pm.id, initiatedByUserId: f.users.pm.id });
     });
   });
 

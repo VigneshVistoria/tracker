@@ -316,6 +316,25 @@ describe('Due date commitment (Performance Tracking S2, e2e)', () => {
       await post(f.users.qaB, `/tasks/${id}/due-date-changes`, { dueDate: '2026-11-14', reason: 'Waiting on the payment API sandbox' }).expect(403);
     });
 
+    it('Non-Compliance charges an approved request to the developer; a PM direct change and a free commitment are not charged', async () => {
+      const asked = await committedTask('Metric request task');
+      await ask(asked).expect(201);
+      const [req] = await requests(asked);
+      await patch(f.users.pm, `/tasks/due-date-changes/${req.id}/approve`, { note: 'OK' }).expect(200);
+      const direct = await committedTask('Metric direct task');
+      await post(f.users.pm, `/tasks/${direct}/due-date-changes`, { dueDate: '2026-11-12', reason: 'Client moved the release by two days' }).expect(201);
+      const free = await committedTask('Metric free task');
+      await patch(f.users.pm, `/tasks/${free}/reassign`, { assigneeUserId: f.users.devNone.id }).expect(200);
+      await post(f.users.devNone, `/tasks/${free}/due-date/commit`, { dueDate: '2026-11-18' }).expect(201);
+
+      const body = (await get(f.users.pm, `/performance-metrics?to=${new Date().toISOString().slice(0, 10)}`).expect(200)).body;
+      const of = (u: FixtureUser) => body.people.find((p: any) => p.userId === u.id).dueChanges;
+      const charged = of(f.users.devA).items.filter((i: any) => [asked, direct].includes(i.taskId));
+      expect(charged).toEqual([expect.objectContaining({ taskId: asked, byUserId: f.users.pm.id, initiatedByUserId: f.users.devA.id })]);
+      expect(of(f.users.devA).notCharged.items.filter((i: any) => i.taskId === direct)).toHaveLength(1);
+      expect([...of(f.users.devNone).items, ...of(f.users.devNone).notCharged.items].filter((i: any) => i.taskId === free)).toHaveLength(0);
+    });
+
     it('switching OFF again restores today\'s rules', async () => {
       const id = await committedTask('Back off task');
       await setTracking(f.projects.pA, false);

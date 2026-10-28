@@ -198,6 +198,28 @@ export class PerformanceMetricsService {
 
   // ---------- Report ----------
 
+  // Who started each Due date change (2026-10-28): an approved Performance
+  // Tracking request was started by its requester, though the approver's
+  // edit applied it; a change marked dueDateCommitment is the new
+  // assignee's free first commitment (S2), not a change.
+  private async dueChangeStarters(tenantId: number, auditLogIds: number[]) {
+    const requestedBy = new Map<number, number>();
+    const freeCommitments = new Set<number>();
+    if (auditLogIds.length === 0) return { requestedBy, freeCommitments };
+    const requests: Array<{ auditLogId: number; requestedByUserId: number }> = await this.eventsRepository.query(
+      `SELECT "auditLogId", "requestedByUserId" FROM "due_date_change_requests"
+        WHERE "tenantId" = $1 AND "kind" = 'request' AND "status" = 'approved' AND "auditLogId" = ANY($2)`,
+      [tenantId, auditLogIds],
+    );
+    for (const r of requests) requestedBy.set(r.auditLogId, r.requestedByUserId);
+    const commitments: Array<{ id: number }> = await this.eventsRepository.query(
+      `SELECT id FROM "audit_logs" WHERE "tenantId" = $1 AND id = ANY($2) AND details LIKE '%"dueDateCommitment":true%'`,
+      [tenantId, auditLogIds],
+    );
+    for (const c of commitments) freeCommitments.add(c.id);
+    return { requestedBy, freeCommitments };
+  }
+
   // onlyUserId set = a developer looking at their own figures.
   async computeReport(
     tenantId: number,
@@ -229,6 +251,7 @@ export class PerformanceMetricsService {
     const taskIds = tasks.map((x) => x.id);
     const events = taskIds.length ? await this.eventsRepository.find({ where: { tenantId, taskId: In(taskIds) } }) : [];
     const rounds = taskIds.length ? await this.qaReviewsRepository.find({ where: { tenantId, taskId: In(taskIds) } }) : [];
+    const starters = await this.dueChangeStarters(tenantId, events.filter((e) => e.kind === 'due_changed').map((e) => e.auditLogId));
 
     const result = computePerformanceMetrics({
       now,
@@ -254,6 +277,12 @@ export class PerformanceMetricsService {
         newDueDate: e.newDueDate,
         source: e.source,
         auditLogId: e.auditLogId,
+        ...(e.kind === 'due_changed'
+          ? {
+              initiatorUserId: starters.requestedBy.get(e.auditLogId) ?? e.actorUserId,
+              freeCommitment: starters.freeCommitments.has(e.auditLogId),
+            }
+          : {}),
       })),
       rounds: rounds.map((r) => ({
         taskId: r.taskId,

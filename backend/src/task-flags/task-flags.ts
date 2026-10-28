@@ -42,6 +42,12 @@ export const TASK_FLAG_AUDIT = {
   SET: 'task_flag_set',
   CLEARED: 'task_flag_cleared',
   DEPENDENCY_NEED_BY_CHANGED: 'task_dependency_ticket_need_by_changed',
+  // The blocking owner's read-only view of the task (TasksService.
+  // isOpenBlockingOwner) starts with their blocker and ends when it is
+  // cleared by hand. A clear by the status trigger (Pass/Junk/Closed/
+  // Released) is recorded on the flag itself (clearedAt, clearReason).
+  BLOCKER_VIEW_GRANTED: 'task_blocker_view_granted',
+  BLOCKER_VIEW_ENDED: 'task_blocker_view_ended',
 } as const;
 
 export interface FlagView {

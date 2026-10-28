@@ -91,10 +91,26 @@ function DrillDown({ person, names, timeZone }) {
                 <span className={pm.tag}>{i.direction === 'later' ? 'Extension (later)' : 'Earlier'}</span>
                 <Reconstructed show={i.reconstructed} />
                 <br />
-                {formatDate(i.oldDueDate)} → {formatDate(i.newDueDate)} · by {nameOf(i.byUserId)}, {formatDateTime(i.at, timeZone)}
+                {formatDate(i.oldDueDate)} → {formatDate(i.newDueDate)} · by {nameOf(i.byUserId)}
+                {i.initiatedByUserId != null && i.initiatedByUserId !== i.byUserId && ` (asked by ${nameOf(i.initiatedByUserId)})`}, {formatDateTime(i.at, timeZone)}
               </li>
             ))}
           </ul>
+        )}
+        {/* 2026-10-28: only changes the assignee started are charged; the rest are shown here. */}
+        {(person.dueChanges.notCharged?.changes ?? 0) > 0 && (
+          <details>
+            <summary className={pm.drillEmpty}>Changed by a PM/Admin - not charged ({person.dueChanges.notCharged.changes})</summary>
+            <ul className={pm.drillList}>
+              {person.dueChanges.notCharged.items.map((i) => (
+                <li key={`${i.taskId}-${i.at}`}>
+                  <TaskLink id={i.taskId} /> {i.title}
+                  <br />
+                  {formatDate(i.oldDueDate)} → {formatDate(i.newDueDate)} · by {nameOf(i.initiatedByUserId)}, {formatDateTime(i.at, timeZone)}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         {person.dueChanges.tasksCounted.length > 0 && (
           <details>
@@ -244,6 +260,7 @@ export default function PerformanceMetricsSection({ projectId, to, role }) {
                             <span className={pm.cellValue}>{p.dueChanges.perTask ?? '—'} per task</span>
                             <span className={pm.cellSub}>
                               {p.dueChanges.changes} on {p.dueChanges.tasks} tasks · {p.dueChanges.later} later, {p.dueChanges.earlier} earlier
+                              {(p.dueChanges.notCharged?.changes ?? 0) > 0 && ` · ${p.dueChanges.notCharged.changes} by PM/Admin, not charged`}
                             </span>
                             <span className={pm.cellStatus}>
                               <StatusBadge status={p.dueChanges.status} />

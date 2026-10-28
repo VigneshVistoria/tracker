@@ -517,7 +517,7 @@ export class PdfNonComplianceReportService {
       line('Date set on time', `${rate(p.onTime.percent)} (${p.onTime.onTime} of ${p.onTime.counted})`, p.onTime.status);
       line(
         'Due date changes',
-        `${p.dueChanges.perTask ?? '-'} per task (${p.dueChanges.changes} on ${p.dueChanges.tasks} tasks; ${p.dueChanges.later} later, ${p.dueChanges.earlier} earlier)`,
+        `${p.dueChanges.perTask ?? '-'} per task (${p.dueChanges.changes} on ${p.dueChanges.tasks} tasks; ${p.dueChanges.later} later, ${p.dueChanges.earlier} earlier${p.dueChanges.notCharged.changes ? `; ${p.dueChanges.notCharged.changes} by PM/Admin, not charged` : ''})`,
         p.dueChanges.status,
       );
       line(

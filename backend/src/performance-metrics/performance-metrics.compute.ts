@@ -108,6 +108,13 @@ export interface MetricEvent {
   newDueDate: string | null;
   source: 'live' | 'reconstructed';
   auditLogId: number;
+  // Due date changes (2026-10-28): who STARTED the change. For an approved
+  // Performance Tracking request it is the requester (actorUserId is the
+  // approver); otherwise the actor. Undefined = use actorUserId.
+  initiatorUserId?: number | null;
+  // The new assignee's one free set/confirmation after a reassignment
+  // (Performance Tracking S2) - their first commitment, not a change.
+  freeCommitment?: boolean;
 }
 
 export interface MetricRound {
@@ -139,6 +146,8 @@ export interface DueChangeItem {
   title: string;
   at: Date;
   byUserId: number | null;
+  // Who started it (see MetricEvent.initiatorUserId).
+  initiatedByUserId: number | null;
   oldDueDate: string;
   newDueDate: string;
   direction: 'later' | 'earlier';
@@ -180,6 +189,9 @@ export interface PersonMetrics {
     perTask: number | null;
     status: MetricStatus;
     items: DueChangeItem[];
+    // Changes someone else (a PM/Admin) started on this person's tasks -
+    // shown, never charged.
+    notCharged: { changes: number; items: DueChangeItem[] };
     // The tasks the per-task average is taken over.
     tasksCounted: Array<{ taskId: number; title: string }>;
   };
@@ -241,6 +253,7 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
   const personIds = new Set(input.people.map((p) => p.id));
   const onTimeBy = new Map<number, OnTimeItem[]>();
   const changesBy = new Map<number, DueChangeItem[]>();
+  const notChargedBy = new Map<number, DueChangeItem[]>();
   const changeTasksBy = new Map<number, Map<number, string>>();
   const push = <T>(map: Map<number, T[]>, key: number, item: T) => {
     if (!personIds.has(key)) return;
@@ -328,17 +341,23 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
       if (firstCommitAt === null) firstCommitAt = e.occurredAt;
       if (lastCommitted !== null && e.newDueDate !== lastCommitted && t(e.occurredAt) >= t(windowStart) && t(e.occurredAt) < t(windowEnd)) {
         const owner = e.assigneeUserId ?? ownerAt(e.occurredAt);
-        if (owner != null) {
-          push(changesBy, owner, {
+        // Only changes the assignee started are charged to them (2026-10-28).
+        // A change whose actor wasn't recorded is still charged, as before.
+        // The new assignee's free first commitment is not a change at all.
+        if (owner != null && !e.freeCommitment) {
+          const initiator = e.initiatorUserId !== undefined ? e.initiatorUserId : e.actorUserId;
+          const item: DueChangeItem = {
             taskId: task.id,
             title: task.title,
             at: e.occurredAt,
             byUserId: e.actorUserId,
+            initiatedByUserId: initiator,
             oldDueDate: lastCommitted,
             newDueDate: e.newDueDate,
             direction: e.newDueDate > lastCommitted ? 'later' : 'earlier',
             reconstructed: e.source === 'reconstructed',
-          });
+          };
+          push(initiator == null || initiator === owner ? changesBy : notChargedBy, owner, item);
           addTask(owner, task);
         }
       }
@@ -404,6 +423,7 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
     const onTimeStatus = statusFor(onTimeItems.length, settings.minSample, onTimePercent, (v) => v >= settings.onTimeOkPercent);
 
     const changeItems = changesBy.get(p.id) ?? [];
+    const notChargedItems = notChargedBy.get(p.id) ?? [];
     const changeTasks = [...(changeTasksBy.get(p.id) ?? new Map<number, string>())].map(([taskId, title]) => ({ taskId, title }));
     const perTask = changeTasks.length > 0 ? Math.round((changeItems.length / changeTasks.length) * 100) / 100 : null;
     const changesStatus = statusFor(changeTasks.length, settings.minSample, perTask, (v) => v <= settings.changesOkPerTask);
@@ -427,6 +447,7 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
         perTask,
         status: changesStatus,
         items: changeItems,
+        notCharged: { changes: notChargedItems.length, items: notChargedItems },
         tasksCounted: changeTasks,
       },
       qa: { ...all, status: qaStatus, firstSubmission: rates(qaItems.filter((i) => i.isFirstSubmission)), items: qaItems },

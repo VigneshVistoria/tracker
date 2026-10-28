@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
+import { TaskFlag } from '../task-flags/task-flag.entity';
 import { Between, EntityManager, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
@@ -310,6 +311,8 @@ export class TasksService {
     private defectTriagesRepository: Repository<DefectTriage>,
     @InjectRepository(TeamSettings)
     private teamSettingsRepository: Repository<TeamSettings>,
+    @InjectRepository(TaskFlag)
+    private taskFlagsRepository: Repository<TaskFlag>,
     private projectsService: ProjectsService,
     private modulesService: ModulesService,
     private phasesService: PhasesService,
@@ -328,6 +331,22 @@ export class TasksService {
   // assigned to (added 2026-10 for Link Blocking Defect - confirmed with
   // the user), which requires the caller to pass a user loaded with
   // `projects` (UsersService.findById does).
+  // Performance Tracking S3 (2026-10-28, the user's decision): an internal
+  // user (never a client account) named as the blocking owner of an OPEN
+  // blocker on this task can view it read-only - and clear that blocker
+  // (task-flags) - while it stays open and the project's tracking is ON.
+  // Access ends when the blocker is cleared. Every write path keeps its own
+  // role/assignee check, so this grants viewing only.
+  async isOpenBlockingOwner(task: ProjectTask, user: { id: number; role: UserRole }): Promise<boolean> {
+    if (user.role === UserRole.CLIENT) return false;
+    const blocker = await this.taskFlagsRepository.findOne({
+      where: { taskId: task.id, tenantId: task.tenantId, kind: 'blocker', blockingOwnerUserId: user.id, clearedAt: IsNull() },
+    });
+    if (!blocker) return false;
+    const project = await this.projectsService.findOne(task.projectId, task.tenantId);
+    return !!project?.performanceTrackingEnabled;
+  }
+
   async canView(task: ProjectTask, user: UserWithProjects): Promise<boolean> {
     if (LEADERSHIP_ROLES.includes(user.role)) {
       return true;
@@ -342,6 +361,9 @@ export class TasksService {
       where: { parentTaskId: task.id, ownerUserId: user.id },
     });
     if (ownedTicket) {
+      return true;
+    }
+    if (await this.isOpenBlockingOwner(task, user)) {
       return true;
     }
     if (user.role === UserRole.QA && this.isInAssignedProject(task, user)) {

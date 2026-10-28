@@ -173,7 +173,13 @@ function FlagDialog({ dialog, task, tickets, reasonMin, onClose, onDone }) {
     setError('');
     try {
       if (isClear) {
-        await apiFetch(`/task-flags/${dialog.flag.id}/clear`, { method: 'PATCH', body: JSON.stringify({ note: trimmed || undefined }) });
+        const res = await apiFetch(`/task-flags/${dialog.flag.id}/clear`, { method: 'PATCH', body: JSON.stringify({ note: trimmed || undefined }) });
+        // A blocking owner who could only see this task through the
+        // blocker loses access the moment it is cleared.
+        if (res && res.canViewTask === false) {
+          window.location.assign('/dashboard');
+          return;
+        }
         await onDone(`${dialog.flag.kind === 'blocker' ? 'Blocker' : 'Risk'} cleared`);
         return;
       }

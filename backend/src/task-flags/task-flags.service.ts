@@ -165,6 +165,18 @@ export class TaskFlagsService {
             setByAssignee: isAssignee,
           },
         });
+        if (blockingOwner) {
+          await this.auditLogService.recordWithin(em, {
+            userId: user.id,
+            userEmail: user.email,
+            userRole: user.role,
+            action: TASK_FLAG_AUDIT.BLOCKER_VIEW_GRANTED,
+            tenantId,
+            entityType: 'ProjectTask',
+            entityId: task.id,
+            details: { flagId, blockingOwnerUserId: blockingOwner.id, blockingOwnerEmail: blockingOwner.email },
+          });
+        }
       });
     } catch (err: any) {
       if (err?.code === '23505') {
@@ -216,7 +228,22 @@ export class TaskFlagsService {
         entityId: task.id,
         details: { flagId: flag.id, kind: flag.kind, note },
       });
+      if (flag.kind === 'blocker' && flag.blockingOwnerUserId) {
+        await this.auditLogService.recordWithin(em, {
+          userId: user.id,
+          userEmail: user.email,
+          userRole: user.role,
+          action: TASK_FLAG_AUDIT.BLOCKER_VIEW_ENDED,
+          tenantId,
+          entityType: 'ProjectTask',
+          entityId: task.id,
+          details: { flagId: flag.id, blockingOwnerUserId: flag.blockingOwnerUserId },
+        });
+      }
     });
+    // A blocking owner who could only see the task through this blocker
+    // has just lost that access.
+    if (!(await this.tasksService.canView(task, user))) return { cleared: true, canViewTask: false };
     return this.state(task.id, user, tenantId);
   }
 

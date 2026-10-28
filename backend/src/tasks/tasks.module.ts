@@ -37,10 +37,11 @@ import { DueDateChangeRequest } from './due-date-change-request.entity';
 import { TaskCommitmentEvent } from '../performance-metrics/task-commitment-event.entity';
 import { DueDateChangeService } from './due-date-change.service';
 import { DueDateChangeController } from './due-date-change.controller';
+import { TaskFlag } from '../task-flags/task-flag.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings, DefectTriage, DueDateChangeRequest, TaskCommitmentEvent]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings, DefectTriage, DueDateChangeRequest, TaskCommitmentEvent, TaskFlag]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,

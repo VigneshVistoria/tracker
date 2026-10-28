@@ -163,9 +163,6 @@ describe('Task flags + dependency needed-by (Performance Tracking S3, e2e)', () 
       await blocker(f.users.pm, id, { blockingOwnerExternal: undefined, blockingOwnerUserId: f.users.devNone.id }).expect(201);
       const [flag] = await flagsOf(id);
       await patch(f.users.qaB, `/task-flags/${flag.id}/clear`).expect(403);
-      // The blocking owner can see the flag through the clear call only if
-      // they can view the task - devNone owns no ticket here, so 403.
-      await patch(f.users.devNone, `/task-flags/${flag.id}/clear`).expect(403);
       await patch(f.users.devA, `/task-flags/${flag.id}/clear`, { note: 'Accounts arrived' }).expect(200);
       expect((await flagsOf(id))[0]).toMatchObject({ clearedByUserId: f.users.devA.id, clearNote: 'Accounts arrived', clearReason: 'manual' });
       await patch(f.users.devA, `/task-flags/${flag.id}/clear`).expect(400);
@@ -182,6 +179,32 @@ describe('Task flags + dependency needed-by (Performance Tracking S3, e2e)', () 
       const [flag] = await flagsOf(id);
       expect((await get(f.users.devNone, `/task-flags?taskId=${id}`).expect(200)).body.blocker).toMatchObject({ canClear: true });
       await patch(f.users.devNone, `/task-flags/${flag.id}/clear`).expect(200);
+    });
+
+    it('the blocking owner views the task read-only while the blocker is open; access ends on clear; logged', async () => {
+      const id = await newTask('Owner access task');
+      // devNone has no other link to this task.
+      await get(f.users.devNone, `/tasks/${id}`).expect(403);
+      await blocker(f.users.devA, id, { blockingOwnerExternal: undefined, blockingOwnerUserId: f.users.devNone.id }).expect(201);
+      const [flag] = await flagsOf(id);
+      await get(f.users.devNone, `/tasks/${id}`).expect(200);
+      expect((await get(f.users.devNone, `/task-flags?taskId=${id}`).expect(200)).body).toMatchObject({
+        blocker: { canClear: true },
+        canSetRisk: false,
+        canSetBlocker: false,
+      });
+      // Read-only: no edits, no flags of their own.
+      await patch(f.users.devNone, `/tasks/${id}`, { title: 'Renamed' }).expect(403);
+      await risk(f.users.devNone, id).expect(403);
+      expect(await audits('ProjectTask', id, TASK_FLAG_AUDIT.BLOCKER_VIEW_GRANTED)).toHaveLength(1);
+      // Switching tracking off suspends it.
+      await setTracking(f.projects.pA, false);
+      await get(f.users.devNone, `/tasks/${id}`).expect(403);
+      await setTracking(f.projects.pA, true);
+      const res = await patch(f.users.devNone, `/task-flags/${flag.id}/clear`, { note: 'Sent the keys' }).expect(200);
+      expect(res.body).toEqual({ cleared: true, canViewTask: false });
+      expect(await audits('ProjectTask', id, TASK_FLAG_AUDIT.BLOCKER_VIEW_ENDED)).toHaveLength(1);
+      await get(f.users.devNone, `/tasks/${id}`).expect(403);
     });
 
     it('only the assignee or a PM/Admin set flags; others cannot see them', async () => {

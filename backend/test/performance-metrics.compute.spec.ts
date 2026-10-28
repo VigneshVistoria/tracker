@@ -213,13 +213,13 @@ describe('computePerformanceMetrics', () => {
         [task(1), task(2)],
         [
           ev(1, 'assigned', '2026-10-05T09:00:00+03:00'),
-          ev(1, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-10-20' }),
-          ev(1, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-10-25' }),
-          ev(1, 'due_changed', '2026-10-13T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-10-22' }),
-          ev(1, 'due_cleared', '2026-10-14T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: null }),
-          ev(1, 'due_set', '2026-10-15T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-10-29' }),
+          ev(1, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-20' }),
+          ev(1, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-25' }),
+          ev(1, 'due_changed', '2026-10-13T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-22' }),
+          ev(1, 'due_cleared', '2026-10-14T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: null }),
+          ev(1, 'due_set', '2026-10-15T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-29' }),
           ev(2, 'assigned', '2026-10-05T09:00:00+03:00'),
-          ev(2, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-10-20' }),
+          ev(2, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-20' }),
         ],
       );
       const c = dev(r).dueChanges;
@@ -236,14 +236,46 @@ describe('computePerformanceMetrics', () => {
         [task(1, { assigneeUserId: DEV2 })],
         [
           ev(1, 'assigned', '2026-09-01T09:00:00+03:00'),
-          ev(1, 'due_set', '2026-09-01T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-09-20' }),
-          ev(1, 'due_changed', '2026-09-10T10:00:00+03:00', { assigneeUserId: DEV, newDueDate: '2026-09-25' }),
+          ev(1, 'due_set', '2026-09-01T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-09-20' }),
+          ev(1, 'due_changed', '2026-09-10T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-09-25' }),
           ev(1, 'assigned', '2026-10-10T09:00:00+03:00', { assigneeUserId: DEV2 }),
-          ev(1, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV2, newDueDate: '2026-10-30' }),
+          ev(1, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV2, actorUserId: DEV2, newDueDate: '2026-10-30' }),
         ],
       );
       expect(dev(r).dueChanges).toMatchObject({ changes: 0, tasks: 1 });
       expect(dev(r, DEV2).dueChanges).toMatchObject({ changes: 1, tasks: 1, perTask: 1 });
+    });
+
+    // 2026-10-28: only changes the assignee started are charged; PM/Admin
+    // changes are shown apart; unrecorded actors are still charged.
+    it('charges only changes the assignee started; PM/Admin changes are shown, not charged', () => {
+      const r = run(
+        [task(1), task(2), task(3)],
+        [
+          ev(1, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(1, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-20' }),
+          // A PM moved it directly.
+          ev(1, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: PM, newDueDate: '2026-10-25' }),
+          // The developer asked; the PM's approval applied it.
+          ev(1, 'due_changed', '2026-10-13T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: PM, initiatorUserId: DEV, newDueDate: '2026-10-27' }),
+          ev(2, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(2, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: null, newDueDate: '2026-10-20' }),
+          // Actor not recorded - charged, as before.
+          ev(2, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: null, newDueDate: '2026-10-22' }),
+          ev(3, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(3, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-20' }),
+          // A new assignee's free first commitment - not a change at all.
+          ev(3, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, freeCommitment: true, newDueDate: '2026-10-24' }),
+        ],
+      );
+      const c = dev(r).dueChanges;
+      expect(c.items.map((i) => [i.taskId, i.newDueDate, i.initiatedByUserId])).toEqual([
+        [1, '2026-10-27', DEV],
+        [2, '2026-10-22', null],
+      ]);
+      expect(c).toMatchObject({ changes: 2, tasks: 3 });
+      expect(c.notCharged.changes).toBe(1);
+      expect(c.notCharged.items[0]).toMatchObject({ taskId: 1, oldDueDate: '2026-10-20', newDueDate: '2026-10-25', initiatedByUserId: PM });
     });
 
     it('leaves out tasks finished before the window', () => {
