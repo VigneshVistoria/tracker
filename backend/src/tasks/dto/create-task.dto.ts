@@ -53,4 +53,22 @@ export class CreateTaskDto {
   @IsOptional()
   @IsEnum(TaskPriority)
   priority?: TaskPriority;
+
+  // Performance Tracking S4b (../task-fields.ts) - the type is required on
+  // a tracked project and refused on an untracked one; checked in
+  // TasksService.trackingFieldsAtCreation().
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  taskType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  requirementId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  clientImpact?: string;
 }

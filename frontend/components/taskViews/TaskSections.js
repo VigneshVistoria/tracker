@@ -428,6 +428,8 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
             <div className={styles.teamTitleBadges}>
               {typeTag}
               {!dep && t.priority && <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>}
+              {/* Performance Tracking S4b: the task type, when set. */}
+              {!dep && t.taskType && <Badge tone="neutral">{t.taskType === 'feature' ? 'Feature' : t.taskType === 'improvement' ? 'Improvement' : 'Other'}</Badge>}
               {/* Performance Tracking S3: open flags, Team Tasks only (openFlags is merged in there). */}
               {!dep &&
                 (t.openFlags || []).map((f) => (

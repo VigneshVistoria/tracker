@@ -33,6 +33,8 @@ export interface TeamExportQuery {
   dependency?: string;
   // Set by the Defects stat card (no dropdown for it on the page).
   isDefect?: string;
+  // Performance Tracking S4b: 'feature' | 'improvement' | 'other'.
+  taskType?: string;
   dueFrom?: string;
   dueTo?: string;
   showHoldClosed: boolean;
@@ -49,7 +51,8 @@ export interface TeamExportRow {
   filedBy: string;
   id: number;
   title: string;
-  type: 'Task' | 'Defect' | 'Dependency';
+  // A task with a Performance Tracking type (S4b) shows it instead of "Task".
+  type: 'Task' | 'Defect' | 'Dependency' | 'Feature' | 'Improvement' | 'Other';
   status: string;
   assignee: string;
   phase: string;
@@ -88,6 +91,8 @@ export function formatLongDateTime(instant: Date, timeZone = EXPORT_TIME_ZONE): 
   const city = timeZone.split('/').pop()!.replace(/_/g, ' ');
   return `${formatLongDate(instant, timeZone)}, ${time} (${city} time)`;
 }
+
+const TASK_TYPE_EXPORT_LABEL: Record<string, 'Feature' | 'Improvement' | 'Other'> = { feature: 'Feature', improvement: 'Improvement', other: 'Other' };
 
 const isDependencyRow = (row: ProjectTaskWithComputed | TeamDependencyRow): row is TeamDependencyRow =>
   (row as TeamDependencyRow).kind === 'dependency';
@@ -166,7 +171,7 @@ export function buildExportRows(result: TeamTasksResult, query: Pick<TeamExportQ
         filedBy: '',
         id: t.id,
         title: t.title,
-        type: (t.isDefect ? 'Defect' : 'Task') as 'Task' | 'Defect',
+        type: t.isDefect ? ('Defect' as const) : TASK_TYPE_EXPORT_LABEL[t.taskType ?? ''] ?? ('Task' as const),
         status: statusLabel(t.status),
         assignee: (t.assigneeUserId != null && nameById.get(t.assigneeUserId)) || t.assigneeEmail || '',
         phase: t.phaseName || '',
@@ -200,6 +205,7 @@ export function describeFilters(query: TeamExportQuery, result: Pick<TeamTasksRe
     ['Project phase', query.phaseId ? (phase ? phase.name : `#${query.phaseId}`) : 'All'],
     ['Dependency', query.dependency === 'Yes' || query.dependency === 'No' ? query.dependency : 'All'],
     ...(query.isDefect === 'Yes' || query.isDefect === 'No' ? [['Defect', query.isDefect] as [string, string]] : []),
+    ...(query.taskType && TASK_TYPE_EXPORT_LABEL[query.taskType] ? [['Type', TASK_TYPE_EXPORT_LABEL[query.taskType]] as [string, string]] : []),
     ['Due from', query.dueFrom ? formatLongDate(query.dueFrom) : 'Any'],
     ['Due to', query.dueTo ? formatLongDate(query.dueTo) : 'Any'],
     ['Hold/Closed', query.showHoldClosed ? 'Shown' : 'Hidden'],
@@ -209,7 +215,7 @@ export function describeFilters(query: TeamExportQuery, result: Pick<TeamTasksRe
   } else if (tabLabel(query.status) === 'Development / Failed') {
     // Same rule and note as the page: tickets carry no phase/due date/
     // defect flag, so they're left out while one of those filters is on.
-    lines.push(['Dependencies', 'Hidden while Project Phase, Dependency, Defect, or Due date filters are active']);
+    lines.push(['Dependencies', 'Hidden while Project Phase, Dependency, Defect, Type, or Due date filters are active']);
   }
   return lines;
 }

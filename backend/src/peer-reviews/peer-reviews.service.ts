@@ -81,6 +81,9 @@ export class PeerReviewsService {
       throw new BadRequestException('This task is escalated to PM and cannot be resubmitted until PM reassigns it.');
     }
     this.tasksService.assertReadyForQaSubmission(task.estimatedHours, task.dueDate);
+    // Performance Tracking S4b: a Feature needs its requirement ID and
+    // client impact before Peer Review too (tasks/task-fields.ts).
+    await this.tasksService.assertFeatureFieldsForPeerReview(task, tenantId);
 
     if (dto.reviewerUserId === currentUser.id) {
       throw new ForbiddenException('You cannot select yourself as the Peer Reviewer.');

@@ -115,6 +115,12 @@ const QA_INTAKE_COLUMNS: Record<string, string[]> = {
   task_qa_reviews: ['testFailedReason', 'dependencyDeclaration', 'dependencyExempt'],
   project_tasks: ['reopenCount'],
 };
+// Performance Tracking S4b (2026-10-28): the project_tasks columns dropped
+// from what synchronize made and re-added by the real migration.
+const TASK_FIELDS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-performance-tracking-task-fields.sql');
+const TASK_FIELDS_COLUMNS: Record<string, string[]> = {
+  project_tasks: ['taskType', 'requirementId', 'clientImpact', 'improvementDecision', 'improvementDecidedByUserId', 'improvementDecidedAt', 'improvementDeclineReason'],
+};
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -202,6 +208,10 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(QA_INTAKE_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(TASK_FIELDS_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(TASK_FIELDS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -295,7 +305,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS)]) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS), ...Object.entries(TASK_FIELDS_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,

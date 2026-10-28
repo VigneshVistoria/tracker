@@ -6,7 +6,48 @@ import { apiFetch } from '../lib/api';
 import { TASK_TITLE_MAX_LENGTH } from '../lib/taskTitle';
 import { TASK_PRIORITIES } from '../lib/taskTableShared';
 
-export const EMPTY_TASK_FORM = { project: null, module: null, phase: null, title: '', description: '', peerReviewEnabled: false, priority: '', assignee: null };
+export const EMPTY_TASK_FORM = {
+  project: null,
+  module: null,
+  phase: null,
+  title: '',
+  description: '',
+  peerReviewEnabled: false,
+  priority: '',
+  assignee: null,
+  // Performance Tracking S4b (backend/src/tasks/task-fields.ts).
+  taskType: '',
+  requirementId: '',
+  clientImpact: '',
+};
+
+// Performance Tracking S4b: on a project with tracking on, a new task needs
+// a Type (no default); Requirement ID and Client impact are optional here
+// (needed before QA submission on a Feature / Feature or Improvement).
+export const TASK_TYPE_OPTIONS = [
+  { value: 'feature', label: 'Feature' },
+  { value: 'improvement', label: 'Improvement' },
+  { value: 'other', label: 'Other' },
+];
+export const CLIENT_IMPACT_MIN = 20;
+
+export function trackingFieldsPayload(form) {
+  if (!form.project?.performanceTrackingEnabled) return {};
+  return {
+    taskType: form.taskType,
+    ...(form.requirementId.trim() ? { requirementId: form.requirementId.trim() } : {}),
+    ...(form.clientImpact.trim() ? { clientImpact: form.clientImpact.trim() } : {}),
+  };
+}
+
+// The form's own check before sending (the backend checks the same).
+export function trackingFieldsError(form) {
+  if (!form.project?.performanceTrackingEnabled) return '';
+  if (!form.taskType) return 'Pick a Type - Feature, Improvement or Other.';
+  const impact = form.clientImpact.trim();
+  if (impact && impact.length < CLIENT_IMPACT_MIN) return `Client impact must be at least ${CLIENT_IMPACT_MIN} characters.`;
+  return '';
+}
 
 // The Create/Edit Task form - shared by the Program Manager's Task Backlog
 // page and the Developer/Designer/DevOps top-bar "+" popup (AppShell), so
@@ -172,6 +213,49 @@ export default function CreateTaskForm({
           ))}
         </select>
       </div>
+
+      {!editing && form.project?.performanceTrackingEnabled && (
+        <>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${idPrefix}TaskType`}>Type</label>
+            <select
+              className={styles.input}
+              id={`${idPrefix}TaskType`}
+              required
+              value={form.taskType}
+              onChange={(e) => setForm({ ...form, taskType: e.target.value })}
+            >
+              <option value="">Pick a type</option>
+              {TASK_TYPE_OPTIONS.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${idPrefix}RequirementId`}>Requirement ID (needed before QA on a Feature)</label>
+            <input
+              className={styles.input}
+              id={`${idPrefix}RequirementId`}
+              maxLength={100}
+              value={form.requirementId}
+              onChange={(e) => setForm({ ...form, requirementId: e.target.value })}
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${idPrefix}ClientImpact`}>
+              Client impact (internal; needed before QA on a Feature or Improvement, at least {CLIENT_IMPACT_MIN} characters)
+            </label>
+            <textarea
+              className={styles.textarea}
+              id={`${idPrefix}ClientImpact`}
+              rows={2}
+              maxLength={2000}
+              value={form.clientImpact}
+              onChange={(e) => setForm({ ...form, clientImpact: e.target.value })}
+            />
+          </div>
+        </>
+      )}
 
       <div className={styles.actions}>
         <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>

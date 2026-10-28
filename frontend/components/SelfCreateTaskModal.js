@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from './ui/Modal';
-import CreateTaskForm, { EMPTY_TASK_FORM } from './CreateTaskForm';
+import CreateTaskForm, { EMPTY_TASK_FORM, trackingFieldsError, trackingFieldsPayload } from './CreateTaskForm';
 import styles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../lib/toast';
@@ -33,6 +33,11 @@ export default function SelfCreateTaskModal({ open, onClose, user }) {
       setError('Project, Module, Phase, Title, and Description are all required.');
       return;
     }
+    const trackingError = trackingFieldsError(form);
+    if (trackingError) {
+      setError(trackingError);
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch('/tasks', {
@@ -46,6 +51,7 @@ export default function SelfCreateTaskModal({ open, onClose, user }) {
           priority: form.priority || null,
           peerReviewEnabled: form.peerReviewEnabled,
           assigneeUserId: user.id,
+          ...trackingFieldsPayload(form),
         }),
       });
       showToast('Task created and added to your My Tasks', 'success');

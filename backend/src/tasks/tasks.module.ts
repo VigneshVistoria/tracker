@@ -41,6 +41,8 @@ import { TaskFlag } from '../task-flags/task-flag.entity';
 import { TaskReopen } from './task-reopen.entity';
 import { ReopenAfterPassService } from './reopen-after-pass.service';
 import { ReopenAfterPassController } from './reopen-after-pass.controller';
+import { TaskFieldsService } from './task-fields.service';
+import { TaskFieldsController } from './task-fields.controller';
 
 @Module({
   imports: [
@@ -62,8 +64,8 @@ import { ReopenAfterPassController } from './reopen-after-pass.controller';
   // ReturnToQaController likewise ('returned-to-qa' vs ':id').
   // DefectTriageController has its own 'defect-triage' prefix.
   // DueDateChangeController owns 'due-date-changes' (vs ':id').
-  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, DefectTriageController, DueDateChangeController, ReopenAfterPassController, TasksController],
-  providers: [TasksService, TeamTasksExportService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService, DueDateChangeService, ReopenAfterPassService],
+  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, DefectTriageController, DueDateChangeController, ReopenAfterPassController, TaskFieldsController, TasksController],
+  providers: [TasksService, TeamTasksExportService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService, DueDateChangeService, ReopenAfterPassService, TaskFieldsService],
   exports: [TasksService],
 })
 export class TasksModule {}

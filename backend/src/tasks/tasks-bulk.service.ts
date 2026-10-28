@@ -7,6 +7,7 @@ import { Phase } from '../phases/phase.entity';
 import { BulkImportTasksDto, BulkSpreadsheetFormat } from './dto/bulk-import-tasks.dto';
 import { TaskSpreadsheetService, RawTaskRow } from './spreadsheet/task-spreadsheet.service';
 import { TaskPriority } from './task-priority.enum';
+import { TaskType } from './task-fields';
 import { TASK_TITLE_MAX_LENGTH } from './task-title.constants';
 import { TasksService, JUNK_STATUS } from './tasks.service';
 import { UsersService } from '../users/users.service';
@@ -47,6 +48,9 @@ interface ParsedRow {
   assigneeUserId: number | null;
   assigneeEmail: string | null;
   assigneeRole: UserRole | null;
+  taskType: TaskType | null;
+  requirementId: string | null;
+  clientImpact: string | null;
 }
 
 function isValidPriority(value: string, priorityByName: Map<string, TaskPriority>): TaskPriority | undefined {
@@ -156,6 +160,9 @@ export class TasksBulkService {
           status: 'Development',
           peerReviewEnabled: this.tasksService.requiresPeerReviewForAssignee(row.assigneeRole ?? undefined),
           priority: row.priority,
+          taskType: row.taskType,
+          requirementId: row.requirementId,
+          clientImpact: row.clientImpact,
           createdByUserId: currentUser.id,
           createdByEmail: currentUser.email,
           tenantId: currentUser.tenantId,
@@ -214,7 +221,7 @@ export class TasksBulkService {
       const push = (field: string, message: string) => errors.push({ row: rowNumber, field, message });
 
       const projectNameRaw = row['Project']?.trim();
-      let project: { id: number; name: string } | null = null;
+      let project: { id: number; name: string; performanceTrackingEnabled: boolean } | null = null;
       if (!projectNameRaw) {
         push('Project', 'Project is required.');
       } else {
@@ -222,7 +229,7 @@ export class TasksBulkService {
         if (!match) {
           push('Project', `Unknown project "${projectNameRaw}".`);
         } else {
-          project = { id: match.id, name: match.name };
+          project = { id: match.id, name: match.name, performanceTrackingEnabled: !!match.performanceTrackingEnabled };
         }
       }
 
@@ -288,6 +295,24 @@ export class TasksBulkService {
         }
       }
 
+      // Performance Tracking S4b - same rules as the Create Task form.
+      let trackingFields: { taskType: TaskType | null; requirementId: string | null; clientImpact: string | null } = {
+        taskType: null,
+        requirementId: null,
+        clientImpact: null,
+      };
+      if (project) {
+        try {
+          trackingFields = TasksService.trackingFieldsAtCreation(project.performanceTrackingEnabled, {
+            taskType: row['Type']?.trim() || null,
+            requirementId: row['Requirement ID'] ?? null,
+            clientImpact: row['Client impact'] ?? null,
+          });
+        } catch (err: any) {
+          push('Type', err.message);
+        }
+      }
+
       if (project && module && phase && title) {
         parsedRows.push({
           projectId: project.id,
@@ -302,6 +327,7 @@ export class TasksBulkService {
           assigneeUserId: assignee?.id ?? null,
           assigneeEmail: assignee?.email ?? null,
           assigneeRole: assignee?.role ?? null,
+          ...trackingFields,
         });
       }
     }

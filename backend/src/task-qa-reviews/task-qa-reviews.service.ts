@@ -29,6 +29,7 @@ import {
 } from '../tasks/qa-intake';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { TaskFlag } from '../task-flags/task-flag.entity';
+import { missingBeforeSubmission } from '../tasks/task-fields';
 import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { DEVELOPER_EQUIVALENT_ROLES, User, UserRole } from '../users/user.entity';
@@ -195,6 +196,12 @@ export class TaskQaReviewsService {
     // the project has it off, otherwise complete or a 400 naming what's
     // missing - checked before anything is saved.
     const checklist = await this.submissionChecklistService.check(task, dto.checklist, dto.artifacts.map((a) => a.type));
+    // Performance Tracking S4b: a Feature needs its requirement ID, a
+    // Feature or Improvement its client impact (tasks/task-fields.ts).
+    if (await this.trackingOn(task.projectId, tenantId)) {
+      const missing = missingBeforeSubmission(task);
+      if (missing.length) throw new BadRequestException(`Before submitting for QA, add ${missing.join(' and ')}.`);
+    }
     // Performance Tracking S4: "dependencies met?" on a tracked project.
     const dependencyDeclaration = (await this.trackingOn(task.projectId, tenantId))
       ? await this.buildDependencyDeclaration(task, dto.dependencies, currentUser.id, tenantId)

@@ -216,6 +216,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   // Defects stat card, same as Rejected/Overdue reusing statusFilter/dueTo
   // rather than exposing this as its own dropdown.
   const [defectFilter, setDefectFilter] = useState('All');
+  // Performance Tracking S4b: 'All' | 'feature' | 'improvement' | 'other'.
+  const [typeFilter, setTypeFilter] = useState('All');
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
@@ -305,7 +307,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   const devFailedTabValue = devFailedTab.statuses.join(',');
   const onDevFailedTab = statusFilter === devFailedTabValue;
   const taskOnlyFiltersActive =
-    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
+    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || typeFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
   const includeDependencies = onDevFailedTab && !taskOnlyFiltersActive;
 
   useEffect(() => {
@@ -329,6 +331,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
     if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
     if (defectFilter !== 'All') params.set('isDefect', defectFilter);
+    if (typeFilter !== 'All') params.set('taskType', typeFilter);
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
@@ -361,7 +364,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, page, pageSize, includeDependencies, refreshKey]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, page, pageSize, includeDependencies, refreshKey]);
 
   // Workload view's own fetch - same filters as above, minus page/pageSize
   // (all=true instead, see TasksService.findTeam()) since the weekly grid
@@ -375,6 +378,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
     if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
     if (defectFilter !== 'All') params.set('isDefect', defectFilter);
+    if (typeFilter !== 'All') params.set('taskType', typeFilter);
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
@@ -397,7 +401,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     return () => {
       cancelled = true;
     };
-  }, [viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed]);
+  }, [viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed]);
 
   // Any filter (or page size) change invalidates the current page -
   // jumping back to page 1 avoids landing on a now out-of-range page
@@ -405,7 +409,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   useEffect(() => {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, pageSize]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, pageSize]);
 
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
@@ -556,6 +560,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
     if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
     if (defectFilter !== 'All') params.set('isDefect', defectFilter);
+    if (typeFilter !== 'All') params.set('taskType', typeFilter);
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
@@ -566,7 +571,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
       params.set('sortDir', sort.dir);
     }
     return params.toString();
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, includeDependencies, sort]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, includeDependencies, sort]);
 
   const baseColumns = useMemo(
     () => buildTaskColumns({ assigneeLabel: showAssignee ? assigneeLabel : null, labelForEmail, expandedTaskIds, toggleExpanded }),
@@ -719,6 +724,17 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
               </select>
             </div>
 
+            {/* Performance Tracking S4b - only typed tasks (tracked projects) match a type. */}
+            <div className={styles.filterGroup}>
+              <label className={styles.filterLabel} htmlFor="teamTypeFilter">Type</label>
+              <select id="teamTypeFilter" className={styles.filterSelect} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                <option value="All">All</option>
+                <option value="feature">Feature</option>
+                <option value="improvement">Improvement</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
             <div className={styles.filterGroup}>
               <label className={styles.filterLabel} htmlFor="teamDueFrom">Due from</label>
               <div className={styles.dateFieldWrap}>
@@ -807,7 +823,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
 
           {onDevFailedTab && viewMode !== 'workload' && taskOnlyFiltersActive && dependenciesToClearCount > 0 && (
             <p className={styles.issueMeta}>
-              {dependenciesToClearCount === 1 ? '1 dependency to clear is' : `${dependenciesToClearCount} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, or Due date filters are active.
+              {dependenciesToClearCount === 1 ? '1 dependency to clear is' : `${dependenciesToClearCount} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, Type, or Due date filters are active.
             </p>
           )}
 

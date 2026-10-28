@@ -1,4 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import type { ImprovementDecision, TaskType } from './task-fields';
 import { TaskPriority } from './task-priority.enum';
 
 // A task-level work item, required through the Project -> Module -> Phase
@@ -92,6 +93,30 @@ export class ProjectTask {
   // after Pass (see ./qa-intake.ts and task_reopens).
   @Column({ type: 'int', default: 0 })
   reopenCount: number;
+
+  // Performance Tracking S4b (2026-10-28, see ./task-fields.ts): type,
+  // requirement ID, client impact (internal), and the PM's decision on a
+  // developer's improvement.
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  taskType: TaskType | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  requirementId: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  clientImpact: string | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  improvementDecision: ImprovementDecision | null;
+
+  @Column({ type: 'int', nullable: true })
+  improvementDecidedByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  improvementDecidedAt: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  improvementDeclineReason: string | null;
 
   // Separate from dueDate above (the Assignee's own field) - auto-set to
   // TasksService.QA_REVIEW_DUE_DATE_BUSINESS_DAYS business days from

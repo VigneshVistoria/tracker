@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import AppShell from '../../components/AppShell';
 import SearchSelectField from '../../components/SearchSelectField';
-import CreateTaskForm, { EMPTY_TASK_FORM } from '../../components/CreateTaskForm';
+import CreateTaskForm, { EMPTY_TASK_FORM, trackingFieldsError, trackingFieldsPayload } from '../../components/CreateTaskForm';
 import Badge from '../../components/ui/Badge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
@@ -183,6 +183,11 @@ export default function TaskBacklogPage() {
       setError('Project, Module, Phase, Title, and Description are all required.');
       return;
     }
+    const trackingError = editingId ? '' : trackingFieldsError(form);
+    if (trackingError) {
+      setError(trackingError);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -211,6 +216,7 @@ export default function TaskBacklogPage() {
             ...payload,
             peerReviewEnabled: form.peerReviewEnabled,
             assigneeUserId: form.assignee ? form.assignee.id : undefined,
+            ...trackingFieldsPayload(form),
           }),
         });
         showToast(form.assignee ? `Task created and assigned to ${form.assignee.name}` : 'Task created', 'success');

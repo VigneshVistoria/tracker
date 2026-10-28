@@ -13,7 +13,10 @@ import { BulkSpreadsheetFormat } from '../dto/bulk-import-tasks.dto';
 // already-assigned, already-described task instead of a bare Backlog
 // placeholder (mirrors CreateTaskDto's own optional fields).
 export const TASK_EXPORT_COLUMNS = ['Project', 'Module', 'Phase', 'Title', 'Priority'] as const;
-export const TASK_IMPORT_COLUMNS = ['Project', 'Module', 'Phase', 'Title', 'Description', 'Priority', 'Assignee'] as const;
+// Type / Requirement ID / Client impact (Performance Tracking S4b,
+// ../task-fields.ts): optional columns, used only for projects with
+// tracking on - where Type is required, as on the Create Task form.
+export const TASK_IMPORT_COLUMNS = ['Project', 'Module', 'Phase', 'Title', 'Description', 'Priority', 'Assignee', 'Type', 'Requirement ID', 'Client impact'] as const;
 
 export type TaskExportColumn = (typeof TASK_EXPORT_COLUMNS)[number];
 export type TaskImportColumn = (typeof TASK_IMPORT_COLUMNS)[number];
@@ -55,6 +58,9 @@ const TEMPLATE_ROWS: Record<TaskImportColumn, string>[] = [
     Description: '',
     Priority: '',
     Assignee: '',
+    Type: '',
+    'Requirement ID': '',
+    'Client impact': '',
   },
   {
     Project: 'LMS',
@@ -64,6 +70,9 @@ const TEMPLATE_ROWS: Record<TaskImportColumn, string>[] = [
     Description: 'Provision a staging instance with seeded test accounts before QA starts writing test cases.',
     Priority: 'High',
     Assignee: 'qa.person@example.com',
+    Type: '',
+    'Requirement ID': '',
+    'Client impact': '',
   },
 ];
 

@@ -63,6 +63,14 @@ describe('Team Tasks export', () => {
   });
 
   describe('rows', () => {
+    // Performance Tracking S4b: a typed task shows its type.
+    it('shows a task\'s Performance Tracking type in the Type column, and the Type filter', () => {
+      const rows = buildExportRows(result([task(1, { taskType: 'feature' }), task(2, { taskType: 'improvement' }), task(3)]), {});
+      expect(rows.map((r) => r.type)).toEqual(['Feature', 'Improvement', 'Task']);
+      expect(describeFilters({ ...baseQuery, taskType: 'feature' }, result([]))).toContainEqual(['Type', 'Feature']);
+      expect(describeFilters(baseQuery, result([])).some(([k]) => k === 'Type')).toBe(false);
+    });
+
     it('keeps the page order and fills every column', () => {
       const rows = buildExportRows(
         result([task(1), task(2, { isDefect: true, status: 'Escalated', assigneeUserId: 2, assigneeEmail: 'bob@x' }), dep(9, 'Cara', 1)]),
@@ -148,7 +156,7 @@ describe('Team Tasks export', () => {
         'Due from': 'November 01, 2026',
         'Due to': 'Any',
         'Hold/Closed': 'Shown',
-        Dependencies: 'Hidden while Project Phase, Dependency, Defect, or Due date filters are active',
+        Dependencies: 'Hidden while Project Phase, Dependency, Defect, Type, or Due date filters are active',
       });
     });
 

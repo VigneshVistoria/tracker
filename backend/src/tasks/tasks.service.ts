@@ -4,6 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { TaskFlag } from '../task-flags/task-flag.entity';
 import { TaskReopen } from './task-reopen.entity';
 import { DueDateProposedEvent } from './due-date-change';
+import { TaskType, fieldProblems, missingBeforeSubmission, parseTaskType } from './task-fields';
 import { Between, EntityManager, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
@@ -77,6 +78,8 @@ export interface TeamTaskFilters {
   // `dependency` above, but a plain column so it goes straight into the
   // `where` clause instead of needing dependency's JS post-filter.
   isDefect?: string;
+  // Performance Tracking S4b: 'feature' | 'improvement' | 'other'.
+  taskType?: string;
   dueFrom?: string;
   dueTo?: string;
   showCompleted?: boolean;
@@ -1208,6 +1211,11 @@ export class TasksService {
     } else if (filters.isDefect === 'No') {
       where.isDefect = false;
     }
+    if (filters.taskType) {
+      const taskType = parseTaskType(filters.taskType);
+      if (!taskType) throw new BadRequestException('taskType must be feature, improvement or other.');
+      where.taskType = taskType;
+    }
     if (filters.dueFrom && filters.dueTo) {
       where.dueDate = Between(filters.dueFrom, filters.dueTo);
     } else if (filters.dueFrom) {
@@ -1504,7 +1512,10 @@ export class TasksService {
       }
     }
 
+    const trackingFields = TasksService.trackingFieldsAtCreation(project.performanceTrackingEnabled, dto);
+
     const task = this.tasksRepository.create({
+      ...trackingFields,
       projectId: project.id,
       projectName: project.name,
       moduleId: module.id,
@@ -1544,6 +1555,7 @@ export class TasksService {
         moduleId: saved.moduleId,
         phaseId: saved.phaseId,
         assigneeUserId: saved.assigneeUserId,
+        ...(saved.taskType ? { taskType: saved.taskType, requirementId: saved.requirementId, clientImpact: saved.clientImpact } : {}),
       },
     });
 
@@ -1552,6 +1564,36 @@ export class TasksService {
     }
 
     return saved;
+  }
+
+  // Performance Tracking S4b (./task-fields.ts): on a tracked project a
+  // Feature going to Peer Review needs the same requirement ID and client
+  // impact as before QA submission (the user's decision: Feature only).
+  async assertFeatureFieldsForPeerReview(task: ProjectTask, tenantId: number): Promise<void> {
+    if (task.isDefect || task.taskType !== 'feature') return;
+    const project = await this.projectsService.findOne(task.projectId, tenantId);
+    if (!project.performanceTrackingEnabled) return;
+    const missing = missingBeforeSubmission(task);
+    if (missing.length) throw new BadRequestException(`Before submitting for Peer Review, add ${missing.join(' and ')}.`);
+  }
+
+  // Performance Tracking S4b (./task-fields.ts): on a tracked project the
+  // type is required at creation (no default) and the texts are checked;
+  // OFF, the fields aren't taken at all. Shared with bulk import.
+  static trackingFieldsAtCreation(
+    trackingOn: boolean,
+    input: { taskType?: string | null; requirementId?: string | null; clientImpact?: string | null },
+  ): { taskType: TaskType | null; requirementId: string | null; clientImpact: string | null } {
+    const given = !!(input.taskType || (input.requirementId || '').trim() || (input.clientImpact || '').trim());
+    if (!trackingOn) {
+      if (given) throw new BadRequestException('Performance Tracking is off for this project - Type, Requirement ID and Client impact are not used.');
+      return { taskType: null, requirementId: null, clientImpact: null };
+    }
+    const taskType = parseTaskType(input.taskType);
+    if (!taskType) throw new BadRequestException('Type is required - Feature, Improvement or Other.');
+    const problems = fieldProblems(input);
+    if (problems.length) throw new BadRequestException(problems.join(' '));
+    return { taskType, requirementId: (input.requirementId || '').trim() || null, clientImpact: (input.clientImpact || '').trim() || null };
   }
 
   // In-app notification hook (UserNotificationListenersService) - fired
