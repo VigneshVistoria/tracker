@@ -1,4 +1,4 @@
-import { IsInt, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, MinLength, MaxLength } from 'class-validator';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../task-dependency-ticket-title.constants';
 
 export class CreateTaskDependencyTicketDto {
@@ -19,4 +19,10 @@ export class CreateTaskDependencyTicketDto {
 
   @IsInt()
   ownerUserId: number;
+
+  // Performance Tracking S3: required while the project's tracking is ON,
+  // refused while it is OFF.
+  @IsOptional()
+  @IsDateString({ strict: true })
+  needByDate?: string;
 }

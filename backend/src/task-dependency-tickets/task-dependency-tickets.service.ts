@@ -10,6 +10,11 @@ import { TasksService, JUNK_STATUS } from '../tasks/tasks.service';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { Project } from '../projects/project.entity';
+import { TeamSettings } from '../team-settings/team-settings.entity';
+import { TEAM_SETTINGS_DEFAULTS, dateInZone, isValidTimeZone } from '../team-settings/time-zone';
+import { FLAG_REASON_MIN, TASK_FLAG_AUDIT, canChangeNeedBy, needByOverdueAt } from '../task-flags/task-flags';
+import { ChangeNeedByDateDto } from '../task-flags/dto/task-flags.dto';
 
 export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
   parentTaskTitle: string | null;
@@ -31,6 +36,10 @@ export class TaskDependencyTicketsService {
   constructor(
     @InjectRepository(TaskDependencyTicket)
     private ticketsRepository: Repository<TaskDependencyTicket>,
+    @InjectRepository(Project)
+    private projectsRepository: Repository<Project>,
+    @InjectRepository(TeamSettings)
+    private teamSettingsRepository: Repository<TeamSettings>,
     private tasksService: TasksService,
     private usersService: UsersService,
     private auditLogService: AuditLogService,
@@ -72,6 +81,7 @@ export class TaskDependencyTicketsService {
         AuditActions.TASK_DEPENDENCY_TICKET_TITLE_UPDATED,
         AuditActions.TASK_DEPENDENCY_TICKET_OWNER_CHANGED,
         AuditActions.TASK_DEPENDENCY_TICKET_RESOLVED,
+        TASK_FLAG_AUDIT.DEPENDENCY_NEED_BY_CHANGED,
       ],
     );
     const users = await this.usersService.findAll(tenantId);
@@ -93,6 +103,9 @@ export class TaskDependencyTicketsService {
         previousOwnerName: d.previousOwnerName ?? null,
         previousTitle: d.previousTitle ?? null,
         title: d.title ?? null,
+        previousNeedByDate: d.previousNeedByDate ?? null,
+        needByDate: d.needByDate ?? null,
+        reason: d.reason ?? null,
       };
     });
   }
@@ -178,6 +191,15 @@ export class TaskDependencyTicketsService {
       throw new BadRequestException('Dependency Title is required.');
     }
 
+    // Performance Tracking S3: the needed-by date.
+    const trackingOn = await this.trackingOn(task.projectId, tenantId);
+    if (trackingOn && !dto.needByDate) {
+      throw new BadRequestException('Needed by is required - Performance Tracking is on for this project.');
+    }
+    if (!trackingOn && dto.needByDate) {
+      throw new BadRequestException('Performance Tracking is off for this project - a dependency has no needed-by date.');
+    }
+
     const ticket = this.ticketsRepository.create({
       tenantId,
       parentTaskId: task.id,
@@ -187,6 +209,8 @@ export class TaskDependencyTicketsService {
       ownerEmail: owner.email,
       createdByUserId: currentUser.id,
       createdByEmail: currentUser.email,
+      needByDate: dto.needByDate ?? null,
+      overdueAt: dto.needByDate ? await this.overdueAtFor(dto.needByDate, tenantId) : null,
     });
     const saved = await this.ticketsRepository.save(ticket);
 
@@ -198,7 +222,7 @@ export class TaskDependencyTicketsService {
       tenantId,
       entityType: 'TaskDependencyTicket',
       entityId: saved.id,
-      details: { parentTaskId: saved.parentTaskId, ownerEmail: saved.ownerEmail, title: saved.title },
+      details: { parentTaskId: saved.parentTaskId, ownerEmail: saved.ownerEmail, title: saved.title, needByDate: saved.needByDate },
     });
 
     this.eventEmitter.emit('dependencyTicket.created', {
@@ -335,6 +359,78 @@ export class TaskDependencyTicketsService {
     });
 
     return { ...saved, ownerName: owner.fullName || null };
+  }
+
+  private async trackingOn(projectId: number, tenantId: number): Promise<boolean> {
+    const project = await this.projectsRepository.findOne({ where: { id: projectId, tenantId } });
+    return !!project?.performanceTrackingEnabled;
+  }
+
+  private async timeZone(tenantId: number): Promise<string> {
+    const settings = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    return isValidTimeZone(settings?.timeZone) ? settings!.timeZone : TEAM_SETTINGS_DEFAULTS.timeZone;
+  }
+
+  // A needed-by date can't be in the past (in the team's time zone) - a
+  // ticket filed already overdue would be charged to its owner unfairly.
+  private async overdueAtFor(needByDate: string, tenantId: number): Promise<Date> {
+    const timeZone = await this.timeZone(tenantId);
+    if (needByDate < dateInZone(new Date(), timeZone)) {
+      throw new BadRequestException('Needed by cannot be in the past.');
+    }
+    return needByOverdueAt(needByDate, timeZone);
+  }
+
+  // Performance Tracking S3: set or change the needed-by date of an open
+  // ticket - its creator or a PM/Admin, with a reason, logged. Never the
+  // owner alone (it would hide their own lateness). Also how an older,
+  // undated ticket gets a date.
+  async changeNeedBy(
+    id: number,
+    dto: ChangeNeedByDateDto,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskDependencyTicket> {
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) {
+      throw new NotFoundException(`Dependency ticket #${id} not found`);
+    }
+    if (!canChangeNeedBy(ticket, currentUser)) {
+      throw new ForbiddenException('Only the person who raised this dependency, Admin, or Program Manager can change its needed-by date.');
+    }
+    const task = await this.tasksService.findOne(ticket.parentTaskId, tenantId);
+    this.tasksService.assertNotJunk(task);
+    if (!(await this.trackingOn(task.projectId, tenantId))) {
+      throw new BadRequestException('Performance Tracking is off for this project.');
+    }
+    if (ticket.status !== 'open') {
+      throw new BadRequestException('Only an open dependency ticket can change its needed-by date.');
+    }
+    if (dto.needByDate === ticket.needByDate) {
+      throw new BadRequestException('That is already the needed-by date.');
+    }
+    const reason = (dto.reason || '').trim();
+    if (reason.length < FLAG_REASON_MIN) {
+      throw new BadRequestException(`The reason must be at least ${FLAG_REASON_MIN} characters.`);
+    }
+
+    const previousNeedByDate = ticket.needByDate;
+    ticket.needByDate = dto.needByDate;
+    ticket.overdueAt = await this.overdueAtFor(dto.needByDate, tenantId);
+    const saved = await this.ticketsRepository.save(ticket);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: TASK_FLAG_AUDIT.DEPENDENCY_NEED_BY_CHANGED,
+      tenantId,
+      entityType: 'TaskDependencyTicket',
+      entityId: saved.id,
+      details: { parentTaskId: saved.parentTaskId, previousNeedByDate, needByDate: saved.needByDate, reason },
+    });
+
+    return saved;
   }
 
   // Marks a ticket cleared - this entity had no resolution concept at all

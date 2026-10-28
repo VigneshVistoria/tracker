@@ -34,6 +34,8 @@ import Avatar from '../../components/ui/Avatar';
 import DefectScreenshots from '../../components/DefectScreenshots';
 import DefectTriagePanel from '../../components/DefectTriagePanel';
 import DueDateCommitmentPanel from '../../components/DueDateCommitmentPanel';
+import TaskFlagsPanel from '../../components/TaskFlagsPanel';
+import DependencyNeedByModal from '../../components/DependencyNeedByModal';
 import {
   EMPTY_CHECKLIST,
   SubmissionChecklistFields,
@@ -224,9 +226,17 @@ function dependencyHistoryText(h) {
       return `changed the owner of ${ticket} from ${h.previousOwnerName} to ${h.ownerName}`;
     case 'task_dependency_ticket_resolved':
       return `resolved ${ticket}`;
+    case 'task_dependency_ticket_need_by_changed':
+      return `${h.previousNeedByDate ? `moved the needed-by date of ${ticket} from ${formatDate(h.previousNeedByDate)}` : `set the needed-by date of ${ticket}`} to ${formatDate(h.needByDate)}: "${h.reason}"`;
     default:
       return `updated ${ticket}`;
   }
+}
+
+// Performance Tracking S3: open past its overdueAt (00:00 the day after
+// the needed-by date, team time zone - set by the backend).
+function isDependencyOverdue(ticket) {
+  return ticket.status === 'open' && !!ticket.overdueAt && new Date(ticket.overdueAt) <= new Date();
 }
 
 function userToOption(u) {
@@ -363,6 +373,9 @@ export default function TaskDetailPage() {
   const [highlightedTicketId, setHighlightedTicketId] = useState(null);
   const ticketHashHandled = useRef(false);
   const [ticketOwner, setTicketOwner] = useState(null);
+  // Performance Tracking S3: needed-by date (required while tracking is on).
+  const [ticketNeedBy, setTicketNeedBy] = useState('');
+  const [needByTicket, setNeedByTicket] = useState(null);
   const [filingTicket, setFilingTicket] = useState(false);
 
   // Defects spun off this task via QA-rejection's "Create linked defect(s)"
@@ -2000,6 +2013,10 @@ export default function TaskDetailPage() {
       setError('Dependency Title, Description, and Owner are all required.');
       return;
     }
+    if (dueDateTracked && !ticketNeedBy) {
+      setError('Needed by is required.');
+      return;
+    }
     setFilingTicket(true);
     try {
       await apiFetch('/task-dependency-tickets', {
@@ -2009,12 +2026,14 @@ export default function TaskDetailPage() {
           title: ticketTitle.trim(),
           description: ticketDescription,
           ownerUserId: ticketOwner.id,
+          ...(dueDateTracked ? { needByDate: ticketNeedBy } : {}),
         }),
       });
       showToast('Dependency Ticket created', 'success');
       setTicketTitle('');
       setTicketDescription('');
       setTicketOwner(null);
+      setTicketNeedBy('');
       loadTickets();
     } catch (err) {
       setError(err.message);
@@ -2514,6 +2533,7 @@ export default function TaskDetailPage() {
       </form>
 
       {!isJunk && <DueDateCommitmentPanel task={task} onChanged={refreshAfterReturnToQa} onState={setDueDateTracking} />}
+      {!isJunk && <TaskFlagsPanel task={task} tickets={tickets} onChanged={refreshAfterReturnToQa} />}
 
       {canManagePeerReviewFlag && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
@@ -2827,6 +2847,23 @@ export default function TaskDetailPage() {
               options={developers}
             />
           </div>
+          {dueDateTracked && (
+            <div className={styles.fieldNarrow}>
+              <label className={styles.label} htmlFor="tdTicketNeedBy">Needed by</label>
+              <input
+                className={styles.input}
+                id="tdTicketNeedBy"
+                type="date"
+                required
+                value={ticketNeedBy}
+                onChange={(e) => setTicketNeedBy(e.target.value)}
+                aria-describedby="tdTicketNeedByHint"
+              />
+              <p id="tdTicketNeedByHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+                The owner is overdue from the next day. Only you or a PM/Admin can change it later, with a reason.
+              </p>
+            </div>
+          )}
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={filingTicket}>
               {filingTicket ? 'Filing...' : 'File Dependency Ticket'}
@@ -2888,6 +2925,13 @@ export default function TaskDetailPage() {
             <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
               Owner: {ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
               {formatDate(ticket.createdAt)}
+              {ticket.needByDate && <> &middot; Needed by {formatDate(ticket.needByDate)}</>}
+              {ticket.needByDate && isDependencyOverdue(ticket) && (
+                <>
+                  {' '}
+                  <Badge tone="error">Overdue</Badge>
+                </>
+              )}
             </p>
             {editingTicketId !== ticket.id && (ticket.createdByUserId === user.id || canManage || user.role === 'admin') && (
               <button
@@ -2911,6 +2955,17 @@ export default function TaskDetailPage() {
                 aria-label={`Change owner of ${ticket.title}`}
               >
                 Change owner
+              </button>
+            )}
+            {editingTicketId !== ticket.id && dueDateTracked && ticket.status === 'open' && !isJunk &&
+              (ticket.createdByUserId === user.id || user.role === 'program_manager' || user.role === 'admin') && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
+                onClick={() => setNeedByTicket(ticket)}
+              >
+                {ticket.needByDate ? 'Change needed-by' : 'Set needed-by'}
               </button>
             )}
             {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
@@ -2938,6 +2993,15 @@ export default function TaskDetailPage() {
           </div>
         )}
       </div>
+      <DependencyNeedByModal
+        ticket={needByTicket}
+        onClose={() => setNeedByTicket(null)}
+        onDone={async (message) => {
+          setNeedByTicket(null);
+          loadTickets();
+          showToast(message, 'success');
+        }}
+      />
       <ChangeDependencyOwnerModal
         open={!!ownerChangeTicket}
         ticket={ownerChangeTicket}

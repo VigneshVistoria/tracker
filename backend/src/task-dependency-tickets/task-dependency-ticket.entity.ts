@@ -58,4 +58,14 @@ export class TaskDependencyTicket {
 
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date;
+
+  // Performance Tracking S3 (2026-10-28): the date the creator needs it by
+  // (required while the project's tracking is ON; older tickets stay
+  // undated) and when it becomes overdue - 00:00 the next day in the
+  // team's time zone, written with it. See task-flags/task-flags.ts.
+  @Column({ type: 'date', nullable: true })
+  needByDate: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  overdueAt: Date | null;
 }

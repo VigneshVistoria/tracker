@@ -9,7 +9,7 @@ import {
   HOLD_CLOSED_STATUSES, STATUS_TAB_GROUPS,
 } from '../lib/taskTableShared';
 import {
-  buildTaskColumns, useSectionSort, TaskSectionsTable, TaskSectionsTiles, ViewToggle,
+  buildTaskColumns, useSectionSort, TaskSectionsTable, TaskSectionsTiles, ViewToggle, isDependencyRow,
 } from './taskViews/TaskSections';
 import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
@@ -131,6 +131,26 @@ function presetMatches(key, f) {
     (p.dueFrom === null || f.dueFrom === p.dueFrom) &&
     f.dueTo === p.dueTo
   );
+}
+
+// Performance Tracking S3 (2026-10-28): merges each task's open risk/
+// blocker flags (projects with tracking on only) into the rows as
+// `openFlags`, for the badges in the Title column. Dependency rows have no
+// flags of their own. A failure just leaves the rows without badges.
+function withOpenFlags(rows, isCancelled, setRows) {
+  const ids = [...new Set(rows.filter((t) => !isDependencyRow(t)).map((t) => t.id))];
+  if (ids.length === 0) return;
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 500) chunks.push(ids.slice(i, i + 500));
+  Promise.all(chunks.map((c) => apiFetch(`/task-flags/open?taskIds=${c.join(',')}`)))
+    .then((results) => {
+      if (isCancelled()) return;
+      const byTask = new Map();
+      results.flatMap((r) => r.items).forEach((f) => byTask.set(f.taskId, [...(byTask.get(f.taskId) || []), f]));
+      if (byTask.size === 0) return;
+      setRows((prev) => prev.map((t) => (!isDependencyRow(t) && byTask.has(t.id) ? { ...t, openFlags: byTask.get(t.id) } : t)));
+    })
+    .catch(() => {});
 }
 
 // Workload view chip - status fill (same statusBadgeStyle used by the
@@ -313,6 +333,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
       .then((res) => {
         if (cancelled) return;
         setTasks(res.tasks);
+        withOpenFlags(res.tasks, () => cancelled, setTasks);
         setTotal(res.total);
         setStatCounts(res.statCounts);
         setAssignees(res.assignees);

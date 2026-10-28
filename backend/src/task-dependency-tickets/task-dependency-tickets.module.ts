@@ -7,9 +7,11 @@ import { TasksModule } from '../tasks/tasks.module';
 import { UsersModule } from '../users/users.module';
 import { AuditModule } from '../audit/audit.module';
 import { GuardsModule } from '../common/guards.module';
+import { Project } from '../projects/project.entity';
+import { TeamSettings } from '../team-settings/team-settings.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TaskDependencyTicket]), TasksModule, UsersModule, AuditModule, GuardsModule],
+  imports: [TypeOrmModule.forFeature([TaskDependencyTicket, Project, TeamSettings]), TasksModule, UsersModule, AuditModule, GuardsModule],
   controllers: [TaskDependencyTicketsController],
   providers: [TaskDependencyTicketsService],
   exports: [TaskDependencyTicketsService],

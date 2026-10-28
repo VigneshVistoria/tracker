@@ -51,6 +51,7 @@ import { TaskDefectArtifact } from './tasks/task-defect-artifact.entity';
 import { TaskBlockingDefect } from './tasks/task-blocking-defect.entity';
 import { DefectTriage } from './tasks/defect-triage.entity';
 import { DueDateChangeRequest } from './tasks/due-date-change-request.entity';
+import { TaskFlag } from './task-flags/task-flag.entity';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -94,6 +95,7 @@ import { TaskCommitmentEvent } from './performance-metrics/task-commitment-event
 import { PerformanceMetricSettings } from './performance-metrics/performance-metric-settings.entity';
 import { PerformanceHoliday } from './performance-metrics/performance-holiday.entity';
 import { PerformanceTrackingModule } from './performance-tracking/performance-tracking.module';
+import { TaskFlagsModule } from './task-flags/task-flags.module';
 import { PerformanceTrackingSettings } from './performance-tracking/performance-tracking-settings.entity';
 import { TaskStatusEvent } from './performance-tracking/task-status-event.entity';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -171,6 +173,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TaskBlockingDefect,
           DefectTriage,
           DueDateChangeRequest,
+          TaskFlag,
           KpiConfig,
           KpiPeriodScore,
           Role,
@@ -246,6 +249,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     NonComplianceReportModule,
     PerformanceMetricsModule,
     PerformanceTrackingModule,
+    TaskFlagsModule,
     PermissionsModule,
     ReleaseLogsModule,
     StatusReviewModule,

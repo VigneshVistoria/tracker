@@ -428,6 +428,15 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
             <div className={styles.teamTitleBadges}>
               {typeTag}
               {!dep && t.priority && <Badge tone={priorityTone(t.priority)}>{priorityLabel(t.priority)}</Badge>}
+              {/* Performance Tracking S3: open flags, Team Tasks only (openFlags is merged in there). */}
+              {!dep &&
+                (t.openFlags || []).map((f) => (
+                  <span key={f.kind} title={f.reason}>
+                    <Badge tone={f.kind === 'blocker' ? 'error' : 'warning'}>
+                      {f.kind === 'blocker' ? (f.external ? 'Blocked (external)' : 'Blocked') : 'At risk'}
+                    </Badge>
+                  </span>
+                ))}
             </div>
             <span className={styles.teamTitleClamp} title={t.title}>{t.title}</span>
             {filedBy && (

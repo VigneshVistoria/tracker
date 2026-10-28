@@ -3,6 +3,7 @@ import { TaskDependencyTicketsService } from './task-dependency-tickets.service'
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
 import { ChangeTaskDependencyTicketOwnerDto } from './dto/change-task-dependency-ticket-owner.dto';
+import { ChangeNeedByDateDto } from '../task-flags/dto/task-flags.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { TasksService } from '../tasks/tasks.service';
@@ -83,6 +84,17 @@ export class TaskDependencyTicketsController {
   ) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.ticketsService.changeOwner(id, dto, currentUser, req.user.tenantId);
+  }
+
+  // Performance Tracking S3 - creator or PM/Admin, with a reason.
+  @Patch(':id/need-by')
+  async changeNeedBy(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChangeNeedByDateDto,
+    @Req() req: any,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.ticketsService.changeNeedBy(id, dto, currentUser, req.user.tenantId);
   }
 
   @Patch(':id/resolve')

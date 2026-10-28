@@ -83,7 +83,15 @@ function StatusBadge({ ticket }) {
 // or a grey "No due date".
 function DueInfo({ ticket, inline = false }) {
   const icon = inline && <CalendarClock size={12} aria-hidden="true" />;
-  if (!ticket.due) return <span className={inline ? styles.ticketDueInline : styles.ticketNoDue}>{icon}<span className={styles.ticketNoDue}>No due date</span></span>;
+  if (!ticket.due) {
+    return (
+      <span className={inline ? styles.ticketDueInline : styles.ticketNoDue}>
+        {icon}
+        <span className={styles.ticketNoDue}>No due date</span>
+        <NeedByInfo ticket={ticket} />
+      </span>
+    );
+  }
   return (
     <span className={inline ? styles.ticketDueInline : styles.ticketDue}>
       <span className={styles.teamNowrap}>
@@ -97,6 +105,26 @@ function DueInfo({ ticket, inline = false }) {
             {ticket.overdueDays} {ticket.overdueDays === 1 ? 'day' : 'days'} overdue
           </span>
         </span>
+      )}
+      <NeedByInfo ticket={ticket} />
+    </span>
+  );
+}
+
+// Performance Tracking S3 (2026-10-28): the ticket's own needed-by date,
+// when it has one, and whether the owner is past it (overdueAt is 00:00
+// the next day in the team's time zone, set by the backend).
+function NeedByInfo({ ticket }) {
+  if (!ticket.needByDate) return null;
+  const late = ticket.open && ticket.overdueAt && new Date(ticket.overdueAt) <= new Date();
+  return (
+    <span className={styles.teamNowrap}>
+      Needed by {formatDate(ticket.needByDate)}
+      {late && (
+        <>
+          {' '}
+          <Badge tone="error">Needed-by passed</Badge>
+        </>
       )}
     </span>
   );
