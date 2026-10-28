@@ -18,7 +18,7 @@ export async function seedFixtures(ds: DataSource) {
   const one = async (sql: string, params: any[] = []) => (await ds.query(sql, params))[0];
 
   await ds.query(`TRUNCATE "client_ticket_attachments", "client_ticket_events", "client_ticket_comments", "client_requests", "client_tickets", "client_team_members", "client_users", "clients",
-    "user_projects", "modules", "projects", "users", "tenants" RESTART IDENTITY CASCADE`);
+    "user_projects", "modules", "projects", "users", "tenants", "task_status_events" RESTART IDENTITY CASCADE`);
 
   const t1 = (await one(`INSERT INTO "tenants" ("name", "subdomain") VALUES ('Tenant One', 't1') RETURNING id`)).id;
   const t2 = (await one(`INSERT INTO "tenants" ("name", "subdomain") VALUES ('Tenant Two', 't2') RETURNING id`)).id;

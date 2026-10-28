@@ -92,6 +92,9 @@ import { PerformanceMetricsModule } from './performance-metrics/performance-metr
 import { TaskCommitmentEvent } from './performance-metrics/task-commitment-event.entity';
 import { PerformanceMetricSettings } from './performance-metrics/performance-metric-settings.entity';
 import { PerformanceHoliday } from './performance-metrics/performance-holiday.entity';
+import { PerformanceTrackingModule } from './performance-tracking/performance-tracking.module';
+import { PerformanceTrackingSettings } from './performance-tracking/performance-tracking-settings.entity';
+import { TaskStatusEvent } from './performance-tracking/task-status-event.entity';
 import { PermissionsModule } from './permissions/permissions.module';
 import { Release } from './release-logs/release.entity';
 import { ReleaseItem } from './release-logs/release-item.entity';
@@ -185,6 +188,8 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TaskCommitmentEvent,
           PerformanceMetricSettings,
           PerformanceHoliday,
+          PerformanceTrackingSettings,
+          TaskStatusEvent,
           ScrumExternalWait,
           ProjectTimelineRow,
           ProjectTimelineTeam,
@@ -238,6 +243,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     KpiModule,
     NonComplianceReportModule,
     PerformanceMetricsModule,
+    PerformanceTrackingModule,
     PermissionsModule,
     ReleaseLogsModule,
     StatusReviewModule,

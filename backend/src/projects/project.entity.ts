@@ -37,6 +37,15 @@ export class Project {
   @Column({ default: false })
   submissionChecklistEnabled: boolean;
 
+  // Performance Tracking (2026-10-28, backend/src/performance-tracking/):
+  // the per-project switch (Admin or Program Manager; default off) and
+  // when it was FIRST switched on - the project's go-live date, never reset.
+  @Column({ default: false })
+  performanceTrackingEnabled: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  performanceTrackingSince: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }
