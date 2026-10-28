@@ -105,6 +105,16 @@ const FLAGS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-perfor
 const FLAGS_COLUMNS: Record<string, string[]> = {
   task_dependency_tickets: ['needByDate', 'overdueAt'],
 };
+// Performance Tracking S4 (2026-10-28): task_reopens from the real
+// migration (entity left out of synchronize); the new columns on existing
+// synchronize-made tables dropped and re-added by it. team_settings and
+// performance_tracking_settings already come from migrations.
+const TASK_REOPEN_ENTITY = path.join(SRC, 'tasks', 'task-reopen.entity.ts');
+const QA_INTAKE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-performance-tracking-qa-intake.sql');
+const QA_INTAKE_COLUMNS: Record<string, string[]> = {
+  task_qa_reviews: ['testFailedReason', 'dependencyDeclaration', 'dependencyExempt'],
+  project_tasks: ['reopenCount'],
+};
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -127,7 +137,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -188,6 +198,10 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(FLAGS_MIGRATION, 'utf8'));
   // Proposed Due dates (2026-10-28): the 'due_committed' event kind.
   await base.query(fs.readFileSync(path.resolve(__dirname, '../../migrations/2026-10-performance-tracking-proposed-dates.sql'), 'utf8'));
+  for (const [table, cols] of Object.entries(QA_INTAKE_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(QA_INTAKE_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -220,7 +234,9 @@ export async function buildTestSchema() {
   if (!dueDateMeta) problems.push('due_date_change_requests: entity missing');
   const flagsMeta = check.entityMetadatas.find((m) => m.tableName === 'task_flags');
   if (!flagsMeta) problems.push('task_flags: entity missing');
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : [])]) {
+  const reopenMeta = check.entityMetadatas.find((m) => m.tableName === 'task_reopens');
+  if (!reopenMeta) problems.push('task_reopens: entity missing');
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : [])]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns
@@ -279,7 +295,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS)]) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,

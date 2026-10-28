@@ -73,7 +73,9 @@ describe('Submission checklist (e2e)', () => {
     ds = t.dataSource;
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
-    await ds.query(`TRUNCATE project_tasks, task_qa_reviews, task_qa_review_artifacts, task_qa_review_attachments, audit_logs, team_settings RESTART IDENTITY CASCADE`);
+    // task_dependency_tickets too: another suite's tickets (no FK to tasks)
+    // would block these tasks' submissions.
+    await ds.query(`TRUNCATE project_tasks, task_qa_reviews, task_qa_review_artifacts, task_qa_review_attachments, task_dependency_tickets, audit_logs, team_settings RESTART IDENTITY CASCADE`);
     await ds.query(`UPDATE projects SET "submissionChecklistEnabled" = false, "pmReviewEnabled" = false`);
     phaseId = (
       await ds.query(

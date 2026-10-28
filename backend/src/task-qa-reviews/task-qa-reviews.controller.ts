@@ -39,6 +39,19 @@ export class TaskQaReviewsController {
     private usersService: UsersService,
   ) {}
 
+  // Performance Tracking S4: whether the project tracks, QA's Test failed
+  // reasons, and the dependencies recorded on the task the developer can
+  // pick at submission. Same view gate as the task.
+  @Get(':id/qa-intake')
+  async qaIntake(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    const task = await this.tasksService.findOne(id, req.user.tenantId);
+    if (!(await this.tasksService.canView(task, currentUser))) {
+      throw new ForbiddenException('You do not have access to this task.');
+    }
+    return this.qaReviewsService.intake(task, req.user.tenantId);
+  }
+
   @Get(':id/qa-reviews')
   async findForTask(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
@@ -115,7 +128,26 @@ export class QaReviewSettingsController {
     if (!ROLES_ALLOWED_TO_READ_NOT_READY_REASONS.includes(currentUser.role)) {
       throw new ForbiddenException('Only QA, a Program Manager or Admin can see the not-ready reasons.');
     }
-    return { reasons: await this.qaReviewsService.notReadyReasons(req.user.tenantId) };
+    return this.qaReviewsService.notReadyReasonSet(req.user.tenantId);
+  }
+
+  // Performance Tracking S4 - the Test failed reasons list.
+  @Get('test-failed-reasons')
+  async testFailedReasons(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_READ_NOT_READY_REASONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only QA, a Program Manager or Admin can see the Test failed reasons.');
+    }
+    return { reasons: await this.qaReviewsService.testFailedReasons(req.user.tenantId) };
+  }
+
+  @Patch('test-failed-reasons')
+  async setTestFailedReasons(@Body() dto: SetQaNotReadyReasonsDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_EDIT_NOT_READY_REASONS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only a Program Manager or Admin can edit the Test failed reasons.');
+    }
+    return { reasons: await this.qaReviewsService.setTestFailedReasons(dto.reasons, currentUser, req.user.tenantId) };
   }
 
   @Patch('not-ready-reasons')
@@ -124,6 +156,6 @@ export class QaReviewSettingsController {
     if (!ROLES_ALLOWED_TO_EDIT_NOT_READY_REASONS.includes(currentUser.role)) {
       throw new ForbiddenException('Only a Program Manager or Admin can edit the not-ready reasons.');
     }
-    return { reasons: await this.qaReviewsService.setNotReadyReasons(dto.reasons, currentUser, req.user.tenantId) };
+    return this.qaReviewsService.setNotReadyReasons(dto.reasons, dto.dependencyReason, currentUser, req.user.tenantId);
   }
 }

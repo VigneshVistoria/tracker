@@ -36,6 +36,12 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.chasesPerTasks[0])
   @Max(THRESHOLD_LIMITS.chasesPerTasks[1])
   chasesPerTasks?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.reopenWindowDays[0])
+  @Max(THRESHOLD_LIMITS.reopenWindowDays[1])
+  reopenWindowDays?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

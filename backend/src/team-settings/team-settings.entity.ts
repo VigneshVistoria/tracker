@@ -38,8 +38,16 @@ export class TeamSettings {
   // Settings. No row, or an empty list (never saved), means
   // DEFAULT_QA_NOT_READY_REASONS (tasks/qa-not-ready.ts); saving needs at
   // least one reason.
+  // Entries are labels, except the dependency reason, stored as
+  // { label, code } (Performance Tracking S4 - tasks/qa-intake.ts).
   @Column({ type: 'jsonb', default: () => "'[]'" })
-  qaNotReadyReasons: string[];
+  qaNotReadyReasons: Array<string | { label: string; code: string }>;
+
+  // Performance Tracking S4 (2026-10-28): the Test failed reasons QA picks
+  // from on a tracked project. '[]' = DEFAULT_QA_TEST_FAILED_REASONS
+  // (tasks/qa-intake.ts).
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  qaTestFailedReasons: string[];
 
   // Defect classification + triage (2026-10-27): the editable lists and
   // rules (severities, types, origins, environments, dispute reasons,

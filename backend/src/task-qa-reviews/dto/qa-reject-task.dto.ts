@@ -60,6 +60,13 @@ export class QaRejectTaskDto {
   @MinLength(1, { message: 'A comment explaining the rejection is required.' })
   comment: string;
 
+  // Performance Tracking S4: the Test failed reason, required on a tracked
+  // project (checked against the editable list in the service).
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  reason?: string;
+
   // Optional, same as QaApproveTaskDto's artifacts field - QA can justify
   // a rejection with evidence (e.g. a Bug Report link) but isn't required
   // to.

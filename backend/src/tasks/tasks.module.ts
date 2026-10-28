@@ -38,10 +38,13 @@ import { TaskCommitmentEvent } from '../performance-metrics/task-commitment-even
 import { DueDateChangeService } from './due-date-change.service';
 import { DueDateChangeController } from './due-date-change.controller';
 import { TaskFlag } from '../task-flags/task-flag.entity';
+import { TaskReopen } from './task-reopen.entity';
+import { ReopenAfterPassService } from './reopen-after-pass.service';
+import { ReopenAfterPassController } from './reopen-after-pass.controller';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings, DefectTriage, DueDateChangeRequest, TaskCommitmentEvent, TaskFlag]),
+    TypeOrmModule.forFeature([ProjectTask, TaskDependencyTicket, TaskQaReview, TaskDefectArtifact, TaskBlockingDefect, TaskAttachment, TaskQaReviewAttachment, ProjectModuleEntity, Phase, TeamSettings, DefectTriage, DueDateChangeRequest, TaskCommitmentEvent, TaskFlag, TaskReopen]),
     ProjectsModule,
     ModulesModule,
     PhasesModule,
@@ -59,8 +62,8 @@ import { TaskFlag } from '../task-flags/task-flag.entity';
   // ReturnToQaController likewise ('returned-to-qa' vs ':id').
   // DefectTriageController has its own 'defect-triage' prefix.
   // DueDateChangeController owns 'due-date-changes' (vs ':id').
-  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, DefectTriageController, DueDateChangeController, TasksController],
-  providers: [TasksService, TeamTasksExportService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService, DueDateChangeService],
+  controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, DefectTriageController, DueDateChangeController, ReopenAfterPassController, TasksController],
+  providers: [TasksService, TeamTasksExportService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService, DueDateChangeService, ReopenAfterPassService],
   exports: [TasksService],
 })
 export class TasksModule {}

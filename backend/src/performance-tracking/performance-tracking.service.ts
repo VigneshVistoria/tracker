@@ -36,6 +36,7 @@ export class PerformanceTrackingService {
       dateMovesFlagCount: row.dateMovesFlagCount,
       statusFreshWorkingDays: row.statusFreshWorkingDays,
       chasesPerTasks: row.chasesPerTasks,
+      reopenWindowDays: row.reopenWindowDays,
     };
   }
 

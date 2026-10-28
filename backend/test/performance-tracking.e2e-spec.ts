@@ -8,6 +8,7 @@ import { seedFixtures, Fixtures, FixtureUser } from './setup/fixtures';
 import { AuditActions, AuditLogService } from '../src/audit/audit-log.service';
 import { DEFECT_TRIAGE_AUDIT } from '../src/tasks/defect-triage';
 import { RETURN_TO_QA_AUDIT } from '../src/tasks/return-to-qa';
+import { QA_INTAKE_AUDIT } from '../src/tasks/qa-intake';
 import { PERFORMANCE_TRACKING_DEFAULTS, STATUS_EVENT_AUDIT_ACTIONS, projectTrackingPhase } from '../src/performance-tracking/performance-tracking';
 
 // Performance Tracking S1 (2026-10-28): the status event log is written by
@@ -182,10 +183,13 @@ describe('Performance tracking S1 (e2e)', () => {
     });
 
     it('the action list in the migration matches the code, and every action is a real one', () => {
-      const sql = MIGRATION.slice(MIGRATION.indexOf('CREATE FUNCTION tracker_status_event_action'), MIGRATION.indexOf('$$;'));
+      // The latest definition (S4 replaced S1's).
+      const LATEST = fs.readFileSync(path.resolve(__dirname, '../migrations/2026-10-performance-tracking-qa-intake.sql'), 'utf8');
+      const start = LATEST.indexOf('CREATE OR REPLACE FUNCTION tracker_status_event_action');
+      const sql = LATEST.slice(start, LATEST.indexOf('$$;', start));
       const inSql = [...sql.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
       expect([...inSql].sort()).toEqual([...STATUS_EVENT_AUDIT_ACTIONS].sort());
-      const known = new Set<string>([...Object.values(AuditActions), ...Object.values(DEFECT_TRIAGE_AUDIT), ...Object.values(RETURN_TO_QA_AUDIT)]);
+      const known = new Set<string>([...Object.values(AuditActions), ...Object.values(DEFECT_TRIAGE_AUDIT), ...Object.values(RETURN_TO_QA_AUDIT), ...Object.values(QA_INTAKE_AUDIT)]);
       expect(STATUS_EVENT_AUDIT_ACTIONS.filter((a) => !known.has(a))).toEqual([]);
     });
   });

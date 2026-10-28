@@ -36,6 +36,7 @@ import DefectTriagePanel from '../../components/DefectTriagePanel';
 import DueDateCommitmentPanel from '../../components/DueDateCommitmentPanel';
 import TaskFlagsPanel from '../../components/TaskFlagsPanel';
 import DependencyNeedByModal from '../../components/DependencyNeedByModal';
+import ReopenAfterPassModal, { REOPEN_FROM_STATUSES } from '../../components/ReopenAfterPassModal';
 import {
   EMPTY_CHECKLIST,
   SubmissionChecklistFields,
@@ -237,6 +238,57 @@ function dependencyHistoryText(h) {
 // the needed-by date, team time zone - set by the backend).
 function isDependencyOverdue(ticket) {
   return ticket.status === 'open' && !!ticket.overdueAt && new Date(ticket.overdueAt) <= new Date();
+}
+
+// Performance Tracking S4: "Dependencies met?" on the QA submission. Only
+// dependencies already recorded on the task (dependency tickets, the open
+// blocker) can be picked - something named only in the text gets no
+// protection if QA finds it not ready because of it.
+function DependenciesQuestion({ intake, met, onMet, waitingOn, onWaitingOn, picked, onPicked }) {
+  const toggle = (key) => onPicked(picked.includes(key) ? picked.filter((k) => k !== key) : [...picked, key]);
+  return (
+    <fieldset className={styles.field} style={{ border: 0, padding: 0 }}>
+      <legend className={styles.label}>Are all dependencies met?</legend>
+      <label style={{ marginRight: 'var(--space-4)' }}>
+        <input type="radio" name="tdDepsMet" checked={met === 'yes'} onChange={() => onMet('yes')} /> Yes
+      </label>
+      <label>
+        <input type="radio" name="tdDepsMet" checked={met === 'no'} onChange={() => onMet('no')} /> No, still waiting on...
+      </label>
+      {met === 'no' && (
+        <div style={{ marginTop: 'var(--space-2)' }}>
+          {intake.recordedDependencies.length > 0 && (
+            <>
+              <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-1)' }}>
+                Recorded on this task (only these protect you if QA finds it not ready because of them):
+              </p>
+              {intake.recordedDependencies.map((d) => {
+                const key = `${d.kind}:${d.id}`;
+                return (
+                  <label key={key} style={{ display: 'block' }}>
+                    <input type="checkbox" checked={picked.includes(key)} onChange={() => toggle(key)} />{' '}
+                    {d.kind === 'ticket' ? `Dependency #${d.id}` : 'Blocker'}: {d.title}
+                    {d.kind === 'ticket' && d.status === 'resolved' ? ' (resolved)' : ''}
+                  </label>
+                );
+              })}
+            </>
+          )}
+          <label className={styles.label} htmlFor="tdDepsWaitingOn" style={{ marginTop: 'var(--space-2)' }}>
+            What else are you waiting on? (optional)
+          </label>
+          <textarea
+            id="tdDepsWaitingOn"
+            className={styles.textarea}
+            rows={2}
+            maxLength={1000}
+            value={waitingOn}
+            onChange={(e) => onWaitingOn(e.target.value)}
+          />
+        </div>
+      )}
+    </fieldset>
+  );
 }
 
 function userToOption(u) {
@@ -444,6 +496,15 @@ export default function TaskDetailPage() {
   const [actualHours, setActualHours] = useState('');
   const [submittingQa, setSubmittingQa] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
+  // Performance Tracking S4: GET /tasks/:id/qa-intake - the switch, QA's
+  // Test failed reasons, the dependencies recorded on the task; the
+  // developer's "dependencies met?" answer and the reopen dialog.
+  const [qaIntake, setQaIntake] = useState(null);
+  const [testFailedReason, setTestFailedReason] = useState('');
+  const [depsMet, setDepsMet] = useState('');
+  const [depsWaitingOn, setDepsWaitingOn] = useState('');
+  const [depsPicked, setDepsPicked] = useState([]);
+  const [reopenOpen, setReopenOpen] = useState(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
   // Reject asks which kind first (2026-10-27): 'failed' (Test failed - the
   // form below, unchanged) or 'not_ready' (Not ready for testing - a reason
@@ -500,6 +561,12 @@ export default function TaskDetailPage() {
     apiFetch(`/task-dependency-tickets?parentTaskId=${id}`).then(setTickets).catch(() => {});
     loadDependencyHistory();
   };
+
+  // Performance Tracking S4 - reloaded when the task's status changes.
+  useEffect(() => {
+    if (!id) return;
+    apiFetch(`/tasks/${id}/qa-intake`).then(setQaIntake).catch(() => setQaIntake(null));
+  }, [id, task?.status]);
 
   const loadDependencyHistory = () => {
     apiFetch(`/task-dependency-tickets/history?parentTaskId=${id}`).then(setDependencyHistory).catch(() => setDependencyHistory([]));
@@ -1009,6 +1076,8 @@ export default function TaskDetailPage() {
           ? `${r.revertedDecision === 'approved' ? 'Approved' : r.revertedDecision === 'not_ready' ? 'Not ready for testing' : 'Rejected'}, reverted`
           : r.status === 'not_ready'
             ? `Not ready for testing${r.notReadyReason ? `: ${r.notReadyReason}` : ''}`
+          : r.status === 'rejected' && r.testFailedReason
+            ? `Rejected: ${r.testFailedReason}`
           : r.status === 'withdrawn'
             ? 'Sent back by PM before QA review'
             : r.reviewType === 'pm' && r.status !== 'pending'
@@ -1634,6 +1703,15 @@ export default function TaskDetailPage() {
         return;
       }
     }
+    const intakeOn = !!qaIntake?.trackingOn;
+    if (intakeOn && depsMet === '') {
+      setError('Say whether the dependencies are met.');
+      return;
+    }
+    if (intakeOn && depsMet === 'no' && !depsWaitingOn.trim() && depsPicked.length === 0) {
+      setError('Say what you are still waiting on - pick a recorded dependency or describe it.');
+      return;
+    }
     setSubmittingQa(true);
     try {
       const submitted = await apiFetch(`/tasks/${task.id}/qa-submit`, {
@@ -1643,8 +1721,23 @@ export default function TaskDetailPage() {
           actualHours: Number(actualHours),
           artifacts: artifacts.map((row) => ({ type: row.type, url: row.url.trim() })),
           ...(checklistOn ? { checklist: checklistPayload(checklist, checklistCtx) } : {}),
+          ...(intakeOn
+            ? {
+                dependencies:
+                  depsMet === 'yes'
+                    ? { met: true }
+                    : {
+                        met: false,
+                        waitingOn: depsWaitingOn.trim() || undefined,
+                        waitingOnDependencies: depsPicked.map((k) => ({ kind: k.split(':')[0], id: Number(k.split(':')[1]) })),
+                      },
+              }
+            : {}),
         }),
       });
+      setDepsMet('');
+      setDepsWaitingOn('');
+      setDepsPicked([]);
       // Self-test screenshots go on the new round; a failure keeps them for Retry.
       const failedShots = checklistOn
         ? await uploadShotsAfterDecision([{ path: `/tasks/${task.id}/qa-reviews/${submitted.id}/attachments`, shots: selfTestShots, label: 'your self-test evidence' }])
@@ -1756,6 +1849,10 @@ export default function TaskDetailPage() {
       setError('A comment explaining the rejection is required.');
       return;
     }
+    if (qaIntake?.trackingOn && !testFailedReason) {
+      setError('Pick why the test failed.');
+      return;
+    }
     let payloadArtifacts;
     try {
       payloadArtifacts = buildQaArtifactsPayload();
@@ -1802,6 +1899,7 @@ export default function TaskDetailPage() {
         method: 'PATCH',
         body: JSON.stringify({
           comment: rejectComment,
+          ...(qaIntake?.trackingOn ? { reason: testFailedReason } : {}),
           artifacts: payloadArtifacts,
           linkedDefects: linkedDefectsPayload,
           linkedDefectArtifacts: linkedDefectArtifactsPayload,
@@ -2534,6 +2632,28 @@ export default function TaskDetailPage() {
 
       {!isJunk && <DueDateCommitmentPanel task={task} onChanged={refreshAfterReturnToQa} onState={setDueDateTracking} />}
       {!isJunk && <TaskFlagsPanel task={task} tickets={tickets} onChanged={refreshAfterReturnToQa} />}
+      {qaIntake?.trackingOn && REOPEN_FROM_STATUSES.includes(task.status) && (user.role === 'program_manager' || user.role === 'admin') && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>Reopen after Pass</h2>
+          <p className={styles.helpText} style={{ marginTop: 0 }}>
+            For the same work failing again - it goes back to Development with a new proposed Due date. A new problem should be raised as a
+            new defect instead.{task.reopenCount ? ` Reopened ${task.reopenCount} time${task.reopenCount === 1 ? '' : 's'} so far.` : ''}
+          </p>
+          <button className={styles.buttonSecondary} type="button" onClick={() => setReopenOpen(true)}>
+            Reopen
+          </button>
+        </div>
+      )}
+      {reopenOpen && (
+        <ReopenAfterPassModal
+          task={task}
+          onClose={() => setReopenOpen(false)}
+          onDone={async (message) => {
+            setReopenOpen(false);
+            await refreshAfterReturnToQa(message);
+          }}
+        />
+      )}
 
       {canManagePeerReviewFlag && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
@@ -3221,6 +3341,17 @@ export default function TaskDetailPage() {
               disabled={submittingQa}
             />
           )}
+          {qaIntake?.trackingOn && (
+            <DependenciesQuestion
+              intake={qaIntake}
+              met={depsMet}
+              onMet={setDepsMet}
+              waitingOn={depsWaitingOn}
+              onWaitingOn={setDepsWaitingOn}
+              picked={depsPicked}
+              onPicked={setDepsPicked}
+            />
+          )}
           <div className={styles.field} style={{ maxWidth: '260px' }}>
             <label className={styles.label} htmlFor="tdActualHours">Actual Hours Spent</label>
             <input
@@ -3656,6 +3787,23 @@ export default function TaskDetailPage() {
 
           {showRejectForm && rejectKind === 'failed' && (
             <form onSubmit={handleQaReject} style={{ marginTop: 'var(--space-2)' }}>
+              {qaIntake?.trackingOn && (
+                <div className={styles.fieldNarrow}>
+                  <label className={styles.label} htmlFor="tdTestFailedReason">Why did the test fail?</label>
+                  <select
+                    id="tdTestFailedReason"
+                    className={styles.input}
+                    required
+                    value={testFailedReason}
+                    onChange={(e) => setTestFailedReason(e.target.value)}
+                  >
+                    <option value="">Pick one reason</option>
+                    {qaIntake.testFailedReasons.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="tdRejectComment">Rejection Comment</label>
                 <RichTextEditor

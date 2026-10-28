@@ -7,6 +7,7 @@ import {
   Max,
   MaxLength,
   IsEnum,
+  IsIn,
   IsNumber,
   IsString,
   IsUrl,
@@ -99,6 +100,32 @@ export class SubmissionChecklistDto {
   selfTestScreenshots?: number;
 }
 
+// Performance Tracking S4 - a dependency already recorded on the task.
+export class DeclaredDependencyRefDto {
+  @IsIn(['ticket', 'blocker'])
+  kind: 'ticket' | 'blocker';
+
+  @IsInt()
+  id: number;
+}
+
+// "Dependencies met?" - required on a tracked project (the service checks).
+export class DependencyDeclarationDto {
+  @IsBoolean()
+  met: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  waitingOn?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DeclaredDependencyRefDto)
+  waitingOnDependencies?: DeclaredDependencyRefDto[];
+}
+
 export class QaSubmitTaskDto {
   @IsString()
   @MinLength(1, { message: 'Resolution is required.' })
@@ -121,4 +148,9 @@ export class QaSubmitTaskDto {
   @ValidateNested()
   @Type(() => SubmissionChecklistDto)
   checklist?: SubmissionChecklistDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DependencyDeclarationDto)
+  dependencies?: DependencyDeclarationDto;
 }

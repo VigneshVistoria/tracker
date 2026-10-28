@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TaskFlag } from '../task-flags/task-flag.entity';
+import { TaskReopen } from './task-reopen.entity';
 import { DueDateProposedEvent } from './due-date-change';
 import { Between, EntityManager, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
@@ -314,6 +315,8 @@ export class TasksService {
     private teamSettingsRepository: Repository<TeamSettings>,
     @InjectRepository(TaskFlag)
     private taskFlagsRepository: Repository<TaskFlag>,
+    @InjectRepository(TaskReopen)
+    private taskReopensRepository: Repository<TaskReopen>,
     private projectsService: ProjectsService,
     private modulesService: ModulesService,
     private phasesService: PhasesService,
@@ -567,6 +570,12 @@ export class TasksService {
       where: { taskId: task.id, tenantId, status: Not('pending'), reviewType: In(['qa', 'peer']) },
       order: { roundNumber: 'DESC' },
     });
+    // Performance Tracking S4: a PM/Admin reopen after that approval lifts
+    // the block - the work goes round again.
+    if (latestDecided?.status === 'approved' && latestDecided.reviewedAt) {
+      const reopened = await this.taskReopensRepository.findOne({ where: { taskId: task.id, tenantId }, order: { reopenedAt: 'DESC' } });
+      if (reopened && reopened.reopenedAt >= latestDecided.reviewedAt) return;
+    }
     if (latestDecided?.status === 'approved') {
       const by = latestDecided.reviewType === 'peer' ? 'in Peer Review' : 'by QA';
       throw new BadRequestException(

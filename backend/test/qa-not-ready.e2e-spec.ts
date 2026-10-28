@@ -361,8 +361,11 @@ describe('QA "Not ready for testing" (e2e)', () => {
       await patch(f.users.qaB, reasonsUrl, { reasons: ['x'] }).expect(403);
       await patch(f.users.pm, reasonsUrl, { reasons: [] }).expect(400);
       await patch(f.users.pm, reasonsUrl, { reasons: ['  '] }).expect(400);
-      const saved = (await patch(f.users.pm, reasonsUrl, { reasons: [' Test data missing ', 'test data missing', '', 'Build not deployed'] }).expect(200)).body;
-      expect(saved.reasons).toEqual(['Test data missing', 'Build not deployed']);
+      // The dependency reason has a fixed code (Performance Tracking S4) -
+      // it can't be removed.
+      await patch(f.users.pm, reasonsUrl, { reasons: ['Test data missing', 'Build not deployed'] }).expect(400);
+      const saved = (await patch(f.users.pm, reasonsUrl, { reasons: [' Test data missing ', 'test data missing', '', 'Build not deployed', 'Blocked by a dependency'] }).expect(200)).body;
+      expect(saved.reasons).toEqual(['Test data missing', 'Build not deployed', 'Blocked by a dependency']);
       expect((await get(f.users.qaB, reasonsUrl).expect(200)).body.reasons).toEqual(saved.reasons);
       const [audit] = await ds.query(`SELECT * FROM audit_logs WHERE action = 'qa_not_ready_reasons_updated' ORDER BY id DESC LIMIT 1`);
       expect(JSON.parse(audit.details).after).toEqual(saved.reasons);
@@ -373,7 +376,7 @@ describe('QA "Not ready for testing" (e2e)', () => {
       await notReady(f.users.qaB, other, { reason: 'Test data missing' }).expect(200);
       expect((await rounds(id))[0].notReadyReason).toBe(REASON);
 
-      await patch(f.users.admin, reasonsUrl, { reasons: ['Build not deployed', 'Test steps missing'] }).expect(200);
+      await patch(f.users.admin, reasonsUrl, { reasons: ['Build not deployed', 'Test steps missing', 'Blocked by a dependency'] }).expect(200);
     });
   });
 });

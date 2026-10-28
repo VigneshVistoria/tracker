@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { EntityManager, In, LessThan, Not, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, LessThan, Not, Repository } from 'typeorm';
 import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-review-qa-artifact.entity';
@@ -17,6 +17,18 @@ import { Project } from '../projects/project.entity';
 import { PM_FEEDBACK_STATUS, PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { DEFAULT_QA_NOT_READY_REASONS, NOT_READY_STATUS, QA_NOT_READY_COMMENT_MIN, QA_NOT_READY_REASON_MAX } from '../tasks/qa-not-ready';
 import { SubmissionChecklistService } from './submission-checklist.service';
+import {
+  DEFAULT_QA_TEST_FAILED_REASONS,
+  DependencyDeclaration,
+  QA_INTAKE_AUDIT,
+  QA_TEST_FAILED_REASON_MAX,
+  notReadyDependencyExempt,
+  resolveNotReadyReasons,
+  storeNotReadyReasons,
+  protects,
+} from '../tasks/qa-intake';
+import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
+import { TaskFlag } from '../task-flags/task-flag.entity';
 import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TasksService } from '../tasks/tasks.service';
 import { DEVELOPER_EQUIVALENT_ROLES, User, UserRole } from '../users/user.entity';
@@ -183,6 +195,10 @@ export class TaskQaReviewsService {
     // the project has it off, otherwise complete or a 400 naming what's
     // missing - checked before anything is saved.
     const checklist = await this.submissionChecklistService.check(task, dto.checklist, dto.artifacts.map((a) => a.type));
+    // Performance Tracking S4: "dependencies met?" on a tracked project.
+    const dependencyDeclaration = (await this.trackingOn(task.projectId, tenantId))
+      ? await this.buildDependencyDeclaration(task, dto.dependencies, currentUser.id, tenantId)
+      : null;
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
     // PM review gate (2026-10-13): a task (never a defect - those go back
@@ -212,6 +228,7 @@ export class TaskQaReviewsService {
         status: 'pending',
         reviewType: viaPm ? 'pm' : 'qa',
         submissionChecklist: (checklist as unknown as Record<string, unknown>) ?? null,
+        dependencyDeclaration: (dependencyDeclaration as unknown as Record<string, unknown>) ?? null,
       });
       const savedReview = await manager.save(TaskQaReview, review);
 
@@ -248,7 +265,12 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber, artifactTypes: dto.artifacts.map((a) => a.type), ...(checklist ? { checklist } : {}) },
+      details: {
+        roundNumber: savedReview.roundNumber,
+        artifactTypes: dto.artifacts.map((a) => a.type),
+        ...(checklist ? { checklist } : {}),
+        ...(dependencyDeclaration ? { dependencyDeclaration } : {}),
+      },
     });
     if (viaPm) {
       this.eventEmitter.emit('task.pmReviewRequested', { tenantId, taskId, title: task.title, actorUserId: currentUser.id, actorEmail: currentUser.email });
@@ -394,6 +416,16 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only the QA who raised this defect can reject it.');
     }
     const pending = await this.findPendingRound(taskId, tenantId);
+    // Performance Tracking S4: on a tracked project QA picks one Test
+    // failed reason (the comment stays required).
+    if (await this.trackingOn(task.projectId, tenantId)) {
+      const reason = (dto.reason || '').trim();
+      const reasons = await this.testFailedReasons(tenantId);
+      if (!reasons.includes(reason)) {
+        throw new BadRequestException(`Pick why the test failed (${reasons.join(', ')}).`);
+      }
+      pending.testFailedReason = reason;
+    }
     // Defect triage (2026-10-27): every linked defect's classification is
     // checked before the rejection is recorded, so a missing field can't
     // leave the task rejected with only some of its defects filed.
@@ -473,6 +505,7 @@ export class TaskQaReviewsService {
         comment: dto.comment,
         artifactTypes: (dto.artifacts || []).map((a) => a.type),
         linkedDefectIds: linkedDefects.map((d) => d.id),
+        ...(savedReview.testFailedReason ? { testFailedReason: savedReview.testFailedReason } : {}),
       },
     });
 
@@ -574,7 +607,7 @@ export class TaskQaReviewsService {
       throw new ForbiddenException('Only the QA who raised this defect can mark it not ready for testing.');
     }
     const reason = (dto.reason || '').trim();
-    const reasons = await this.notReadyReasons(tenantId);
+    const { reasons, dependencyReason } = await this.notReadyReasonSet(tenantId);
     if (!reasons.includes(reason)) {
       throw new BadRequestException(`Pick a reason from the list (${reasons.join(', ')}).`);
     }
@@ -587,6 +620,12 @@ export class TaskQaReviewsService {
 
     pending.status = 'not_ready';
     pending.notReadyReason = reason;
+    // Performance Tracking S4: Not ready because of a dependency - exempt
+    // from Q1 only with a protecting declaration (./../tasks/qa-intake.ts).
+    // Keyed on the reason's fixed code, whatever its label is now.
+    if (reason === dependencyReason && (await this.trackingOn(task.projectId, tenantId))) {
+      pending.dependencyExempt = notReadyDependencyExempt(true, pending.dependencyDeclaration as unknown as DependencyDeclaration | null);
+    }
     pending.qaComment = sanitizeRichText(dto.comment);
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
@@ -641,18 +680,135 @@ export class TaskQaReviewsService {
     return { ...pending, qaArtifacts: savedQaArtifacts };
   }
 
-  // The reasons QA picks from - the saved list, or the defaults when it
-  // was never saved.
-  async notReadyReasons(tenantId: number): Promise<string[]> {
+  // ---------- Performance Tracking S4 (see tasks/qa-intake.ts) ----------
+
+  async trackingOn(projectId: number, tenantId: number): Promise<boolean> {
+    const project = await this.projectsRepository.findOne({ where: { id: projectId, tenantId } });
+    return !!project?.performanceTrackingEnabled;
+  }
+
+  // Dependencies already recorded on the task the developer can pick at
+  // submission: its dependency tickets and its open blocker flag.
+  async recordedDependencies(task: ProjectTask, tenantId: number) {
+    const em = this.qaReviewsRepository.manager;
+    const tickets = await em.find(TaskDependencyTicket, { where: { tenantId, parentTaskId: task.id }, order: { createdAt: 'ASC' } });
+    const blockers = await em.find(TaskFlag, { where: { tenantId, taskId: task.id, kind: 'blocker', clearedAt: IsNull() } });
+    return [
+      ...tickets.map((t) => ({ kind: 'ticket' as const, id: t.id, title: t.title, status: t.status, ownerUserId: t.ownerUserId, ownerExternal: null, recordedAt: t.createdAt })),
+      ...blockers.map((b) => ({
+        kind: 'blocker' as const,
+        id: b.id,
+        title: b.reason,
+        status: 'open',
+        ownerUserId: b.blockingOwnerUserId,
+        ownerExternal: b.blockingOwnerExternal,
+        recordedAt: b.setAt,
+      })),
+    ];
+  }
+
+  private async buildDependencyDeclaration(
+    task: ProjectTask,
+    input: QaSubmitTaskDto['dependencies'],
+    submitterId: number,
+    tenantId: number,
+  ): Promise<DependencyDeclaration> {
+    if (!input || typeof input.met !== 'boolean') {
+      throw new BadRequestException('Say whether the dependencies are met (Yes, or No with what you are still waiting on).');
+    }
+    const now = new Date();
+    if (input.met) return { met: true, waitingOn: null, declared: [], declaredAt: now.toISOString(), submittedByUserId: submitterId };
+    const waitingOn = (input.waitingOn || '').trim() || null;
+    const recorded = await this.recordedDependencies(task, tenantId);
+    const picked = (input.waitingOnDependencies || []).map((p) => {
+      const found = recorded.find((r) => r.kind === p.kind && r.id === p.id);
+      if (!found) throw new BadRequestException(`That ${p.kind === 'ticket' ? 'dependency ticket' : 'blocker'} is not recorded on #${task.id}.`);
+      return found;
+    });
+    if (!waitingOn && picked.length === 0) {
+      throw new BadRequestException('Say what you are still waiting on - pick a recorded dependency or describe it.');
+    }
+    return {
+      met: false,
+      waitingOn,
+      declared: picked.map((d) => ({
+        kind: d.kind,
+        id: d.id,
+        title: d.title,
+        ownerUserId: d.ownerUserId ?? null,
+        ownerExternal: d.ownerExternal ?? null,
+        recordedAt: new Date(d.recordedAt).toISOString(),
+        protects: protects({ ownerUserId: d.ownerUserId ?? null, ownerExternal: d.ownerExternal ?? null, recordedAt: new Date(d.recordedAt) }, submitterId, now),
+      })),
+      declaredAt: now.toISOString(),
+      submittedByUserId: submitterId,
+    };
+  }
+
+  // What the task page needs for S4: the switch, QA's reasons, and the
+  // dependencies the developer can pick.
+  async intake(task: ProjectTask, tenantId: number) {
+    const trackingOn = await this.trackingOn(task.projectId, tenantId);
+    if (!trackingOn) return { trackingOn, testFailedReasons: [], recordedDependencies: [] };
+    return { trackingOn, testFailedReasons: await this.testFailedReasons(tenantId), recordedDependencies: await this.recordedDependencies(task, tenantId) };
+  }
+
+  async testFailedReasons(tenantId: number): Promise<string[]> {
     const settings = await this.teamSettingsRepository.findOne({ where: { tenantId } });
-    const saved = Array.isArray(settings?.qaNotReadyReasons) ? settings!.qaNotReadyReasons : [];
-    return saved.length > 0 ? saved : [...DEFAULT_QA_NOT_READY_REASONS];
+    const saved = Array.isArray(settings?.qaTestFailedReasons) ? settings!.qaTestFailedReasons : [];
+    return saved.length > 0 ? saved : [...DEFAULT_QA_TEST_FAILED_REASONS];
+  }
+
+  // Admin / Program Manager edit the list. Rounds keep the reason as text.
+  async setTestFailedReasons(input: string[], currentUser: { id: number; email: string; role: UserRole }, tenantId: number): Promise<string[]> {
+    const reasons: string[] = [];
+    for (const raw of input) {
+      const r = (raw || '').trim();
+      if (r && r.length <= QA_TEST_FAILED_REASON_MAX && !reasons.some((x) => x.toLowerCase() === r.toLowerCase())) reasons.push(r);
+    }
+    if (reasons.length === 0) throw new BadRequestException('Keep at least one reason.');
+    const before = await this.testFailedReasons(tenantId);
+    const existing = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    if (existing) {
+      await this.teamSettingsRepository.update({ tenantId }, { qaTestFailedReasons: reasons, updatedByUserId: currentUser.id });
+    } else {
+      await this.teamSettingsRepository.save(this.teamSettingsRepository.create({ tenantId, qaTestFailedReasons: reasons, updatedByUserId: currentUser.id }));
+    }
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: QA_INTAKE_AUDIT.TEST_FAILED_REASONS_UPDATED,
+      tenantId,
+      entityType: 'TeamSettings',
+      entityId: tenantId,
+      details: { before, after: reasons },
+    });
+    return reasons;
+  }
+
+  // The reasons QA picks from - the saved list, or the defaults when it
+  // was never saved - and which one is the dependency reason (fixed code
+  // NOT_READY_DEPENDENCY_CODE, tasks/qa-intake.ts).
+  async notReadyReasonSet(tenantId: number): Promise<{ reasons: string[]; dependencyReason: string }> {
+    const settings = await this.teamSettingsRepository.findOne({ where: { tenantId } });
+    return resolveNotReadyReasons(settings?.qaNotReadyReasons, DEFAULT_QA_NOT_READY_REASONS);
+  }
+
+  async notReadyReasons(tenantId: number): Promise<string[]> {
+    return (await this.notReadyReasonSet(tenantId)).reasons;
   }
 
   // Admin / Program Manager edit the list (role gate in the controller).
   // Trimmed, blanks and repeats dropped. Rounds keep the reason as text, so
-  // renaming or removing one never changes history.
-  async setNotReadyReasons(input: string[], currentUser: { id: number; email: string; role: UserRole }, tenantId: number): Promise<string[]> {
+  // renaming or removing one never changes history. The dependency reason
+  // can be renamed (dependencyReason = its new label) but not removed.
+  async setNotReadyReasons(
+    input: string[],
+    dependencyReasonInput: string | undefined,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<{ reasons: string[]; dependencyReason: string }> {
     const reasons: string[] = [];
     for (const raw of input) {
       const r = (raw || '').trim();
@@ -661,12 +817,18 @@ export class TaskQaReviewsService {
     if (reasons.length === 0) {
       throw new BadRequestException('Keep at least one reason.');
     }
-    const before = await this.notReadyReasons(tenantId);
+    const before = await this.notReadyReasonSet(tenantId);
+    const wanted = (dependencyReasonInput ?? before.dependencyReason).trim().toLowerCase();
+    const dependencyReason = reasons.find((r) => r.toLowerCase() === wanted);
+    if (!dependencyReason) {
+      throw new BadRequestException(`"${before.dependencyReason}" is used for the Q1 dependency rule - it can be renamed but not removed.`);
+    }
+    const stored = storeNotReadyReasons(reasons, dependencyReason);
     const existing = await this.teamSettingsRepository.findOne({ where: { tenantId } });
     if (existing) {
-      await this.teamSettingsRepository.update({ tenantId }, { qaNotReadyReasons: reasons, updatedByUserId: currentUser.id });
+      await this.teamSettingsRepository.update({ tenantId }, { qaNotReadyReasons: stored as any, updatedByUserId: currentUser.id });
     } else {
-      await this.teamSettingsRepository.save(this.teamSettingsRepository.create({ tenantId, qaNotReadyReasons: reasons, updatedByUserId: currentUser.id }));
+      await this.teamSettingsRepository.save(this.teamSettingsRepository.create({ tenantId, qaNotReadyReasons: stored as any, updatedByUserId: currentUser.id }));
     }
     await this.auditLogService.record({
       userId: currentUser.id,
@@ -676,9 +838,9 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'TeamSettings',
       entityId: tenantId,
-      details: { before, after: reasons },
+      details: { before: before.reasons, after: reasons, dependencyReasonBefore: before.dependencyReason, dependencyReason },
     });
-    return reasons;
+    return { reasons, dependencyReason };
   }
 
   // Writes QA's verdict onto the round only if it is still pending. QA
@@ -696,6 +858,8 @@ export class TaskQaReviewsService {
         reviewedByEmail: round.reviewedByEmail,
         reviewedAt: round.reviewedAt,
         ...(round.notReadyReason ? { notReadyReason: round.notReadyReason } : {}),
+        ...(round.testFailedReason ? { testFailedReason: round.testFailedReason } : {}),
+        ...(round.dependencyExempt != null ? { dependencyExempt: round.dependencyExempt } : {}),
       },
     );
     if (!upd.affected) {

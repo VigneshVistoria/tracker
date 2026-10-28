@@ -4,6 +4,8 @@ import { UserNotificationsService } from './user-notifications.service';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 import { TaskFlagSetEvent } from '../task-flags/task-flags';
+import { TaskReopenedEvent } from '../tasks/qa-intake';
+import { formatLongDate } from '../tasks/team-export/team-tasks-export';
 
 // In-app notifications for risk and blocker flags (Performance Tracking
 // S3, see task-flags/task-flags.ts). In-app only (2026-10-28: SMTP is not
@@ -51,6 +53,49 @@ export class TaskFlagsNotificationsListener {
       );
     } catch (err) {
       this.logger.error(`task.flagSet notification failed: ${err}`);
+    }
+  }
+
+  // Performance Tracking S4: Reopen after Pass - the assignee (with the new
+  // proposed Due date) and the QA who passed it. In-app only.
+  @OnEvent('task.reopenedAfterPass')
+  async onReopened(e: TaskReopenedEvent) {
+    try {
+      const actor = await this.usersService.findByIdAndTenant(e.actorUserId, e.tenantId);
+      const actorName = actor?.fullName || actor?.email || e.actorEmail;
+      const reason = e.reason.length > 200 ? `${e.reason.slice(0, 197)}...` : e.reason;
+      const sends: Promise<void>[] = [];
+      if (e.assigneeUserId) {
+        sends.push(
+          this.notifications.create({
+            tenantId: e.tenantId,
+            userId: e.assigneeUserId,
+            type: 'task.reopenedAfterPass',
+            title: `${actorName} reopened #${e.taskId} - proposed Due date ${formatLongDate(e.proposedDueDate)}, confirm it or set your own`,
+            body: `${e.title} - ${reason}`,
+            link: `/tasks/${e.taskId}`,
+            actorUserId: e.actorUserId,
+            actorName,
+          }),
+        );
+      }
+      if (e.passedByQaUserId && e.passedByQaUserId !== e.assigneeUserId) {
+        sends.push(
+          this.notifications.create({
+            tenantId: e.tenantId,
+            userId: e.passedByQaUserId,
+            type: 'task.reopenedAfterPass',
+            title: `${actorName} reopened #${e.taskId}, which you passed`,
+            body: `${e.title} - ${reason}`,
+            link: `/tasks/${e.taskId}`,
+            actorUserId: e.actorUserId,
+            actorName,
+          }),
+        );
+      }
+      await Promise.all(sends);
+    } catch (err) {
+      this.logger.error(`task.reopenedAfterPass notification failed: ${err}`);
     }
   }
 }

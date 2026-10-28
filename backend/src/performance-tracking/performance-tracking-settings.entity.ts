@@ -40,6 +40,10 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 10 })
   chasesPerTasks: number;
 
+  // Q3 (S4): a reopen counts within this many days of the Pass.
+  @Column({ type: 'int', default: 30 })
+  reopenWindowDays: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

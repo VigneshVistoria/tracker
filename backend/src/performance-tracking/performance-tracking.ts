@@ -21,9 +21,9 @@ export const PERFORMANCE_TRACKING_AUDIT = {
   PROJECT_SWITCHED: 'project_performance_tracking_switched',
 } as const;
 
-// The audit actions that change a task's status. MUST match
-// tracker_status_event_action() in migrations/2026-10-performance-
-// tracking-foundation.sql - test/performance-tracking.e2e-spec.ts checks.
+// The audit actions that change a task's status. MUST match the latest
+// tracker_status_event_action() (migrations/2026-10-performance-tracking-
+// qa-intake.sql) - test/performance-tracking.e2e-spec.ts checks.
 export const STATUS_EVENT_AUDIT_ACTIONS = [
   'task_created', 'task_defect_created', 'task_status_changed',
   'task_qa_submitted', 'task_pm_review_submitted', 'task_peer_review_submitted',
@@ -35,6 +35,9 @@ export const STATUS_EVENT_AUDIT_ACTIONS = [
   'task_marked_junk', 'task_restored_from_junk',
   'task_held', 'task_released_from_hold', 'task_closed', 'task_reopened',
   'defect_triage_disputed', 'defect_dispute_decided',
+  // S4 (2026-10-28) - migrations/2026-10-performance-tracking-qa-intake.sql
+  // holds the latest definition.
+  'task_reopened_after_pass',
 ];
 
 export interface PerformanceTrackingThresholds {
@@ -44,6 +47,7 @@ export interface PerformanceTrackingThresholds {
   dateMovesFlagCount: number;
   statusFreshWorkingDays: number;
   chasesPerTasks: number;
+  reopenWindowDays: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -53,6 +57,7 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   dateMovesFlagCount: 2,
   statusFreshWorkingDays: 2,
   chasesPerTasks: 10,
+  reopenWindowDays: 30,
 };
 
 // Validation limits, shared with the DTO.
@@ -62,6 +67,7 @@ export const THRESHOLD_LIMITS: Record<Exclude<keyof PerformanceTrackingThreshold
   dateMovesFlagCount: [1, 20],
   statusFreshWorkingDays: [1, 30],
   chasesPerTasks: [1, 100],
+  reopenWindowDays: [1, 365],
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

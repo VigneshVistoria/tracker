@@ -291,6 +291,9 @@ export class PmReviewsService {
         reviewType: 'qa',
         noteQualityFlagged: round.noteQualityFlagged,
         noteQualityReason: round.noteQualityReason,
+        // Performance Tracking S4: the developer's dependency declaration
+        // was made at their submission - QA judges Not ready against it.
+        dependencyDeclaration: round.dependencyDeclaration ?? null,
       }),
     );
     const evidence = await em.find(TaskQaReviewArtifact, { where: { taskQaReviewId: round.id } });

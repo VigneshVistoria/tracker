@@ -88,6 +88,11 @@ export class ProjectTask {
   @Column({ type: 'timestamp', nullable: true })
   dueDateCommittedAt: Date | null;
 
+  // Performance Tracking S4 (2026-10-28): times this task was reopened
+  // after Pass (see ./qa-intake.ts and task_reopens).
+  @Column({ type: 'int', default: 0 })
+  reopenCount: number;
+
   // Separate from dueDate above (the Assignee's own field) - auto-set to
   // TasksService.QA_REVIEW_DUE_DATE_BUSINESS_DAYS business days from
   // whenever the task is submitted for QA or Peer Review

@@ -35,4 +35,12 @@ export class SetQaNotReadyReasonsDto {
   @IsString({ each: true })
   @MaxLength(QA_NOT_READY_REASON_MAX, { each: true })
   reasons: string[];
+
+  // Performance Tracking S4: the label (new or unchanged) of the reason
+  // with the fixed "blocked by a dependency" code. Omitted = unchanged.
+  // Ignored by the Test failed list.
+  @IsOptional()
+  @IsString()
+  @MaxLength(QA_NOT_READY_REASON_MAX)
+  dependencyReason?: string;
 }

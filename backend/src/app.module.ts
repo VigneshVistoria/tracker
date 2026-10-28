@@ -52,6 +52,7 @@ import { TaskBlockingDefect } from './tasks/task-blocking-defect.entity';
 import { DefectTriage } from './tasks/defect-triage.entity';
 import { DueDateChangeRequest } from './tasks/due-date-change-request.entity';
 import { TaskFlag } from './task-flags/task-flag.entity';
+import { TaskReopen } from './tasks/task-reopen.entity';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -174,6 +175,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           DefectTriage,
           DueDateChangeRequest,
           TaskFlag,
+          TaskReopen,
           KpiConfig,
           KpiPeriodScore,
           Role,

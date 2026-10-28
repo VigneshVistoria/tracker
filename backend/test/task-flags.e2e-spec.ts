@@ -61,7 +61,9 @@ describe('Task flags + dependency needed-by (Performance Tracking S3, e2e)', () 
     ds = t.dataSource;
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
-    await ds.query(`TRUNCATE project_tasks, task_flags, task_dependency_tickets, audit_logs, user_notifications RESTART IDENTITY CASCADE`);
+    // task_qa_reviews too: another suite's review rounds (no FK to tasks)
+    // would make their reviewers look linked to these reused task ids.
+    await ds.query(`TRUNCATE project_tasks, task_qa_reviews, task_flags, task_dependency_tickets, audit_logs, user_notifications RESTART IDENTITY CASCADE`);
     phaseId = (
       await ds.query(
         `INSERT INTO phases ("tenantId", "projectId", "projectName", "moduleId", "moduleName", "name") VALUES ($1, $2, 'Project A', $3, 'Medical Claim', 'Build') RETURNING id`,

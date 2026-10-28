@@ -175,4 +175,17 @@ export class TaskQaReview {
 
   @Column({ type: 'text', nullable: true })
   noteQualityReason: string;
+
+  // Performance Tracking S4 (2026-10-28, see tasks/qa-intake.ts): QA's
+  // Test failed reason (text from the editable list), the developer's
+  // dependency declaration at submission, and - on a Not ready round
+  // caused by a dependency - whether it is exempt from Q1.
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  testFailedReason: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  dependencyDeclaration: Record<string, unknown> | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  dependencyExempt: boolean | null;
 }
