@@ -32,6 +32,7 @@ import { ReturnToQaService } from './return-to-qa.service';
 import { DefectTriage } from './defect-triage.entity';
 import { DefectTriageController } from './defect-triage.controller';
 import { DefectTriageService } from './defect-triage.service';
+import { TeamTasksExportService } from './team-export/team-tasks-export.service';
 
 @Module({
   imports: [
@@ -53,7 +54,7 @@ import { DefectTriageService } from './defect-triage.service';
   // ReturnToQaController likewise ('returned-to-qa' vs ':id').
   // DefectTriageController has its own 'defect-triage' prefix.
   controllers: [TasksBulkController, TaskAttachmentsController, ReturnToQaController, DefectTriageController, TasksController],
-  providers: [TasksService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService],
+  providers: [TasksService, TeamTasksExportService, TasksBulkService, TaskSpreadsheetService, TaskAttachmentsService, QaSummaryService, ReturnToQaService, QaReviewAttachmentsService, DefectTriageService],
   exports: [TasksService],
 })
 export class TasksModule {}

@@ -17,6 +17,10 @@ import { redirectToSignIn } from '../../lib/session';
 // stay view-only, exactly as they are everywhere else in the Tasks module.
 const VIEW_ROLES = ['admin', 'executive', 'program_manager'];
 
+// Export to PDF/Excel - PM and Admin only (2026-10-28, confirmed with the
+// user); the backend enforces the same rule (403 for anyone else).
+const EXPORT_ROLES = ['admin', 'program_manager'];
+
 const ACTIVE_CARD_STORAGE_KEY = 'teamTasksActiveCard';
 
 export default function TeamTasksPage() {
@@ -62,7 +66,12 @@ export default function TeamTasksPage() {
         </button>
       </div>
 
-      <TeamTaskWorkboard storageKey={ACTIVE_CARD_STORAGE_KEY} fullScreen={fullScreen} canMarkJunk={user.role === 'program_manager'} />
+      <TeamTaskWorkboard
+        storageKey={ACTIVE_CARD_STORAGE_KEY}
+        fullScreen={fullScreen}
+        canMarkJunk={user.role === 'program_manager'}
+        canExport={EXPORT_ROLES.includes(user.role)}
+      />
     </AppShell>
   );
 }

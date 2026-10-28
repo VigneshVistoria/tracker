@@ -12,7 +12,9 @@ import {
   Req,
   ForbiddenException,
   BadRequestException,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { TasksService, ROLES_ALLOWED_TO_LINK_BLOCKING_DEFECTS } from './tasks.service';
 import { QaSummaryService, QaSummaryQuery } from './qa-summary.service';
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -27,6 +29,15 @@ import { SetQaReviewDueDateDto } from './dto/set-qa-review-due-date.dto';
 import { LinkBlockingDefectDto } from './dto/link-blocking-defect.dto';
 import { BulkMarkJunkDto, JunkReasonDto } from './dto/mark-junk.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { TeamTasksExportService } from './team-export/team-tasks-export.service';
+import {
+  buildExportRows,
+  describeFilters,
+  formatLongDateTime,
+  MAX_EXPORT_ROWS,
+  TeamExportQuery,
+} from './team-export/team-tasks-export';
 import { UsersService } from '../users/users.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 
@@ -92,6 +103,10 @@ const ROLES_ALLOWED_TO_SET_HOLD_CLOSED: UserRole[] = [UserRole.PROGRAM_MANAGER, 
 const ROLES_ALLOWED_TO_MANAGE_JUNK: UserRole[] = [UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_JUNK: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
 const ROLES_ALLOWED_TO_VIEW_TEAM_TASKS: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
+// Team Tasks export (2026-10-28, confirmed with the user): Program Manager
+// and Admin only - Executive can view the page but not export, for now.
+const ROLES_ALLOWED_TO_EXPORT_TEAM_TASKS: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
@@ -100,6 +115,8 @@ export class TasksController {
     private tasksService: TasksService,
     private usersService: UsersService,
     private qaSummaryService: QaSummaryService,
+    private auditLogService: AuditLogService,
+    private teamTasksExportService: TeamTasksExportService,
   ) {}
 
   @Get()
@@ -250,6 +267,93 @@ export class TasksController {
       all: all === 'true',
       includeDependencies: includeDependencies === 'true',
     });
+  }
+
+  // Team Tasks export (PDF / Excel) - the same filters GET /tasks/team
+  // takes, but every matching row (findTeam's `all`), in the page's order
+  // plus its column sort. Declared before ':id' for routing. Every export
+  // is audit-logged (who, filters, row count).
+  @Get('team/export')
+  async exportTeam(
+    @Query('format') format: string | undefined,
+    @Query('status') status: string | undefined,
+    @Query('assigneeUserId') assigneeUserId: string | undefined,
+    @Query('phaseId') phaseId: string | undefined,
+    @Query('dependency') dependency: string | undefined,
+    @Query('isDefect') isDefect: string | undefined,
+    @Query('dueFrom') dueFrom: string | undefined,
+    @Query('dueTo') dueTo: string | undefined,
+    @Query('showHoldClosed') showHoldClosed: string | undefined,
+    @Query('includeDependencies') includeDependencies: string | undefined,
+    @Query('sortKey') sortKey: string | undefined,
+    @Query('sortDir') sortDir: string | undefined,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    if (!ROLES_ALLOWED_TO_EXPORT_TEAM_TASKS.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin or Program Manager can export Team Tasks.');
+    }
+    if (format !== 'pdf' && format !== 'xlsx') throw new BadRequestException('format must be pdf or xlsx.');
+    for (const d of [dueFrom, dueTo]) {
+      if (d && !DATE_ONLY_RE.test(d)) throw new BadRequestException('Due dates must be YYYY-MM-DD.');
+    }
+    const positiveInt = (v: string | undefined) => {
+      if (!v) return undefined;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n <= 0) throw new BadRequestException('Invalid filter id.');
+      return n;
+    };
+    const query: TeamExportQuery = {
+      status: status || undefined,
+      assigneeUserId: positiveInt(assigneeUserId),
+      phaseId: positiveInt(phaseId),
+      dependency: dependency || undefined,
+      isDefect: isDefect || undefined,
+      dueFrom: dueFrom || undefined,
+      dueTo: dueTo || undefined,
+      showHoldClosed: showHoldClosed === 'true',
+      includeDependencies: includeDependencies === 'true',
+      sortKey: sortKey || undefined,
+      sortDir: sortDir === 'desc' ? 'desc' : 'asc',
+    };
+
+    const tenantId = req.user.tenantId;
+    const result = await this.tasksService.findTeam(tenantId, { ...query, all: true });
+    if (result.total > MAX_EXPORT_ROWS) {
+      throw new BadRequestException(`This export would have ${result.total} rows; the limit is ${MAX_EXPORT_ROWS}. Narrow the filters and try again.`);
+    }
+    const rows = buildExportRows(result, query);
+    const filters = describeFilters(query, result);
+    const now = new Date();
+    const doc = {
+      rows,
+      filters,
+      exportedBy: currentUser.fullName ? `${currentUser.fullName} (${currentUser.email})` : currentUser.email,
+      exportedAt: formatLongDateTime(now),
+    };
+    const buffer = format === 'pdf' ? await this.teamTasksExportService.buildPdf(doc) : await this.teamTasksExportService.buildXlsx(doc);
+
+    await this.auditLogService.record({
+      tenantId,
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TEAM_TASKS_EXPORTED,
+      details: {
+        format,
+        rowCount: rows.length,
+        filters: Object.fromEntries(filters),
+        query,
+      },
+    });
+
+    const stamp = now.toISOString().slice(0, 10);
+    res.set({
+      'Content-Type': format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="team-tasks-${stamp}.${format}"`,
+    });
+    res.send(buffer);
   }
 
   // Picker options for Link Blocking Defect - `kind=defects` (task page)

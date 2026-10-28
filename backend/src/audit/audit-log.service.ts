@@ -164,6 +164,9 @@ export const AuditActions = {
   PERFORMANCE_METRIC_SETTINGS_UPDATED: 'performance_metric_settings_updated',
   PERFORMANCE_HOLIDAY_ADDED: 'performance_holiday_added',
   PERFORMANCE_HOLIDAY_REMOVED: 'performance_holiday_removed',
+  // Team Tasks PDF/Excel export (2026-10-28). details: { format, rowCount,
+  // filters (as shown in the file), query (raw parameters) }.
+  TEAM_TASKS_EXPORTED: 'team_tasks_exported',
 } as const;
 
 export interface RecordAuditEntryInput {

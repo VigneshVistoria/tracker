@@ -15,6 +15,7 @@ import { formatDate } from '../lib/formatDate';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../lib/toast';
 import JunkReasonModal from './JunkReasonModal';
+import TeamTasksExportMenu from './TeamTasksExportMenu';
 import Button from './ui/Button';
 
 // Team Tasks - every team member's assigned tasks in one place, for
@@ -174,7 +175,7 @@ function WorkloadCell({ tasks }) {
 // for the selection. The selection is kept by id across pages, tabs and
 // filters until it's cleared or acted on, so tickets spread over several
 // views can be handled in one go.
-export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canMarkJunk = false }) {
+export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canMarkJunk = false, canExport = false }) {
   const { showToast } = useToast();
   const [selected, setSelected] = useState(() => new Map());
   const [junkOpen, setJunkOpen] = useState(false);
@@ -517,6 +518,27 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
       return next;
     });
 
+  // Export (Table view only, PM/Admin): the same filters as the table's
+  // fetch above, minus paging (the server exports every matching row),
+  // plus the current column sort so the file matches the screen.
+  const exportParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (statusFilter !== 'All') params.set('status', statusFilter);
+    if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
+    if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
+    if (defectFilter !== 'All') params.set('isDefect', defectFilter);
+    if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
+    if (dueFrom) params.set('dueFrom', dueFrom);
+    if (dueTo) params.set('dueTo', dueTo);
+    if (showHoldClosed) params.set('showHoldClosed', 'true');
+    if (includeDependencies) params.set('includeDependencies', 'true');
+    if (sort) {
+      params.set('sortKey', sort.key);
+      params.set('sortDir', sort.dir);
+    }
+    return params.toString();
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, includeDependencies, sort]);
+
   const baseColumns = useMemo(
     () => buildTaskColumns({ assigneeLabel: showAssignee ? assigneeLabel : null, labelForEmail, expandedTaskIds, toggleExpanded }),
     // toggleExpanded only calls a state setter.
@@ -730,6 +752,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
             </div>
 
             <ViewToggle id="teamViewLabel" value={viewMode} onChange={handleViewModeChange} modes={['table', 'tile', 'workload']} />
+
+            {canExport && viewMode === 'table' && <TeamTasksExportMenu params={exportParams} />}
           </div>
 
           {canMarkJunk && selected.size > 0 && (
