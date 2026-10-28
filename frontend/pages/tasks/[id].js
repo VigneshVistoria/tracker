@@ -33,6 +33,7 @@ import Breadcrumbs from '../../components/ui/Breadcrumbs';
 import Avatar from '../../components/ui/Avatar';
 import DefectScreenshots from '../../components/DefectScreenshots';
 import DefectTriagePanel from '../../components/DefectTriagePanel';
+import DueDateCommitmentPanel from '../../components/DueDateCommitmentPanel';
 import {
   EMPTY_CHECKLIST,
   SubmissionChecklistFields,
@@ -289,6 +290,9 @@ export default function TaskDetailPage() {
 
   const [user, setUser] = useState(null);
   const [task, setTask] = useState(null);
+  // Performance Tracking S2: GET /tasks/:id/due-date, reported by
+  // DueDateCommitmentPanel (null while the project's tracking is off).
+  const [dueDateTracking, setDueDateTracking] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [tickets, setTickets] = useState([]);
   // "Change owner" dialog (PM/Admin) - the ticket being moved, or null.
@@ -808,7 +812,10 @@ export default function TaskDetailPage() {
   const estimatedHoursLocked = task.estimatedHours != null && !canManage;
   // Due Date: one-time entry for the Assignee, same lock pattern as
   // E.Hrs - Program Manager can always re-edit it, no lock applies to PM.
-  const dueDateLocked = task.dueDate != null && !canManage;
+  // With Performance Tracking on, a set date is locked for everyone here -
+  // it changes through the Due date commitment card (with a reason).
+  const dueDateTracked = !!dueDateTracking?.trackingOn;
+  const dueDateLocked = task.dueDate != null && (!canManage || dueDateTracked);
   // Narrow exception to Admin's usual view-only access to tasks - Admin
   // may set/edit only the Peer Review checkbox (via its own dedicated
   // endpoint below), nothing else on this page.
@@ -2448,7 +2455,14 @@ export default function TaskDetailPage() {
               onChange={(e) => setDueDate(e.target.value)}
             />
             {dueDateLocked && (
-              <p className={styles.helpText}>Locked after first entry - only Program Manager can change it now.</p>
+              <p className={styles.helpText}>
+                {dueDateTracked
+                  ? 'Committed date - change it in the Due date commitment card below.'
+                  : 'Locked after first entry - only Program Manager can change it now.'}
+              </p>
+            )}
+            {!task.dueDate && dueDateTracked && isAssignee && (
+              <p className={styles.helpText}>The first date you save is your commitment - later changes need PM approval.</p>
             )}
           </div>
 
@@ -2498,6 +2512,8 @@ export default function TaskDetailPage() {
           </div>
         )}
       </form>
+
+      {!isJunk && <DueDateCommitmentPanel task={task} onChanged={refreshAfterReturnToQa} onState={setDueDateTracking} />}
 
       {canManagePeerReviewFlag && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>

@@ -2199,13 +2199,29 @@ export class TasksService {
     // lock entirely and may edit Due Date as many times as needed (each
     // such edit gets its own TASK_DUE_DATE_EDITED audit entry below, on
     // top of the general TASK_UPDATED entry every edit already gets).
+    // Performance Tracking S2 (2026-10-28): with the project's switch ON a
+    // set Due date only changes through the Due date card (a request, or a
+    // PM/Admin change with a reason) - see ./due-date-change.ts.
     if (dto.dueDate !== undefined && task.dueDate != null) {
+      const project = await this.projectsService.findOne(task.projectId, tenantId);
+      if (project.performanceTrackingEnabled) {
+        if (!canMutate) {
+          throw new ForbiddenException('Due Date is locked - use the Due date card to commit to it or ask for a change.');
+        }
+        if (dto.dueDate !== task.dueDate) {
+          throw new BadRequestException('Performance Tracking is on for this project - changing the Due date needs a reason. Use Change date in the Due date card.');
+        }
+      }
       if (!canMutate) {
         throw new ForbiddenException('Due Date is locked after first entry - only Program Manager can change it now.');
       }
     }
-
     const previous = { ...task };
+    // The assignee's own first Due date is their commitment.
+    if (dto.dueDate && task.dueDate == null && task.assigneeUserId === currentUser.id) {
+      task.dueDateCommittedByUserId = currentUser.id;
+      task.dueDateCommittedAt = new Date();
+    }
     const isPmDueDateEdit = canMutate && dto.dueDate !== undefined && task.dueDate != null && dto.dueDate !== task.dueDate;
 
     const projectId = dto.projectId ?? task.projectId;

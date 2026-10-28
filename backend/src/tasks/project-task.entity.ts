@@ -78,6 +78,16 @@ export class ProjectTask {
   @Column({ type: 'date', nullable: true })
   dueDate: string;
 
+  // Performance Tracking S2 (2026-10-28): the assignee whose own Due date
+  // is the commitment, and when. Differs from assigneeUserId (or is null)
+  // until the current assignee sets or confirms it - see
+  // ./due-date-change.ts.
+  @Column({ type: 'int', nullable: true })
+  dueDateCommittedByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  dueDateCommittedAt: Date | null;
+
   // Separate from dueDate above (the Assignee's own field) - auto-set to
   // TasksService.QA_REVIEW_DUE_DATE_BUSINESS_DAYS business days from
   // whenever the task is submitted for QA or Peer Review

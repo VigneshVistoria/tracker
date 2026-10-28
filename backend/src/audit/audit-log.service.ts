@@ -249,8 +249,8 @@ export class AuditLogService {
   // and NOT error-swallowing - for changes that must never happen without
   // their audit row (Junk mark/restore): if the audit insert fails, the
   // whole change rolls back. Its commitment event, if any, goes in the
-  // same transaction.
-  async recordWithin(em: EntityManager, input: RecordAuditEntryInput): Promise<void> {
+  // same transaction. Returns the new entry's id.
+  async recordWithin(em: EntityManager, input: RecordAuditEntryInput): Promise<number> {
     const repo = em.getRepository(AuditLog);
     const saved = await repo.save(
       repo.create({
@@ -266,6 +266,7 @@ export class AuditLogService {
     );
     const event = this.commitmentEventFor(saved, input.details);
     if (event) await this.insertCommitmentEvent(em, event);
+    return saved.id;
   }
 
   // Entries for one entity, oldest first, limited to the given actions,

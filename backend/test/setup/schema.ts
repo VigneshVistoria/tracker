@@ -89,6 +89,14 @@ const TRACKING_TABLES = ['task_status_events', 'performance_tracking_settings'];
 const TRACKING_COLUMNS: Record<string, string[]> = {
   projects: ['performanceTrackingEnabled', 'performanceTrackingSince'],
 };
+// Performance Tracking S2 (2026-10-28): due_date_change_requests from the
+// real migration (entity left out of synchronize); the project_tasks
+// columns dropped from what synchronize made and re-added by it.
+const DUE_DATE_ENTITY = path.join(SRC, 'tasks', 'due-date-change-request.entity.ts');
+const DUE_DATE_MIGRATION = path.resolve(__dirname, '../../migrations/2026-10-performance-tracking-due-date-commitment.sql');
+const DUE_DATE_COLUMNS: Record<string, string[]> = {
+  project_tasks: ['dueDateCommittedByUserId', 'dueDateCommittedAt'],
+};
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -111,7 +119,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -162,6 +170,10 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(TRACKING_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(DUE_DATE_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(DUE_DATE_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -190,7 +202,9 @@ export async function buildTestSchema() {
   if (performanceMetas.length !== PERFORMANCE_TABLES.length) problems.push(`${PERFORMANCE_TABLES.join('/')}: entity missing`);
   const trackingMetas = check.entityMetadatas.filter((m) => TRACKING_TABLES.includes(m.tableName));
   if (trackingMetas.length !== TRACKING_TABLES.length) problems.push(`${TRACKING_TABLES.join('/')}: entity missing`);
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas]) {
+  const dueDateMeta = check.entityMetadatas.find((m) => m.tableName === 'due_date_change_requests');
+  if (!dueDateMeta) problems.push('due_date_change_requests: entity missing');
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : [])]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns
@@ -249,7 +263,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS)]) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,

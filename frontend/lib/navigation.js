@@ -98,6 +98,8 @@ export const NAV_SECTIONS = [
       { href: '/tasks/pm-review', label: 'PM Review', icon: UserCheck, roles: [ADMIN, PM], countKey: 'pmReview' },
       // Defect triage (2026-10-27) - matches DefectTriageController's DEFECT_DISPUTE_DECIDE_ROLES.
       { href: '/tasks/defect-disputes', label: 'Defect Disputes', icon: Scale, roles: [ADMIN, PM], countKey: 'defectDisputes' },
+      // Performance Tracking S2 (2026-10-28) - matches DUE_DATE_DECIDE_ROLES.
+      { href: '/tasks/due-date-changes', label: 'Date Changes', icon: CalendarClock, roles: [ADMIN, PM], countKey: 'dueDateChanges' },
       { href: '/tasks/escalations', label: 'Interventions', icon: AlertTriangle, roles: [ADMIN, PM] },
       // Matches TasksController.ROLES_ALLOWED_TO_VIEW_JUNK - PM restores, Admin views.
       { href: '/tasks/junk', label: 'Junk', icon: ArchiveX, roles: [ADMIN, PM] },

@@ -199,6 +199,11 @@ export default function AppShell({ children, fullScreen = false }) {
         .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, defectDisputes: res.items.length })))
         .catch(() => {});
     }
+    if (visibleCountKeys.has('dueDateChanges')) {
+      apiFetch('/tasks/due-date-changes')
+        .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, dueDateChanges: res.items.length })))
+        .catch(() => {});
+    }
     if (visibleCountKeys.has('myDefects')) {
       apiFetch('/tasks/defect-queue')
         .then((res) => !cancelled && setNavCounts((prev) => ({ ...prev, myDefects: res.statCounts.pending })))
