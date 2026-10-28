@@ -8,7 +8,9 @@ import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeor
 // 'reconstructed'. Raw facts only - what counts as on time or as a change
 // is decided at report time (./performance-metrics.compute.ts) from the
 // editable settings. Rows are never updated or deleted.
-export type CommitmentEventKind = 'assigned' | 'unassigned' | 'due_set' | 'due_changed' | 'due_cleared';
+// 'due_committed' (2026-10-28): the assignee confirmed a proposed date or
+// set their own (Performance Tracking) - old/new dates, never a change.
+export type CommitmentEventKind = 'assigned' | 'unassigned' | 'due_set' | 'due_changed' | 'due_cleared' | 'due_committed';
 
 @Entity('task_commitment_events')
 export class TaskCommitmentEvent {

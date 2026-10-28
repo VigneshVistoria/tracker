@@ -12,6 +12,7 @@ export const COMMITMENT_AUDIT_ACTIONS = [
   'task_reassigned',
   'task_escalation_reassigned',
   'task_updated',
+  'task_due_date_committed',
 ];
 
 export interface CommitmentAuditEntry {
@@ -89,7 +90,10 @@ export function commitmentEventFromAudit(entry: CommitmentAuditEntry): Commitmen
       const oldDate = dateOf(d.previous?.dueDate);
       const newDate = dateOf(updated.dueDate);
       if (oldDate === newDate) return null;
-      const kind: CommitmentEventKind = oldDate == null ? 'due_set' : newDate == null ? 'due_cleared' : 'due_changed';
+      // The assignee's own date through the Due date card (Performance
+      // Tracking) is their commitment, not a change.
+      const committed = d.dueDateCommitment === true && oldDate != null && newDate != null;
+      const kind: CommitmentEventKind = committed ? 'due_committed' : oldDate == null ? 'due_set' : newDate == null ? 'due_cleared' : 'due_changed';
       return {
         ...base,
         kind,
@@ -98,6 +102,13 @@ export function commitmentEventFromAudit(entry: CommitmentAuditEntry): Commitmen
         newDueDate: newDate,
         direction: kind === 'due_changed' ? (newDate! > oldDate! ? 'later' : 'earlier') : null,
       };
+    }
+    // Performance Tracking: the assignee confirmed the proposed date as it
+    // is (their own date comes through task_updated above).
+    case 'task_due_date_committed': {
+      const date = dateOf(d.dueDate);
+      if (d.confirmed !== true || date == null) return null;
+      return { ...base, kind: 'due_committed', assigneeUserId: userIdOf(d.assigneeUserId) ?? entry.userId ?? null, oldDueDate: date, newDueDate: date };
     }
     default:
       return null;

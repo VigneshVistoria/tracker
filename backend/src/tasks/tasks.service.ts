@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { TaskFlag } from '../task-flags/task-flag.entity';
+import { DueDateProposedEvent } from './due-date-change';
 import { Between, EntityManager, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
@@ -2324,6 +2325,27 @@ export class TasksService {
           newPhaseName: saved.phaseName,
         },
       });
+    }
+
+    // Performance Tracking (2026-10-28): a first Due date someone other
+    // than the assignee sets is a PROPOSAL - tell the assignee to confirm
+    // it or set their own (see ./due-date-change.ts).
+    if (previous.dueDate == null && saved.dueDate && saved.assigneeUserId && saved.assigneeUserId !== currentUser.id) {
+      const project = await this.projectsService.findOne(saved.projectId, tenantId);
+      if (project.performanceTrackingEnabled) {
+        const event: DueDateProposedEvent = {
+          tenantId,
+          taskId: saved.id,
+          title: saved.title,
+          assigneeUserId: saved.assigneeUserId,
+          dueDate: saved.dueDate,
+          previousDueDate: null,
+          reason: null,
+          actorUserId: currentUser.id,
+          actorEmail: currentUser.email,
+        };
+        this.eventEmitter.emit('task.dueDateProposed', event);
+      }
     }
 
     return saved;

@@ -147,8 +147,16 @@ function withOpenFlags(rows, isCancelled, setRows) {
       if (isCancelled()) return;
       const byTask = new Map();
       results.flatMap((r) => r.items).forEach((f) => byTask.set(f.taskId, [...(byTask.get(f.taskId) || []), f]));
-      if (byTask.size === 0) return;
-      setRows((prev) => prev.map((t) => (!isDependencyRow(t) && byTask.has(t.id) ? { ...t, openFlags: byTask.get(t.id) } : t)));
+      // Proposed Due dates (not yet confirmed by the assignee) - same call.
+      const proposed = new Set(results.flatMap((r) => r.proposedTaskIds || []));
+      if (byTask.size === 0 && proposed.size === 0) return;
+      setRows((prev) =>
+        prev.map((t) =>
+          !isDependencyRow(t) && (byTask.has(t.id) || proposed.has(t.id))
+            ? { ...t, openFlags: byTask.get(t.id) || [], dateProposed: proposed.has(t.id) }
+            : t,
+        ),
+      );
     })
     .catch(() => {});
 }

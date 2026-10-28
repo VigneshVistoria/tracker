@@ -71,6 +71,22 @@ describe('commitment events from audit entries', () => {
     expect(commitmentEventFromAudit(entry('task_updated', { previous: { dueDate: '2026-10-30' }, updated: { title: 'x' } }))).toBeNull();
     expect(commitmentEventFromAudit(entry('task_qa_approved', {}))).toBeNull();
   });
+
+  // 2026-10-28: the assignee's commitment (Performance Tracking).
+  it('records a Confirm and an own date instead of a proposal as due_committed', () => {
+    expect(commitmentEventFromAudit(entry('task_due_date_committed', { dueDate: '2026-11-05', confirmed: true, assigneeUserId: 3 }))).toMatchObject({
+      kind: 'due_committed',
+      assigneeUserId: 3,
+      actorUserId: 3,
+      oldDueDate: '2026-11-05',
+      newDueDate: '2026-11-05',
+    });
+    // An own date is recorded from its task_updated entry, not twice.
+    expect(commitmentEventFromAudit(entry('task_due_date_committed', { dueDate: '2026-11-06', confirmed: false }))).toBeNull();
+    expect(
+      commitmentEventFromAudit(entry('task_updated', { previous: { dueDate: '2026-11-05', assigneeUserId: 3 }, updated: { dueDate: '2026-11-06' }, dueDateCommitment: true })),
+    ).toMatchObject({ kind: 'due_committed', oldDueDate: '2026-11-05', newDueDate: '2026-11-06', direction: null });
+  });
 });
 
 describe('computePerformanceMetrics', () => {
@@ -207,6 +223,47 @@ describe('computePerformanceMetrics', () => {
     });
   });
 
+  // 2026-10-28: Performance Tracking ON - judged on the assignee's own
+  // commitment; a proposal never confirmed is not on time.
+  describe('date set on time - tracked projects', () => {
+    const since = at('2026-10-01T00:00:00+03:00');
+    it('a PM proposal counts only once the assignee confirms it; never confirming is "not confirmed"', () => {
+      const r = run(
+        [task(1, { trackingSince: since }), task(2, { trackingSince: since }), task(3, { trackingSince: since }), task(4, { trackingSince: since, dueDate: null })],
+        [
+          ev(1, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(1, 'due_set', '2026-10-05T09:30:00+03:00', { assigneeUserId: DEV, actorUserId: PM, newDueDate: '2026-10-20' }),
+          ev(1, 'due_committed', '2026-10-05T11:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-20' }),
+          ev(2, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(2, 'due_set', '2026-10-05T09:30:00+03:00', { assigneeUserId: DEV, actorUserId: PM, newDueDate: '2026-10-20' }),
+          ev(3, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(3, 'due_set', '2026-10-05T09:30:00+03:00', { assigneeUserId: DEV, actorUserId: PM, newDueDate: '2026-10-20' }),
+          ev(3, 'due_committed', '2026-10-12T11:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-22' }),
+          ev(4, 'assigned', '2026-10-05T09:00:00+03:00'),
+        ],
+      );
+      expect(dev(r).onTime.items.map((i) => [i.taskId, i.outcome])).toEqual([
+        [1, 'on_time'],
+        [2, 'not_confirmed'],
+        [3, 'late'],
+        [4, 'not_set'],
+      ]);
+      // A PM proposal is never "set by someone else = on time" here.
+      expect(dev(r).onTime).toMatchObject({ onTime: 1, late: 3 });
+    });
+
+    it('assignments from before tracking was switched on keep the old rule', () => {
+      const r = run(
+        [task(1, { trackingSince: at('2026-10-10T00:00:00+03:00') })],
+        [
+          ev(1, 'assigned', '2026-10-05T09:00:00+03:00'),
+          ev(1, 'due_set', '2026-10-05T09:30:00+03:00', { assigneeUserId: DEV, actorUserId: PM, newDueDate: '2026-10-20' }),
+        ],
+      );
+      expect(dev(r).onTime.items[0]).toMatchObject({ outcome: 'on_time' });
+    });
+  });
+
   describe('due date changes', () => {
     it('counts changes after the first commitment, later and earlier apart, clear + set again as one', () => {
       const r = run(
@@ -264,8 +321,8 @@ describe('computePerformanceMetrics', () => {
           ev(2, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: null, newDueDate: '2026-10-22' }),
           ev(3, 'assigned', '2026-10-05T09:00:00+03:00'),
           ev(3, 'due_set', '2026-10-05T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-20' }),
-          // A new assignee's free first commitment - not a change at all.
-          ev(3, 'due_changed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, freeCommitment: true, newDueDate: '2026-10-24' }),
+          // The assignee committing to their own date instead of a proposal - not a change at all.
+          ev(3, 'due_committed', '2026-10-12T10:00:00+03:00', { assigneeUserId: DEV, actorUserId: DEV, newDueDate: '2026-10-24' }),
         ],
       );
       const c = dev(r).dueChanges;

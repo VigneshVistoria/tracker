@@ -97,6 +97,10 @@ export interface MetricTask {
   assigneeUserId: number | null;
   dueDate: string | null;
   completedAt: Date | null;
+  // When the task's project switched Performance Tracking ON (null = OFF).
+  // An assignment that starts on or after it is judged on the assignee's
+  // own commitment - see "Date set on time" below.
+  trackingSince?: Date | null;
 }
 
 export interface MetricEvent {
@@ -112,9 +116,6 @@ export interface MetricEvent {
   // Performance Tracking request it is the requester (actorUserId is the
   // approver); otherwise the actor. Undefined = use actorUserId.
   initiatorUserId?: number | null;
-  // The new assignee's one free set/confirmation after a reassignment
-  // (Performance Tracking S2) - their first commitment, not a change.
-  freeCommitment?: boolean;
 }
 
 export interface MetricRound {
@@ -128,7 +129,9 @@ export interface MetricRound {
   revertedDecision: string | null;
 }
 
-export type OnTimeOutcome = 'on_time' | 'already_dated' | 'late' | 'not_set' | 'set_by_other';
+// 'not_confirmed' (tracked projects): a date was proposed but the assignee
+// never confirmed it or set their own by the deadline.
+export type OnTimeOutcome = 'on_time' | 'already_dated' | 'late' | 'not_set' | 'set_by_other' | 'not_confirmed';
 
 export interface OnTimeItem {
   taskId: number;
@@ -278,7 +281,7 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
   for (const task of input.tasks) {
     const events = (eventsByTask.get(task.id) ?? []).sort((a, b) => t(a.occurredAt) - t(b.occurredAt) || a.auditLogId - b.auditLogId);
     const assignmentEvents = events.filter((e) => e.kind === 'assigned' || e.kind === 'unassigned');
-    const dueEvents = events.filter((e) => e.kind === 'due_set' || e.kind === 'due_changed' || e.kind === 'due_cleared');
+    const dueEvents = events.filter((e) => e.kind === 'due_set' || e.kind === 'due_changed' || e.kind === 'due_cleared' || e.kind === 'due_committed');
 
     // Who was assignee, when. A task with no recorded assignment (bulk
     // imported) is taken as assigned to its current assignee at creation.
@@ -313,6 +316,29 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
         const { dueBy, deadline } = commitmentDeadline(spell.start, settings.dueDateWorkingDays, cal);
         if (dueBy < window.from || dueBy > window.to) continue;
         const base = { taskId: task.id, title: task.title, assignedAt: spell.start, dueBy, reconstructed: spell.reconstructed };
+        // Performance Tracking ON (2026-10-28): only the assignee's own
+        // commitment counts - their first date, a Confirm of a proposed
+        // date, or their own date instead. A date someone else set is a
+        // proposal; never confirming it is "not confirmed", not on time.
+        if (task.trackingSince && t(spell.start) >= t(task.trackingSince)) {
+          const own = dueEvents.find(
+            (e) =>
+              e.newDueDate != null &&
+              e.actorUserId === spell.userId &&
+              e.kind !== 'due_cleared' &&
+              t(e.occurredAt) >= t(spell.start) &&
+              (spell.end === null || t(e.occurredAt) < t(spell.end)),
+          );
+          if (own) {
+            push(onTimeBy, spell.userId, { ...base, setAt: own.occurredAt, setByUserId: own.actorUserId, outcome: t(own.occurredAt) < t(deadline) ? 'on_time' : 'late' });
+          } else if (spell.end !== null && t(spell.end) < t(deadline)) {
+            // Moved to someone else before the deadline - the clock stopped.
+          } else if (t(now) >= t(deadline)) {
+            const proposed = dueEvents.some((e) => e.newDueDate != null && t(e.occurredAt) < t(deadline) && (spell.end === null || t(e.occurredAt) < t(spell.end)));
+            push(onTimeBy, spell.userId, { ...base, setAt: null, setByUserId: null, outcome: proposed ? 'not_confirmed' : 'not_set' });
+          }
+          continue;
+        }
         if (datedBefore(spell.start) && settings.alreadyDatedCountsOnTime) {
           push(onTimeBy, spell.userId, { ...base, setAt: null, setByUserId: null, outcome: 'already_dated' });
           continue;
@@ -343,8 +369,9 @@ export function computePerformanceMetrics(input: MetricsInput): MetricsResult {
         const owner = e.assigneeUserId ?? ownerAt(e.occurredAt);
         // Only changes the assignee started are charged to them (2026-10-28).
         // A change whose actor wasn't recorded is still charged, as before.
-        // The new assignee's free first commitment is not a change at all.
-        if (owner != null && !e.freeCommitment) {
+        // The assignee committing (Confirm, or their own date instead of a
+        // proposal) is not a change at all.
+        if (owner != null && e.kind !== 'due_committed') {
           const initiator = e.initiatorUserId !== undefined ? e.initiatorUserId : e.actorUserId;
           const item: DueChangeItem = {
             taskId: task.id,

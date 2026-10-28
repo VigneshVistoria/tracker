@@ -10,6 +10,12 @@ export class CommitDueDateDto {
   dueDate: string;
 }
 
+// PM/Admin: propose the first Due date of a task (tracking ON).
+export class ProposeDueDateDto {
+  @IsDateString({ strict: true })
+  dueDate: string;
+}
+
 // Assignee: request a change. PM/Admin: change it directly.
 export class DueDateChangeDto {
   @IsDateString({ strict: true })

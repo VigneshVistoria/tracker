@@ -247,23 +247,27 @@ export class TaskFlagsService {
     return this.state(task.id, user, tenantId);
   }
 
-  // Team Tasks badges: open flags on the given tasks, in projects with
-  // tracking ON.
+  // Team Tasks badges: open flags and proposed Due dates on the given
+  // tasks, in projects with tracking ON.
   async open(taskIds: number[], user: User, tenantId: number) {
     if (!OPEN_FLAGS_ROLES.includes(user.role)) {
       throw new ForbiddenException('Only Admin, Executive or Program Manager can list flags across tasks.');
     }
-    if (taskIds.length === 0) return { items: [] };
-    const flags = await this.flagsRepository.find({ where: { tenantId, taskId: In(taskIds), clearedAt: IsNull() } });
-    const projectIds = [...new Set(flags.map((f) => f.projectId))];
-    const tracked = projectIds.length
-      ? await this.dataSource.getRepository(Project).find({ where: { tenantId, id: In(projectIds), performanceTrackingEnabled: true } })
-      : [];
-    const trackedIds = new Set(tracked.map((p) => p.id));
+    if (taskIds.length === 0) return { items: [], proposedTaskIds: [] };
+    const tracked = await this.dataSource.getRepository(Project).find({ where: { tenantId, performanceTrackingEnabled: true } });
+    const trackedIds = tracked.map((p) => p.id);
+    if (trackedIds.length === 0) return { items: [], proposedTaskIds: [] };
+    const flags = await this.flagsRepository.find({ where: { tenantId, taskId: In(taskIds), projectId: In(trackedIds), clearedAt: IsNull() } });
+    // Proposed Due dates (2026-10-28): dated, assigned, not yet committed
+    // by the current assignee.
+    const proposed: Array<{ id: number }> = await this.dataSource.query(
+      `SELECT id FROM "project_tasks" WHERE "tenantId" = $1 AND id = ANY($2) AND "projectId" = ANY($3)
+          AND "dueDate" IS NOT NULL AND "assigneeUserId" IS NOT NULL AND "dueDateCommittedByUserId" IS DISTINCT FROM "assigneeUserId"`,
+      [tenantId, taskIds, trackedIds],
+    );
     return {
-      items: flags
-        .filter((f) => trackedIds.has(f.projectId))
-        .map((f) => ({ taskId: f.taskId, kind: f.kind, external: f.external, reason: f.reason })),
+      items: flags.map((f) => ({ taskId: f.taskId, kind: f.kind, external: f.external, reason: f.reason })),
+      proposedTaskIds: proposed.map((r) => r.id),
     };
   }
 }

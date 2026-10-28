@@ -186,6 +186,8 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(FLAGS_MIGRATION, 'utf8'));
+  // Proposed Due dates (2026-10-28): the 'due_committed' event kind.
+  await base.query(fs.readFileSync(path.resolve(__dirname, '../../migrations/2026-10-performance-tracking-proposed-dates.sql'), 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);

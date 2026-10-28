@@ -26,6 +26,8 @@ const ON_TIME_OUTCOME = {
   late: 'Set late',
   not_set: 'Not set by the deadline',
   set_by_other: 'Set by someone else',
+  // Performance Tracking projects: a proposed date never confirmed.
+  not_confirmed: 'Proposed, not confirmed by the deadline',
 };
 
 const DECISION = { approved: 'Accepted', rejected: 'Rejected', escalated: 'Escalated to PM' };

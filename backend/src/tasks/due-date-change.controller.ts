@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { DueDateChangeService } from './due-date-change.service';
-import { CommitDueDateDto, DueDateChangeDto, DueDateDecisionDto } from './dto/due-date-change.dto';
+import { CommitDueDateDto, DueDateChangeDto, DueDateDecisionDto, ProposeDueDateDto } from './dto/due-date-change.dto';
 
 // Performance Tracking S2 - committed Due date and change requests, see
 // ./due-date-change.ts. Registered before TasksController in TasksModule so
@@ -43,6 +43,12 @@ export class DueDateChangeController {
   @Get(':id/due-date')
   async state(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.dueDates.state(id, (await this.me(req))!, req.user.tenantId);
+  }
+
+  // PM/Admin: propose the first Due date (tracking ON).
+  @Post(':id/due-date/propose')
+  async propose(@Param('id', ParseIntPipe) id: number, @Body() dto: ProposeDueDateDto, @Req() req: any) {
+    return this.dueDates.propose(id, dto, (await this.me(req))!, req.user.tenantId);
   }
 
   // Assignee: the one free set or confirmation.

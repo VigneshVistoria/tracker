@@ -437,6 +437,11 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
                     </Badge>
                   </span>
                 ))}
+              {!dep && t.dateProposed && (
+                <span title="A PM/Admin proposed this Due date - the assignee has not confirmed it yet">
+                  <Badge tone="neutral">Date proposed</Badge>
+                </span>
+              )}
             </div>
             <span className={styles.teamTitleClamp} title={t.title}>{t.title}</span>
             {filedBy && (

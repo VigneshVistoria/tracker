@@ -200,24 +200,18 @@ export class PerformanceMetricsService {
 
   // Who started each Due date change (2026-10-28): an approved Performance
   // Tracking request was started by its requester, though the approver's
-  // edit applied it; a change marked dueDateCommitment is the new
-  // assignee's free first commitment (S2), not a change.
-  private async dueChangeStarters(tenantId: number, auditLogIds: number[]) {
+  // edit applied it. (The assignee's own commitments are 'due_committed'
+  // events and never count as changes.)
+  private async dueChangeStarters(tenantId: number, auditLogIds: number[]): Promise<Map<number, number>> {
     const requestedBy = new Map<number, number>();
-    const freeCommitments = new Set<number>();
-    if (auditLogIds.length === 0) return { requestedBy, freeCommitments };
+    if (auditLogIds.length === 0) return requestedBy;
     const requests: Array<{ auditLogId: number; requestedByUserId: number }> = await this.eventsRepository.query(
       `SELECT "auditLogId", "requestedByUserId" FROM "due_date_change_requests"
         WHERE "tenantId" = $1 AND "kind" = 'request' AND "status" = 'approved' AND "auditLogId" = ANY($2)`,
       [tenantId, auditLogIds],
     );
     for (const r of requests) requestedBy.set(r.auditLogId, r.requestedByUserId);
-    const commitments: Array<{ id: number }> = await this.eventsRepository.query(
-      `SELECT id FROM "audit_logs" WHERE "tenantId" = $1 AND id = ANY($2) AND details LIKE '%"dueDateCommitment":true%'`,
-      [tenantId, auditLogIds],
-    );
-    for (const c of commitments) freeCommitments.add(c.id);
-    return { requestedBy, freeCommitments };
+    return requestedBy;
   }
 
   // onlyUserId set = a developer looking at their own figures.
@@ -251,6 +245,12 @@ export class PerformanceMetricsService {
     const taskIds = tasks.map((x) => x.id);
     const events = taskIds.length ? await this.eventsRepository.find({ where: { tenantId, taskId: In(taskIds) } }) : [];
     const rounds = taskIds.length ? await this.qaReviewsRepository.find({ where: { tenantId, taskId: In(taskIds) } }) : [];
+    // Projects with Performance Tracking ON, and since when.
+    const trackedRows: Array<{ id: number; since: Date | null }> = await this.eventsRepository.query(
+      `SELECT id, "performanceTrackingSince" AS since FROM "projects" WHERE "tenantId" = $1 AND "performanceTrackingEnabled"`,
+      [tenantId],
+    );
+    const trackingSince = new Map(trackedRows.filter((r) => r.since).map((r) => [r.id, new Date(r.since!)]));
     const starters = await this.dueChangeStarters(tenantId, events.filter((e) => e.kind === 'due_changed').map((e) => e.auditLogId));
 
     const result = computePerformanceMetrics({
@@ -267,6 +267,7 @@ export class PerformanceMetricsService {
         assigneeUserId: x.assigneeUserId ?? null,
         dueDate: x.dueDate ?? null,
         completedAt: x.completedAt ?? null,
+        trackingSince: trackingSince.get(x.projectId) ?? null,
       })),
       events: events.map((e) => ({
         taskId: e.taskId,
@@ -277,12 +278,7 @@ export class PerformanceMetricsService {
         newDueDate: e.newDueDate,
         source: e.source,
         auditLogId: e.auditLogId,
-        ...(e.kind === 'due_changed'
-          ? {
-              initiatorUserId: starters.requestedBy.get(e.auditLogId) ?? e.actorUserId,
-              freeCommitment: starters.freeCommitments.has(e.auditLogId),
-            }
-          : {}),
+        ...(e.kind === 'due_changed' ? { initiatorUserId: starters.get(e.auditLogId) ?? e.actorUserId } : {}),
       })),
       rounds: rounds.map((r) => ({
         taskId: r.taskId,

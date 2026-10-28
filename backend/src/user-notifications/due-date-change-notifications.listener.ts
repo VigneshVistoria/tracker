@@ -3,7 +3,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { UserNotificationsService } from './user-notifications.service';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
-import { DueDateChangeDecidedEvent, DueDateChangeRequestedEvent, DueDateChangedDirectEvent } from '../tasks/due-date-change';
+import { DueDateChangeDecidedEvent, DueDateChangeRequestedEvent, DueDateProposedEvent } from '../tasks/due-date-change';
 import { formatLongDate } from '../tasks/team-export/team-tasks-export';
 
 // In-app notifications for Due date change requests (Performance Tracking
@@ -80,23 +80,26 @@ export class DueDateChangeNotificationsListener {
     }
   }
 
-  @OnEvent('task.dueDateChangedDirect')
-  async onDirect(e: DueDateChangedDirectEvent) {
+  // A PM/Admin proposed a date (first date, or a direct change) - the
+  // assignee confirms it or sets their own (2026-10-28).
+  @OnEvent('task.dueDateProposed')
+  async onProposed(e: DueDateProposedEvent) {
     try {
-      if (!e.assigneeUserId) return;
       const actorName = await this.actorName(e.actorUserId, e.actorEmail, e.tenantId);
+      const was = e.previousDueDate ? ` (was ${formatLongDate(e.previousDueDate)})` : '';
+      const reason = this.short(e.reason);
       await this.notifications.create({
         tenantId: e.tenantId,
         userId: e.assigneeUserId,
-        type: 'task.dueDateChangedDirect',
-        title: `${actorName} moved the Due date of #${e.taskId} to ${formatLongDate(e.newDueDate)}`,
-        body: `${e.title} - was ${formatLongDate(e.oldDueDate)}. ${this.short(e.reason)}`,
+        type: 'task.dueDateProposed',
+        title: `${actorName} proposed ${formatLongDate(e.dueDate)} as the Due date of #${e.taskId} - confirm it or set your own`,
+        body: `${e.title}${was}.${reason ? ` ${reason}` : ''}`,
         link: `/tasks/${e.taskId}#due-date`,
         actorUserId: e.actorUserId,
         actorName,
       });
     } catch (err) {
-      this.logger.error(`task.dueDateChangedDirect notification failed: ${err}`);
+      this.logger.error(`task.dueDateProposed notification failed: ${err}`);
     }
   }
 }

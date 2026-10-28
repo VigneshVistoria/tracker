@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { Project } from '../projects/project.entity';
 import { DueDateChangeRequest } from './due-date-change-request.entity';
@@ -17,11 +17,11 @@ import {
   DUE_DATE_REASON_MIN,
   DueDateChangeDecidedEvent,
   DueDateChangeRequestedEvent,
-  DueDateChangedDirectEvent,
+  DueDateProposedEvent,
   commitmentState,
   dueDatePermissions,
 } from './due-date-change';
-import { CommitDueDateDto, DueDateChangeDto, DueDateDecisionDto } from './dto/due-date-change.dto';
+import { CommitDueDateDto, DueDateChangeDto, DueDateDecisionDto, ProposeDueDateDto } from './dto/due-date-change.dto';
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -83,7 +83,7 @@ export class DueDateChangeService {
     const [requests, events] = await Promise.all([
       this.requestsRepository.find({ where: { taskId, tenantId }, order: { createdAt: 'DESC', id: 'DESC' } }),
       this.commitmentEventsRepository.find({
-        where: { taskId, tenantId, kind: In(['due_set', 'due_changed', 'due_cleared']) },
+        where: { taskId, tenantId, kind: In(['due_set', 'due_changed', 'due_cleared', 'due_committed']) },
         order: { occurredAt: 'DESC', id: 'DESC' },
       }),
     ]);
@@ -96,6 +96,10 @@ export class DueDateChangeService {
       ],
       tenantId,
     );
+    // A date the assignee hasn't committed to is a proposal - by whoever
+    // last set it.
+    const state = commitmentState(task);
+    const proposal = state === 'needs_commitment' ? events.find((e) => e.newDueDate === task.dueDate && e.kind !== 'due_committed') : undefined;
     const requestView = (r: DueDateChangeRequest) => ({
       ...r,
       requestedByName: names.get(r.requestedByUserId) ?? null,
@@ -104,7 +108,9 @@ export class DueDateChangeService {
     return {
       trackingOn,
       dueDate: task.dueDate ?? null,
-      state: commitmentState(task),
+      state,
+      proposedByName: proposal?.actorUserId ? names.get(proposal.actorUserId) ?? null : null,
+      proposedAt: proposal?.occurredAt ?? null,
       committedByUserId: task.dueDateCommittedByUserId ?? null,
       committedByName: task.dueDateCommittedByUserId ? names.get(task.dueDateCommittedByUserId) ?? null : null,
       committedAt: task.dueDateCommittedAt ?? null,
@@ -165,13 +171,17 @@ export class DueDateChangeService {
     actor: User,
     tenantId: number,
     extra: Record<string, unknown>,
-    alsoCommit = false,
+    // 'commit' = the assignee's own date; 'propose' = a PM/Admin date the
+    // assignee has yet to confirm; 'keep' = an approved request (the
+    // assignee asked for it - their commitment stands).
+    commitment: 'commit' | 'propose' | 'keep',
   ): Promise<number> {
     const changes: Partial<ProjectTask> = { dueDate: newDate };
-    if (alsoCommit) Object.assign(changes, { dueDateCommittedByUserId: actor.id, dueDateCommittedAt: new Date() });
+    if (commitment === 'commit') Object.assign(changes, { dueDateCommittedByUserId: actor.id, dueDateCommittedAt: new Date() });
+    if (commitment === 'propose') Object.assign(changes, { dueDateCommittedByUserId: null, dueDateCommittedAt: null });
     const updated = await em.update(
       ProjectTask,
-      { id: task.id, tenantId, dueDate: task.dueDate, assigneeUserId: task.assigneeUserId ?? undefined },
+      { id: task.id, tenantId, dueDate: task.dueDate ?? IsNull(), assigneeUserId: task.assigneeUserId ?? undefined },
       changes,
     );
     if (!updated.affected) {
@@ -214,6 +224,43 @@ export class DueDateChangeService {
     return task;
   }
 
+  // PM/Admin: propose the first Due date of a task (tracking ON). The
+  // assignee confirms it or sets their own; until then it isn't theirs.
+  async propose(taskId: number, dto: ProposeDueDateDto, user: User, tenantId: number) {
+    const task = await this.openTask(taskId, user, tenantId);
+    if (!DUE_DATE_DECIDE_ROLES.includes(user.role)) {
+      throw new ForbiddenException('Only a Program Manager or Admin can propose a Due date.');
+    }
+    if (task.assigneeUserId === user.id) {
+      throw new BadRequestException('This task is assigned to you - set your own Due date on the task form.');
+    }
+    if (task.dueDate) throw new BadRequestException(`#${taskId} already has a Due date - use Change date.`);
+    const newDate = this.dateOf(dto.dueDate);
+    await this.dataSource.transaction(async (em) => {
+      await this.applyDate(em, task, newDate, user, tenantId, { dueDateProposed: true }, 'propose');
+      await this.audit(em, user, tenantId, task.id, DUE_DATE_AUDIT.PROPOSED, { dueDate: newDate, previousDueDate: null });
+    });
+    this.emitProposed(task, newDate, null, null, user, tenantId);
+    return this.state(taskId, user, tenantId);
+  }
+
+  // Tells the assignee a PM/Admin proposed a date (in-app).
+  emitProposed(task: ProjectTask, dueDate: string, previousDueDate: string | null, reason: string | null, user: User, tenantId: number) {
+    if (!task.assigneeUserId || task.assigneeUserId === user.id) return;
+    const event: DueDateProposedEvent = {
+      tenantId,
+      taskId: task.id,
+      title: task.title,
+      assigneeUserId: task.assigneeUserId,
+      dueDate,
+      previousDueDate,
+      reason,
+      actorUserId: user.id,
+      actorEmail: user.email,
+    };
+    this.eventEmitter.emit('task.dueDateProposed', event);
+  }
+
   // Assignee: the one free set or confirmation of a date they have not
   // committed to yet (after a reassignment, or a date the PM set).
   async commit(taskId: number, dto: CommitDueDateDto, user: User, tenantId: number) {
@@ -232,12 +279,13 @@ export class DueDateChangeService {
         );
         if (!updated.affected) throw new BadRequestException(`#${task.id} changed while you were on it - reload and try again.`);
       } else {
-        await this.applyDate(em, task, newDate, user, tenantId, { dueDateCommitment: true }, true);
+        await this.applyDate(em, task, newDate, user, tenantId, { dueDateCommitment: true }, 'commit');
       }
       await this.audit(em, user, tenantId, task.id, DUE_DATE_AUDIT.COMMITTED, {
         previousDueDate: task.dueDate,
         dueDate: newDate,
         confirmed: newDate === task.dueDate,
+        assigneeUserId: user.id,
         previousCommittedByUserId: task.dueDateCommittedByUserId ?? null,
       });
     });
@@ -264,7 +312,7 @@ export class DueDateChangeService {
             { status: 'cancelled', cancelReason: 'superseded', decidedByUserId: user.id, decidedAt: new Date() },
           );
         }
-        const auditLogId = await this.applyDate(em, task, newDate, user, tenantId, { dueDateChangeReason: reason, direct: true });
+        const auditLogId = await this.applyDate(em, task, newDate, user, tenantId, { dueDateChangeReason: reason, direct: true }, 'propose');
         await em.insert(DueDateChangeRequest, {
           tenantId,
           taskId,
@@ -290,20 +338,10 @@ export class DueDateChangeService {
           newDueDate: newDate,
           reason,
           supersededRequestId: pending?.id ?? null,
+          proposed: true,
         });
       });
-      const event: DueDateChangedDirectEvent = {
-        tenantId,
-        taskId,
-        title: task.title,
-        assigneeUserId: task.assigneeUserId ?? null,
-        oldDueDate: task.dueDate,
-        newDueDate: newDate,
-        reason,
-        actorUserId: user.id,
-        actorEmail: user.email,
-      };
-      this.eventEmitter.emit('task.dueDateChangedDirect', event);
+      this.emitProposed(task, newDate, task.dueDate, reason, user, tenantId);
       return this.state(taskId, user, tenantId);
     }
 
@@ -392,11 +430,16 @@ export class DueDateChangeService {
     }
     const note = (dto.note || '').trim() || null;
     await this.dataSource.transaction(async (em) => {
-      const auditLogId = await this.applyDate(em, task, request.requestedDueDate, user, tenantId, {
-        dueDateChangeRequestId: request.id,
-        dueDateChangeReason: request.reason,
-        requestedByUserId: request.requestedByUserId,
-      });
+      // The assignee asked for this date, so it stays their commitment.
+      const auditLogId = await this.applyDate(
+        em,
+        task,
+        request.requestedDueDate,
+        user,
+        tenantId,
+        { dueDateChangeRequestId: request.id, dueDateChangeReason: request.reason, requestedByUserId: request.requestedByUserId },
+        'keep',
+      );
       await this.closeRequest(em, request, { status: 'approved', decidedByUserId: user.id, decidedAt: new Date(), decisionNote: note, auditLogId });
       await this.audit(em, user, tenantId, task.id, AuditActions.TASK_DUE_DATE_EDITED, {
         previousDueDate: request.currentDueDate,

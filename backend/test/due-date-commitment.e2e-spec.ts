@@ -129,9 +129,11 @@ describe('Due date commitment (Performance Tracking S2, e2e)', () => {
       expect(ev).toMatchObject({ kind: 'due_changed', direction: 'later', actorUserId: f.users.pm.id, assigneeUserId: f.users.devA.id });
       expect(await audits(id, AuditActions.TASK_DUE_DATE_EDITED)).toHaveLength(1);
       expect(await audits(id, DUE_DATE_AUDIT.CHANGED_DIRECT)).toHaveLength(1);
-      expect(await notified(f.users.devA.id, 'task.dueDateChangedDirect', id)).toBe(true);
-      // Still committed by the developer.
-      expect((await taskRow(id)).dueDateCommittedByUserId).toBe(f.users.devA.id);
+      expect(await notified(f.users.devA.id, 'task.dueDateProposed', id)).toBe(true);
+      // A PM's date is a PROPOSAL until the developer confirms it (2026-10-28).
+      expect((await taskRow(id)).dueDateCommittedByUserId).toBeNull();
+      const state = (await get(f.users.devA, `/tasks/${id}/due-date`).expect(200)).body;
+      expect(state).toMatchObject({ state: 'needs_commitment', canCommit: true, proposedByName: expect.any(String) });
     });
 
     it('Admin can change it directly too (Admin cannot edit the task form)', async () => {
@@ -281,8 +283,9 @@ describe('Due date commitment (Performance Tracking S2, e2e)', () => {
       // Only once.
       await post(f.users.devNone, `/tasks/${id}/due-date/commit`, { dueDate: '2026-11-19' }).expect(400);
       expect((await get(f.users.devNone, `/tasks/${id}/due-date`).expect(200)).body).toMatchObject({ state: 'committed', canRequest: true });
-      const [ev] = await ds.query(`SELECT "actorUserId", "newDueDate"::text FROM task_commitment_events WHERE "taskId" = $1 AND kind = 'due_changed' ORDER BY id DESC LIMIT 1`, [id]);
-      expect(ev).toMatchObject({ actorUserId: f.users.devNone.id, newDueDate: '2026-11-18' });
+      // Their own date is a commitment in the date-history log, not a change.
+      const [ev] = await ds.query(`SELECT kind, "actorUserId", "oldDueDate"::text, "newDueDate"::text FROM task_commitment_events WHERE "taskId" = $1 ORDER BY id DESC LIMIT 1`, [id]);
+      expect(ev).toMatchObject({ kind: 'due_committed', actorUserId: f.users.devNone.id, oldDueDate: '2026-11-10', newDueDate: '2026-11-18' });
     });
 
     it('a new assignee can also confirm the same date', async () => {
@@ -298,6 +301,79 @@ describe('Due date commitment (Performance Tracking S2, e2e)', () => {
       const id = await newTask('PM-set task');
       await patch(f.users.pm, `/tasks/${id}`, { dueDate: '2026-11-11' }).expect(200);
       expect((await get(f.users.devA, `/tasks/${id}/due-date`).expect(200)).body).toMatchObject({ state: 'needs_commitment', canCommit: true });
+    });
+
+    describe('proposed dates (2026-10-28)', () => {
+      it('a Confirm is a due_committed event (who, when, which date) and locks the date', async () => {
+        const id = await committedTask('Confirm event task');
+        await patch(f.users.pm, `/tasks/${id}/reassign`, { assigneeUserId: f.users.devNone.id }).expect(200);
+        await post(f.users.devNone, `/tasks/${id}/due-date/commit`, { dueDate: '2026-11-10' }).expect(201);
+        const [ev] = await ds.query(`SELECT * FROM task_commitment_events WHERE "taskId" = $1 AND kind = 'due_committed'`, [id]);
+        expect(ev).toMatchObject({ actorUserId: f.users.devNone.id, assigneeUserId: f.users.devNone.id, source: 'live' });
+        expect([toDate(ev.oldDueDate), toDate(ev.newDueDate)]).toEqual(['2026-11-10', '2026-11-10']);
+        expect(ev.auditLogId).toBe((await audits(id, DUE_DATE_AUDIT.COMMITTED))[0].id);
+      });
+
+      it('PM and Admin propose a first date from the card; the assignee is told; then confirms', async () => {
+        for (const proposer of [f.users.pm, f.users.admin]) {
+          const id = await newTask(`Propose task ${proposer.role}`);
+          expect((await get(proposer, `/tasks/${id}/due-date`).expect(200)).body).toMatchObject({ canPropose: true });
+          await post(f.users.devA, `/tasks/${id}/due-date/propose`, { dueDate: '2026-11-21' }).expect(403);
+          await post(proposer, `/tasks/${id}/due-date/propose`, { dueDate: '2026-11-21' }).expect(201);
+          expect(await dueOf(id)).toBe('2026-11-21');
+          expect((await taskRow(id)).dueDateCommittedByUserId).toBeNull();
+          expect(await audits(id, DUE_DATE_AUDIT.PROPOSED)).toHaveLength(1);
+          expect(await notified(f.users.devA.id, 'task.dueDateProposed', id)).toBe(true);
+          // Only a first date - after that it is Change date.
+          await post(proposer, `/tasks/${id}/due-date/propose`, { dueDate: '2026-11-22' }).expect(400);
+          await post(f.users.devA, `/tasks/${id}/due-date/commit`, { dueDate: '2026-11-21' }).expect(201);
+          expect((await taskRow(id)).dueDateCommittedByUserId).toBe(f.users.devA.id);
+        }
+      });
+
+      it('a PM first date on the form is a proposal too, and the assignee is told', async () => {
+        const id = await newTask('Form proposal task');
+        await patch(f.users.pm, `/tasks/${id}`, { dueDate: '2026-11-23' }).expect(200);
+        expect((await taskRow(id)).dueDateCommittedByUserId).toBeNull();
+        expect(await notified(f.users.devA.id, 'task.dueDateProposed', id)).toBe(true);
+      });
+
+      it('an approved request stays the developer\'s commitment', async () => {
+        const id = await committedTask('Approved stays task');
+        await ask(id).expect(201);
+        const [req] = await requests(id);
+        await patch(f.users.pm, `/tasks/due-date-changes/${req.id}/approve`).expect(200);
+        expect((await taskRow(id)).dueDateCommittedByUserId).toBe(f.users.devA.id);
+      });
+
+      it('the backfill script rebuilds exactly the live events, due_committed included', async () => {
+        const BACKFILL = fs.readFileSync(path.resolve(__dirname, '../migrations/2026-10-performance-metrics-backfill.sql'), 'utf8');
+        const q = `SELECT "tenantId", "taskId", kind, "assigneeUserId", "previousAssigneeUserId", "actorUserId", "actorRole", "occurredAt",
+                          "oldDueDate"::text, "newDueDate"::text, direction, "auditLogId" FROM task_commitment_events ORDER BY "auditLogId"`;
+        const live = await ds.query(q);
+        expect(live.filter((e: any) => e.kind === 'due_committed').length).toBeGreaterThan(1);
+        await ds.query(`DELETE FROM task_commitment_events`);
+        await ds.query(BACKFILL);
+        expect(await ds.query(q)).toEqual(live);
+      });
+
+      it('Date set on time: judged on the assignee\'s confirm time; never confirming is not on time', async () => {
+        const confirmed = await newTask('On-time confirmed task');
+        await post(f.users.pm, `/tasks/${confirmed}/due-date/propose`, { dueDate: '2026-11-24' }).expect(201);
+        await post(f.users.devA, `/tasks/${confirmed}/due-date/commit`, { dueDate: '2026-11-24' }).expect(201);
+        const never = await newTask('Never confirmed task');
+        await post(f.users.pm, `/tasks/${never}/due-date/propose`, { dueDate: '2026-11-24' }).expect(201);
+        // Back-date both: assigned 6 days ago, proposed right after; the
+        // first confirmed an hour later. Tracking on since 7 days ago.
+        await ds.query(`UPDATE project_tasks SET "createdAt" = now() - interval '6 days' WHERE id = ANY($1)`, [[confirmed, never]]);
+        await ds.query(`UPDATE task_commitment_events SET "occurredAt" = now() - interval '6 days' + interval '1 minute' WHERE "taskId" = ANY($1) AND kind = 'due_set'`, [[confirmed, never]]);
+        await ds.query(`UPDATE task_commitment_events SET "occurredAt" = now() - interval '6 days' + interval '1 hour' WHERE "taskId" = $1 AND kind = 'due_committed'`, [confirmed]);
+        await ds.query(`UPDATE projects SET "performanceTrackingSince" = now() - interval '7 days' WHERE id = $1`, [f.projects.pA]);
+        const body = (await get(f.users.pm, `/performance-metrics?to=${new Date().toISOString().slice(0, 10)}`).expect(200)).body;
+        const items = body.people.find((p: any) => p.userId === f.users.devA.id).onTime.items;
+        expect(items.find((i: any) => i.taskId === confirmed)).toMatchObject({ outcome: 'on_time', setByUserId: f.users.devA.id });
+        expect(items.find((i: any) => i.taskId === never)).toMatchObject({ outcome: 'not_confirmed', setAt: null });
+      });
     });
 
     it('Hold cancels a pending request and freezes the date', async () => {

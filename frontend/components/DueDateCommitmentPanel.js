@@ -26,7 +26,7 @@ function cancelText(reason) {
   return '';
 }
 
-const EVENT_TEXT = { due_set: 'Due date set', due_changed: 'Due date changed', due_cleared: 'Due date cleared' };
+const EVENT_TEXT = { due_set: 'Due date set', due_changed: 'Due date changed', due_cleared: 'Due date cleared', due_committed: 'Committed' };
 
 // Performance Tracking S2 (2026-10-28) on the task page: the committed Due
 // date, the assignee's one free set/confirm after a reassignment, change
@@ -81,16 +81,28 @@ export default function DueDateCommitmentPanel({ task, onChanged, onState }) {
 
   const dialogs = {
     commit: {
-      title: `Commit to the Due date of #${task.id}`,
+      title: `Confirm the Due date of #${task.id}`,
       intro:
-        'This date was set before you had the task. Keep it or pick your own - once you confirm, it is your commitment and any later change needs a reason and PM approval.',
+        'This date was proposed for you. Confirm it as it is, or pick your own date instead (once) - after that it is your commitment and any later change needs a reason and PM approval.',
       showDate: true,
       initialDate: state.dueDate,
       textMin: 0,
-      confirm: 'Commit to this date',
+      confirm: 'Confirm this date',
       submit: async ({ dueDate }) => {
         await apiFetch(`/tasks/${task.id}/due-date/commit`, { method: 'POST', body: JSON.stringify({ dueDate }) });
         await done(`You committed to ${formatDate(dueDate)}`);
+      },
+    },
+    propose: {
+      title: `Propose a Due date for #${task.id}`,
+      intro: `${task.assigneeEmail ? 'The assignee is told and' : 'Once assigned, the assignee'} confirms it or sets their own. Until then it is a proposal, not their commitment.`,
+      showDate: true,
+      initialDate: '',
+      textMin: 0,
+      confirm: 'Propose date',
+      submit: async ({ dueDate }) => {
+        await apiFetch(`/tasks/${task.id}/due-date/propose`, { method: 'POST', body: JSON.stringify({ dueDate }) });
+        await done(`Proposed ${formatDate(dueDate)}`);
       },
     },
     request: {
@@ -109,7 +121,7 @@ export default function DueDateCommitmentPanel({ task, onChanged, onState }) {
     },
     direct: {
       title: `Change the Due date of #${task.id}`,
-      intro: `Now ${formatDate(state.dueDate)}. The change applies at once and is logged with your reason.${pending ? ' The pending request is cancelled.' : ''}`,
+      intro: `Now ${formatDate(state.dueDate)}. The new date applies at once, logged with your reason, as a PROPOSAL: the assignee confirms it or sets their own.${pending ? ' The pending request is cancelled.' : ''}`,
       showDate: true,
       initialDate: '',
       textLabel: 'Reason (required)',
@@ -180,9 +192,10 @@ export default function DueDateCommitmentPanel({ task, onChanged, onState }) {
         </div>
       )}
 
-      {(state.canCommit || state.canRequest || state.canWithdraw || state.canChangeDirect || state.canDecide) && (
+      {(state.canCommit || state.canPropose || state.canRequest || state.canWithdraw || state.canChangeDirect || state.canDecide) && (
         <div className={styles.actions}>
-          {state.canCommit && <Button onClick={() => setDialog('commit')}>Commit to a date</Button>}
+          {state.canCommit && <Button onClick={() => setDialog('commit')}>Confirm or set my own date</Button>}
+          {state.canPropose && <Button onClick={() => setDialog('propose')}>Propose a date</Button>}
           {state.canRequest && (
             <Button variant="secondary" onClick={() => setDialog('request')}>
               Ask to change date
@@ -239,10 +252,12 @@ function CommitmentLine({ state, task }) {
   if (state.state === 'needs_commitment') {
     return (
       <p style={{ marginTop: 0 }}>
-        Due {formatDate(state.dueDate)} - <strong>not committed yet</strong>.{' '}
+        <Badge tone="warning">Proposed</Badge> {formatDate(state.dueDate)}
+        {state.proposedByName ? ` by ${state.proposedByName}` : ''}
+        {state.proposedAt ? ` on ${formatDate(state.proposedAt)}` : ''} - <strong>not committed yet</strong>.{' '}
         {state.canCommit
-          ? 'Keep this date or pick your own, once. After that a change needs a reason and PM approval.'
-          : `${task.assigneeEmail || 'The assignee'} can keep it or pick their own, once.`}
+          ? 'Confirm it, or set your own date instead (once). Until you do, it still counts as your Due date.'
+          : `Waiting for ${task.assigneeEmail || 'the assignee'} to confirm it or set their own.`}
       </p>
     );
   }

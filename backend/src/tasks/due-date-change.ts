@@ -19,6 +19,14 @@
 //    decides. Nobody approves or rejects their own request.
 //  * A pending request is cancelled when the task is reassigned or moves
 //    to Pass, Junk, Hold, Closed or Released (database trigger).
+//  * PROPOSED dates (2026-10-28): any date a PM or Admin sets - the first
+//    date (task form, or Propose in the card) or a direct change - is a
+//    proposal until the assignee confirms it or sets their own (once);
+//    only then is it their commitment and locked. The assignee is told
+//    in-app. Their Confirm / own date is a 'due_committed' event in
+//    task_commitment_events. Never confirming is no escape: D2 counts it
+//    as not committed on time, and D1 judges delivery against the
+//    proposed date (the task's Due date).
 import { UserRole } from '../users/user.entity';
 
 export const DUE_DATE_DECIDE_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
@@ -38,6 +46,7 @@ export const DUE_DATE_AUDIT = {
   REJECTED: 'task_due_date_change_rejected',
   WITHDRAWN: 'task_due_date_change_withdrawn',
   CHANGED_DIRECT: 'task_due_date_changed_direct',
+  PROPOSED: 'task_due_date_proposed',
 } as const;
 
 export type DueDateRequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'cancelled';
@@ -59,6 +68,7 @@ export function commitmentState(task: {
 }
 
 export interface DueDatePermissions {
+  canPropose: boolean;
   canCommit: boolean;
   canRequest: boolean;
   canWithdraw: boolean;
@@ -72,12 +82,13 @@ export function dueDatePermissions(
   trackingOn: boolean,
   pending: { requestedByUserId: number } | null,
 ): DueDatePermissions {
-  const none = { canCommit: false, canRequest: false, canWithdraw: false, canChangeDirect: false, canDecide: false };
+  const none = { canPropose: false, canCommit: false, canRequest: false, canWithdraw: false, canChangeDirect: false, canDecide: false };
   if (!trackingOn || DUE_DATE_FROZEN_STATUSES.includes(task.status)) return none;
   const state = commitmentState(task);
   const isAssignee = task.assigneeUserId === user.id;
   const isDecider = DUE_DATE_DECIDE_ROLES.includes(user.role);
   return {
+    canPropose: isDecider && !isAssignee && !task.dueDate,
     canCommit: isAssignee && state === 'needs_commitment',
     canRequest: isAssignee && state === 'committed' && !pending,
     canWithdraw: !!pending && pending.requestedByUserId === user.id,
@@ -111,14 +122,16 @@ export interface DueDateChangeDecidedEvent {
   actorEmail: string;
 }
 
-export interface DueDateChangedDirectEvent {
+// A PM or Admin proposed a Due date (first date, or a direct change) - the
+// assignee should confirm it or set their own.
+export interface DueDateProposedEvent {
   tenantId: number;
   taskId: number;
   title: string;
-  assigneeUserId: number | null;
-  oldDueDate: string;
-  newDueDate: string;
-  reason: string;
+  assigneeUserId: number;
+  dueDate: string;
+  previousDueDate: string | null;
+  reason: string | null;
   actorUserId: number;
   actorEmail: string;
 }
