@@ -294,6 +294,23 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(saturday, 10, 'C3')).toMatchObject({ denominator: 2 });
   });
 
+  it('C4: accepted share of the handovers the person gave, decided in the window', () => {
+    const c4 = computeTrackingMetrics(
+      input({
+        handovers: [
+          { id: 1, taskId: 1, fromUserId: 10, status: 'accepted', decidedAt: at('2026-11-10T08:00:00Z') },
+          { id: 2, taskId: 2, fromUserId: 10, status: 'rejected', decidedAt: at('2026-11-11T08:00:00Z') },
+          { id: 3, taskId: 2, fromUserId: 10, status: 'accepted', decidedAt: at('2026-11-12T08:00:00Z') },
+          // Before go-live - left out.
+          { id: 4, taskId: 4, fromUserId: 10, status: 'rejected', decidedAt: at('2026-10-20T08:00:00Z') },
+        ],
+      }),
+    );
+    expect(get(c4, 10, 'C4')).toMatchObject({ value: 66.67, numerator: 2, denominator: 3 });
+    expect(get(c4, 10, 'C4').details).toEqual({ rejectedTaskIds: [2] });
+    expect(get(result, 10, 'C4')).toMatchObject({ value: null, sample: 0 });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');

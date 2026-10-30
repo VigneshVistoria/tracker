@@ -231,11 +231,15 @@ export class TrackingMetricsService {
     const weeklyStatus = (
       await q(`SELECT "userId", "weekStart"::text AS "weekStart", "submittedAt", "deadlineAt" FROM weekly_status_reports WHERE "tenantId" = $1`, [tenantId])
     ).map((r: any) => ({ userId: r.userId, weekStart: r.weekStart, submittedAt: new Date(r.submittedAt), deadlineAt: new Date(r.deadlineAt) }));
+    // C4 handovers of this project's tasks.
+    const handovers = (
+      await q(`SELECT id, "taskId", "fromUserId", status, "decidedAt" FROM task_handovers WHERE "tenantId" = $1 AND "projectId" = $2 AND status IN ('accepted', 'rejected')`, [tenantId, projectId])
+    ).map((r: any) => ({ ...r, decidedAt: r.decidedAt ? new Date(r.decidedAt) : null }));
     // Q5 reviews belong to the project, not to a task.
     const techReviews = (
       await q(`SELECT id, "revieweeUserId", "reviewedAt", average FROM tech_reviews WHERE "tenantId" = $1 AND "projectId" = $2`, [tenantId, projectId])
     ).map((r: any) => ({ id: r.id, revieweeUserId: r.revieweeUserId, reviewedAt: new Date(r.reviewedAt), average: Number(r.average) }));
-    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus };
+    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers };
     const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests, releaseLog] = await Promise.all([
       q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
@@ -275,6 +279,7 @@ export class TrackingMetricsService {
       releaseLog: releaseLog as Array<{ taskId: number; releaseDate: string }>,
       techReviews,
       weeklyStatus,
+      handovers,
     };
   }
 

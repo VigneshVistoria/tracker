@@ -48,6 +48,7 @@ const NUMBER_FIELDS = [
   ['escapedPerTasks', 'Q4: report escaped defects per (tasks released)', ''],
   ['techReviewsPerMonth', 'Q5: technical reviews per person per month', 'More than this are refused.'],
   ['weeklyReportMinLength', 'C3: weekly report "Done" and "Plan" at least (characters)', ''],
+  ['handoverFieldMin', 'C4: every handover field (and a rejection reason) at least (characters)', ''],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program

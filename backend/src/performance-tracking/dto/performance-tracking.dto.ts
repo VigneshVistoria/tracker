@@ -183,6 +183,13 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.weeklyReportMinLength[0])
   @Max(THRESHOLD_LIMITS.weeklyReportMinLength[1])
   weeklyReportMinLength?: number;
+
+  // C4.
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.handoverFieldMin[0])
+  @Max(THRESHOLD_LIMITS.handoverFieldMin[1])
+  handoverFieldMin?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

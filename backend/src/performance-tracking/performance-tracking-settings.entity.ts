@@ -124,6 +124,10 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 20 })
   weeklyReportMinLength: number;
 
+  // C4 (migrations/2026-11-performance-tracking-handovers.sql).
+  @Column({ type: 'int', default: 10 })
+  handoverFieldMin: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

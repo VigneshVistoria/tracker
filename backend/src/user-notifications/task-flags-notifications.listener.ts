@@ -7,6 +7,7 @@ import { TaskFlagSetEvent } from '../task-flags/task-flags';
 import { TaskReopenedEvent } from '../tasks/qa-intake';
 import { TaskChasedEvent } from '../task-activity/task-activity';
 import { TaskRequestEvent } from '../task-requests/task-requests';
+import { TaskHandoverEvent } from '../task-handovers/task-handovers';
 import { formatLongDate } from '../tasks/team-export/team-tasks-export';
 
 // In-app notifications for risk and blocker flags (Performance Tracking
@@ -143,6 +144,34 @@ export class TaskFlagsNotificationsListener {
       });
     } catch (err) {
       this.logger.error(`task.request notification failed: ${err}`);
+    }
+  }
+
+  // Performance Tracking C4: a handover goes to the next owner; the
+  // decision back to whoever handed it over. In-app only.
+  @OnEvent('task.handover')
+  async onHandover(e: TaskHandoverEvent) {
+    try {
+      const actor = await this.usersService.findByIdAndTenant(e.actorUserId, e.tenantId);
+      const actorName = actor?.fullName || actor?.email || e.actorEmail;
+      const title = {
+        started: `${actorName} is handing #${e.taskId} over to you`,
+        accepted: `${actorName} accepted your handover of #${e.taskId}`,
+        rejected: `${actorName} rejected your handover of #${e.taskId}`,
+        cancelled: `${actorName} cancelled the handover of #${e.taskId}`,
+      }[e.kind];
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.recipientUserId,
+        type: `task.handover${e.kind[0].toUpperCase()}${e.kind.slice(1)}`,
+        title,
+        body: e.kind === 'rejected' && e.reason ? `${e.title} - ${e.reason.length > 200 ? `${e.reason.slice(0, 197)}...` : e.reason}` : e.title,
+        link: `/tasks/${e.taskId}#handover`,
+        actorUserId: e.actorUserId,
+        actorName,
+      });
+    } catch (err) {
+      this.logger.error(`task.handover notification failed: ${err}`);
     }
   }
 }

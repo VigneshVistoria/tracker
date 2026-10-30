@@ -354,12 +354,27 @@ export class TasksService {
     return !!project?.performanceTrackingEnabled;
   }
 
+  // Performance Tracking C4 (2026-10-30): the next owner of a pending
+  // handover may view the task to read the template and decide; access ends
+  // with the decision. Raw query - task_handovers is owned by its module.
+  async isPendingHandoverReceiver(task: ProjectTask, user: { id: number; role: UserRole }): Promise<boolean> {
+    if (user.role === UserRole.CLIENT) return false;
+    const rows = await this.tasksRepository.manager.query(
+      `SELECT 1 FROM task_handovers WHERE "tenantId" = $1 AND "taskId" = $2 AND "toUserId" = $3 AND status = 'pending' LIMIT 1`,
+      [task.tenantId, task.id, user.id],
+    );
+    return rows.length > 0;
+  }
+
   async canView(task: ProjectTask, user: UserWithProjects): Promise<boolean> {
     if (LEADERSHIP_ROLES.includes(user.role)) {
       return true;
     }
     if (task.status === JUNK_STATUS) {
       return false;
+    }
+    if (await this.isPendingHandoverReceiver(task, user)) {
+      return true;
     }
     if (task.assigneeUserId === user.id || task.createdByUserId === user.id) {
       return true;

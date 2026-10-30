@@ -102,6 +102,8 @@ export interface PerformanceTrackingThresholds {
   weeklyReportDeadlineDay: number;
   weeklyReportDeadlineTime: string;
   weeklyReportMinLength: number;
+  // C4: every handover template field (and a rejection reason) needs this many characters.
+  handoverFieldMin: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -134,12 +136,13 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   weeklyReportDeadlineDay: 4,
   weeklyReportDeadlineTime: '17:00',
   weeklyReportMinLength: 20,
+  handoverFieldMin: 10,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
-  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength';
+  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -157,6 +160,7 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   techReviewsPerMonth: [1, 10],
   weeklyReportDeadlineDay: [0, 6],
   weeklyReportMinLength: [5, 500],
+  handoverFieldMin: [3, 500],
 };
 
 export function isValidTimeZone(zone: string): boolean {
