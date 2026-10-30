@@ -46,6 +46,7 @@ const NUMBER_FIELDS = [
   ['responseTargetWorkingHours', 'C1: a request answered within (working hours) is on time', 'Counted in the person\'s own working hours (Work Calendars).'],
   ['escapeWindowDays', 'Q4: a production defect counts if found within (days) of its release', ''],
   ['escapedPerTasks', 'Q4: report escaped defects per (tasks released)', ''],
+  ['techReviewsPerMonth', 'Q5: technical reviews per person per month', 'More than this are refused.'],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program
@@ -161,6 +162,7 @@ export default function PerformanceTrackingSettingsPage() {
     body.percentBands = body.percentBands.map(Number);
     body.breachBands = body.breachBands.map(Number);
     delete body.overrideRoles;
+    body.techReviewCriteria = body.techReviewCriteria.map((c) => c.trim()).filter(Boolean);
     if (body.requestSources.length === 0 || body.chaseRoles.length === 0) {
       setError('Pick at least one request source and at least one role that can chase.');
       return;
@@ -388,6 +390,27 @@ export default function PerformanceTrackingSettingsPage() {
                 </label>
               ))}
               {form.overrideUserIds.length === 0 && <p className={styles.helpText}>Nobody can override scores.</p>}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>Q5: technical reviewers (Technical Director, architect; Admin, Executive or Program Manager accounts)</legend>
+              {page.choices.overrideUsers.map((u) => (
+                <label key={u.id} style={inline}>
+                  <input type="checkbox" checked={form.techReviewerUserIds.includes(u.id)} onChange={() => toggleIn('techReviewerUserIds', u.id)} />
+                  {u.name} ({ROLE_LABEL[u.role] || u.role})
+                </label>
+              ))}
+              {form.techReviewerUserIds.length === 0 && <p className={styles.helpText}>Nobody can write technical reviews.</p>}
+              <label className={styles.label} htmlFor="ptRubric" style={{ marginTop: 'var(--space-2)' }}>
+                Rubric, one item per line (each scored 1-5; existing reviews keep the rubric they were scored on)
+              </label>
+              <textarea
+                id="ptRubric"
+                className={styles.textarea}
+                rows={5}
+                value={form.techReviewCriteria.join('\n')}
+                onChange={(e) => set('techReviewCriteria', e.target.value.split('\n'))}
+              />
             </fieldset>
 
             <fieldset style={fieldset}>

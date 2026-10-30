@@ -146,6 +146,25 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.escapedPerTasks[0])
   @Max(THRESHOLD_LIMITS.escapedPerTasks[1])
   escapedPerTasks?: number;
+
+  // Q5. People and the rubric are checked in the service.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsInt({ each: true })
+  techReviewerUserIds?: number[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.techReviewsPerMonth[0])
+  @Max(THRESHOLD_LIMITS.techReviewsPerMonth[1])
+  techReviewsPerMonth?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  techReviewCriteria?: string[];
 }
 
 export class SetPerformanceTrackingSwitchDto {

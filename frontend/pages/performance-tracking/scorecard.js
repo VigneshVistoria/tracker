@@ -23,6 +23,7 @@ function valueText(m) {
   if (m.unit === 'percent') return `${m.value}%`;
   if (m.unit === 'days') return `${m.value} working days`;
   if (m.unit === 'rate') return `${m.value} per 10 tasks ${m.metric === 'Q4' ? 'released' : 'due'}`;
+  if (m.unit === 'score') return `${m.value} of 5`;
   return String(m.value);
 }
 
@@ -254,6 +255,12 @@ function PersonCard({ person, showBack, onOverride, onRemove }) {
                   <tr key={m.metric}>
                     <td>
                       {m.metric} {m.label}
+                      {m.metric === 'Q5' && (
+                        <>
+                          {' '}
+                          <Link href="/performance-tracking/tech-reviews">reviews</Link>
+                        </>
+                      )}
                       {detailsFor(m.metric).length > 1 && (
                         <div className={styles.issueMeta}>
                           {detailsFor(m.metric)

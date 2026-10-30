@@ -58,6 +58,14 @@ describe('Performance Tracking B3 scoring', () => {
     });
   });
 
+  it('Q5 technical review: rounded 1-5 score, one review is enough, combined by weighted average', () => {
+    expect(bandScore('Q5', 3.5, bands)).toBe(4);
+    expect(bandScore('Q5', 3.4, bands)).toBe(3);
+    expect(combineRows('Q5', [row('Q5', { value: 4, sample: 1 }), row('Q5', { projectId: 2, value: 2, sample: 3 })])).toMatchObject({ value: 2.5, sample: 4 });
+    const card = scorePerson(10, [row('Q5', { value: 4.2, sample: 1 })], { bands, minSample: 5, overrides: [] });
+    expect(card.metrics.find((m) => m.metric === 'Q5')).toMatchObject({ state: 'scored', score: 4 });
+  });
+
   it('Baseline: no scores at all, not even with an override', () => {
     const card = scorePerson(10, [row('D1', { phase: 'baseline', numerator: 10, denominator: 10, sample: 10, value: 100 })], {
       bands,

@@ -104,6 +104,16 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 10 })
   escapedPerTasks: number;
 
+  // Q5 (migrations/2026-11-performance-tracking-tech-reviews.sql).
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  techReviewerUserIds: number[];
+
+  @Column({ type: 'int', default: 2 })
+  techReviewsPerMonth: number;
+
+  @Column({ type: 'jsonb', default: () => `'["Code quality", "Design and architecture", "Testing", "Security", "Documentation"]'` })
+  techReviewCriteria: string[];
+
   @UpdateDateColumn()
   updatedAt: Date;
 

@@ -93,6 +93,10 @@ export interface PerformanceTrackingThresholds {
   // reported per escapedPerTasks tasks released.
   escapeWindowDays: number;
   escapedPerTasks: number;
+  // Q5: named technical reviewers, reviews per person per month, rubric.
+  techReviewerUserIds: number[];
+  techReviewsPerMonth: number;
+  techReviewCriteria: string[];
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -119,12 +123,15 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   responseTargetWorkingHours: 4,
   escapeWindowDays: 30,
   escapedPerTasks: 10,
+  techReviewerUserIds: [],
+  techReviewsPerMonth: 2,
+  techReviewCriteria: ['Code quality', 'Design and architecture', 'Testing', 'Security', 'Documentation'],
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
-  | 'escapeWindowDays' | 'escapedPerTasks';
+  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -139,6 +146,7 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   responseTargetWorkingHours: [1, 40],
   escapeWindowDays: [1, 365],
   escapedPerTasks: [1, 100],
+  techReviewsPerMonth: [1, 10],
 };
 
 export function isValidTimeZone(zone: string): boolean {

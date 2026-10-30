@@ -63,6 +63,9 @@ import { PersonLeave } from './work-calendar/person-leave.entity';
 import { CountryHoliday } from './work-calendar/country-holiday.entity';
 import { TaskRequest } from './task-requests/task-request.entity';
 import { TaskRequestsModule } from './task-requests/task-requests.module';
+import { TechReview } from './tech-reviews/tech-review.entity';
+import { TechReviewEvidence } from './tech-reviews/tech-review-evidence.entity';
+import { TechReviewsModule } from './tech-reviews/tech-reviews.module';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -196,6 +199,8 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           PersonLeave,
           CountryHoliday,
           TaskRequest,
+          TechReview,
+          TechReviewEvidence,
           KpiConfig,
           KpiPeriodScore,
           Role,
@@ -274,6 +279,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     TaskFlagsModule,
     TaskActivityModule,
     TaskRequestsModule,
+    TechReviewsModule,
     PermissionsModule,
     ReleaseLogsModule,
     StatusReviewModule,

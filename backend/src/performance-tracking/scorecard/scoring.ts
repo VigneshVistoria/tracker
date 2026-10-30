@@ -27,7 +27,7 @@ import { METRIC_INFO, TrackingMetric, TRACKING_METRICS } from '../metrics/tracki
 
 export const COMPETENCIES: Record<string, { label: string; metrics: TrackingMetric[] }> = {
   D: { label: 'Delivery', metrics: ['D1', 'D2', 'D3', 'D4'] },
-  Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3', 'Q4'] },
+  Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'] },
   C: { label: 'Collaboration', metrics: ['C1', 'C2', 'C5'] },
   O: { label: 'Ownership', metrics: ['O1', 'O2', 'O3', 'O5'] },
   L: { label: 'Client focus', metrics: ['L1', 'L2'] },
@@ -100,9 +100,14 @@ export function bandScore(metric: TrackingMetric, value: number, bands: Bands): 
     const i = bands.percentBands.findIndex((b) => v >= b);
     return i === -1 ? 1 : 5 - i;
   }
+  // Q5 technical review is already a 1-5 score.
+  if (info.unit === 'score') return Math.min(5, Math.max(1, Math.round(value)));
   const i = bands.breachBands.findIndex((b) => value <= b);
   return i === -1 ? 1 : 5 - i;
 }
+
+// Q5 (2 reviews a month) never reaches the shared minimum: one is enough.
+export const minSampleFor = (metric: TrackingMetric, minSample: number) => (METRIC_INFO[metric].unit === 'score' ? 1 : minSample);
 
 // One metric for one person, from their rows in the scoring phase.
 export function combineRows(metric: TrackingMetric, rows: SnapshotRowLike[]): { value: number | null; sample: number; numerator: number | null; denominator: number | null } {
@@ -122,7 +127,7 @@ export function combineRows(metric: TrackingMetric, rows: SnapshotRowLike[]): { 
     const per = Number(rows[0].details?.perTasks ?? 10);
     return { value: d > 0 ? r2((n / d) * per) : null, sample, numerator: n, denominator: d };
   }
-  if (info.unit === 'days') {
+  if (info.unit === 'days' || info.unit === 'score') {
     const valued = rows.filter((r) => r.value !== null && r.sample > 0);
     const w = valued.reduce((s, r) => s + r.sample, 0);
     return { value: w > 0 ? r2(valued.reduce((s, r) => s + Number(r.value) * r.sample, 0) / w) : null, sample, numerator: null, denominator: null };
@@ -148,7 +153,7 @@ export function scorePerson(
     let computed: number | null = null;
     if (inBaseline) state = 'baseline';
     else if (UNSCORED_METRICS.includes(metric)) state = 'not_scored';
-    else if (combined.value === null || combined.sample < options.minSample) state = 'not_enough_data';
+    else if (combined.value === null || combined.sample < minSampleFor(metric, options.minSample)) state = 'not_enough_data';
     else {
       state = 'scored';
       computed = bandScore(metric, combined.value, options.bands);

@@ -240,6 +240,24 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(result, 10, 'Q4')).toMatchObject({ value: null, sample: 0 });
   });
 
+  it('Q5: the average technical review score in the window; one review is enough', () => {
+    const q5 = computeTrackingMetrics(
+      input({
+        techReviews: [
+          { id: 1, revieweeUserId: 10, reviewedAt: at('2026-11-10T08:00:00Z'), average: 4 },
+          { id: 2, revieweeUserId: 10, reviewedAt: at('2026-11-12T08:00:00Z'), average: 3 },
+          // Before go-live - left out.
+          { id: 3, revieweeUserId: 10, reviewedAt: at('2026-10-20T08:00:00Z'), average: 1 },
+          { id: 4, revieweeUserId: 20, reviewedAt: at('2026-11-12T08:00:00Z'), average: 5 },
+        ],
+      }),
+    );
+    expect(get(q5, 10, 'Q5')).toMatchObject({ value: 3.5, sample: 2, enoughData: true });
+    expect((get(q5, 10, 'Q5').details as any).reviewIds).toEqual([1, 2]);
+    expect(get(q5, 20, 'Q5')).toMatchObject({ value: 5, sample: 1, enoughData: true });
+    expect(get(result, 10, 'Q5')).toMatchObject({ value: null, enoughData: false });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');

@@ -21,6 +21,7 @@ import {
   projectTrackingPhase,
 } from './performance-tracking';
 import { UpdatePerformanceTrackingSettingsDto } from './dto/performance-tracking.dto';
+import { criteriaProblem } from '../tech-reviews/tech-reviews';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -93,6 +94,18 @@ export class PerformanceTrackingService {
       const people = await this.usersRepository.find({ where: { id: In(after.overrideUserIds), tenantId } });
       const bad = after.overrideUserIds.filter((id) => !people.some((p) => p.id === id && OVERRIDE_USER_ROLES.includes(p.role)));
       if (bad.length) throw new BadRequestException(`Only Admin, Executive or Program Manager accounts can override scores (not ${bad.map((id) => `#${id}`).join(', ')}).`);
+    }
+    // Q5: technical reviewers come from the same accounts as override users.
+    after.techReviewerUserIds = [...new Set(after.techReviewerUserIds)];
+    if (dto.techReviewerUserIds !== undefined && after.techReviewerUserIds.length) {
+      const people = await this.usersRepository.find({ where: { id: In(after.techReviewerUserIds), tenantId } });
+      const bad = after.techReviewerUserIds.filter((id) => !people.some((p) => p.id === id && OVERRIDE_USER_ROLES.includes(p.role)));
+      if (bad.length) throw new BadRequestException(`Only Admin, Executive or Program Manager accounts can be technical reviewers (not ${bad.map((id) => `#${id}`).join(', ')}).`);
+    }
+    if (dto.techReviewCriteria !== undefined) {
+      const problem = criteriaProblem(dto.techReviewCriteria);
+      if (problem) throw new BadRequestException(problem);
+      after.techReviewCriteria = dto.techReviewCriteria.map((c) => c.trim());
     }
     const calendar = calendarProblem({ timeZone: after.calendarTimeZone, workStart: after.calendarWorkStart, workEnd: after.calendarWorkEnd, weekendDays: after.calendarWeekendDays });
     if (calendar) throw new BadRequestException(calendar);

@@ -48,6 +48,9 @@
 //     released by the person in the window (first Release Log date or
 //     first move to a Released status, whichever is earlier). Defects with
 //     no source task are charged to nobody.
+//  Q5 Technical review (score 1-5) - the average score of the person's
+//     technical reviews (tech-reviews/) written in the window; one review
+//     is enough data.
 //  C1 Response time (%) - B4: requests to the person (requestSources:
 //     dependency tickets they own, and requests made to them on a task)
 //     answered within responseTargetWorkingHours of THEIR working hours
@@ -83,11 +86,11 @@ import { PerformanceTrackingThresholds } from '../performance-tracking';
 import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-calendar';
 import { commitmentDeadline } from '../../performance-metrics/working-days';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'C1', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'C1', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
-export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent' | 'count' | 'days' | 'rate'; higherIsBetter: boolean }> = {
+export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent' | 'count' | 'days' | 'rate' | 'score'; higherIsBetter: boolean }> = {
   D1: { label: 'On-time delivery', unit: 'percent', higherIsBetter: true },
   D2: { label: 'Commitment coverage', unit: 'percent', higherIsBetter: true },
   D3: { label: 'Early-warning rate', unit: 'percent', higherIsBetter: true },
@@ -96,6 +99,7 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q2: { label: 'First-pass test rate', unit: 'percent', higherIsBetter: true },
   Q3: { label: 'Reopen rate', unit: 'percent', higherIsBetter: false },
   Q4: { label: 'Escaped defects', unit: 'rate', higherIsBetter: false },
+  Q5: { label: 'Technical review', unit: 'score', higherIsBetter: true },
   C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
   C2: { label: 'Dependency wait caused', unit: 'count', higherIsBetter: false },
   C5: { label: 'Status freshness', unit: 'percent', higherIsBetter: true },
@@ -213,6 +217,8 @@ export interface TrackingMetricsInput {
   requests?: TmRequest[];
   // Q4: Release Log dates (one row per task per release).
   releaseLog?: Array<{ taskId: number; releaseDate: string }>;
+  // Q5: this project's technical reviews.
+  techReviews?: Array<{ id: number; revieweeUserId: number; reviewedAt: Date; average: number }>;
   thresholds: PerformanceTrackingThresholds;
   people: number[];
   tasks: TmTask[];
@@ -565,6 +571,12 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       releasedTaskIds: released,
       escaped,
     });
+
+    // Q5
+    const reviews = (input.techReviews ?? []).filter((r) => r.revieweeUserId === userId && inWindow(r.reviewedAt));
+    push(userId, 'Q5', reviews.length ? reviews.reduce((s, r) => s + r.average, 0) / reviews.length : null, reviews.length, null, null, {
+      reviewIds: reviews.map((r) => r.id),
+    }, true);
 
     // C1
     if (input.hoursFor) {
