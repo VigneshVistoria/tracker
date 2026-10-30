@@ -166,9 +166,23 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(short, 10, 'Q3')).toMatchObject({ value: 0, numerator: 0 });
   });
 
-  it('C2: the overdue ticket the person owns, and the blocker waiting on them', () => {
-    expect(get(result, 10, 'C2')).toMatchObject({ value: 1, sample: 1 });
-    expect(get(result, 10, 'C2').details).toMatchObject({ overdueWorkingDays: 2, blockedWorkingDays: 1 });
+  it('C2: working days others waited on the person - overdue ticket and blocker flag on the same task count once', () => {
+    // Ticket overdue Fri 6 Nov, resolved Tue 10 Nov: Mon 9 + Tue 10. The
+    // blocker (Mon 9 -> Tue 10) adds Tue 10, already counted.
+    expect(get(result, 10, 'C2')).toMatchObject({ value: 2, numerator: 2, sample: 2 });
+    expect(get(result, 10, 'C2').details).toMatchObject({ blockedTasks: [{ taskId: 5, workingDays: 2 }], overdue: [{ ticketId: 1, taskId: 5, overdueWorkingDays: 2 }], blockerFlags: 1 });
+    // Their own task waiting on them, and external blockers, never count.
+    const base = input();
+    const own = computeTrackingMetrics(
+      input({
+        flags: [
+          ...base.flags,
+          flag({ taskId: 2, kind: 'blocker', blockingOwnerUserId: 10, setAt: at('2026-11-16T08:00:00Z'), clearedAt: at('2026-11-18T08:00:00Z') }),
+          flag({ taskId: 5, kind: 'blocker', assigneeUserId: 20, external: true, blockingOwnerUserId: 10, setAt: at('2026-11-16T08:00:00Z') }),
+        ],
+      }),
+    );
+    expect(get(own, 10, 'C2')).toMatchObject({ value: 2 });
   });
 
   it('C5: fresh for 2 working days after landing, stale until the note, fresh again after it', () => {

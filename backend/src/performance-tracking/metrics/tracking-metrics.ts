@@ -56,10 +56,14 @@
 //     answered within responseTargetWorkingHours of THEIR working hours
 //     (own time zone, core hours, weekend, holidays, leave). Unanswered
 //     ones count once past the target. Details: median working hours.
-//  C2 Dependency wait caused (count) - dependency tickets the person owns
-//     that were overdue at some point in the window. Details: overdue
-//     working days, and working days tasks sat blocked on them (internal
-//     blockers only - external owners are never charged).
+//  C2 Dependency wait caused (working days, count) - the user's batch C2
+//     (2026-10-30): working days other people's tasks sat blocked by this
+//     person's items in the window - an internal blocker flag naming them
+//     as the blocking owner, or a dependency ticket they own while it is
+//     overdue. A task's day counts once even if both apply, only on the
+//     waiting person's working days; their own tasks never count; external
+//     owners are never charged. Sample = those items. Details: per task,
+//     and the overdue tickets.
 //  C5 Status freshness (%) - each working day in the window, each of the
 //     person's tasks in Development/Failed/PM Feedback: fresh if the
 //     assignee changed its status or wrote a progress note within
@@ -101,7 +105,7 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q4: { label: 'Escaped defects', unit: 'rate', higherIsBetter: false },
   Q5: { label: 'Technical review', unit: 'score', higherIsBetter: true },
   C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
-  C2: { label: 'Dependency wait caused', unit: 'count', higherIsBetter: false },
+  C2: { label: 'Dependency wait caused (working days)', unit: 'count', higherIsBetter: false },
   C5: { label: 'Status freshness', unit: 'percent', higherIsBetter: true },
   O1: { label: 'Blocker raise lag', unit: 'days', higherIsBetter: false },
   O2: { label: 'Blocked-task ageing', unit: 'days', higherIsBetter: false },
@@ -611,23 +615,36 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     }
 
     // C2
+    const clip = (a: Date) => (a.getTime() < fromAt.getTime() ? fromAt : a);
+    const until = (t: Date | null) => (t && t.getTime() < endAt.getTime() ? t : endAt);
     const owned = input.tickets.filter(
       (t) => tasks.has(t.parentTaskId) && t.ownerUserId === userId && t.overdueAt && t.overdueAt.getTime() < toAt.getTime() && (!t.resolvedAt || t.resolvedAt.getTime() > fromAt.getTime()),
     );
-    const clip = (a: Date) => (a.getTime() < fromAt.getTime() ? fromAt : a);
-    const overdue = owned.map((t) => ({
-      ticketId: t.id,
-      taskId: t.parentTaskId,
-      overdueWorkingDays: workingDaysBetween(clip(t.overdueAt!), t.resolvedAt && t.resolvedAt.getTime() < endAt.getTime() ? t.resolvedAt : endAt, cal),
-    }));
     const blockedOnThem = input.flags.filter(
       (f) => tasks.has(f.taskId) && f.kind === 'blocker' && !f.external && f.blockingOwnerUserId === userId && f.setAt.getTime() < toAt.getTime() && (!f.clearedAt || f.clearedAt.getTime() > fromAt.getTime()),
     );
-    const ticketsWithDate = input.tickets.filter((t) => tasks.has(t.parentTaskId) && t.ownerUserId === userId && t.overdueAt && (t.status === 'open' || (t.resolvedAt && t.resolvedAt.getTime() > fromAt.getTime())));
-    push(userId, 'C2', overdue.length, ticketsWithDate.length, overdue.length, null, {
-      overdue,
-      overdueWorkingDays: overdue.reduce((s, o) => s + o.overdueWorkingDays, 0),
-      blockedWorkingDays: blockedOnThem.reduce((s, f) => s + workingDaysBetween(clip(f.setAt), f.clearedAt && f.clearedAt.getTime() < endAt.getTime() ? f.clearedAt : endAt, cal), 0),
+    // Days after the start's day up to and including the end's day (the
+    // workingDaysBetween convention), on the waiting person's working days.
+    const waitDays = new Map<number, Set<string>>();
+    const addWait = (taskId: number, start: Date, end: Date) => {
+      const task = tasks.get(taskId)!;
+      for (let d = addCalendarDays(day(start), 1); d <= day(end); d = addCalendarDays(d, 1)) {
+        if (d < windowFrom || d > snapshotDate) continue;
+        const dayEnd = new Date(Math.min(startOfDayInZone(addCalendarDays(d, 1), zone).getTime() - 1, endAt.getTime()));
+        const waiting = assigneeAt(task, dayEnd);
+        if (waiting === null || waiting === userId || !isWorkingDay(d, calOf(waiting))) continue;
+        if (!waitDays.has(taskId)) waitDays.set(taskId, new Set());
+        waitDays.get(taskId)!.add(d);
+      }
+    };
+    for (const t of owned) addWait(t.parentTaskId, clip(t.overdueAt!), until(t.resolvedAt));
+    for (const f of blockedOnThem) addWait(f.taskId, clip(f.setAt), until(f.clearedAt));
+    const waited = [...waitDays].map(([taskId, days]) => ({ taskId, workingDays: days.size })).filter((w) => w.workingDays > 0);
+    const totalWait = waited.reduce((s, w) => s + w.workingDays, 0);
+    push(userId, 'C2', totalWait, owned.length + blockedOnThem.length, totalWait, null, {
+      blockedTasks: waited,
+      overdue: owned.map((t) => ({ ticketId: t.id, taskId: t.parentTaskId, overdueWorkingDays: workingDaysBetween(clip(t.overdueAt!), until(t.resolvedAt), cal) })),
+      blockerFlags: blockedOnThem.length,
     });
 
     // C5
