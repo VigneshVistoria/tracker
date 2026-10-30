@@ -6,6 +6,7 @@ import { UserRole } from '../users/user.entity';
 import { TaskFlagSetEvent } from '../task-flags/task-flags';
 import { TaskReopenedEvent } from '../tasks/qa-intake';
 import { TaskChasedEvent } from '../task-activity/task-activity';
+import { TaskRequestEvent } from '../task-requests/task-requests';
 import { formatLongDate } from '../tasks/team-export/team-tasks-export';
 
 // In-app notifications for risk and blocker flags (Performance Tracking
@@ -119,6 +120,29 @@ export class TaskFlagsNotificationsListener {
       });
     } catch (err) {
       this.logger.error(`task.chased notification failed: ${err}`);
+    }
+  }
+
+  // Performance Tracking B4: a request goes to the person asked; an answer
+  // back to whoever asked. In-app only.
+  @OnEvent('task.request')
+  async onRequest(e: TaskRequestEvent) {
+    try {
+      const actor = await this.usersService.findByIdAndTenant(e.actorUserId, e.tenantId);
+      const actorName = actor?.fullName || actor?.email || e.actorEmail;
+      const text = e.text.length > 200 ? `${e.text.slice(0, 197)}...` : e.text;
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.recipientUserId,
+        type: e.kind === 'created' ? 'task.requestCreated' : 'task.requestAnswered',
+        title: e.kind === 'created' ? `${actorName} has a request for you on #${e.taskId}` : `${actorName} answered your request on #${e.taskId}`,
+        body: `${e.title} - ${text}`,
+        link: `/tasks/${e.taskId}#requests`,
+        actorUserId: e.actorUserId,
+        actorName,
+      });
+    } catch (err) {
+      this.logger.error(`task.request notification failed: ${err}`);
     }
   }
 }

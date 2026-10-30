@@ -75,7 +75,7 @@ function input(overrides: Partial<TrackingMetricsInput> = {}): TrackingMetricsIn
       flag({ taskId: 5, kind: 'blocker', assigneeUserId: 20, blockingOwnerUserId: 10, dependencyTicketId: 1, setAt: at('2026-11-09T08:00:00Z'), clearedAt: at('2026-11-10T10:00:00Z') }),
     ],
     tickets: [
-      { id: 1, parentTaskId: 5, ownerUserId: 10, createdAt: at('2026-11-03T08:00:00Z'), overdueAt: at('2026-11-05T21:00:00Z'), status: 'resolved', resolvedAt: at('2026-11-10T09:00:00Z') },
+      { id: 1, parentTaskId: 5, ownerUserId: 10, createdByUserId: 20, createdAt: at('2026-11-03T08:00:00Z'), overdueAt: at('2026-11-05T21:00:00Z'), status: 'resolved', resolvedAt: at('2026-11-10T09:00:00Z') },
     ],
     reopens: [{ taskId: 1, reopenedAt: at('2026-11-18T08:00:00Z'), passedAt: at('2026-11-11T08:00:00Z'), chargedUserId: 10 }],
     chases: [

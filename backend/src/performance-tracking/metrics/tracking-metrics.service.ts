@@ -14,6 +14,8 @@ import { projectTrackingPhase } from '../performance-tracking';
 import { PerformanceMetricSnapshot } from './performance-metric-snapshot.entity';
 import { PerformanceMetricRun } from './performance-metric-run.entity';
 import { TRACKING_METRICS, computeTrackingMetrics } from './tracking-metrics';
+import { WorkCalendarService } from '../../work-calendar/work-calendar.service';
+import { workingDaysCalendar } from '../../work-calendar/work-calendar';
 
 // Postgres advisory lock (key 1 = this job, key 2 = tenant): at most one
 // run per tenant at a time, across processes too. Released when the
@@ -50,6 +52,7 @@ export class TrackingMetricsService {
     private metrics: PerformanceMetricsService,
     private usersService: UsersService,
     private tenantsService: TenantsService,
+    private workCalendars: WorkCalendarService,
     private dataSource: DataSource,
   ) {}
 
@@ -124,6 +127,14 @@ export class TrackingMetricsService {
       .filter((u) => DEVELOPER_EQUIVALENT_ROLES.includes(u.role) && u.email !== smokeTestEmail)
       .map((u) => u.id);
     const tracked = await this.dataSource.getRepository(Project).find({ where: { tenantId, performanceTrackingEnabled: true }, order: { id: 'ASC' } });
+    // B4: everyone's own calendar (default EAT, 07:30-15:30, Sat/Sun off).
+    const { byUser, fallback } = await this.workCalendars.calendarsFor(tenantId);
+    const hoursFor = (userId: number) => byUser.get(userId) ?? fallback;
+    const workingDaysFor = (userId: number) => {
+      const person = hoursFor(userId);
+      // Tenant-wide holidays are already in the person's days off.
+      return workingDaysCalendar(person, calendar.timeZone);
+    };
 
     // Rows for this night of projects no longer ON go too.
     await this.snapshotsRepository
@@ -149,6 +160,9 @@ export class TrackingMetricsService {
         windowDays: metricSettings.windowDays,
         minSample: metricSettings.minSample,
         calendar,
+        workingDaysFor,
+        hoursFor,
+        dueDateWorkingDays: metricSettings.dueDateWorkingDays,
         thresholds,
         people,
         ...input,
@@ -199,7 +213,7 @@ export class TrackingMetricsService {
       [tenantId, projectId],
     );
     const ids = tasks.map((t) => t.id);
-    const empty = { rounds: [], commitmentEvents: [], flags: [], tickets: [], reopens: [], chases: [], notes: [], statusEvents: [] };
+    const empty = { rounds: [], commitmentEvents: [], flags: [], tickets: [], reopens: [], chases: [], notes: [], statusEvents: [], requests: [] };
     const report = await this.metrics.computeReport(tenantId, { projectId, to: snapshotDate, now });
     const onTimeItems = new Map(report.people.map((p) => [p.userId, p.onTime.items]));
     const chargedChanges = new Map(report.people.map((p) => [p.userId, p.dueChanges.items]));
@@ -213,7 +227,7 @@ export class TrackingMetricsService {
       assignees,
     };
     if (ids.length === 0) return { ...base, ...empty };
-    const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents] = await Promise.all([
+    const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests] = await Promise.all([
       q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
       q(
@@ -221,11 +235,12 @@ export class TrackingMetricsService {
            FROM task_flags WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "setAt", id`,
         [tenantId, ids],
       ),
-      q(`SELECT id, "parentTaskId", "ownerUserId", "createdAt", "overdueAt", status, "resolvedAt" FROM task_dependency_tickets WHERE "tenantId" = $1 AND "parentTaskId" = ANY($2)`, [tenantId, ids]),
+      q(`SELECT id, "parentTaskId", "ownerUserId", "createdByUserId", "createdAt", "overdueAt", status, "resolvedAt" FROM task_dependency_tickets WHERE "tenantId" = $1 AND "parentTaskId" = ANY($2)`, [tenantId, ids]),
       q(`SELECT "taskId", "reopenedAt", "passedAt", "chargedUserId" FROM task_reopens WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
       q(`SELECT "taskId", "assigneeUserId", "createdAt" FROM task_chases WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
       q(`SELECT "taskId", "authorUserId", "createdAt" FROM task_progress_notes WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
       q(`SELECT "taskId", "toStatus", "occurredAt", "actorUserId" FROM task_status_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
+      q(`SELECT source, "dependencyTicketId", "requestedOfUserId", "requestedAt", "respondedAt" FROM task_requests WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
     ]);
     const dates = <T>(rows: any[], keys: string[]): T[] =>
       rows.map((r) => {
@@ -242,6 +257,7 @@ export class TrackingMetricsService {
       chases: dates(chases, ['createdAt']),
       notes: dates(notes, ['createdAt']),
       statusEvents: dates(statusEvents, ['occurredAt']),
+      requests: dates(requests, ['requestedAt', 'respondedAt']),
     };
   }
 

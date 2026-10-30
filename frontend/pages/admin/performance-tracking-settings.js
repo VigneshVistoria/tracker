@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
 import LoadingState from '../../components/ui/LoadingState';
@@ -31,6 +32,8 @@ const SOURCE_LABEL = {
 };
 const ROLE_LABEL = { admin: 'Admin', program_manager: 'Program Manager', executive: 'Executive', qa: 'QA', developer: 'Developer' };
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 const NUMBER_FIELDS = [
   ['baselineDays', 'Baseline length after switch-on (days)', 'Scores show "Baseline" until this many days after a project is first switched on.'],
   ['earlyWarningWorkingDays', 'D3 early warning: risk raised at least (working days) before the Due date', ''],
@@ -40,6 +43,7 @@ const NUMBER_FIELDS = [
   ['reopenWindowDays', 'Q3: a reopen counts within (days) of the Pass', ''],
   ['chaseCooldownHours', 'Chase: one per task per person within (hours)', ''],
   ['progressNoteMin', 'Progress note: at least (characters)', ''],
+  ['responseTargetWorkingHours', 'C1: a request answered within (working hours) is on time', 'Counted in the person\'s own working hours (Work Calendars).'],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program
@@ -154,8 +158,9 @@ export default function PerformanceTrackingSettingsPage() {
     }
     body.percentBands = body.percentBands.map(Number);
     body.breachBands = body.breachBands.map(Number);
-    if (body.requestSources.length === 0 || body.chaseRoles.length === 0 || body.overrideRoles.length === 0) {
-      setError('Pick at least one request source, one role that can chase and one role that can override.');
+    delete body.overrideRoles;
+    if (body.requestSources.length === 0 || body.chaseRoles.length === 0) {
+      setError('Pick at least one request source and at least one role that can chase.');
       return;
     }
     setBusy('save');
@@ -373,13 +378,37 @@ export default function PerformanceTrackingSettingsPage() {
             </fieldset>
 
             <fieldset style={fieldset}>
-              <legend className={styles.label}>Who can override a score (the Technical Director has no role of their own; default: Admin)</legend>
-              {page.choices.overrideRoles.map((v) => (
-                <label key={v} style={inline}>
-                  <input type="checkbox" checked={form.overrideRoles.includes(v)} onChange={() => toggleIn('overrideRoles', v)} />
-                  {ROLE_LABEL[v] || v}
+              <legend className={styles.label}>Who can override a score (named people; Admin, Executive or Program Manager accounts)</legend>
+              {page.choices.overrideUsers.map((u) => (
+                <label key={u.id} style={inline}>
+                  <input type="checkbox" checked={form.overrideUserIds.includes(u.id)} onChange={() => toggleIn('overrideUserIds', u.id)} />
+                  {u.name} ({ROLE_LABEL[u.role] || u.role})
                 </label>
               ))}
+              {form.overrideUserIds.length === 0 && <p className={styles.helpText}>Nobody can override scores.</p>}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>
+                Default working calendar (anyone without their own - edit people on <Link href="/admin/work-calendars">Work Calendars</Link>)
+              </legend>
+              <div style={{ ...inline, flexWrap: 'wrap' }}>
+                <label className={styles.label} htmlFor="ptCalZone">Time zone</label>
+                <input id="ptCalZone" className={styles.input} style={{ width: '14rem' }} value={form.calendarTimeZone} onChange={(e) => set('calendarTimeZone', e.target.value)} />
+                <label className={styles.label} htmlFor="ptCalStart">From</label>
+                <input id="ptCalStart" className={styles.input} type="time" value={form.calendarWorkStart} onChange={(e) => set('calendarWorkStart', e.target.value)} />
+                <label className={styles.label} htmlFor="ptCalEnd">to</label>
+                <input id="ptCalEnd" className={styles.input} type="time" value={form.calendarWorkEnd} onChange={(e) => set('calendarWorkEnd', e.target.value)} />
+              </div>
+              <div style={{ ...inline, flexWrap: 'wrap', marginTop: 'var(--ds-space-2)' }}>
+                <span className={styles.label}>Days off:</span>
+                {DAY_NAMES.map((name, d) => (
+                  <label key={d} style={inline}>
+                    <input type="checkbox" checked={form.calendarWeekendDays.includes(d)} onChange={() => toggleIn('calendarWeekendDays', d)} />
+                    {name}
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
             {NUMBER_FIELDS.map(([key, label, help]) => (

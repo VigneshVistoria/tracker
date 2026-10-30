@@ -9,8 +9,8 @@ import { SCORECARD_AUDIT } from '../src/performance-tracking/scorecard/scorecard
 // Performance Tracking B3 (2026-10-30): the scorecard. Server-side rules
 // (the user's): PM, Executive and Admin see everyone; a developer only
 // their own; anyone else nothing. Baseline = no scores; below the minimum
-// sample = Not enough data. Override: reason required, audited, computed
-// score kept, never on your own score. Excel: PM and Admin only, audited.
+// sample = Not enough data. Override (B4: named users only): reason
+// required, audited, computed score kept, never on your own score. Excel: PM and Admin only, audited.
 // Power BI feed: off unless a secret key is set; key in a header only.
 describe('Performance Tracking scorecard (B3, e2e)', () => {
   let app: INestApplication;
@@ -46,6 +46,8 @@ describe('Performance Tracking scorecard (B3, e2e)', () => {
     await ds.query(`TRUNCATE performance_metric_snapshots, performance_score_overrides, performance_tracking_settings, audit_logs RESTART IDENTITY CASCADE`);
     await seedNight(f.users.devA.id, 'scoring');
     await seedNight(f.users.devNone.id, 'baseline');
+    // B4: overrides by named user - Admin here, for the override tests.
+    await http().patch('/performance-tracking/settings').set(auth(f.users.admin)).send({ overrideUserIds: [f.users.admin.id] }).expect(200);
   });
 
   afterAll(async () => {
@@ -103,7 +105,7 @@ describe('Performance Tracking scorecard (B3, e2e)', () => {
   });
 
   describe('Technical Director override', () => {
-    it('Admin only by default; reason required; never on your own score; O5 not scored', async () => {
+    it('only named users; reason required; never on your own score; O5 not scored', async () => {
       const body = { userId: f.users.devA.id, metric: 'D1', score: 5, reason: 'Late only because the client moved the release' };
       await post(f.users.exec, '/performance-tracking/scorecard/overrides', body).expect(403);
       await post(f.users.pm, '/performance-tracking/scorecard/overrides', body).expect(403);
@@ -146,11 +148,24 @@ describe('Performance Tracking scorecard (B3, e2e)', () => {
       expect(body.overrideHistory).toHaveLength(2);
     });
 
-    it('the roles that may override are a setting', async () => {
-      await patch(f.users.admin, '/performance-tracking/settings', { overrideRoles: ['admin', 'executive'] }).expect(200);
-      await post(f.users.exec, '/performance-tracking/scorecard/overrides', { userId: f.users.devA.id, metric: 'Q1', score: 2, reason: 'Exec acting as Technical Director' }).expect(201);
-      await patch(f.users.admin, '/performance-tracking/settings', { overrideRoles: ['client'] }).expect(400);
-      await patch(f.users.admin, '/performance-tracking/settings', { overrideRoles: ['admin'] }).expect(200);
+    it('who may override is a list of named people (Admin, Executive or PM accounts), audited', async () => {
+      const body = { userId: f.users.devA.id, metric: 'Q1', score: 2, reason: 'Named Technical Director decision' };
+      await patch(f.users.admin, '/performance-tracking/settings', { overrideUserIds: [f.users.exec.id] }).expect(200);
+      await post(f.users.exec, '/performance-tracking/scorecard/overrides', body).expect(201);
+      // Being an Admin is not enough any more.
+      await post(f.users.admin, '/performance-tracking/scorecard/overrides', { ...body, metric: 'Q2' }).expect(403);
+      const [audit] = await ds.query(`SELECT details FROM audit_logs WHERE action = 'performance_tracking_settings_updated' ORDER BY id DESC LIMIT 1`);
+      expect(JSON.parse(audit.details).after.overrideUserIds).toEqual([f.users.exec.id]);
+      // A developer, a client, or someone in another tenant cannot be named.
+      await patch(f.users.admin, '/performance-tracking/settings', { overrideUserIds: [f.users.devA.id] }).expect(400);
+      await patch(f.users.admin, '/performance-tracking/settings', { overrideUserIds: [f.users.clientA.id] }).expect(400);
+      await patch(f.users.admin, '/performance-tracking/settings', { overrideUserIds: [f.users.pmT2.id] }).expect(400);
+      // Empty = nobody can override.
+      await patch(f.users.admin, '/performance-tracking/settings', { overrideUserIds: [] }).expect(200);
+      await post(f.users.exec, '/performance-tracking/scorecard/overrides', { ...body, metric: 'Q2' }).expect(403);
+      const page = (await get(f.users.pm, '/performance-tracking/settings').expect(200)).body;
+      expect(page.choices.overrideUsers.map((u: any) => u.id).sort()).toEqual([f.users.admin.id, f.users.pm.id, f.users.exec.id].sort());
+      await patch(f.users.admin, '/performance-tracking/settings', { overrideUserIds: [f.users.admin.id] }).expect(200);
     });
   });
 

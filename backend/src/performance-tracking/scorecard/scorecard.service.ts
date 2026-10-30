@@ -122,7 +122,7 @@ export class ScorecardService {
       minSample: metricSettings.minSample,
       bands: { percentBands: thresholds.percentBands, breachBands: thresholds.breachBands },
       nonComplianceDisplay: thresholds.nonComplianceDisplay,
-      overrideRoles: thresholds.overrideRoles,
+      overrideUserIds: thresholds.overrideUserIds,
       competencies: Object.entries(COMPETENCIES).map(([key, c]) => ({ key, label: c.label, metrics: c.metrics })),
       metricInfo: TRACKING_METRICS.map((m) => ({ metric: m, ...METRIC_INFO[m], scored: !UNSCORED_METRICS.includes(m) })),
       cards,
@@ -143,7 +143,7 @@ export class ScorecardService {
       ...rest,
       seesEveryone: this.seesAll(viewer),
       canExport: SCORECARD_EXPORT_ROLES.includes(viewer.role),
-      canOverride: built.overrideRoles.includes(viewer.role),
+      canOverride: built.overrideUserIds.includes(viewer.id),
       // No per-metric details in the list - see person().
       cards: built.cards.map(({ metrics, ...card }) => ({ ...card, metrics: metrics.map(({ projects, ...m }) => m) })),
     };
@@ -167,7 +167,7 @@ export class ScorecardService {
       bands: built.bands,
       metricInfo: built.metricInfo,
       competencies: built.competencies,
-      canOverride: built.overrideRoles.includes(viewer.role) && viewer.id !== userId,
+      canOverride: built.overrideUserIds.includes(viewer.id) && viewer.id !== userId,
       user: { id: target.id, name: target.fullName || target.email, email: target.email, role: target.role },
       card,
       details: built.rows.map((r) => ({ projectId: r.projectId, metric: r.metric, phase: r.phase, value: r.value, sample: r.sample, details: r.details })),
@@ -177,8 +177,8 @@ export class ScorecardService {
 
   async setOverride(viewer: Viewer, dto: CreateScoreOverrideDto) {
     const tenantId = viewer.tenantId;
-    const { overrideRoles } = await this.tracking.thresholds(tenantId);
-    if (!overrideRoles.includes(viewer.role)) throw new ForbiddenException('Your role cannot override scores.');
+    const { overrideUserIds } = await this.tracking.thresholds(tenantId);
+    if (!overrideUserIds.includes(viewer.id)) throw new ForbiddenException('Only the people named in Performance Tracking Settings can override scores.');
     if (viewer.id === dto.userId) throw new ForbiddenException('You cannot override your own score.');
     if (UNSCORED_METRICS.includes(dto.metric)) throw new BadRequestException(`${dto.metric} is not scored, so it cannot be overridden.`);
     const reason = (dto.reason || '').trim();
@@ -227,8 +227,8 @@ export class ScorecardService {
 
   async removeOverride(viewer: Viewer, overrideId: number, dto: RemoveScoreOverrideDto) {
     const tenantId = viewer.tenantId;
-    const { overrideRoles } = await this.tracking.thresholds(tenantId);
-    if (!overrideRoles.includes(viewer.role)) throw new ForbiddenException('Your role cannot override scores.');
+    const { overrideUserIds } = await this.tracking.thresholds(tenantId);
+    if (!overrideUserIds.includes(viewer.id)) throw new ForbiddenException('Only the people named in Performance Tracking Settings can override scores.');
     const o = await this.overridesRepository.findOne({ where: { id: overrideId, tenantId } });
     if (!o) throw new NotFoundException(`Override #${overrideId} not found`);
     if (o.removedAt) throw new BadRequestException('This override is already removed - reload to see it.');

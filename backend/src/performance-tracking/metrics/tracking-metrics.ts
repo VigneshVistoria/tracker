@@ -2,6 +2,10 @@
 // user) - the Wave 1 metrics, per person per project, for one night.
 // Pure - no Nest/TypeORM imports - so it is tested with a fixed date.
 //
+// B4: each person's working DAYS use their own calendar (weekend, their
+// country's holidays, their leave) - see work-calendar/work-calendar.ts.
+// D2 deadlines are re-judged with it.
+//
 // Window: the shared rolling window (performance_metric_settings.
 // windowDays, default 28) ending on the snapshot day, in the team's time
 // zone - but never before the project's go-live date: nothing that
@@ -37,6 +41,11 @@
 //     the first Pass/Test failed verdict.
 //  Q3 Reopen rate (%) - reopens after Pass charged to the person within
 //     reopenWindowDays of the Pass, per QA Pass of theirs in the window.
+//  C1 Response time (%) - B4: requests to the person (requestSources:
+//     dependency tickets they own, and requests made to them on a task)
+//     answered within responseTargetWorkingHours of THEIR working hours
+//     (own time zone, core hours, weekend, holidays, leave). Unanswered
+//     ones count once past the target. Details: median working hours.
 //  C2 Dependency wait caused (count) - dependency tickets the person owns
 //     that were overdue at some point in the window. Details: overdue
 //     working days, and working days tasks sat blocked on them (internal
@@ -64,8 +73,10 @@ import { dateInZone, startOfDayInZone } from '../../team-settings/time-zone';
 import { WorkingCalendar, addCalendarDays, isWorkingDay } from '../../performance-metrics/working-days';
 import { OnTimeItem, DueChangeItem } from '../../performance-metrics/performance-metrics.compute';
 import { PerformanceTrackingThresholds } from '../performance-tracking';
+import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-calendar';
+import { commitmentDeadline } from '../../performance-metrics/working-days';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'C1', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -77,6 +88,7 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q1: { label: 'First-time QA acceptance', unit: 'percent', higherIsBetter: true },
   Q2: { label: 'First-pass test rate', unit: 'percent', higherIsBetter: true },
   Q3: { label: 'Reopen rate', unit: 'percent', higherIsBetter: false },
+  C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
   C2: { label: 'Dependency wait caused', unit: 'count', higherIsBetter: false },
   C5: { label: 'Status freshness', unit: 'percent', higherIsBetter: true },
   O1: { label: 'Blocker raise lag', unit: 'days', higherIsBetter: false },
@@ -142,6 +154,7 @@ export interface TmTicket {
   id: number;
   parentTaskId: number;
   ownerUserId: number;
+  createdByUserId: number | null;
   createdAt: Date;
   overdueAt: Date | null;
   status: string;
@@ -153,6 +166,14 @@ export interface TmReopen {
   reopenedAt: Date;
   passedAt: Date | null;
   chargedUserId: number | null;
+}
+
+export interface TmRequest {
+  source: 'request' | 'dependency';
+  dependencyTicketId: number | null;
+  requestedOfUserId: number;
+  requestedAt: Date;
+  respondedAt: Date | null;
 }
 
 export interface TmStatusEvent {
@@ -171,6 +192,12 @@ export interface TrackingMetricsInput {
   windowDays: number;
   minSample: number;
   calendar: WorkingCalendar;
+  // B4: each person's calendar (working days, and hours for C1). Missing =
+  // the team calendar above / no C1.
+  workingDaysFor?: (userId: number) => WorkingCalendar;
+  hoursFor?: (userId: number) => PersonCalendar;
+  dueDateWorkingDays?: number;
+  requests?: TmRequest[];
   thresholds: PerformanceTrackingThresholds;
   people: number[];
   tasks: TmTask[];
@@ -227,8 +254,9 @@ export function workingDaysBetween(from: Date, to: Date, cal: WorkingCalendar): 
 }
 
 export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMetricsResult {
-  const { calendar: cal, thresholds: th, snapshotDate } = input;
-  const zone = cal.timeZone;
+  const { calendar: teamCal, thresholds: th, snapshotDate } = input;
+  const zone = teamCal.timeZone;
+  const calOf = (userId: number | null): WorkingCalendar => (userId !== null && input.workingDaysFor ? input.workingDaysFor(userId) : teamCal);
   const sinceDay = dateInZone(input.trackingSince, zone);
   const rollingFrom = addCalendarDays(snapshotDate, -(input.windowDays - 1));
   const windowFrom = rollingFrom > sinceDay ? rollingFrom : sinceDay;
@@ -320,7 +348,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       const due = dueAt(task, r.submittedAt);
       const submittedDay = day(r.submittedAt);
       const onTime = due !== null && submittedDay <= due;
-      deliveries.push({ taskId, userId: r.submittedByUserId, submittedAt: r.submittedAt, due, onTime, daysLate: due && !onTime ? workingDaysBetweenDays(due, submittedDay, cal) : 0 });
+      deliveries.push({ taskId, userId: r.submittedByUserId, submittedAt: r.submittedAt, due, onTime, daysLate: due && !onTime ? workingDaysBetweenDays(due, submittedDay, calOf(r.submittedByUserId)) : 0 });
     }
   }
   const externallyBlocked = (d: Delivery) => (flagsByTask.get(d.taskId) ?? []).some((f) => f.kind === 'blocker' && f.external && f.setAt.getTime() <= d.submittedAt.getTime());
@@ -366,8 +394,9 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
   }
 
   // ---- C5: working days in the window ----
+  // Every day in the window; each is a sample only on its holder's working days.
   const sampleDays: string[] = [];
-  for (let d = windowFrom; d <= snapshotDate; d = addCalendarDays(d, 1)) if (isWorkingDay(d, cal)) sampleDays.push(d);
+  for (let d = windowFrom; d <= snapshotDate; d = addCalendarDays(d, 1)) sampleDays.push(d);
 
   // One pass over tasks x working days for everyone: who held each active
   // task at the end of each day, and whether it was fresh for them.
@@ -383,7 +412,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       const status = statusAt(task.id, dayEnd);
       if (!status || !FRESHNESS_ACTIVE_STATUSES.includes(status)) continue;
       const userId = assigneeAt(task, dayEnd);
-      if (userId === null || !people.has(userId)) continue;
+      if (userId === null || !people.has(userId) || !isWorkingDay(d, calOf(userId))) continue;
       // The latest moment the task was touched for this person.
       let last = 0;
       const touch = (t: Date) => {
@@ -395,12 +424,13 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       if (!freshness.has(userId)) freshness.set(userId, { samples: 0, fresh: 0, stale: new Set() });
       const f = freshness.get(userId)!;
       f.samples += 1;
-      if (last && workingDaysBetweenDays(day(new Date(last)), d, cal) <= th.statusFreshWorkingDays) f.fresh += 1;
+      if (last && workingDaysBetweenDays(day(new Date(last)), d, calOf(userId)) <= th.statusFreshWorkingDays) f.fresh += 1;
       else f.stale.add(task.id);
     }
   }
 
   for (const userId of people) {
+    const cal = calOf(userId);
     // D1
     const passes = (passesBy.get(userId) ?? []).filter((d) => !externallyBlocked(d));
     const onTime = passes.filter((d) => d.onTime).length;
@@ -410,7 +440,15 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     });
 
     // D2
-    const coverage = (input.onTimeItems.get(userId) ?? []).filter((i) => tasks.has(i.taskId) && inWindow(i.assignedAt));
+    // B4: a date set by the assignee is re-judged against their own
+    // working days (the Non-Compliance engine uses the team calendar).
+    const coverage = (input.onTimeItems.get(userId) ?? [])
+      .filter((i) => tasks.has(i.taskId) && inWindow(i.assignedAt))
+      .map((i) => {
+        if (!input.workingDaysFor || input.dueDateWorkingDays === undefined || !i.setAt || (i.outcome !== 'on_time' && i.outcome !== 'late')) return i;
+        const { deadline } = commitmentDeadline(i.assignedAt, input.dueDateWorkingDays, cal);
+        return { ...i, outcome: (i.setAt.getTime() < deadline.getTime() ? 'on_time' : 'late') as typeof i.outcome };
+      });
     const covered = coverage.filter((i) => i.outcome === 'on_time' || i.outcome === 'already_dated').length;
     push(userId, 'D2', pct(covered, coverage.length), coverage.length, covered, coverage.length, {
       missed: coverage.filter((i) => !(i.outcome === 'on_time' || i.outcome === 'already_dated')).map((i) => ({ taskId: i.taskId, outcome: i.outcome, dueBy: i.dueBy })),
@@ -468,6 +506,38 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'Q3', pct(reopens.length, allPasses.length), allPasses.length, reopens.length, allPasses.length, {
       reopenedTaskIds: reopens.map((r) => r.taskId),
     });
+
+    // C1
+    if (input.hoursFor) {
+      const hours = input.hoursFor(userId);
+      const target = th.responseTargetWorkingHours * 60;
+      const answers = new Map((input.requests ?? []).filter((r) => r.source === 'dependency').map((r) => [r.dependencyTicketId, r.respondedAt]));
+      const items: Array<{ kind: string; taskId: number | null; minutes: number; answered: boolean }> = [];
+      if (th.requestSources.includes('marked_request')) {
+        for (const r of input.requests ?? []) {
+          if (r.source !== 'request' || r.requestedOfUserId !== userId || !inWindow(r.requestedAt)) continue;
+          items.push({ kind: 'request', taskId: null, minutes: workingMinutesBetween(r.requestedAt, r.respondedAt ?? endAt, hours), answered: !!r.respondedAt });
+        }
+      }
+      if (th.requestSources.includes('owned_dependency')) {
+        for (const t of input.tickets) {
+          if (!tasks.has(t.parentTaskId) || t.ownerUserId !== userId || t.createdByUserId === userId || !inWindow(t.createdAt)) continue;
+          const times = [answers.get(t.id) ?? null, t.resolvedAt].filter((x): x is Date => !!x).map((x) => x.getTime());
+          const first = times.length ? new Date(Math.min(...times)) : null;
+          items.push({ kind: 'dependency', taskId: t.parentTaskId, minutes: workingMinutesBetween(t.createdAt, first ?? endAt, hours), answered: !!first });
+        }
+      }
+      // Unanswered ones count only once they are past the target.
+      const counted = items.filter((i) => i.answered || i.minutes > target);
+      const inTime = counted.filter((i) => i.answered && i.minutes <= target).length;
+      const med = median(counted.map((i) => i.minutes));
+      push(userId, 'C1', pct(inTime, counted.length), counted.length, inTime, counted.length, {
+        targetWorkingHours: th.responseTargetWorkingHours,
+        medianWorkingHours: med === null ? null : round2(med / 60),
+        unanswered: counted.filter((i) => !i.answered).length,
+        waiting: items.length - counted.length,
+      });
+    }
 
     // C2
     const owned = input.tickets.filter(

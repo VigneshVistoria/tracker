@@ -73,9 +73,29 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 20 })
   progressNoteMin: number;
 
-  // B3 (migrations/2026-11-performance-tracking-scorecard.sql).
+  // B3 (migrations/2026-11-performance-tracking-scorecard.sql). NOT USED
+  // since B4 (overrideUserIds replaced it); kept until B8 drops the column.
   @Column({ type: 'jsonb', default: () => `'["admin"]'` })
   overrideRoles: UserRole[];
+
+  // B4 (migrations/2026-11-performance-tracking-calendar-requests.sql).
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  overrideUserIds: number[];
+
+  @Column({ type: 'varchar', length: 60, default: 'Africa/Addis_Ababa' })
+  calendarTimeZone: string;
+
+  @Column({ type: 'varchar', length: 5, default: '07:30' })
+  calendarWorkStart: string;
+
+  @Column({ type: 'varchar', length: 5, default: '15:30' })
+  calendarWorkEnd: string;
+
+  @Column({ type: 'jsonb', default: () => "'[0, 6]'" })
+  calendarWeekendDays: number[];
+
+  @Column({ type: 'int', default: 4 })
+  responseTargetWorkingHours: number;
 
   @UpdateDateColumn()
   updatedAt: Date;

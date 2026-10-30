@@ -27,7 +27,7 @@ import { METRIC_INFO, TrackingMetric, TRACKING_METRICS } from '../metrics/tracki
 export const COMPETENCIES: Record<string, { label: string; metrics: TrackingMetric[] }> = {
   D: { label: 'Delivery', metrics: ['D1', 'D2', 'D3', 'D4'] },
   Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3'] },
-  C: { label: 'Collaboration', metrics: ['C2', 'C5'] },
+  C: { label: 'Collaboration', metrics: ['C1', 'C2', 'C5'] },
   O: { label: 'Ownership', metrics: ['O1', 'O2', 'O3', 'O5'] },
   L: { label: 'Client focus', metrics: ['L1', 'L2'] },
 };

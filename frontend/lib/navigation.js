@@ -191,6 +191,8 @@ export const NAV_SECTIONS = [
       { href: '/admin/submission-checklist-settings', label: 'Submission Checklist Settings', icon: ListChecks, roles: [ADMIN, PM] },
       // Performance Tracking (B1, 2026-10-30) - matches PERFORMANCE_TRACKING_SETTINGS_ROLES.
       { href: '/admin/performance-tracking-settings', label: 'Performance Tracking Settings', icon: SlidersHorizontal, roles: [ADMIN, PM] },
+      // Performance Tracking B4 (2026-10-30) - matches WorkCalendarService.assertEditor.
+      { href: '/admin/work-calendars', label: 'Work Calendars', icon: CalendarClock, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

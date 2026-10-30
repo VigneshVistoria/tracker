@@ -55,9 +55,13 @@ export const REQUEST_SOURCES = ['owned_dependency', 'marked_request'] as const;
 export type RequestSource = (typeof REQUEST_SOURCES)[number];
 //  * O3 - who may Chase (never the assignee, never a client).
 export const CHASE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE, UserRole.QA, UserRole.DEVELOPER];
-//  * B3 - who may override a score (the Technical Director has no role of
-//    their own in the tracker; default Admin).
-export const OVERRIDE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
+//  * B3/B4 - who may override a score: named people (B4, the user's
+//    decision 2026-10-30: Abdirahman #3, Technical Director, only), chosen
+//    from Admin, Executive and Program Manager accounts.
+export const OVERRIDE_USER_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
+//  * B4 - the working calendar for anyone without their own (EAT,
+//    07:30-15:30, Saturday + Sunday off) and the C1 response target.
+export const HHMM = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 export interface PerformanceTrackingThresholds {
   baselineDays: number;
@@ -78,7 +82,13 @@ export interface PerformanceTrackingThresholds {
   // One Chase per task per person within this many hours.
   chaseCooldownHours: number;
   progressNoteMin: number;
-  overrideRoles: UserRole[];
+  overrideUserIds: number[];
+  calendarTimeZone: string;
+  calendarWorkStart: string;
+  calendarWorkEnd: string;
+  calendarWeekendDays: number[];
+  // C1: a request answered within this many working hours counts as on time.
+  responseTargetWorkingHours: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -97,12 +107,17 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   chaseRoles: [...CHASE_ROLE_CHOICES],
   chaseCooldownHours: 24,
   progressNoteMin: 20,
-  overrideRoles: [UserRole.ADMIN],
+  overrideUserIds: [],
+  calendarTimeZone: 'Africa/Addis_Ababa',
+  calendarWorkStart: '07:30',
+  calendarWorkEnd: '15:30',
+  calendarWeekendDays: [0, 6],
+  responseTargetWorkingHours: 4,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
-  | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin';
+  | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -114,7 +129,28 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   reopenWindowDays: [1, 365],
   chaseCooldownHours: [0, 168],
   progressNoteMin: [5, 500],
+  responseTargetWorkingHours: [1, 40],
 };
+
+export function isValidTimeZone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A calendar's hours and weekend: the problem, or null when valid.
+export function calendarProblem(c: { timeZone: string; workStart: string; workEnd: string; weekendDays: number[] }): string | null {
+  if (!isValidTimeZone(c.timeZone)) return `Unknown time zone "${c.timeZone}".`;
+  if (!HHMM.test(c.workStart) || !HHMM.test(c.workEnd)) return 'Working hours must be HH:MM, e.g. 07:30.';
+  if (c.workStart >= c.workEnd) return 'Working hours must end after they start.';
+  if (!Array.isArray(c.weekendDays) || c.weekendDays.some((d) => !Number.isInteger(d) || d < 0 || d > 6) || new Set(c.weekendDays).size !== c.weekendDays.length || c.weekendDays.length > 6) {
+    return 'Weekend days must be distinct days 0 (Sunday) to 6 (Saturday), and at least one day must be a working day.';
+  }
+  return null;
+}
 
 // The band lists: exactly 4 whole numbers. Percent bands strictly falling
 // within 0-100; breach bands strictly rising from 0. Returns the problem,

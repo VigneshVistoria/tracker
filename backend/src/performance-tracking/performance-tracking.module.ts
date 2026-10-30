@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Project } from '../projects/project.entity';
+import { User } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
 import { GuardsModule } from '../common/guards.module';
 import { AuditModule } from '../audit/audit.module';
-import { PerformanceTrackingSettings } from './performance-tracking-settings.entity';
-import { TaskStatusEvent } from './task-status-event.entity';
-import { PerformanceTrackingService } from './performance-tracking.service';
+import { PerformanceTrackingCoreModule } from './performance-tracking-core.module';
+import { WorkCalendarModule } from '../work-calendar/work-calendar.module';
 import { PerformanceTrackingController } from './performance-tracking.controller';
 import { PerformanceMetricSnapshot } from './metrics/performance-metric-snapshot.entity';
 import { PerformanceMetricRun } from './metrics/performance-metric-run.entity';
@@ -21,9 +21,12 @@ import { TenantsModule } from '../tenants/tenants.module';
 // Performance Tracking, Wave 1 (2026-10-28). task_status_events is written
 // by database triggers, not here - see ./task-status-event.entity.ts.
 // B2: the nightly metrics snapshot (./metrics/). B3: scorecard (./scorecard/).
+// B4: the settings service lives in PerformanceTrackingCoreModule.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Project, PerformanceTrackingSettings, TaskStatusEvent, PerformanceMetricSnapshot, PerformanceMetricRun, PerformanceScoreOverride]),
+    TypeOrmModule.forFeature([Project, User, PerformanceMetricSnapshot, PerformanceMetricRun, PerformanceScoreOverride]),
+    PerformanceTrackingCoreModule,
+    WorkCalendarModule,
     UsersModule,
     GuardsModule,
     AuditModule,
@@ -31,7 +34,8 @@ import { TenantsModule } from '../tenants/tenants.module';
     TenantsModule,
   ],
   controllers: [PerformanceTrackingController, ScorecardController, ScorecardFeedController],
-  providers: [PerformanceTrackingService, TrackingMetricsService, ScorecardService],
-  exports: [PerformanceTrackingService],
+  providers: [TrackingMetricsService, ScorecardService],
+  // Settings service for TaskActivityModule and the rest.
+  exports: [PerformanceTrackingCoreModule],
 })
 export class PerformanceTrackingModule {}

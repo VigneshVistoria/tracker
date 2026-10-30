@@ -1,11 +1,10 @@
-import { ArrayMaxSize, ArrayMinSize, ArrayNotEmpty, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayNotEmpty, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { UserRole } from '../../users/user.entity';
 import {
   BLOCKER_LAG_CLOCK_STARTS,
   BlockerLagClockStart,
   CHASE_ROLE_CHOICES,
   NON_COMPLIANCE_DISPLAYS,
-  OVERRIDE_ROLE_CHOICES,
   NonComplianceDisplay,
   REQUEST_SOURCES,
   RequestSource,
@@ -101,12 +100,39 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Max(THRESHOLD_LIMITS.progressNoteMin[1])
   progressNoteMin?: number;
 
-  // B3.
+  // B4. People and the calendar are checked in the service.
   @IsOptional()
   @IsArray()
-  @ArrayNotEmpty()
-  @IsIn(OVERRIDE_ROLE_CHOICES, { each: true })
-  overrideRoles?: UserRole[];
+  @ArrayMaxSize(20)
+  @IsInt({ each: true })
+  overrideUserIds?: number[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  calendarTimeZone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  calendarWorkStart?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  calendarWorkEnd?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsInt({ each: true })
+  calendarWeekendDays?: number[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.responseTargetWorkingHours[0])
+  @Max(THRESHOLD_LIMITS.responseTargetWorkingHours[1])
+  responseTargetWorkingHours?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

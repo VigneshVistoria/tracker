@@ -8,11 +8,11 @@ import { TasksModule } from '../tasks/tasks.module';
 import { UsersModule } from '../users/users.module';
 import { AuditModule } from '../audit/audit.module';
 import { GuardsModule } from '../common/guards.module';
-import { PerformanceTrackingModule } from '../performance-tracking/performance-tracking.module';
+import { PerformanceTrackingCoreModule } from '../performance-tracking/performance-tracking-core.module';
 
 // Performance Tracking B1 (2026-10-30) - Chase (O3) and progress notes (C5).
 @Module({
-  imports: [TypeOrmModule.forFeature([TaskChase, TaskProgressNote]), TasksModule, UsersModule, AuditModule, GuardsModule, PerformanceTrackingModule],
+  imports: [TypeOrmModule.forFeature([TaskChase, TaskProgressNote]), TasksModule, UsersModule, AuditModule, GuardsModule, PerformanceTrackingCoreModule],
   controllers: [TaskActivityController],
   providers: [TaskActivityService],
 })

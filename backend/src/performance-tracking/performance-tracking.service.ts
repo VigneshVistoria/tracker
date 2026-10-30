@@ -1,16 +1,17 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Project } from '../projects/project.entity';
 import { AuditLogService } from '../audit/audit-log.service';
-import { UserRole } from '../users/user.entity';
+import { User, UserRole } from '../users/user.entity';
 import { PerformanceTrackingSettings } from './performance-tracking-settings.entity';
 import { TaskStatusEvent } from './task-status-event.entity';
 import {
   BLOCKER_LAG_CLOCK_STARTS,
   CHASE_ROLE_CHOICES,
   NON_COMPLIANCE_DISPLAYS,
-  OVERRIDE_ROLE_CHOICES,
+  OVERRIDE_USER_ROLES,
+  calendarProblem,
   REQUEST_SOURCES,
   THRESHOLD_LIMITS,
   PERFORMANCE_TRACKING_AUDIT,
@@ -30,6 +31,7 @@ export class PerformanceTrackingService {
     @InjectRepository(Project) private readonly projectsRepository: Repository<Project>,
     @InjectRepository(PerformanceTrackingSettings) private readonly settingsRepository: Repository<PerformanceTrackingSettings>,
     @InjectRepository(TaskStatusEvent) private readonly statusEventsRepository: Repository<TaskStatusEvent>,
+    @InjectRepository(User) private readonly usersRepository: Repository<User>,
     private readonly auditLogService: AuditLogService,
   ) {}
 
@@ -45,10 +47,11 @@ export class PerformanceTrackingService {
 
   // The settings page: thresholds, and every project's switch and phase.
   async settingsPage(tenantId: number, now = new Date()) {
-    const [settings, row, projects] = await Promise.all([
+    const [settings, row, projects, leaders] = await Promise.all([
       this.thresholds(tenantId),
       this.settingsRepository.findOne({ where: { tenantId } }),
       this.projectsRepository.find({ where: { tenantId }, order: { name: 'ASC' } }),
+      this.usersRepository.find({ where: { tenantId, role: In(OVERRIDE_USER_ROLES) }, order: { fullName: 'ASC' } }),
     ]);
     return {
       settings,
@@ -57,7 +60,8 @@ export class PerformanceTrackingService {
         nonComplianceDisplay: NON_COMPLIANCE_DISPLAYS,
         requestSources: REQUEST_SOURCES,
         chaseRoles: CHASE_ROLE_CHOICES,
-        overrideRoles: OVERRIDE_ROLE_CHOICES,
+        // B4: the people who can be named as override users.
+        overrideUsers: leaders.map((u) => ({ id: u.id, name: u.fullName || u.email, role: u.role })),
       },
       limits: THRESHOLD_LIMITS,
       isDefault: !row,
@@ -84,7 +88,15 @@ export class PerformanceTrackingService {
     }
     after.requestSources = [...new Set(after.requestSources)];
     after.chaseRoles = [...new Set(after.chaseRoles)];
-    after.overrideRoles = [...new Set(after.overrideRoles)];
+    after.overrideUserIds = [...new Set(after.overrideUserIds)];
+    if (dto.overrideUserIds !== undefined && after.overrideUserIds.length) {
+      const people = await this.usersRepository.find({ where: { id: In(after.overrideUserIds), tenantId } });
+      const bad = after.overrideUserIds.filter((id) => !people.some((p) => p.id === id && OVERRIDE_USER_ROLES.includes(p.role)));
+      if (bad.length) throw new BadRequestException(`Only Admin, Executive or Program Manager accounts can override scores (not ${bad.map((id) => `#${id}`).join(', ')}).`);
+    }
+    const calendar = calendarProblem({ timeZone: after.calendarTimeZone, workStart: after.calendarWorkStart, workEnd: after.calendarWorkEnd, weekendDays: after.calendarWeekendDays });
+    if (calendar) throw new BadRequestException(calendar);
+    after.calendarWeekendDays = [...after.calendarWeekendDays].sort();
     await this.settingsRepository.save(this.settingsRepository.create({ tenantId, ...after, updatedByUserId: actor.id }));
     await this.auditLogService.record({
       userId: actor.id,
