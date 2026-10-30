@@ -10,6 +10,7 @@ import {
   BLOCKER_LAG_CLOCK_STARTS,
   CHASE_ROLE_CHOICES,
   NON_COMPLIANCE_DISPLAYS,
+  OVERRIDE_ROLE_CHOICES,
   REQUEST_SOURCES,
   THRESHOLD_LIMITS,
   PERFORMANCE_TRACKING_AUDIT,
@@ -56,6 +57,7 @@ export class PerformanceTrackingService {
         nonComplianceDisplay: NON_COMPLIANCE_DISPLAYS,
         requestSources: REQUEST_SOURCES,
         chaseRoles: CHASE_ROLE_CHOICES,
+        overrideRoles: OVERRIDE_ROLE_CHOICES,
       },
       limits: THRESHOLD_LIMITS,
       isDefault: !row,
@@ -82,6 +84,7 @@ export class PerformanceTrackingService {
     }
     after.requestSources = [...new Set(after.requestSources)];
     after.chaseRoles = [...new Set(after.chaseRoles)];
+    after.overrideRoles = [...new Set(after.overrideRoles)];
     await this.settingsRepository.save(this.settingsRepository.create({ tenantId, ...after, updatedByUserId: actor.id }));
     await this.auditLogService.record({
       userId: actor.id,

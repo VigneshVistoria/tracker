@@ -154,8 +154,8 @@ export default function PerformanceTrackingSettingsPage() {
     }
     body.percentBands = body.percentBands.map(Number);
     body.breachBands = body.breachBands.map(Number);
-    if (body.requestSources.length === 0 || body.chaseRoles.length === 0) {
-      setError('Pick at least one request source and at least one role that can chase.');
+    if (body.requestSources.length === 0 || body.chaseRoles.length === 0 || body.overrideRoles.length === 0) {
+      setError('Pick at least one request source, one role that can chase and one role that can override.');
       return;
     }
     setBusy('save');
@@ -367,6 +367,16 @@ export default function PerformanceTrackingSettingsPage() {
               {page.choices.chaseRoles.map((v) => (
                 <label key={v} style={inline}>
                   <input type="checkbox" checked={form.chaseRoles.includes(v)} onChange={() => toggleIn('chaseRoles', v)} />
+                  {ROLE_LABEL[v] || v}
+                </label>
+              ))}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>Who can override a score (the Technical Director has no role of their own; default: Admin)</legend>
+              {page.choices.overrideRoles.map((v) => (
+                <label key={v} style={inline}>
+                  <input type="checkbox" checked={form.overrideRoles.includes(v)} onChange={() => toggleIn('overrideRoles', v)} />
                   {ROLE_LABEL[v] || v}
                 </label>
               ))}

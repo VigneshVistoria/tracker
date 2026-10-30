@@ -55,6 +55,9 @@ export const REQUEST_SOURCES = ['owned_dependency', 'marked_request'] as const;
 export type RequestSource = (typeof REQUEST_SOURCES)[number];
 //  * O3 - who may Chase (never the assignee, never a client).
 export const CHASE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE, UserRole.QA, UserRole.DEVELOPER];
+//  * B3 - who may override a score (the Technical Director has no role of
+//    their own in the tracker; default Admin).
+export const OVERRIDE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
 
 export interface PerformanceTrackingThresholds {
   baselineDays: number;
@@ -75,6 +78,7 @@ export interface PerformanceTrackingThresholds {
   // One Chase per task per person within this many hours.
   chaseCooldownHours: number;
   progressNoteMin: number;
+  overrideRoles: UserRole[];
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -93,6 +97,7 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   chaseRoles: [...CHASE_ROLE_CHOICES],
   chaseCooldownHours: 24,
   progressNoteMin: 20,
+  overrideRoles: [UserRole.ADMIN],
 };
 
 export type NumericThreshold =

@@ -32,6 +32,7 @@ import {
   FlaskConical,
   RotateCcw,
   Gauge,
+  Award,
   LayoutGrid,
   Bug,
   AlertTriangle,
@@ -144,6 +145,8 @@ export const NAV_SECTIONS = [
       { href: '/kpi', label: 'KPI Dashboard', icon: Gauge, roles: [ADMIN, PM, EXEC, QA] },
       { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid, roles: [ADMIN, PM, EXEC] },
       { href: '/reports/non-compliance', label: 'Non-Compliance Report', icon: AlertOctagon, roles: [ADMIN, PM, EXEC] },
+      // Performance Tracking (B3, 2026-10-30) - matches SCORECARD_ALL_ROLES.
+      { href: '/performance-tracking/scorecard', label: 'Performance Scorecard', icon: Award, roles: [ADMIN, PM, EXEC] },
       { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart, roles: [ADMIN, EXEC] },
     ],
   },

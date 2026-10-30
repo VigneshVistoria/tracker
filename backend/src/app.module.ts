@@ -57,6 +57,7 @@ import { TaskChase } from './task-activity/task-chase.entity';
 import { TaskProgressNote } from './task-activity/task-progress-note.entity';
 import { PerformanceMetricSnapshot } from './performance-tracking/metrics/performance-metric-snapshot.entity';
 import { PerformanceMetricRun } from './performance-tracking/metrics/performance-metric-run.entity';
+import { PerformanceScoreOverride } from './performance-tracking/scorecard/performance-score-override.entity';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -185,6 +186,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TaskProgressNote,
           PerformanceMetricSnapshot,
           PerformanceMetricRun,
+          PerformanceScoreOverride,
           KpiConfig,
           KpiPeriodScore,
           Role,

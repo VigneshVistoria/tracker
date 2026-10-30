@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck, Gauge } from 'lucide-react';
+import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck, Gauge, Award } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
@@ -53,6 +53,20 @@ function NavLink({ item, active, collapsed, count }) {
   );
 }
 
+// Asked once per tab - it only changes when an Admin switches a project on.
+let scorecardVisible = null;
+function loadScorecardVisible() {
+  if (!scorecardVisible) {
+    scorecardVisible = apiFetch('/performance-tracking/scorecard/visible')
+      .then((r) => !!r.visible)
+      .catch((err) => {
+        scorecardVisible = null;
+        throw err;
+      });
+  }
+  return scorecardVisible;
+}
+
 export default function AppShell({ children, fullScreen = false }) {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
@@ -71,6 +85,9 @@ export default function AppShell({ children, fullScreen = false }) {
   const [navCounts, setNavCounts] = useState({ myTasks: null, qaReview: null, myDefects: null, pmReview: null, defectDisputes: null });
   // Client portal (Stage 2): whether to show Client tickets.
   const [canSeeClientTickets, setCanSeeClientTickets] = useState(false);
+  // Performance Tracking scorecard link for developers - only once some
+  // project has tracking on (GET /performance-tracking/scorecard/visible).
+  const [showScorecard, setShowScorecard] = useState(false);
   // Developer/Designer/DevOps header badge - peer reviews waiting on me.
   const [peerReviewCount, setPeerReviewCount] = useState(null);
   const pendingGo = useRef(null);
@@ -97,6 +114,11 @@ export default function AppShell({ children, fullScreen = false }) {
         else setCanSeeClientTickets(me.canSeeClientTickets);
       })
       .catch(() => {});
+    if (DEVELOPER_EQUIVALENT_ROLES.includes(JSON.parse(storedUser).role)) {
+      loadScorecardVisible()
+        .then(setShowScorecard)
+        .catch(() => {});
+    }
     const storedImpersonator = localStorage.getItem('impersonator');
     setImpersonator(storedImpersonator ? JSON.parse(storedImpersonator) : null);
     setCollapsedSections(readCollapsedSections());
@@ -379,6 +401,18 @@ export default function AppShell({ children, fullScreen = false }) {
                 aria-current={router.pathname === '/reports/non-compliance' ? 'page' : undefined}
               >
                 <Gauge size={18} aria-hidden="true" />
+              </Link>
+            )}
+            {/* Own Performance Tracking scorecard (ScorecardService: a developer sees only their own). */}
+            {hideSidebar && showScorecard && (
+              <Link
+                href="/performance-tracking/scorecard"
+                className={styles.iconButton}
+                aria-label="My scorecard"
+                title="My scorecard"
+                aria-current={router.pathname === '/performance-tracking/scorecard' ? 'page' : undefined}
+              >
+                <Award size={18} aria-hidden="true" />
               </Link>
             )}
             {/* Client portal tickets for client-team members (Stage 2). */}

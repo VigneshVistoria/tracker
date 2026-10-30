@@ -5,6 +5,7 @@ import {
   BlockerLagClockStart,
   CHASE_ROLE_CHOICES,
   NON_COMPLIANCE_DISPLAYS,
+  OVERRIDE_ROLE_CHOICES,
   NonComplianceDisplay,
   REQUEST_SOURCES,
   RequestSource,
@@ -99,6 +100,13 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.progressNoteMin[0])
   @Max(THRESHOLD_LIMITS.progressNoteMin[1])
   progressNoteMin?: number;
+
+  // B3.
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(OVERRIDE_ROLE_CHOICES, { each: true })
+  overrideRoles?: UserRole[];
 }
 
 export class SetPerformanceTrackingSwitchDto {

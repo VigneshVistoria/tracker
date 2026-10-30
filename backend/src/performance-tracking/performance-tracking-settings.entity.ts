@@ -73,6 +73,10 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 20 })
   progressNoteMin: number;
 
+  // B3 (migrations/2026-11-performance-tracking-scorecard.sql).
+  @Column({ type: 'jsonb', default: () => `'["admin"]'` })
+  overrideRoles: UserRole[];
+
   @UpdateDateColumn()
   updatedAt: Date;
 
