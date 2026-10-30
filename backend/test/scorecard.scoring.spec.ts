@@ -75,6 +75,14 @@ describe('Performance Tracking B3 scoring', () => {
     expect(p1(2)).toMatchObject({ state: 'not_enough_data' });
   });
 
+  it('L4/L5 need clientMinSample (default 3); L5 is a 1-5 score; L3 uses the shared minimum', () => {
+    const card = (rows: SnapshotRowLike[], opts: any = {}) => scorePerson(10, rows, { bands, minSample: 5, overrides: [], ...opts });
+    expect(card([row('L5', { value: 4.4, sample: 2 })]).metrics.find((m) => m.metric === 'L5')).toMatchObject({ state: 'not_enough_data' });
+    expect(card([row('L5', { value: 4.4, sample: 3 })]).metrics.find((m) => m.metric === 'L5')).toMatchObject({ state: 'scored', score: 4 });
+    expect(card([row('L4', { numerator: 1, denominator: 1, sample: 1 })], { clientMinSample: 1 }).metrics.find((m) => m.metric === 'L4')).toMatchObject({ state: 'scored', score: 5 });
+    expect(card([row('L3', { value: 0, sample: 4 })]).metrics.find((m) => m.metric === 'L3')).toMatchObject({ state: 'not_enough_data' });
+  });
+
   it('P3 needs securityMinSample verified fixes; P4 breaches are scored from one finding on the breach bands', () => {
     const card = (rows: SnapshotRowLike[], opts: any = {}) => scorePerson(10, rows, { bands, minSample: 5, overrides: [], ...opts });
     expect(card([row('P3', { numerator: 2, denominator: 2, sample: 2 })]).metrics.find((m) => m.metric === 'P3')).toMatchObject({ state: 'not_enough_data' });

@@ -106,6 +106,11 @@ export class ProjectTask {
   @Column({ type: 'text', nullable: true })
   clientImpact: string | null;
 
+  // Performance Tracking L3 (client-measures/client-measures.ts): 1 = the
+  // first, most urgent tier of the clientPriorityTiers setting. PM only.
+  @Column({ type: 'smallint', nullable: true })
+  clientPriorityTier: number | null;
+
   @Column({ type: 'varchar', length: 10, nullable: true })
   improvementDecision: ImprovementDecision | null;
 

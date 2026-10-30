@@ -153,7 +153,8 @@ export default function ScorecardPage() {
             {list.projects.map((p) => `${p.name} (${p.phase === 'baseline' ? `Baseline until ${formatDate(p.baselineEndsAt)}` : 'Scoring'})`).join(', ')}. Below {list.minSample}{' '}
             items a measure shows &quot;Not enough data&quot;
             {list.release && ` (P1, P2: releases in the last ${list.release.windowDays} days, at least ${list.release.minSample})`}
-            {list.security && ` (P3: verified security fixes in the last ${list.security.windowDays} days, at least ${list.security.minSample}; P4 from one finding due)`}.
+            {list.security && ` (P3: verified security fixes in the last ${list.security.windowDays} days, at least ${list.security.minSample}; P4 from one finding due)`}
+            {list.client && ` (L4, L5: UAT tasks / release responses in the last ${list.client.windowDays} days, at least ${list.client.minSample})`}.
           </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>

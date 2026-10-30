@@ -239,6 +239,31 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.securityMinSample[0])
   @Max(THRESHOLD_LIMITS.securityMinSample[1])
   securityMinSample?: number;
+
+  // L3-L5. The lists are checked in the service.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  clientPriorityTiers?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @IsString({ each: true })
+  satisfactionQuestions?: string[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.clientWindowDays[0])
+  @Max(THRESHOLD_LIMITS.clientWindowDays[1])
+  clientWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.clientMinSample[0])
+  @Max(THRESHOLD_LIMITS.clientMinSample[1])
+  clientMinSample?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

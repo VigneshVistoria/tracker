@@ -68,6 +68,10 @@ import { TechReviewEvidence } from './tech-reviews/tech-review-evidence.entity';
 import { TechReviewsModule } from './tech-reviews/tech-reviews.module';
 import { SecurityFinding } from './security-findings/security-finding.entity';
 import { SecurityFindingsModule } from './security-findings/security-findings.module';
+import { TaskUatResult } from './client-measures/task-uat-result.entity';
+import { ReleaseSatisfaction } from './client-measures/release-satisfaction.entity';
+import { TaskPriorityTierEvent } from './client-measures/task-priority-tier-event.entity';
+import { ClientMeasuresModule } from './client-measures/client-measures.module';
 import { WeeklyStatusReport } from './weekly-status/weekly-status-report.entity';
 import { WeeklyStatusModule } from './weekly-status/weekly-status.module';
 import { TaskHandover } from './task-handovers/task-handover.entity';
@@ -208,6 +212,9 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TechReview,
           TechReviewEvidence,
           SecurityFinding,
+          TaskUatResult,
+          ReleaseSatisfaction,
+          TaskPriorityTierEvent,
           WeeklyStatusReport,
           TaskHandover,
           KpiConfig,
@@ -290,6 +297,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     TaskRequestsModule,
     TechReviewsModule,
     SecurityFindingsModule,
+    ClientMeasuresModule,
     WeeklyStatusModule,
     TaskHandoversModule,
     PermissionsModule,

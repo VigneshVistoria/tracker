@@ -158,6 +158,19 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 3 })
   securityMinSample: number;
 
+  // L3-L5 (migrations/2026-11-performance-tracking-client-measures.sql).
+  @Column({ type: 'jsonb', default: () => `'["Critical", "High", "Normal", "Low"]'` })
+  clientPriorityTiers: string[];
+
+  @Column({ type: 'jsonb', default: () => `'["How satisfied are you with this release?", "How well did the team understand what you needed?"]'` })
+  satisfactionQuestions: string[];
+
+  @Column({ type: 'int', default: 90 })
+  clientWindowDays: number;
+
+  @Column({ type: 'int', default: 3 })
+  clientMinSample: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

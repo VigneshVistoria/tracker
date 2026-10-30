@@ -207,7 +207,7 @@ export class TrackingMetricsService {
   private async load(tenantId: number, projectId: number, snapshotDate: string, now: Date) {
     const q = (sql: string, params: any[]) => this.dataSource.query(sql, params);
     const tasks: any[] = await q(
-      `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact",
+      `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact", "clientPriorityTier",
               "improvementDecision", "improvementDecidedAt",
               "createdAt", "foundInProduction", "escapedFromTaskId", "productionReleaseDate"::text AS "productionReleaseDate"
          FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2`,
@@ -257,7 +257,23 @@ export class TrackingMetricsService {
       firstVerifiedAt: r.firstVerifiedAt ? new Date(r.firstVerifiedAt) : null,
       riskAcceptedAt: r.riskAcceptedAt ? new Date(r.riskAcceptedAt) : null,
     }));
-    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers, releases, securityFindings };
+    // L3 tier change log, L4 UAT rounds and L5 release responses (with each release's tasks).
+    const tierEvents = (
+      await q(`SELECT "taskId", tier, "changedAt" FROM task_priority_tier_events WHERE "tenantId" = $1 AND "projectId" = $2`, [tenantId, projectId])
+    ).map((r: any) => ({ taskId: r.taskId, tier: r.tier === null ? null : Number(r.tier), changedAt: new Date(r.changedAt) }));
+    const uatResults = (
+      await q(`SELECT "taskId", round, result, "recordedAt" FROM task_uat_results WHERE "tenantId" = $1 AND "projectId" = $2`, [tenantId, projectId])
+    ).map((r: any) => ({ ...r, recordedAt: new Date(r.recordedAt) }));
+    const satisfaction = (
+      await q(
+        `SELECT s."releaseId", r."releaseDate"::text AS "releaseDate", s.average,
+                COALESCE((SELECT array_agg(i."taskId") FROM release_items i WHERE i."releaseId" = s."releaseId"), '{}') AS "taskIds"
+           FROM release_satisfaction s JOIN releases r ON r.id = s."releaseId"
+          WHERE s."tenantId" = $1 AND s."projectId" = $2`,
+        [tenantId, projectId],
+      )
+    ).map((r: any) => ({ releaseId: r.releaseId, releaseDate: r.releaseDate, average: Number(r.average), taskIds: (r.taskIds as number[]).map(Number) }));
+    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers, releases, securityFindings, uatResults, satisfaction, tierEvents };
     const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests, releaseLog] = await Promise.all([
       q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt", "escalationReasonCode", "escalationAvoidable" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
@@ -300,6 +316,9 @@ export class TrackingMetricsService {
       handovers,
       releases,
       securityFindings,
+      uatResults,
+      satisfaction,
+      tierEvents,
     };
   }
 

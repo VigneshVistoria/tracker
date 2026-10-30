@@ -41,6 +41,7 @@ import DependencyNeedByModal from '../../components/DependencyNeedByModal';
 import ReopenAfterPassModal, { REOPEN_FROM_STATUSES } from '../../components/ReopenAfterPassModal';
 import TaskFieldsCard from '../../components/TaskFieldsCard';
 import EscapedDefectCard from '../../components/EscapedDefectCard';
+import ClientMeasuresCard from '../../components/ClientMeasuresCard';
 import TaskHandoverPanel from '../../components/TaskHandoverPanel';
 import {
   EMPTY_CHECKLIST,
@@ -2649,6 +2650,7 @@ export default function TaskDetailPage() {
       {!isJunk && <TaskHandoverPanel task={task} onChanged={refreshAfterReturnToQa} />}
       {!isJunk && !task.isDefect && <TaskFieldsCard task={task} onChanged={refreshAfterReturnToQa} />}
       {!isJunk && task.isDefect && <EscapedDefectCard task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && <ClientMeasuresCard task={task} onChanged={refreshAfterReturnToQa} />}
       {qaIntake?.trackingOn && REOPEN_FROM_STATUSES.includes(task.status) && (user.role === 'program_manager' || user.role === 'admin') && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>Reopen after Pass</h2>

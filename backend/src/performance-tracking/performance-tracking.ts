@@ -14,6 +14,7 @@
 import { UserRole } from '../users/user.entity';
 import { DEFAULT_ESCALATION_REASONS, EscalationReason } from '../task-qa-reviews/escalation-reasons';
 import { DEFAULT_SLA_DAYS, SECURITY_ROLE_CHOICES, SlaDays } from '../security-findings/security-findings';
+import { DEFAULT_PRIORITY_TIERS, DEFAULT_SATISFACTION_QUESTIONS } from '../client-measures/client-measures';
 
 // Admin and Program Manager edit the thresholds and switch projects.
 export const PERFORMANCE_TRACKING_SETTINGS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
@@ -120,6 +121,12 @@ export interface PerformanceTrackingThresholds {
   securityRoles: UserRole[];
   securityWindowDays: number;
   securityMinSample: number;
+  // L3-L5: client priority tiers (most urgent first), the satisfaction
+  // questions, and L4/L5's own window and minimum.
+  clientPriorityTiers: string[];
+  satisfactionQuestions: string[];
+  clientWindowDays: number;
+  clientMinSample: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -161,13 +168,17 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   securityRoles: [...SECURITY_ROLE_CHOICES],
   securityWindowDays: 90,
   securityMinSample: 3,
+  clientPriorityTiers: [...DEFAULT_PRIORITY_TIERS],
+  satisfactionQuestions: [...DEFAULT_SATISFACTION_QUESTIONS],
+  clientWindowDays: 90,
+  clientMinSample: 3,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
   | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin' | 'escalationsPerRounds'
-  | 'releaseWindowDays' | 'releaseMinSample' | 'securityWindowDays' | 'securityMinSample';
+  | 'releaseWindowDays' | 'releaseMinSample' | 'securityWindowDays' | 'securityMinSample' | 'clientWindowDays' | 'clientMinSample';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -191,6 +202,8 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   releaseMinSample: [1, 20],
   securityWindowDays: [28, 365],
   securityMinSample: [1, 20],
+  clientWindowDays: [28, 365],
+  clientMinSample: [1, 20],
 };
 
 export function isValidTimeZone(zone: string): boolean {

@@ -25,6 +25,7 @@ import { UpdatePerformanceTrackingSettingsDto } from './dto/performance-tracking
 import { criteriaProblem } from '../tech-reviews/tech-reviews';
 import { codeFor, reasonsProblem } from '../task-qa-reviews/escalation-reasons';
 import { SECURITY_ROLE_CHOICES, SlaDays, slaDaysProblem } from '../security-findings/security-findings';
+import { questionsProblem, tiersProblem } from '../client-measures/client-measures';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -95,6 +96,19 @@ export class PerformanceTrackingService {
     after.requestSources = [...new Set(after.requestSources)];
     after.chaseRoles = [...new Set(after.chaseRoles)];
     after.securityRoles = [...new Set(after.securityRoles)];
+    if (dto.clientPriorityTiers !== undefined) {
+      const problem = tiersProblem(dto.clientPriorityTiers);
+      if (problem) throw new BadRequestException(problem);
+      after.clientPriorityTiers = dto.clientPriorityTiers.map((t) => t.trim());
+      // A task's tier is a position in the list - shortening it would orphan tiers in use.
+      const [{ max }] = await this.projectsRepository.query(`SELECT MAX("clientPriorityTier") AS max FROM project_tasks WHERE "tenantId" = $1`, [tenantId]);
+      if (max && Number(max) > after.clientPriorityTiers.length) throw new BadRequestException(`Tasks use tier ${max}; keep at least ${max} tiers (rename them instead).`);
+    }
+    if (dto.satisfactionQuestions !== undefined) {
+      const problem = questionsProblem(dto.satisfactionQuestions);
+      if (problem) throw new BadRequestException(problem);
+      after.satisfactionQuestions = dto.satisfactionQuestions.map((q) => q.trim());
+    }
     if (dto.securitySlaDays !== undefined) {
       const problem = slaDaysProblem(dto.securitySlaDays);
       if (problem) throw new BadRequestException(problem);

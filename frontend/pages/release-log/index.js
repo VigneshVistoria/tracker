@@ -56,6 +56,10 @@ export default function ReleaseLogPage() {
   const [staff, setStaff] = useState([]);
   const [pathDraft, setPathDraft] = useState(pathOf({}));
   const [savingPath, setSavingPath] = useState(false);
+  // Performance Tracking L5 (client-measures.ts): the client's answers for this release.
+  const [satisfaction, setSatisfaction] = useState(null);
+  const [satDraft, setSatDraft] = useState({ scores: [], respondent: '', comment: '' });
+  const [savingSat, setSavingSat] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [emailing, setEmailing] = useState(false);
@@ -71,6 +75,18 @@ export default function ReleaseLogPage() {
       .finally(() => setLoading(false));
   };
 
+  const loadSatisfaction = (id) =>
+    apiFetch(`/releases/${id}/satisfaction`)
+      .then((s) => {
+        setSatisfaction(s);
+        setSatDraft({
+          scores: s.response ? s.response.scores.map(String) : s.questions.map(() => ''),
+          respondent: s.response?.respondent || '',
+          comment: s.response?.comment || '',
+        });
+      })
+      .catch(() => setSatisfaction(null));
+
   const loadRelease = (id) => {
     setDetailError('');
     apiFetch(`/releases/${id}`)
@@ -78,6 +94,7 @@ export default function ReleaseLogPage() {
         setSelected(release);
         setArtifactsDraft(release.artifacts || '');
         setPathDraft(pathOf(release));
+        loadSatisfaction(release.id);
         return apiFetch(`/releases/ticket-options?projectId=${release.projectId}`);
       })
       .then(setTicketOptions)
@@ -234,6 +251,28 @@ export default function ReleaseLogPage() {
       setDetailError(err.message);
     } finally {
       setSavingPath(false);
+    }
+  };
+
+  const handleSaveSatisfaction = async (e) => {
+    e.preventDefault();
+    if (satDraft.scores.some((s) => !s)) {
+      setDetailError('Answer every satisfaction question (1-5).');
+      return;
+    }
+    setSavingSat(true);
+    setDetailError('');
+    try {
+      const next = await apiFetch(`/releases/${selected.id}/satisfaction`, {
+        method: 'PUT',
+        body: JSON.stringify({ scores: satDraft.scores.map(Number), respondent: satDraft.respondent.trim() || null, comment: satDraft.comment.trim() || null }),
+      });
+      setSatisfaction(next);
+      showToast('Client satisfaction saved', 'success');
+    } catch (err) {
+      setDetailError(err.message);
+    } finally {
+      setSavingSat(false);
     }
   };
 
@@ -536,6 +575,49 @@ export default function ReleaseLogPage() {
                   {signedOffLate && <strong> This sign-off is after the release date, so it does not count.</strong>}
                 </p>
               </fieldset>
+
+              {satisfaction?.trackingOn && (
+                <form onSubmit={handleSaveSatisfaction} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+                  <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+                    <legend className={styles.label}>Client satisfaction (Performance Tracking L5) - the client&apos;s answers, 1 = poor, 5 = excellent</legend>
+                    {satisfaction.questions.map((q, i) => (
+                      <div key={q} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-1)' }}>
+                        <span style={{ minWidth: '18rem' }}>{q}</span>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <label key={n} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <input
+                              type="radio"
+                              name={`sat-${i}`}
+                              value={n}
+                              checked={satDraft.scores[i] === String(n)}
+                              onChange={() => setSatDraft((d) => ({ ...d, scores: d.scores.map((s, j) => (j === i ? String(n) : s)) }))}
+                            />
+                            {n}
+                          </label>
+                        ))}
+                      </div>
+                    ))}
+                  </fieldset>
+                  <div className={styles.actions} style={{ justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div className={styles.field} style={{ marginBottom: 0 }}>
+                      <label className={styles.label} htmlFor="relSatWho">Answered by (optional)</label>
+                      <input className={styles.input} id="relSatWho" maxLength={120} value={satDraft.respondent} onChange={(e) => setSatDraft((d) => ({ ...d, respondent: e.target.value }))} />
+                    </div>
+                    <div className={styles.field} style={{ flex: '1 1 260px', marginBottom: 0 }}>
+                      <label className={styles.label} htmlFor="relSatComment">Comment (optional)</label>
+                      <input className={styles.input} id="relSatComment" maxLength={4000} value={satDraft.comment} onChange={(e) => setSatDraft((d) => ({ ...d, comment: e.target.value }))} />
+                    </div>
+                    <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={savingSat}>
+                      {savingSat ? 'Saving...' : satisfaction.response ? 'Update answers' : 'Save answers'}
+                    </button>
+                  </div>
+                  {satisfaction.response && (
+                    <p className={styles.helpText} style={{ marginBottom: 0 }}>
+                      Average {satisfaction.response.average} of 5 - recorded by {satisfaction.response.recordedByName}.
+                    </p>
+                  )}
+                </form>
+              )}
 
               <div style={{ maxWidth: 480 }}>
                 <SearchSelectField

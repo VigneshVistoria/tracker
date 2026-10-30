@@ -110,6 +110,20 @@
 //     person in the window that carry a requirement ID.
 //  L2 Client impact (%) - Feature and Improvement tasks first submitted in
 //     the window with a client impact of 20+ characters.
+//  L3 Priority inversions (count) - the person's first submissions in the
+//     window of a task that had a client priority tier at that moment, made
+//     while one of their tasks with a more urgent tier AT THAT MOMENT was
+//     waiting on them (assigned to them, in Development / Failed / PM
+//     Feedback, no open blocker). Tiers come from the tier change log
+//     (tierEvents). Sample = their tiered first submissions.
+//     client-measures/client-measures.ts.
+//  L4 UAT first-pass acceptance (%) - tasks the person answers for (as Q4)
+//     whose first UAT result was recorded in the client window
+//     (clientWindowDays, default 90, never before go-live), % passed.
+//     Enough data at clientMinSample (default 3).
+//  L5 Client satisfaction (score 1-5) - the average satisfaction response
+//     for releases (release date in the client window) containing a task
+//     the person answers for. Same minimum.
 import { dateInZone, startOfDayInZone } from '../../team-settings/time-zone';
 import { WorkingCalendar, addCalendarDays, isWorkingDay } from '../../performance-metrics/working-days';
 import { OnTimeItem, DueChangeItem } from '../../performance-metrics/performance-metrics.compute';
@@ -119,8 +133,9 @@ import { commitmentDeadline } from '../../performance-metrics/working-days';
 import { mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
 import { hasChangeTicket, onReleasePath } from '../../release-logs/release-path';
 import { FindingForMetrics, slaBreached } from '../../security-findings/security-findings';
+import { WAITING_STATUSES } from '../../client-measures/client-measures';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'P1', 'P2', 'P3', 'P4', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'P1', 'P2', 'P3', 'P4', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2', 'L3', 'L4', 'L5'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -150,6 +165,9 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   O5: { label: 'Self-initiated improvements', unit: 'count', higherIsBetter: true },
   L1: { label: 'Requirement traceability', unit: 'percent', higherIsBetter: true },
   L2: { label: 'Client impact statement', unit: 'percent', higherIsBetter: true },
+  L3: { label: 'Priority inversions', unit: 'count', higherIsBetter: false },
+  L4: { label: 'UAT first-pass acceptance', unit: 'percent', higherIsBetter: true },
+  L5: { label: 'Client satisfaction', unit: 'score', higherIsBetter: true },
 };
 
 // C5: the statuses where the task is the assignee's to move.
@@ -174,6 +192,8 @@ export interface TmTask {
   foundInProduction?: boolean;
   escapedFromTaskId?: number | null;
   productionReleaseDate?: string | null;
+  // L3: 1 = the most urgent client priority tier.
+  clientPriorityTier?: number | null;
 }
 
 export interface TmRound {
@@ -263,6 +283,11 @@ export interface TrackingMetricsInput {
   releaseLog?: Array<{ taskId: number; releaseDate: string }>;
   // P1/P2: this project's Release Log entries.
   releases?: Array<{ id: number; releaseDate: string; releasedByUserId: number | null; stagingSignedOffOn: string | null; changeTicketRef: string | null }>;
+  // L3: every client priority tier change of this project's tasks.
+  tierEvents?: Array<{ taskId: number; tier: number | null; changedAt: Date }>;
+  // L4: this project's UAT rounds; L5: satisfaction per release (with its tasks).
+  uatResults?: Array<{ taskId: number; round: number; result: string; recordedAt: Date }>;
+  satisfaction?: Array<{ releaseId: number; releaseDate: string; average: number; taskIds: number[] }>;
   // P3/P4: this project's security findings.
   securityFindings?: FindingForMetrics[];
   // Q5: this project's technical reviews.
@@ -339,6 +364,10 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
   // P3/P4 likewise.
   const securityRollingFrom = addCalendarDays(snapshotDate, -(th.securityWindowDays - 1));
   const securityFrom = securityRollingFrom > sinceDay ? securityRollingFrom : sinceDay;
+  // L4/L5 likewise.
+  const clientRollingFrom = addCalendarDays(snapshotDate, -(th.clientWindowDays - 1));
+  const clientFrom = clientRollingFrom > sinceDay ? clientRollingFrom : sinceDay;
+  const clientFromAt = new Date(Math.max(startOfDayInZone(clientFrom, zone).getTime(), input.trackingSince.getTime()));
   const securityFromAt = new Date(Math.max(startOfDayInZone(securityFrom, zone).getTime(), input.trackingSince.getTime()));
   const fromAt = new Date(Math.max(startOfDayInZone(windowFrom, zone).getTime(), input.trackingSince.getTime()));
   const toAt = startOfDayInZone(addCalendarDays(snapshotDate, 1), zone);
@@ -505,6 +534,73 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     if (!source || who === null) continue;
     if (!escapedBy.has(who)) escapedBy.set(who, []);
     escapedBy.get(who)!.push({ defectId: t.id, sourceTaskId: source.id, releaseDate: t.productionReleaseDate, foundOn });
+  }
+
+  // ---- L3: priority inversions at each tiered first submission ----
+  const openBlocker = (taskId: number, at: Date) =>
+    (flagsByTask.get(taskId) ?? []).some((f) => f.kind === 'blocker' && f.setAt.getTime() <= at.getTime() && (!f.clearedAt || f.clearedAt.getTime() > at.getTime()));
+  const tierEventsByTask = new Map<number, Array<{ tier: number | null; changedAt: Date }>>();
+  for (const e of [...(input.tierEvents ?? [])].sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime())) {
+    if (!tierEventsByTask.has(e.taskId)) tierEventsByTask.set(e.taskId, []);
+    tierEventsByTask.get(e.taskId)!.push(e);
+  }
+  // The tier a task had at `at` (none before its first recorded change).
+  const tierAt = (taskId: number, at: Date): number | null => {
+    let tier: number | null = null;
+    for (const e of tierEventsByTask.get(taskId) ?? []) {
+      if (e.changedAt.getTime() > at.getTime()) break;
+      tier = e.tier;
+    }
+    return tier;
+  };
+  const inversionsBy = new Map<number, Array<{ taskId: number; moreUrgentTaskIds: number[] }>>();
+  const tieredSubmitsBy = new Map<number, number>();
+  for (const [taskId, rounds] of roundsByTask) {
+    if (!tierEventsByTask.has(taskId)) continue;
+    const first = rounds.find((r) => (r.reviewType === 'qa' || r.reviewType === 'peer') && r.status !== 'withdrawn');
+    if (!first || !inWindow(first.submittedAt)) continue;
+    const who = first.submittedByUserId;
+    const at = first.submittedAt;
+    const tier = tierAt(taskId, at);
+    if (tier === null) continue;
+    tieredSubmitsBy.set(who, (tieredSubmitsBy.get(who) ?? 0) + 1);
+    const moreUrgent = [...tasks.values()]
+      .filter((u) => {
+        if (u.id === taskId) return false;
+        const uTier = tierAt(u.id, at);
+        return (
+          uTier !== null &&
+          uTier < tier &&
+          assigneeAt(u, at) === who &&
+          WAITING_STATUSES.includes(statusAt(u.id, at) ?? '') &&
+          !openBlocker(u.id, at)
+        );
+      })
+      .map((u) => u.id);
+    if (moreUrgent.length) {
+      if (!inversionsBy.has(who)) inversionsBy.set(who, []);
+      inversionsBy.get(who)!.push({ taskId, moreUrgentTaskIds: moreUrgent });
+    }
+  }
+
+  // ---- L4: each task's first UAT result; L5: release responses ----
+  const firstUatBy = new Map<number, Array<{ taskId: number; passed: boolean }>>();
+  for (const r of input.uatResults ?? []) {
+    const task = tasks.get(r.taskId);
+    if (r.round !== 1 || !task || r.recordedAt.getTime() < clientFromAt.getTime() || r.recordedAt.getTime() >= toAt.getTime()) continue;
+    const who = answerableFor(task);
+    if (who === null) continue;
+    if (!firstUatBy.has(who)) firstUatBy.set(who, []);
+    firstUatBy.get(who)!.push({ taskId: r.taskId, passed: r.result === 'passed' });
+  }
+  const satisfactionBy = new Map<number, Array<{ releaseId: number; average: number }>>();
+  for (const s of input.satisfaction ?? []) {
+    if (s.releaseDate < clientFrom || s.releaseDate > snapshotDate) continue;
+    const people = new Set(s.taskIds.map((id) => tasks.get(id)).filter((t): t is TmTask => !!t).map(answerableFor).filter((x): x is number => x !== null));
+    for (const who of people) {
+      if (!satisfactionBy.has(who)) satisfactionBy.set(who, []);
+      satisfactionBy.get(who)!.push({ releaseId: s.releaseId, average: s.average });
+    }
   }
 
   // ---- C5: working days in the window ----
@@ -860,6 +956,36 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     const withImpact = impactTasks.filter((t) => (t.clientImpact || '').trim().length >= CLIENT_IMPACT_MIN);
     push(userId, 'L2', pct(withImpact.length, impactTasks.length), impactTasks.length, withImpact.length, impactTasks.length, {
       missingTaskIds: impactTasks.filter((t) => !withImpact.includes(t)).map((t) => t.id),
+    });
+
+    // L3
+    const tiered = tieredSubmitsBy.get(userId) ?? 0;
+    const inversions = inversionsBy.get(userId) ?? [];
+    push(userId, 'L3', tiered ? inversions.length : null, tiered, inversions.length, tiered, { inversions });
+
+    // L4, L5 (own window and minimum)
+    const uat = firstUatBy.get(userId) ?? [];
+    const uatPassed = uat.filter((u) => u.passed).length;
+    rows.push({
+      userId,
+      metric: 'L4',
+      value: pct(uatPassed, uat.length),
+      numerator: uatPassed,
+      denominator: uat.length,
+      sample: uat.length,
+      enoughData: uat.length > 0 && uat.length >= th.clientMinSample,
+      details: { windowFrom: clientFrom, windowDays: th.clientWindowDays, failedFirstTaskIds: uat.filter((u) => !u.passed).map((u) => u.taskId) },
+    });
+    const responses = satisfactionBy.get(userId) ?? [];
+    rows.push({
+      userId,
+      metric: 'L5',
+      value: responses.length ? round2(responses.reduce((s, r) => s + r.average, 0) / responses.length) : null,
+      numerator: null,
+      denominator: null,
+      sample: responses.length,
+      enoughData: responses.length > 0 && responses.length >= th.clientMinSample,
+      details: { windowFrom: clientFrom, windowDays: th.clientWindowDays, releaseIds: responses.map((r) => r.releaseId) },
     });
   }
   return { windowFrom, rows };

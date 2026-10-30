@@ -53,6 +53,8 @@ const NUMBER_FIELDS = [
   ['releaseWindowDays', 'P1/P2: window (days of release dates)', 'Releases are few, so P1 and P2 look back further than the other measures.'],
   ['releaseMinSample', 'P1/P2: minimum releases before a score', 'Below this, P1 and P2 show "Not enough data".'],
   ['securityWindowDays', 'P3/P4: window (days)', 'Security findings are few, so P3 and P4 look back further than the other measures.'],
+  ['clientWindowDays', 'L4/L5: window (days)', 'UAT results and release responses are few, so L4 and L5 look back further than the other measures.'],
+  ['clientMinSample', 'L4/L5: minimum UAT tasks / release responses before a score', 'Below this, L4 and L5 show "Not enough data".'],
   ['securityMinSample', 'P3: minimum verified fixes before a score', 'Below this, P3 shows "Not enough data". P4 (SLA breaches) is shown from one finding due.'],
 ];
 
@@ -170,6 +172,8 @@ export default function PerformanceTrackingSettingsPage() {
     body.breachBands = body.breachBands.map(Number);
     delete body.overrideRoles;
     body.techReviewCriteria = body.techReviewCriteria.map((c) => c.trim()).filter(Boolean);
+    body.clientPriorityTiers = body.clientPriorityTiers.map((c) => c.trim()).filter(Boolean);
+    body.satisfactionQuestions = body.satisfactionQuestions.map((c) => c.trim()).filter(Boolean);
     body.weeklyReportDeadlineDay = Number(body.weeklyReportDeadlineDay);
     body.securitySlaDays = Object.fromEntries(Object.entries(body.securitySlaDays).map(([k, v]) => [k, Number(v)]));
     if (body.securityRoles.length === 0) {
@@ -495,6 +499,18 @@ export default function PerformanceTrackingSettingsPage() {
                 value={form.techReviewCriteria.join('\n')}
                 onChange={(e) => set('techReviewCriteria', e.target.value.split('\n'))}
               />
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>L3-L5: client measures (recorded by the Program Manager)</legend>
+              <label className={styles.label} htmlFor="ptTiers">
+                L3: client priority tiers, most urgent first, one per line (a task&apos;s tier is its position - rename freely, but keep as many tiers as tasks use)
+              </label>
+              <textarea id="ptTiers" className={styles.textarea} rows={4} value={form.clientPriorityTiers.join('\n')} onChange={(e) => set('clientPriorityTiers', e.target.value.split('\n'))} />
+              <label className={styles.label} htmlFor="ptQuestions" style={{ marginTop: 'var(--space-2)' }}>
+                L5: satisfaction questions after a release, one per line (each answered 1-5; saved responses keep the questions they answered)
+              </label>
+              <textarea id="ptQuestions" className={styles.textarea} rows={3} value={form.satisfactionQuestions.join('\n')} onChange={(e) => set('satisfactionQuestions', e.target.value.split('\n'))} />
             </fieldset>
 
             <fieldset style={fieldset}>

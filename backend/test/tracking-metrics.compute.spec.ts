@@ -402,6 +402,73 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(result, 10, 'P4')).toMatchObject({ value: null, sample: 0, enoughData: false });
   });
 
+  it('L3: judged by the tiers at the moment of each first submission (tier change log); blocked or not-waiting tasks never count', () => {
+    const base = input();
+    const ev = (taskId: number, tier: number | null, changedAt: string) => ({ taskId, tier, changedAt: at(changedAt) });
+    const r = computeTrackingMetrics(
+      input({
+        // Task 7: with person 10, in Development from 3 Nov, blocked 10-12 Nov, in Feedback from 15 Nov.
+        tasks: [...base.tasks, task(7)],
+        statusEvents: [
+          ...base.statusEvents,
+          { taskId: 7, toStatus: 'Development', occurredAt: at('2026-11-03T07:00:00Z'), actorUserId: 99 },
+          { taskId: 7, toStatus: 'Feedback', occurredAt: at('2026-11-15T07:00:00Z'), actorUserId: 10 },
+        ],
+        flags: [...base.flags, flag({ taskId: 7, kind: 'blocker', setAt: at('2026-11-10T08:00:00Z'), clearedAt: at('2026-11-12T08:00:00Z') })],
+        tierEvents: [
+          // Task 1 Normal from 4 Nov; raised to Critical only AFTER its 9 Nov submission.
+          ev(1, 3, '2026-11-04T08:00:00Z'),
+          ev(1, 1, '2026-11-10T08:00:00Z'),
+          // Task 2 High; task 4 Low.
+          ev(2, 2, '2026-11-04T08:00:00Z'),
+          ev(4, 4, '2026-11-04T08:00:00Z'),
+          // Task 7 Critical from 5 Nov.
+          ev(7, 1, '2026-11-05T08:00:00Z'),
+        ],
+      }),
+    );
+    // Task 1 (9 Nov, Normal then): inversion behind task 7. Task 2 (11 Nov): task 7 blocked. Task 4 (18 Nov): task 7 no longer waiting.
+    expect(get(r, 10, 'L3')).toMatchObject({ value: 1, sample: 3, enoughData: false });
+    expect(get(r, 10, 'L3').details).toEqual({ inversions: [{ taskId: 1, moreUrgentTaskIds: [7] }] });
+    // If task 7 only became Critical after the 9 Nov submission, there was no inversion then.
+    const later = computeTrackingMetrics(
+      input({
+        tasks: [...base.tasks, task(7)],
+        statusEvents: [...base.statusEvents, { taskId: 7, toStatus: 'Development', occurredAt: at('2026-11-03T07:00:00Z'), actorUserId: 99 }],
+        tierEvents: [ev(1, 3, '2026-11-04T08:00:00Z'), ev(7, 4, '2026-11-05T08:00:00Z'), ev(7, 1, '2026-11-09T12:00:00Z')],
+      }),
+    );
+    expect(get(later, 10, 'L3')).toMatchObject({ value: 0, sample: 1 });
+    // A tier set only after the submission: not a tiered submission at all.
+    const unset = computeTrackingMetrics(input({ tierEvents: [ev(1, 3, '2026-11-20T08:00:00Z')] }));
+    expect(get(unset, 10, 'L3')).toMatchObject({ value: null, sample: 0 });
+    expect(get(result, 10, 'L3')).toMatchObject({ value: null, sample: 0 });
+  });
+
+  it('L4/L5: first UAT result passed; satisfaction of releases with the person\'s tasks (90-day window, minimum 3)', () => {
+    const r = computeTrackingMetrics(
+      input({
+        uatResults: [
+          { taskId: 1, round: 1, result: 'passed', recordedAt: at('2026-11-12T08:00:00Z') },
+          { taskId: 2, round: 1, result: 'failed', recordedAt: at('2026-11-19T08:00:00Z') },
+          { taskId: 2, round: 2, result: 'passed', recordedAt: at('2026-11-20T08:00:00Z') },
+          { taskId: 4, round: 1, result: 'passed', recordedAt: at('2026-10-01T08:00:00Z') },
+        ],
+        satisfaction: [
+          { releaseId: 1, releaseDate: '2026-11-15', average: 4, taskIds: [1, 2] },
+          { releaseId: 2, releaseDate: '2026-11-18', average: 3, taskIds: [5] },
+          { releaseId: 3, releaseDate: '2026-10-01', average: 1, taskIds: [1] },
+        ],
+      }),
+    );
+    expect(get(r, 10, 'L4')).toMatchObject({ value: 50, numerator: 1, denominator: 2, enoughData: false });
+    expect(get(r, 10, 'L4').details).toMatchObject({ windowDays: 90, failedFirstTaskIds: [2] });
+    expect(get(r, 10, 'L5')).toMatchObject({ value: 4, sample: 1, enoughData: false });
+    expect(get(r, 20, 'L5')).toMatchObject({ value: 3, sample: 1 });
+    const lenient = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, clientMinSample: 1 }, satisfaction: [{ releaseId: 1, releaseDate: '2026-11-15', average: 4, taskIds: [1] }] }));
+    expect(get(lenient, 10, 'L5')).toMatchObject({ enoughData: true });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');
