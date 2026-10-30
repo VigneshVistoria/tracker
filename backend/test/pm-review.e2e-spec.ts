@@ -319,12 +319,21 @@ describe('PM review gate (e2e)', () => {
       await submit(veryLate).expect(201);
       const held = await newTask();
       await submit(held).expect(201);
-      const backdate = (id: number, days: number) =>
-        ds.query(`UPDATE task_qa_reviews SET "submittedAt" = now() - ($2 || ' days')::interval WHERE "taskId" = $1 AND status = 'pending'`, [id, String(days)]);
-      // Calendar days chosen so the working-day count is safely past N=2 / 2N=4.
-      await backdate(late, 6);
-      await backdate(veryLate, 14);
-      await backdate(held, 14);
+      // Backdate by an exact number of WORKING days (the calendar-day gap
+      // depends on today's weekday - 6 calendar days is 5 working days on a
+      // Friday or Saturday, which made this test fail on those days).
+      const calendarDaysFor = (workingDays: number) => {
+        const now = new Date();
+        let days = 0;
+        while (businessDaysBetween(new Date(now.getTime() - days * 24 * 60 * 60 * 1000), now) < workingDays) days += 1;
+        return days;
+      };
+      const backdate = (id: number, workingDays: number) =>
+        ds.query(`UPDATE task_qa_reviews SET "submittedAt" = now() - ($2 || ' days')::interval WHERE "taskId" = $1 AND status = 'pending'`, [id, String(calendarDaysFor(workingDays))]);
+      // Past N=2 but not 2N=4; and well past 2N=4.
+      await backdate(late, 3);
+      await backdate(veryLate, 10);
+      await backdate(held, 10);
       await ds.query(`UPDATE project_tasks SET status = 'Hold', "priorStatus" = 'Pending PM Review' WHERE id = $1`, [held]);
 
       const first = await reminders.remindTenant(f.tenants.t1, new Date());
@@ -341,7 +350,7 @@ describe('PM review gate (e2e)', () => {
       await patch(f.users.admin, '/pm-review/reminder-settings', { workingDays: 2, toAdmin: false }).expect(200);
       const another = await newTask();
       await submit(another).expect(201);
-      await backdate(another, 14);
+      await backdate(another, 10);
       expect(await reminders.remindTenant(f.tenants.t1, new Date())).toEqual({ pm: [another], admin: [] });
     });
   });
