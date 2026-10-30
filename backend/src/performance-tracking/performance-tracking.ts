@@ -97,6 +97,11 @@ export interface PerformanceTrackingThresholds {
   techReviewerUserIds: number[];
   techReviewsPerMonth: number;
   techReviewCriteria: string[];
+  // C3: weekly status report deadline (0 = Sunday ... 6 = Saturday, at
+  // HH:MM, team time zone) and minimum length of done/plan.
+  weeklyReportDeadlineDay: number;
+  weeklyReportDeadlineTime: string;
+  weeklyReportMinLength: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -126,12 +131,15 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   techReviewerUserIds: [],
   techReviewsPerMonth: 2,
   techReviewCriteria: ['Code quality', 'Design and architecture', 'Testing', 'Security', 'Documentation'],
+  weeklyReportDeadlineDay: 4,
+  weeklyReportDeadlineTime: '17:00',
+  weeklyReportMinLength: 20,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
-  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth';
+  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -147,6 +155,8 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   escapeWindowDays: [1, 365],
   escapedPerTasks: [1, 100],
   techReviewsPerMonth: [1, 10],
+  weeklyReportDeadlineDay: [0, 6],
+  weeklyReportMinLength: [5, 500],
 };
 
 export function isValidTimeZone(zone: string): boolean {

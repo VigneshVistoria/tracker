@@ -35,6 +35,20 @@ function ReportCard({ report, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen);
   const d = report.data;
 
+  // Saved before the 26 Oct 2026 fix (the report then read an empty table),
+  // so its numbers were all zeros - shown as not available, not rebuilt
+  // (today's data can't show what was true then). WeeklyReportsService.findHistory.
+  if (report.available === false) {
+    return (
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <strong>{formatDate(report.weekStartDate)} to {formatDate(report.weekEndDate)}</strong>
+        <span className={styles.issueMeta} style={{ marginLeft: 'var(--space-3)' }}>
+          Not available (before the October 26 fix)
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
       <div

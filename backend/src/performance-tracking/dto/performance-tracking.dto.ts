@@ -165,6 +165,24 @@ export class UpdatePerformanceTrackingSettingsDto {
   @ArrayMaxSize(10)
   @IsString({ each: true })
   techReviewCriteria?: string[];
+
+  // C3. The time is checked in the service.
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.weeklyReportDeadlineDay[0])
+  @Max(THRESHOLD_LIMITS.weeklyReportDeadlineDay[1])
+  weeklyReportDeadlineDay?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  weeklyReportDeadlineTime?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.weeklyReportMinLength[0])
+  @Max(THRESHOLD_LIMITS.weeklyReportMinLength[1])
+  weeklyReportMinLength?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

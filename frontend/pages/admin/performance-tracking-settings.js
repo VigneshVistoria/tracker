@@ -47,6 +47,7 @@ const NUMBER_FIELDS = [
   ['escapeWindowDays', 'Q4: a production defect counts if found within (days) of its release', ''],
   ['escapedPerTasks', 'Q4: report escaped defects per (tasks released)', ''],
   ['techReviewsPerMonth', 'Q5: technical reviews per person per month', 'More than this are refused.'],
+  ['weeklyReportMinLength', 'C3: weekly report "Done" and "Plan" at least (characters)', ''],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program
@@ -163,6 +164,7 @@ export default function PerformanceTrackingSettingsPage() {
     body.breachBands = body.breachBands.map(Number);
     delete body.overrideRoles;
     body.techReviewCriteria = body.techReviewCriteria.map((c) => c.trim()).filter(Boolean);
+    body.weeklyReportDeadlineDay = Number(body.weeklyReportDeadlineDay);
     if (body.requestSources.length === 0 || body.chaseRoles.length === 0) {
       setError('Pick at least one request source and at least one role that can chase.');
       return;
@@ -390,6 +392,20 @@ export default function PerformanceTrackingSettingsPage() {
                 </label>
               ))}
               {form.overrideUserIds.length === 0 && <p className={styles.helpText}>Nobody can override scores.</p>}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>C3: weekly status report deadline (team time zone; the first submission time counts)</legend>
+              <div style={{ ...inline, flexWrap: 'wrap' }}>
+                <label className={styles.label} htmlFor="ptWeeklyDay">Day</label>
+                <select id="ptWeeklyDay" className={styles.input} style={{ width: '9rem' }} value={form.weeklyReportDeadlineDay} onChange={(e) => set('weeklyReportDeadlineDay', e.target.value)}>
+                  {DAY_NAMES.map((d, i) => (
+                    <option key={d} value={i}>{d}</option>
+                  ))}
+                </select>
+                <label className={styles.label} htmlFor="ptWeeklyTime">Time</label>
+                <input id="ptWeeklyTime" type="time" className={styles.input} style={{ width: '8rem' }} value={form.weeklyReportDeadlineTime} onChange={(e) => set('weeklyReportDeadlineTime', e.target.value)} />
+              </div>
             </fieldset>
 
             <fieldset style={fieldset}>

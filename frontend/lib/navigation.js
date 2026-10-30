@@ -10,6 +10,7 @@ import {
   Radio,
   CheckSquare,
   ClipboardCheck,
+  ClipboardList,
   Workflow,
   Timer,
   ShieldAlert,
@@ -149,6 +150,8 @@ export const NAV_SECTIONS = [
       { href: '/performance-tracking/scorecard', label: 'Performance Scorecard', icon: Award, roles: [ADMIN, PM, EXEC] },
       // Performance Tracking Q5 (2026-10-30) - matches TECH_REVIEW_SEE_ALL_ROLES (developers see their own via the scorecard link).
       { href: '/performance-tracking/tech-reviews', label: 'Technical Review', icon: ClipboardCheck, roles: [ADMIN, PM, EXEC] },
+      // Performance Tracking C3 (2026-10-30) - matches WEEKLY_STATUS_TEAM_ROLES.
+      { href: '/weekly-status', label: 'Weekly Status Reports', icon: ClipboardList, roles: [ADMIN, PM, EXEC] },
       { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart, roles: [ADMIN, EXEC] },
     ],
   },

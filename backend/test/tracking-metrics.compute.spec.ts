@@ -272,6 +272,28 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(result, 10, 'Q5')).toMatchObject({ value: null, enoughData: false });
   });
 
+  it('C3: weekly report deadlines passed in the window - on time, late, missing', () => {
+    // Deadlines Thu 5, 12, 19 Nov 17:00 EAT (14:00Z).
+    const c3 = computeTrackingMetrics(
+      input({
+        weeklyStatus: [
+          { userId: 10, weekStart: '2026-11-02', submittedAt: at('2026-11-05T10:00:00Z'), deadlineAt: at('2026-11-05T14:00:00Z') },
+          { userId: 10, weekStart: '2026-11-09', submittedAt: at('2026-11-12T15:00:00Z'), deadlineAt: at('2026-11-12T14:00:00Z') },
+        ],
+      }),
+    );
+    expect(get(c3, 10, 'C3')).toMatchObject({ value: 33.33, numerator: 1, denominator: 3, sample: 3, enoughData: true });
+    expect(get(c3, 10, 'C3').details).toEqual({ late: ['2026-11-09'], missing: ['2026-11-16'] });
+    expect(get(c3, 20, 'C3')).toMatchObject({ value: 0, denominator: 3 });
+    // A Friday 12:00 deadline: the week of 16 Nov's is on the 20th (12:00
+    // EAT, before the 23:30Z run), so still 3 weeks.
+    const friday = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, weeklyReportDeadlineDay: 5, weeklyReportDeadlineTime: '12:00' } }));
+    expect(get(friday, 10, 'C3')).toMatchObject({ denominator: 3 });
+    // A Saturday deadline (team weekend still counts): 7 and 14 Nov passed, 21 Nov not yet.
+    const saturday = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, weeklyReportDeadlineDay: 6 } }));
+    expect(get(saturday, 10, 'C3')).toMatchObject({ denominator: 2 });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');

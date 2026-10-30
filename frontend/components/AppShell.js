@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck, Gauge, Award } from 'lucide-react';
+import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck, Gauge, Award, ClipboardList } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
@@ -413,6 +413,18 @@ export default function AppShell({ children, fullScreen = false }) {
                 aria-current={router.pathname === '/performance-tracking/scorecard' ? 'page' : undefined}
               >
                 <Award size={18} aria-hidden="true" />
+              </Link>
+            )}
+            {/* Weekly status report (Performance Tracking C3) - once a project is tracked. */}
+            {hideSidebar && showScorecard && (
+              <Link
+                href="/weekly-status"
+                className={styles.iconButton}
+                aria-label="My weekly report"
+                title="My weekly report"
+                aria-current={router.pathname === '/weekly-status' ? 'page' : undefined}
+              >
+                <ClipboardList size={18} aria-hidden="true" />
               </Link>
             )}
             {/* Client portal tickets for client-team members (Stage 2). */}

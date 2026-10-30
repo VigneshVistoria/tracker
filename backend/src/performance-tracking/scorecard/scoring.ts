@@ -28,7 +28,7 @@ import { METRIC_INFO, TrackingMetric, TRACKING_METRICS } from '../metrics/tracki
 export const COMPETENCIES: Record<string, { label: string; metrics: TrackingMetric[] }> = {
   D: { label: 'Delivery', metrics: ['D1', 'D2', 'D3', 'D4'] },
   Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'] },
-  C: { label: 'Collaboration', metrics: ['C1', 'C2', 'C5'] },
+  C: { label: 'Collaboration', metrics: ['C1', 'C2', 'C3', 'C5'] },
   O: { label: 'Ownership', metrics: ['O1', 'O2', 'O3', 'O5'] },
   L: { label: 'Client focus', metrics: ['L1', 'L2'] },
 };
@@ -106,12 +106,18 @@ export function bandScore(metric: TrackingMetric, value: number, bands: Bands): 
   return i === -1 ? 1 : 5 - i;
 }
 
-// Q5 (2 reviews a month) never reaches the shared minimum: one is enough.
-export const minSampleFor = (metric: TrackingMetric, minSample: number) => (METRIC_INFO[metric].unit === 'score' ? 1 : minSample);
+// Q5 (2 reviews a month) and C3 (4 weekly deadlines in a 28-day window)
+// never reach the shared minimum: one is enough.
+export const minSampleFor = (metric: TrackingMetric, minSample: number) => (METRIC_INFO[metric].unit === 'score' || metric === 'C3' ? 1 : minSample);
+
+// Person-level metrics (C3): every tracked project carries the same row,
+// so the scorecard takes one (the largest sample) instead of adding them.
+export const PERSON_LEVEL_METRICS: TrackingMetric[] = ['C3'];
 
 // One metric for one person, from their rows in the scoring phase.
 export function combineRows(metric: TrackingMetric, rows: SnapshotRowLike[]): { value: number | null; sample: number; numerator: number | null; denominator: number | null } {
   if (rows.length === 0) return { value: null, sample: 0, numerator: null, denominator: null };
+  if (PERSON_LEVEL_METRICS.includes(metric) && rows.length > 1) rows = [[...rows].sort((a, b) => b.sample - a.sample)[0]];
   const sum = (k: 'numerator' | 'denominator' | 'sample' | 'value') => rows.reduce((s, r) => s + Number(r[k] ?? 0), 0);
   const sample = sum('sample');
   const info = METRIC_INFO[metric];

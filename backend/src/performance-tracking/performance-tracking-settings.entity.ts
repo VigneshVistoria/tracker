@@ -114,6 +114,16 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'jsonb', default: () => `'["Code quality", "Design and architecture", "Testing", "Security", "Documentation"]'` })
   techReviewCriteria: string[];
 
+  // C3 (migrations/2026-11-performance-tracking-weekly-status.sql).
+  @Column({ type: 'int', default: 4 })
+  weeklyReportDeadlineDay: number;
+
+  @Column({ type: 'varchar', length: 5, default: '17:00' })
+  weeklyReportDeadlineTime: string;
+
+  @Column({ type: 'int', default: 20 })
+  weeklyReportMinLength: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

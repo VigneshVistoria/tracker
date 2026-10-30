@@ -149,6 +149,9 @@ const ESCAPED_COLUMNS: Record<string, string[]> = {
 const TECH_REVIEWS_DIR = path.join(SRC, 'tech-reviews');
 const TECH_REVIEWS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-tech-reviews.sql');
 const TECH_REVIEWS_TABLES = ['tech_reviews', 'tech_review_evidence'];
+// C3: weekly status reports (folder left out of synchronize) and settings.
+const WEEKLY_STATUS_DIR = path.join(SRC, 'weekly-status');
+const WEEKLY_STATUS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-weekly-status.sql');
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
 
@@ -173,7 +176,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -251,6 +254,7 @@ export async function buildTestSchema() {
   }
   await base.query(fs.readFileSync(ESCAPED_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(TECH_REVIEWS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(WEEKLY_STATUS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -291,9 +295,11 @@ export async function buildTestSchema() {
   if (metricsMetas.length !== METRICS_TABLES.length) problems.push(`${METRICS_TABLES.join('/')}: entity missing`);
   const calendarMetas = check.entityMetadatas.filter((m) => CALENDAR_TABLES.includes(m.tableName));
   if (calendarMetas.length !== CALENDAR_TABLES.length) problems.push(`${CALENDAR_TABLES.join('/')}: entity missing`);
+  const weeklyStatusMeta = check.entityMetadatas.filter((m) => m.tableName === 'weekly_status_reports');
+  if (weeklyStatusMeta.length !== 1) problems.push('weekly_status_reports: entity missing');
   const techReviewMetas = check.entityMetadatas.filter((m) => TECH_REVIEWS_TABLES.includes(m.tableName));
   if (techReviewMetas.length !== TECH_REVIEWS_TABLES.length) problems.push(`${TECH_REVIEWS_TABLES.join('/')}: entity missing`);
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas, ...calendarMetas, ...techReviewMetas]) {
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas, ...calendarMetas, ...techReviewMetas, ...weeklyStatusMeta]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

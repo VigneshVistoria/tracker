@@ -12,6 +12,7 @@ import {
   NON_COMPLIANCE_DISPLAYS,
   OVERRIDE_USER_ROLES,
   calendarProblem,
+  HHMM,
   REQUEST_SOURCES,
   THRESHOLD_LIMITS,
   PERFORMANCE_TRACKING_AUDIT,
@@ -107,6 +108,7 @@ export class PerformanceTrackingService {
       if (problem) throw new BadRequestException(problem);
       after.techReviewCriteria = dto.techReviewCriteria.map((c) => c.trim());
     }
+    if (!HHMM.test(after.weeklyReportDeadlineTime)) throw new BadRequestException('The weekly report deadline time must be HH:MM, e.g. 17:00.');
     const calendar = calendarProblem({ timeZone: after.calendarTimeZone, workStart: after.calendarWorkStart, workEnd: after.calendarWorkEnd, weekendDays: after.calendarWeekendDays });
     if (calendar) throw new BadRequestException(calendar);
     after.calendarWeekendDays = [...after.calendarWeekendDays].sort();

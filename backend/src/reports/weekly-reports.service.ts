@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Between, In, LessThan, Not, Repository } from 'typeorm';
 import { WeeklyReport } from './weekly-report.entity';
+
+// The Weekly Report read the empty legacy issues table until the fix went
+// live on 26 Oct 2026 (reports #1-17 were saved before it, all zeros).
+export const WEEKLY_REPORT_FIX_AT = new Date('2026-10-26T09:29:30Z');
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskPriority } from '../tasks/task-priority.enum';
 import { HOLD_CLOSED_STATUSES, JUNK_STATUS } from '../tasks/tasks.service';
@@ -66,7 +70,10 @@ export class WeeklyReportsService {
     return { start, end, mondayDate, fridayDate };
   }
 
-  async generate(referenceDate: Date, tenantId: number, generatedByUserId?: number): Promise<WeeklyReport> {
+  // save: false (C3, 2026-10-30, the user's decision) - build the report
+  // without adding a card to the history: the Saturday job only emails the
+  // per-assignee PDFs, so each week keeps one card.
+  async generate(referenceDate: Date, tenantId: number, generatedByUserId?: number, options: { save?: boolean } = {}): Promise<WeeklyReport> {
     const week = await this.getBusinessWeekRange(referenceDate, tenantId);
     const { start: weekStart, end: weekEnd } = week;
     const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -295,7 +302,7 @@ export class WeeklyReportsService {
       tenantId,
     });
 
-    return this.reportsRepository.save(report);
+    return options.save === false ? report : this.reportsRepository.save(report);
   }
 
   private toSummary(issue: ProjectTask) {
@@ -316,14 +323,27 @@ export class WeeklyReportsService {
     };
   }
 
-  findHistory(tenantId: number, limit = 20): Promise<WeeklyReport[]> {
-    // Newest generation first within a week - a week can have several
-    // saved reports (Monday job, Saturday job, manual regenerate).
-    return this.reportsRepository.find({
+  // One card per week (C3, 2026-10-30, the user's decision): the newest
+  // saved report of each week. Reports saved before the 26 Oct 2026 fix
+  // read an empty table, so their numbers are all zeros - they come back
+  // with available: false and no data (not rebuilt: today's tasks can't
+  // show what was true then).
+  async findHistory(tenantId: number, limit = 20): Promise<Array<WeeklyReport & { available: boolean }>> {
+    const all = await this.reportsRepository.find({
       where: { tenantId },
-      order: { weekStartDate: 'DESC', generatedAt: 'DESC' },
-      take: limit,
+      order: { weekStartDate: 'DESC', generatedAt: 'DESC', id: 'DESC' },
+      take: limit * 4,
     });
+    const seen = new Set<string>();
+    const out: Array<WeeklyReport & { available: boolean }> = [];
+    for (const r of all) {
+      if (seen.has(String(r.weekStartDate))) continue;
+      seen.add(String(r.weekStartDate));
+      const available = new Date(r.generatedAt).getTime() >= WEEKLY_REPORT_FIX_AT.getTime();
+      out.push(Object.assign(r, { available, data: available ? r.data : null }));
+      if (out.length >= limit) break;
+    }
+    return out;
   }
 
   async findOne(id: number, tenantId: number): Promise<WeeklyReport | null> {

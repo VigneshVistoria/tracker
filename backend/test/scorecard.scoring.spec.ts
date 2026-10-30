@@ -66,6 +66,12 @@ describe('Performance Tracking B3 scoring', () => {
     expect(card.metrics.find((m) => m.metric === 'Q5')).toMatchObject({ state: 'scored', score: 4 });
   });
 
+  it('C3 is person-level: the same row in two projects is taken once; one week is enough', () => {
+    expect(combineRows('C3', [row('C3', { numerator: 3, denominator: 4, sample: 4 }), row('C3', { projectId: 2, numerator: 3, denominator: 4, sample: 4 })])).toMatchObject({ value: 75, sample: 4 });
+    const card = scorePerson(10, [row('C3', { numerator: 1, denominator: 1, sample: 1 })], { bands, minSample: 5, overrides: [] });
+    expect(card.metrics.find((m) => m.metric === 'C3')).toMatchObject({ state: 'scored', score: 5 });
+  });
+
   it('Baseline: no scores at all, not even with an override', () => {
     const card = scorePerson(10, [row('D1', { phase: 'baseline', numerator: 10, denominator: 10, sample: 10, value: 100 })], {
       bands,

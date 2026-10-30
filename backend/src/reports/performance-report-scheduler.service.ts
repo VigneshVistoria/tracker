@@ -23,10 +23,11 @@ export class PerformanceReportSchedulerService {
     const tenants = await this.tenantsService.findAll();
     for (const tenant of tenants) {
       try {
-        const report = await this.weeklyReportsService.generate(new Date(), tenant.id);
+        // Not saved: the Monday job's card is the week's one card (C3, 2026-10-30).
+        const report = await this.weeklyReportsService.generate(new Date(), tenant.id, undefined, { save: false });
         const { sent, skipped } = await this.weeklyReportsService.emailPerformanceReports(report);
         this.logger.log(
-          `Generated weekly performance report #${report.id} for tenant #${tenant.id} (${report.weekStartDate} - ${report.weekEndDate}): ` +
+          `Emailed weekly performance reports for tenant #${tenant.id} (${report.weekStartDate} - ${report.weekEndDate}): ` +
             `sent to ${sent.length}, skipped ${skipped.length}.`,
         );
       } catch (err: any) {

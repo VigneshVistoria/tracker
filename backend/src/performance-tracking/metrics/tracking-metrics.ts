@@ -64,6 +64,13 @@
 //     waiting person's working days; their own tasks never count; external
 //     owners are never charged. Sample = those items. Details: per task,
 //     and the overdue tickets.
+//  C3 Weekly report on time (%) - weeks whose deadline (weekly-status/:
+//     default Thursday 17:00, team zone) passed in the window - skipped if
+//     it fell on the person's own leave, holiday or day off (a team weekend
+//     still counts) - submitted by then (the deadline in
+//     force at submission). Not submitted = late. One week is enough data.
+//     A person-level metric: the same row in every tracked project, taken
+//     once by the scorecard.
 //  C5 Status freshness (%) - each working day in the window, each of the
 //     person's tasks in Development/Failed/PM Feedback: fresh if the
 //     assignee changed its status or wrote a progress note within
@@ -89,8 +96,9 @@ import { OnTimeItem, DueChangeItem } from '../../performance-metrics/performance
 import { PerformanceTrackingThresholds } from '../performance-tracking';
 import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-calendar';
 import { commitmentDeadline } from '../../performance-metrics/working-days';
+import { mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'C1', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'C1', 'C2', 'C3', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -106,6 +114,7 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q5: { label: 'Technical review', unit: 'score', higherIsBetter: true },
   C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
   C2: { label: 'Dependency wait caused (working days)', unit: 'count', higherIsBetter: false },
+  C3: { label: 'Weekly report on time', unit: 'percent', higherIsBetter: true },
   C5: { label: 'Status freshness', unit: 'percent', higherIsBetter: true },
   O1: { label: 'Blocker raise lag', unit: 'days', higherIsBetter: false },
   O2: { label: 'Blocked-task ageing', unit: 'days', higherIsBetter: false },
@@ -223,6 +232,8 @@ export interface TrackingMetricsInput {
   releaseLog?: Array<{ taskId: number; releaseDate: string }>;
   // Q5: this project's technical reviews.
   techReviews?: Array<{ id: number; revieweeUserId: number; reviewedAt: Date; average: number }>;
+  // C3: the tenant's weekly status reports (person-level, not per project).
+  weeklyStatus?: Array<{ userId: number; weekStart: string; submittedAt: Date; deadlineAt: Date }>;
   thresholds: PerformanceTrackingThresholds;
   people: number[];
   tasks: TmTask[];
@@ -646,6 +657,23 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       overdue: owned.map((t) => ({ ticketId: t.id, taskId: t.parentTaskId, overdueWorkingDays: workingDaysBetween(clip(t.overdueAt!), until(t.resolvedAt), cal) })),
       blockerFlags: blockedOnThem.length,
     });
+
+    // C3
+    const weeks: Array<{ week: string; deadline: string; onTime: boolean; submitted: boolean }> = [];
+    for (let monday = mondayOf(windowFrom); monday <= snapshotDate; monday = addCalendarDays(monday, 7)) {
+      const report = (input.weeklyStatus ?? []).find((r) => r.userId === userId && r.weekStart === monday);
+      const deadline = report ? report.deadlineAt : weeklyDeadline(monday, th.weeklyReportDeadlineDay, th.weeklyReportDeadlineTime, zone);
+      if (deadline.getTime() < fromAt.getTime() || deadline.getTime() > endAt.getTime()) continue;
+      // Skipped when the deadline falls on the person's own leave, holiday
+      // or day off - not on a team weekend (a Saturday deadline still counts).
+      if (!isWorkingDay(day(deadline), cal) && isWorkingDay(day(deadline), teamCal)) continue;
+      weeks.push({ week: monday, deadline: deadline.toISOString(), submitted: !!report, onTime: !!report && report.submittedAt.getTime() <= deadline.getTime() });
+    }
+    const weeksOnTime = weeks.filter((w) => w.onTime).length;
+    push(userId, 'C3', pct(weeksOnTime, weeks.length), weeks.length, weeksOnTime, weeks.length, {
+      late: weeks.filter((w) => w.submitted && !w.onTime).map((w) => w.week),
+      missing: weeks.filter((w) => !w.submitted).map((w) => w.week),
+    }, true);
 
     // C5
     const c5 = freshness.get(userId) ?? { samples: 0, fresh: 0, stale: new Set<number>() };
