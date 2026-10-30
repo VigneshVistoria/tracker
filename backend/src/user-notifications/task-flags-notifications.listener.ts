@@ -5,6 +5,7 @@ import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/user.entity';
 import { TaskFlagSetEvent } from '../task-flags/task-flags';
 import { TaskReopenedEvent } from '../tasks/qa-intake';
+import { TaskChasedEvent } from '../task-activity/task-activity';
 import { formatLongDate } from '../tasks/team-export/team-tasks-export';
 
 // In-app notifications for risk and blocker flags (Performance Tracking
@@ -96,6 +97,28 @@ export class TaskFlagsNotificationsListener {
       await Promise.all(sends);
     } catch (err) {
       this.logger.error(`task.reopenedAfterPass notification failed: ${err}`);
+    }
+  }
+
+  // Performance Tracking B1: a Chase goes to the task's assignee. In-app only.
+  @OnEvent('task.chased')
+  async onChased(e: TaskChasedEvent) {
+    try {
+      const actor = await this.usersService.findByIdAndTenant(e.actorUserId, e.tenantId);
+      const actorName = actor?.fullName || actor?.email || e.actorEmail;
+      const note = e.note && e.note.length > 200 ? `${e.note.slice(0, 197)}...` : e.note;
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.assigneeUserId,
+        type: 'task.chased',
+        title: `${actorName} is asking for an update on #${e.taskId}`,
+        body: note ? `${e.title} - ${note}` : e.title,
+        link: `/tasks/${e.taskId}#activity`,
+        actorUserId: e.actorUserId,
+        actorName,
+      });
+    } catch (err) {
+      this.logger.error(`task.chased notification failed: ${err}`);
     }
   }
 }

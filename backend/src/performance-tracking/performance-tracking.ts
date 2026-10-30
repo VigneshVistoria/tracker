@@ -40,6 +40,22 @@ export const STATUS_EVENT_AUDIT_ACTIONS = [
   'task_reopened_after_pass',
 ];
 
+// B1 (2026-10-30, fast-track plan): every decision still open with the
+// Technical Director is a setting with a default, so the build need not
+// wait. The defaults are listed for the TD in /home/ec2-user/perf-tracking-
+// defaults.md.
+//  * O1 blocker raise lag - when the clock starts.
+export const BLOCKER_LAG_CLOCK_STARTS = ['dependency_overdue_or_blocker', 'blocker_flag', 'dependency_created'] as const;
+export type BlockerLagClockStart = (typeof BLOCKER_LAG_CLOCK_STARTS)[number];
+//  * Non-Compliance report next to the new scorecard, or scorecard only.
+export const NON_COMPLIANCE_DISPLAYS = ['side_by_side', 'scorecard_only'] as const;
+export type NonComplianceDisplay = (typeof NON_COMPLIANCE_DISPLAYS)[number];
+//  * C1 - what counts as a "request" to a person.
+export const REQUEST_SOURCES = ['owned_dependency', 'marked_request'] as const;
+export type RequestSource = (typeof REQUEST_SOURCES)[number];
+//  * O3 - who may Chase (never the assignee, never a client).
+export const CHASE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE, UserRole.QA, UserRole.DEVELOPER];
+
 export interface PerformanceTrackingThresholds {
   baselineDays: number;
   notReadyDeclaredDependencyExempt: boolean;
@@ -48,6 +64,17 @@ export interface PerformanceTrackingThresholds {
   statusFreshWorkingDays: number;
   chasesPerTasks: number;
   reopenWindowDays: number;
+  blockerLagClockStart: BlockerLagClockStart;
+  // Score 5/4/3/2/1 at or above each percent; below the last = 1.
+  percentBands: number[];
+  // Breach counts: at or below each = 5/4/3/2; more than the last = 1.
+  breachBands: number[];
+  nonComplianceDisplay: NonComplianceDisplay;
+  requestSources: RequestSource[];
+  chaseRoles: UserRole[];
+  // One Chase per task per person within this many hours.
+  chaseCooldownHours: number;
+  progressNoteMin: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -58,17 +85,48 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   statusFreshWorkingDays: 2,
   chasesPerTasks: 10,
   reopenWindowDays: 30,
+  blockerLagClockStart: 'dependency_overdue_or_blocker',
+  percentBands: [95, 85, 70, 50],
+  breachBands: [0, 1, 2, 3],
+  nonComplianceDisplay: 'side_by_side',
+  requestSources: ['owned_dependency', 'marked_request'],
+  chaseRoles: [...CHASE_ROLE_CHOICES],
+  chaseCooldownHours: 24,
+  progressNoteMin: 20,
 };
 
+export type NumericThreshold =
+  | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
+  | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin';
+
 // Validation limits, shared with the DTO.
-export const THRESHOLD_LIMITS: Record<Exclude<keyof PerformanceTrackingThresholds, 'notReadyDeclaredDependencyExempt'>, [number, number]> = {
+export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   baselineDays: [0, 180],
   earlyWarningWorkingDays: [0, 30],
   dateMovesFlagCount: [1, 20],
   statusFreshWorkingDays: [1, 30],
   chasesPerTasks: [1, 100],
   reopenWindowDays: [1, 365],
+  chaseCooldownHours: [0, 168],
+  progressNoteMin: [5, 500],
 };
+
+// The band lists: exactly 4 whole numbers. Percent bands strictly falling
+// within 0-100; breach bands strictly rising from 0. Returns the problem,
+// or null when valid.
+export function bandProblem(kind: 'percentBands' | 'breachBands', bands: number[]): string | null {
+  if (!Array.isArray(bands) || bands.length !== 4 || bands.some((b) => !Number.isInteger(b))) {
+    return `${kind === 'percentBands' ? 'Percent' : 'Breach'} bands must be 4 whole numbers.`;
+  }
+  if (kind === 'percentBands') {
+    if (bands.some((b) => b < 0 || b > 100)) return 'Percent bands must be between 0 and 100.';
+    if (bands.some((b, i) => i > 0 && b >= bands[i - 1])) return 'Percent bands must go down, e.g. 95, 85, 70, 50.';
+  } else {
+    if (bands.some((b) => b < 0 || b > 1000)) return 'Breach bands must be between 0 and 1000.';
+    if (bands.some((b, i) => i > 0 && b <= bands[i - 1])) return 'Breach bands must go up, e.g. 0, 1, 2, 3.';
+  }
+  return null;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

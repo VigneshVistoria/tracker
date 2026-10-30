@@ -122,6 +122,13 @@ const TASK_FIELDS_COLUMNS: Record<string, string[]> = {
   project_tasks: ['taskType', 'requirementId', 'clientImpact', 'improvementDecision', 'improvementDecidedByUserId', 'improvementDecidedAt', 'improvementDeclineReason'],
 };
 
+// Performance Tracking B1 (2026-10-30): task_chases and task_progress_notes
+// from the real migration (their folder left out of synchronize), which
+// also adds the decision settings to performance_tracking_settings.
+const ACTIVITY_DIR = path.join(SRC, 'task-activity');
+const ACTIVITY_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-chase-notes.sql');
+const ACTIVITY_TABLES = ['task_chases', 'task_progress_notes'];
+
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
     const p = path.join(dir, d.name);
@@ -143,7 +150,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -212,6 +219,7 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(TASK_FIELDS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(ACTIVITY_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -246,7 +254,9 @@ export async function buildTestSchema() {
   if (!flagsMeta) problems.push('task_flags: entity missing');
   const reopenMeta = check.entityMetadatas.find((m) => m.tableName === 'task_reopens');
   if (!reopenMeta) problems.push('task_reopens: entity missing');
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : [])]) {
+  const activityMetas = check.entityMetadatas.filter((m) => ACTIVITY_TABLES.includes(m.tableName));
+  if (activityMetas.length !== ACTIVITY_TABLES.length) problems.push(`${ACTIVITY_TABLES.join('/')}: entity missing`);
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

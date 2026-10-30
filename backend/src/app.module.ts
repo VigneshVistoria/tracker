@@ -53,6 +53,8 @@ import { DefectTriage } from './tasks/defect-triage.entity';
 import { DueDateChangeRequest } from './tasks/due-date-change-request.entity';
 import { TaskFlag } from './task-flags/task-flag.entity';
 import { TaskReopen } from './tasks/task-reopen.entity';
+import { TaskChase } from './task-activity/task-chase.entity';
+import { TaskProgressNote } from './task-activity/task-progress-note.entity';
 import { Role } from './permissions/role.entity';
 import { RolePermission } from './permissions/role-permission.entity';
 import { UsersModule } from './users/users.module';
@@ -97,6 +99,7 @@ import { PerformanceMetricSettings } from './performance-metrics/performance-met
 import { PerformanceHoliday } from './performance-metrics/performance-holiday.entity';
 import { PerformanceTrackingModule } from './performance-tracking/performance-tracking.module';
 import { TaskFlagsModule } from './task-flags/task-flags.module';
+import { TaskActivityModule } from './task-activity/task-activity.module';
 import { PerformanceTrackingSettings } from './performance-tracking/performance-tracking-settings.entity';
 import { TaskStatusEvent } from './performance-tracking/task-status-event.entity';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -176,6 +179,8 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           DueDateChangeRequest,
           TaskFlag,
           TaskReopen,
+          TaskChase,
+          TaskProgressNote,
           KpiConfig,
           KpiPeriodScore,
           Role,
@@ -252,6 +257,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     PerformanceMetricsModule,
     PerformanceTrackingModule,
     TaskFlagsModule,
+    TaskActivityModule,
     PermissionsModule,
     ReleaseLogsModule,
     StatusReviewModule,

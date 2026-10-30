@@ -186,6 +186,8 @@ export const NAV_SECTIONS = [
       { href: '/admin/defect-triage-settings', label: 'Defect Triage Settings', icon: ShieldQuestion, roles: [ADMIN, PM] },
       // Defect triage Stage 2 (2026-10-27) - matches SUBMISSION_CHECKLIST_SETTINGS_ROLES.
       { href: '/admin/submission-checklist-settings', label: 'Submission Checklist Settings', icon: ListChecks, roles: [ADMIN, PM] },
+      // Performance Tracking (B1, 2026-10-30) - matches PERFORMANCE_TRACKING_SETTINGS_ROLES.
+      { href: '/admin/performance-tracking-settings', label: 'Performance Tracking Settings', icon: SlidersHorizontal, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Project } from '../projects/project.entity';
@@ -7,9 +7,15 @@ import { UserRole } from '../users/user.entity';
 import { PerformanceTrackingSettings } from './performance-tracking-settings.entity';
 import { TaskStatusEvent } from './task-status-event.entity';
 import {
+  BLOCKER_LAG_CLOCK_STARTS,
+  CHASE_ROLE_CHOICES,
+  NON_COMPLIANCE_DISPLAYS,
+  REQUEST_SOURCES,
+  THRESHOLD_LIMITS,
   PERFORMANCE_TRACKING_AUDIT,
   PERFORMANCE_TRACKING_DEFAULTS,
   PerformanceTrackingThresholds,
+  bandProblem,
   projectTrackingPhase,
 } from './performance-tracking';
 import { UpdatePerformanceTrackingSettingsDto } from './dto/performance-tracking.dto';
@@ -29,15 +35,11 @@ export class PerformanceTrackingService {
   async thresholds(tenantId: number): Promise<PerformanceTrackingThresholds> {
     const row = await this.settingsRepository.findOne({ where: { tenantId } });
     if (!row) return { ...PERFORMANCE_TRACKING_DEFAULTS };
-    return {
-      baselineDays: row.baselineDays,
-      notReadyDeclaredDependencyExempt: row.notReadyDeclaredDependencyExempt,
-      earlyWarningWorkingDays: row.earlyWarningWorkingDays,
-      dateMovesFlagCount: row.dateMovesFlagCount,
-      statusFreshWorkingDays: row.statusFreshWorkingDays,
-      chasesPerTasks: row.chasesPerTasks,
-      reopenWindowDays: row.reopenWindowDays,
-    };
+    const out = { ...PERFORMANCE_TRACKING_DEFAULTS };
+    for (const key of Object.keys(PERFORMANCE_TRACKING_DEFAULTS) as (keyof PerformanceTrackingThresholds)[]) {
+      if ((row as any)[key] !== undefined && (row as any)[key] !== null) (out as any)[key] = (row as any)[key];
+    }
+    return out;
   }
 
   // The settings page: thresholds, and every project's switch and phase.
@@ -49,6 +51,13 @@ export class PerformanceTrackingService {
     ]);
     return {
       settings,
+      choices: {
+        blockerLagClockStart: BLOCKER_LAG_CLOCK_STARTS,
+        nonComplianceDisplay: NON_COMPLIANCE_DISPLAYS,
+        requestSources: REQUEST_SOURCES,
+        chaseRoles: CHASE_ROLE_CHOICES,
+      },
+      limits: THRESHOLD_LIMITS,
       isDefault: !row,
       updatedAt: row?.updatedAt ?? null,
       projects: projects.map((p) => ({
@@ -67,6 +76,12 @@ export class PerformanceTrackingService {
     for (const key of Object.keys(PERFORMANCE_TRACKING_DEFAULTS) as (keyof PerformanceTrackingThresholds)[]) {
       if (dto[key] !== undefined) (after as any)[key] = dto[key];
     }
+    for (const kind of ['percentBands', 'breachBands'] as const) {
+      const problem = bandProblem(kind, after[kind]);
+      if (problem) throw new BadRequestException(problem);
+    }
+    after.requestSources = [...new Set(after.requestSources)];
+    after.chaseRoles = [...new Set(after.chaseRoles)];
     await this.settingsRepository.save(this.settingsRepository.create({ tenantId, ...after, updatedByUserId: actor.id }));
     await this.auditLogService.record({
       userId: actor.id,

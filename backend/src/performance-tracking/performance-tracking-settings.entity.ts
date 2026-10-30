@@ -1,4 +1,6 @@
 import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+import { UserRole } from '../users/user.entity';
+import { BlockerLagClockStart, NonComplianceDisplay, RequestSource } from './performance-tracking';
 
 // Performance Tracking thresholds (2026-10-28) - one row per tenant, edited
 // by Admin and Program Manager. A tenant with no row uses
@@ -43,6 +45,33 @@ export class PerformanceTrackingSettings {
   // Q3 (S4): a reopen counts within this many days of the Pass.
   @Column({ type: 'int', default: 30 })
   reopenWindowDays: number;
+
+  // B1 (2026-10-30): the open decisions as settings - see
+  // ./performance-tracking.ts. migrations/2026-11-performance-tracking-
+  // chase-notes.sql.
+  @Column({ type: 'varchar', length: 40, default: 'dependency_overdue_or_blocker' })
+  blockerLagClockStart: BlockerLagClockStart;
+
+  @Column({ type: 'jsonb', default: () => "'[95, 85, 70, 50]'" })
+  percentBands: number[];
+
+  @Column({ type: 'jsonb', default: () => "'[0, 1, 2, 3]'" })
+  breachBands: number[];
+
+  @Column({ type: 'varchar', length: 20, default: 'side_by_side' })
+  nonComplianceDisplay: NonComplianceDisplay;
+
+  @Column({ type: 'jsonb', default: () => `'["owned_dependency", "marked_request"]'` })
+  requestSources: RequestSource[];
+
+  @Column({ type: 'jsonb', default: () => `'["admin", "program_manager", "executive", "qa", "developer"]'` })
+  chaseRoles: UserRole[];
+
+  @Column({ type: 'int', default: 24 })
+  chaseCooldownHours: number;
+
+  @Column({ type: 'int', default: 20 })
+  progressNoteMin: number;
 
   @UpdateDateColumn()
   updatedAt: Date;
