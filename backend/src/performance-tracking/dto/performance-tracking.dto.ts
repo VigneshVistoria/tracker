@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayNotEmpty, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { UserRole } from '../../users/user.entity';
 import {
   BLOCKER_LAG_CLOCK_STARTS,
@@ -104,4 +104,11 @@ export class UpdatePerformanceTrackingSettingsDto {
 export class SetPerformanceTrackingSwitchDto {
   @IsBoolean()
   enabled: boolean;
+}
+
+// B2: Admin "Recalculate now" - today by default, or a past night.
+export class RecalculateMetricsDto {
+  @IsOptional()
+  @IsDateString({ strict: true })
+  snapshotDate?: string;
 }

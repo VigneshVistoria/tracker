@@ -7,11 +7,13 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import { redirectToSignIn } from '../../lib/session';
-import { formatDate } from '../../lib/formatDate';
+import { formatDate, formatDateTime } from '../../lib/formatDate';
 
 // Matches PERFORMANCE_TRACKING_SETTINGS_ROLES (backend/src/performance-
 // tracking/performance-tracking.ts).
 const EDIT_ROLES = ['admin', 'program_manager'];
+
+const RUN_STATUS_LABEL = { running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped (another run was going)' };
 
 const PHASE_LABEL = { off: 'Off', baseline: 'Baseline (no scores yet)', scoring: 'Scoring' };
 const CLOCK_LABEL = {
@@ -52,12 +54,19 @@ export default function PerformanceTrackingSettingsPage() {
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
+  const [runs, setRuns] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
+  const loadRuns = () =>
+    apiFetch('/performance-tracking/runs')
+      .then(setRuns)
+      .catch(() => setRuns([]));
   const load = () =>
     apiFetch('/performance-tracking/settings')
       .then((p) => {
         setPage(p);
         setForm(JSON.parse(JSON.stringify(p.settings)));
+        loadRuns();
       })
       .catch((err) => setError(err.message));
 
@@ -67,10 +76,12 @@ export default function PerformanceTrackingSettingsPage() {
       redirectToSignIn(router);
       return;
     }
-    if (!EDIT_ROLES.includes(JSON.parse(stored).role)) {
+    const role = JSON.parse(stored).role;
+    if (!EDIT_ROLES.includes(role)) {
       router.replace('/dashboard');
       return;
     }
+    setIsAdmin(role === 'admin');
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -97,6 +108,26 @@ export default function PerformanceTrackingSettingsPage() {
       await apiFetch(`/performance-tracking/projects/${project.id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) });
       showToast(`Performance Tracking is ${enabled ? 'on' : 'off'} for ${project.name}`, 'success');
       await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Admin only (backend checks too) - for testing; the nightly run is at
+  // 02:00 East Africa Time for the day that just ended.
+  const recalculate = async () => {
+    setBusy('recalc');
+    setError('');
+    try {
+      const res = await apiFetch('/performance-tracking/recalculate', { method: 'POST', body: JSON.stringify({}) });
+      if (res.status === 'done') {
+        showToast(`Recalculated ${formatDate(res.snapshotDate)}: ${res.projects} ${res.projects === 1 ? 'project' : 'projects'}, ${res.rowsWritten} rows`, 'success');
+      } else {
+        setError(res.status === 'skipped' ? 'Another run is still going - try again in a minute.' : `The run failed: ${res.error || 'unknown error'}`);
+      }
+      await loadRuns();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -201,6 +232,54 @@ export default function PerformanceTrackingSettingsPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+            <h2 className={styles.cardTitle}>Nightly metrics</h2>
+            <p className={styles.helpText} style={{ marginTop: 0 }}>
+              Calculated every night at 02:00 East Africa Time for the day that just ended, only for projects with tracking on. Results show
+              &quot;Baseline&quot; until {page.settings.baselineDays} days after a project&apos;s go-live date.
+            </p>
+            {isAdmin && (
+              <div className={styles.actions} style={{ marginTop: 0 }}>
+                <button className={styles.buttonSecondary} type="button" disabled={busy !== null} onClick={recalculate}>
+                  {busy === 'recalc' ? 'Recalculating...' : 'Recalculate now'}
+                </button>
+              </div>
+            )}
+            {runs.length > 0 ? (
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Started</th>
+                      <th>Day</th>
+                      <th>Type</th>
+                      <th>Result</th>
+                      <th>Projects</th>
+                      <th>Rows</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runs.map((r) => (
+                      <tr key={r.id}>
+                        <td>{formatDateTime(r.startedAt)}</td>
+                        <td>{formatDate(r.snapshotDate)}</td>
+                        <td>{r.trigger === 'manual' ? 'Recalculate now' : 'Nightly'}</td>
+                        <td title={r.error || undefined}>
+                          {RUN_STATUS_LABEL[r.status] || r.status}
+                          {r.status === 'failed' && r.error ? `: ${r.error}` : ''}
+                        </td>
+                        <td>{r.projects}</td>
+                        <td>{r.rowsWritten}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className={styles.helpText}>No runs yet.</p>
+            )}
           </div>
 
           <form className={styles.card} onSubmit={save}>

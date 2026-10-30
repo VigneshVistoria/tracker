@@ -128,6 +128,10 @@ const TASK_FIELDS_COLUMNS: Record<string, string[]> = {
 const ACTIVITY_DIR = path.join(SRC, 'task-activity');
 const ACTIVITY_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-chase-notes.sql');
 const ACTIVITY_TABLES = ['task_chases', 'task_progress_notes'];
+// Performance Tracking B2 (2026-10-30): the snapshot and run tables (in
+// the performance-tracking folder, already left out of synchronize).
+const METRICS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-metrics.sql');
+const METRICS_TABLES = ['performance_metric_snapshots', 'performance_metric_runs'];
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -220,6 +224,7 @@ export async function buildTestSchema() {
   }
   await base.query(fs.readFileSync(TASK_FIELDS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(ACTIVITY_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(METRICS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -256,7 +261,9 @@ export async function buildTestSchema() {
   if (!reopenMeta) problems.push('task_reopens: entity missing');
   const activityMetas = check.entityMetadatas.filter((m) => ACTIVITY_TABLES.includes(m.tableName));
   if (activityMetas.length !== ACTIVITY_TABLES.length) problems.push(`${ACTIVITY_TABLES.join('/')}: entity missing`);
-  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas]) {
+  const metricsMetas = check.entityMetadatas.filter((m) => METRICS_TABLES.includes(m.tableName));
+  if (metricsMetas.length !== METRICS_TABLES.length) problems.push(`${METRICS_TABLES.join('/')}: entity missing`);
+  for (const meta of [...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns
