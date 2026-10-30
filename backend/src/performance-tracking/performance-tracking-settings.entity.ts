@@ -97,6 +97,13 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 4 })
   responseTargetWorkingHours: number;
 
+  // Q4 (migrations/2026-11-performance-tracking-escaped-defects.sql).
+  @Column({ type: 'int', default: 30 })
+  escapeWindowDays: number;
+
+  @Column({ type: 'int', default: 10 })
+  escapedPerTasks: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

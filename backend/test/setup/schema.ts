@@ -138,6 +138,12 @@ const CALENDAR_DIR = path.join(SRC, 'work-calendar');
 const REQUESTS_DIR = path.join(SRC, 'task-requests');
 const CALENDAR_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-calendar-requests.sql');
 const CALENDAR_TABLES = ['person_work_calendars', 'person_leave', 'country_holidays', 'task_requests'];
+// Q4: the project_tasks columns dropped from what synchronize made and
+// re-added by the real migration (plus 2 settings columns).
+const ESCAPED_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-escaped-defects.sql');
+const ESCAPED_COLUMNS: Record<string, string[]> = {
+  project_tasks: ['foundInProduction', 'escapedFromTaskId', 'productionReleaseDate', 'foundInProductionByUserId', 'foundInProductionAt'],
+};
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
 
@@ -235,6 +241,10 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(METRICS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(SCORECARD_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(CALENDAR_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(ESCAPED_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(ESCAPED_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);

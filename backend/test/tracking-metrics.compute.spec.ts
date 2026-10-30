@@ -203,6 +203,43 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(bare, 10, 'L2')).toMatchObject({ value: 0 });
   });
 
+  it('Q4: production defects within 30 days of release, charged to the passing submitter, per 10 tasks released', () => {
+    const base = input();
+    const defect = (id: number, extra: any) =>
+      task(id, { isDefect: true, foundInProduction: true, assigneeUserId: 20, createdAt: at('2026-11-16T08:00:00Z'), ...extra });
+    const q4 = computeTrackingMetrics(
+      input({
+        tasks: [
+          ...base.tasks,
+          // Counts: 4 days after task 1's release.
+          defect(7, { escapedFromTaskId: 1, productionReleaseDate: '2026-11-12' }),
+          // Released more than 30 days before it was found - left out.
+          defect(8, { escapedFromTaskId: 2, productionReleaseDate: '2026-10-01' }),
+          // No source task - charged to nobody.
+          defect(9, { escapedFromTaskId: null, productionReleaseDate: '2026-11-12' }),
+          // Not marked - ignored.
+          defect(10, { foundInProduction: false, escapedFromTaskId: 1, productionReleaseDate: '2026-11-12' }),
+        ],
+        // Tasks 1 and 2 in the Release Log (task 1 twice - the first date counts).
+        releaseLog: [
+          { taskId: 1, releaseDate: '2026-11-12' },
+          { taskId: 1, releaseDate: '2026-11-19' },
+          { taskId: 2, releaseDate: '2026-11-18' },
+        ],
+        // Task 5 released by status; nobody passed it, so its assignee answers for it.
+        statusEvents: [...base.statusEvents, { taskId: 5, toStatus: 'Released - No Showstoppers', occurredAt: at('2026-11-19T08:00:00Z'), actorUserId: 99 }],
+      }),
+    );
+    expect(get(q4, 10, 'Q4')).toMatchObject({ value: 5, numerator: 1, denominator: 2, sample: 2 });
+    expect((get(q4, 10, 'Q4').details as any).escaped).toEqual([{ defectId: 7, sourceTaskId: 1, releaseDate: '2026-11-12', foundOn: '2026-11-16' }]);
+    expect(get(q4, 20, 'Q4')).toMatchObject({ value: 0, numerator: 0, denominator: 1 });
+    // A shorter window drops defect 7 too.
+    const short = computeTrackingMetrics({ ...input(), tasks: [...base.tasks, defect(7, { escapedFromTaskId: 1, productionReleaseDate: '2026-11-12' })], releaseLog: [{ taskId: 1, releaseDate: '2026-11-12' }], thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, escapeWindowDays: 3 } });
+    expect(get(short, 10, 'Q4')).toMatchObject({ value: 0, denominator: 1 });
+    // Nothing released: no value.
+    expect(get(result, 10, 'Q4')).toMatchObject({ value: null, sample: 0 });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');

@@ -52,6 +52,10 @@ describe('Performance Tracking B3 scoring', () => {
     expect(combineRows('O3', [row('O3', { numerator: 2, denominator: 10, details: { perTasks: 10 } }), row('O3', { projectId: 2, numerator: 1, denominator: 10, details: { perTasks: 10 } })])).toMatchObject({
       value: 1.5,
     });
+    // Q4 (rate): 1 escaped defect per 4 tasks released, per 10.
+    expect(combineRows('Q4', [row('Q4', { numerator: 1, denominator: 2, details: { perTasks: 10 } }), row('Q4', { projectId: 2, numerator: 0, denominator: 2, details: { perTasks: 10 } })])).toMatchObject({
+      value: 2.5,
+    });
   });
 
   it('Baseline: no scores at all, not even with an override', () => {

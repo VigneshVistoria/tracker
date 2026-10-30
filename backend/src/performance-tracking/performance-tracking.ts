@@ -89,6 +89,10 @@ export interface PerformanceTrackingThresholds {
   calendarWeekendDays: number[];
   // C1: a request answered within this many working hours counts as on time.
   responseTargetWorkingHours: number;
+  // Q4: a production defect counts within this many days of the release,
+  // reported per escapedPerTasks tasks released.
+  escapeWindowDays: number;
+  escapedPerTasks: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -113,11 +117,14 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   calendarWorkEnd: '15:30',
   calendarWeekendDays: [0, 6],
   responseTargetWorkingHours: 4,
+  escapeWindowDays: 30,
+  escapedPerTasks: 10,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
-  | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours';
+  | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
+  | 'escapeWindowDays' | 'escapedPerTasks';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -130,6 +137,8 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   chaseCooldownHours: [0, 168],
   progressNoteMin: [5, 500],
   responseTargetWorkingHours: [1, 40],
+  escapeWindowDays: [1, 365],
+  escapedPerTasks: [1, 100],
 };
 
 export function isValidTimeZone(zone: string): boolean {

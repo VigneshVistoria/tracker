@@ -257,6 +257,24 @@ export class ProjectTask {
   @Column({ type: 'varchar', length: 20, nullable: true })
   triageStatus: 'pending' | 'accepted' | 'disputed' | null;
 
+  // Performance Tracking Q4 (see ./escaped-defect.ts) - a defect found in
+  // production, the released task it escaped from (optional) and when that
+  // work went live. migrations/2026-11-performance-tracking-escaped-defects.sql.
+  @Column({ default: false })
+  foundInProduction: boolean;
+
+  @Column({ type: 'int', nullable: true })
+  escapedFromTaskId: number | null;
+
+  @Column({ type: 'date', nullable: true })
+  productionReleaseDate: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  foundInProductionByUserId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  foundInProductionAt: Date | null;
+
   @Column({ nullable: true })
   createdByUserId: number;
 

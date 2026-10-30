@@ -5,7 +5,8 @@
 //  * A person's rows from every tracked project are combined: percent
 //    metrics by adding numerators and denominators, counts by adding, O1/O2
 //    (working days) as a sample-weighted average, O3 as total chases per
-//    chasesPerTasks tasks due. Only rows from projects past their Baseline
+//    chasesPerTasks tasks due, Q4 as total escaped defects per
+//    escapedPerTasks tasks released. Only rows from projects past their Baseline
 //    count; if a person has none yet, the card says "Baseline - no scores
 //    yet" and shows no score at all.
 //  * Below the minimum sample (shared setting, default 5) a metric says
@@ -26,7 +27,7 @@ import { METRIC_INFO, TrackingMetric, TRACKING_METRICS } from '../metrics/tracki
 
 export const COMPETENCIES: Record<string, { label: string; metrics: TrackingMetric[] }> = {
   D: { label: 'Delivery', metrics: ['D1', 'D2', 'D3', 'D4'] },
-  Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3'] },
+  Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3', 'Q4'] },
   C: { label: 'Collaboration', metrics: ['C1', 'C2', 'C5'] },
   O: { label: 'Ownership', metrics: ['O1', 'O2', 'O3', 'O5'] },
   L: { label: 'Client focus', metrics: ['L1', 'L2'] },
@@ -114,7 +115,8 @@ export function combineRows(metric: TrackingMetric, rows: SnapshotRowLike[]): { 
     const d = sum('denominator');
     return { value: d > 0 ? r2((n / d) * 100) : null, sample, numerator: n, denominator: d };
   }
-  if (metric === 'O3') {
+  // Rates (O3 chases, Q4 escaped defects): total per `perTasks` tasks.
+  if (info.unit === 'rate') {
     const n = sum('numerator');
     const d = sum('denominator');
     const per = Number(rows[0].details?.perTasks ?? 10);

@@ -44,6 +44,8 @@ const NUMBER_FIELDS = [
   ['chaseCooldownHours', 'Chase: one per task per person within (hours)', ''],
   ['progressNoteMin', 'Progress note: at least (characters)', ''],
   ['responseTargetWorkingHours', 'C1: a request answered within (working hours) is on time', 'Counted in the person\'s own working hours (Work Calendars).'],
+  ['escapeWindowDays', 'Q4: a production defect counts if found within (days) of its release', ''],
+  ['escapedPerTasks', 'Q4: report escaped defects per (tasks released)', ''],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program

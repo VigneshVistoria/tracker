@@ -41,6 +41,13 @@
 //     the first Pass/Test failed verdict.
 //  Q3 Reopen rate (%) - reopens after Pass charged to the person within
 //     reopenWindowDays of the Pass, per QA Pass of theirs in the window.
+//  Q4 Escaped defects (rate) - defects marked "Found in production" whose
+//     creation is in the window and within escapeWindowDays of their
+//     release date, charged to whoever submitted the source task's last
+//     passing QA round (else its assignee), per escapedPerTasks tasks
+//     released by the person in the window (first Release Log date or
+//     first move to a Released status, whichever is earlier). Defects with
+//     no source task are charged to nobody.
 //  C1 Response time (%) - B4: requests to the person (requestSources:
 //     dependency tickets they own, and requests made to them on a task)
 //     answered within responseTargetWorkingHours of THEIR working hours
@@ -76,7 +83,7 @@ import { PerformanceTrackingThresholds } from '../performance-tracking';
 import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-calendar';
 import { commitmentDeadline } from '../../performance-metrics/working-days';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'C1', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'C1', 'C2', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -88,6 +95,7 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q1: { label: 'First-time QA acceptance', unit: 'percent', higherIsBetter: true },
   Q2: { label: 'First-pass test rate', unit: 'percent', higherIsBetter: true },
   Q3: { label: 'Reopen rate', unit: 'percent', higherIsBetter: false },
+  Q4: { label: 'Escaped defects', unit: 'rate', higherIsBetter: false },
   C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
   C2: { label: 'Dependency wait caused', unit: 'count', higherIsBetter: false },
   C5: { label: 'Status freshness', unit: 'percent', higherIsBetter: true },
@@ -116,6 +124,11 @@ export interface TmTask {
   clientImpact: string | null;
   improvementDecision: string | null;
   improvementDecidedAt: Date | null;
+  // Q4 (optional so older callers and tests need not set them).
+  createdAt?: Date | null;
+  foundInProduction?: boolean;
+  escapedFromTaskId?: number | null;
+  productionReleaseDate?: string | null;
 }
 
 export interface TmRound {
@@ -198,6 +211,8 @@ export interface TrackingMetricsInput {
   hoursFor?: (userId: number) => PersonCalendar;
   dueDateWorkingDays?: number;
   requests?: TmRequest[];
+  // Q4: Release Log dates (one row per task per release).
+  releaseLog?: Array<{ taskId: number; releaseDate: string }>;
   thresholds: PerformanceTrackingThresholds;
   people: number[];
   tasks: TmTask[];
@@ -393,6 +408,40 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     firstSubmitBy.get(first.submittedByUserId)!.push(tasks.get(taskId)!);
   }
 
+  // ---- Q4: who answers for a released task, and when it was released ----
+  const answerableFor = (task: TmTask): number | null => {
+    const passes = (roundsByTask.get(task.id) ?? []).filter((r) => r.reviewType === 'qa' && r.status === 'approved');
+    return passes.length ? passes[passes.length - 1].submittedByUserId : task.assigneeUserId;
+  };
+  const releasedOn = new Map<number, string>();
+  const noteRelease = (taskId: number, d: string) => {
+    if (tasks.has(taskId) && (!releasedOn.has(taskId) || d < releasedOn.get(taskId)!)) releasedOn.set(taskId, d);
+  };
+  for (const r of input.releaseLog ?? []) noteRelease(r.taskId, r.releaseDate);
+  for (const [taskId, events] of statusByTask) {
+    const first = events.find((e) => e.toStatus.startsWith('Released'));
+    if (first) noteRelease(taskId, day(first.occurredAt));
+  }
+  const releasedBy = new Map<number, number[]>();
+  for (const [taskId, d] of releasedOn) {
+    if (d < windowFrom || d > snapshotDate) continue;
+    const who = answerableFor(tasks.get(taskId)!);
+    if (who === null) continue;
+    if (!releasedBy.has(who)) releasedBy.set(who, []);
+    releasedBy.get(who)!.push(taskId);
+  }
+  const escapedBy = new Map<number, Array<{ defectId: number; sourceTaskId: number; releaseDate: string; foundOn: string }>>();
+  for (const t of tasks.values()) {
+    if (!t.isDefect || !t.foundInProduction || !t.productionReleaseDate || !t.createdAt || !inWindow(t.createdAt)) continue;
+    const foundOn = day(t.createdAt);
+    if (foundOn > addCalendarDays(t.productionReleaseDate, th.escapeWindowDays)) continue;
+    const source = t.escapedFromTaskId ? tasks.get(t.escapedFromTaskId) : undefined;
+    const who = source ? answerableFor(source) : null;
+    if (!source || who === null) continue;
+    if (!escapedBy.has(who)) escapedBy.set(who, []);
+    escapedBy.get(who)!.push({ defectId: t.id, sourceTaskId: source.id, releaseDate: t.productionReleaseDate, foundOn });
+  }
+
   // ---- C5: working days in the window ----
   // Every day in the window; each is a sample only on its holder's working days.
   const sampleDays: string[] = [];
@@ -505,6 +554,16 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     );
     push(userId, 'Q3', pct(reopens.length, allPasses.length), allPasses.length, reopens.length, allPasses.length, {
       reopenedTaskIds: reopens.map((r) => r.taskId),
+    });
+
+    // Q4
+    const released = releasedBy.get(userId) ?? [];
+    const escaped = escapedBy.get(userId) ?? [];
+    push(userId, 'Q4', released.length ? (escaped.length / released.length) * th.escapedPerTasks : null, released.length, escaped.length, released.length, {
+      perTasks: th.escapedPerTasks,
+      windowDays: th.escapeWindowDays,
+      releasedTaskIds: released,
+      escaped,
     });
 
     // C1

@@ -208,26 +208,27 @@ export class TrackingMetricsService {
     const q = (sql: string, params: any[]) => this.dataSource.query(sql, params);
     const tasks: any[] = await q(
       `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact",
-              "improvementDecision", "improvementDecidedAt"
+              "improvementDecision", "improvementDecidedAt",
+              "createdAt", "foundInProduction", "escapedFromTaskId", "productionReleaseDate"::text AS "productionReleaseDate"
          FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2`,
       [tenantId, projectId],
     );
     const ids = tasks.map((t) => t.id);
-    const empty = { rounds: [], commitmentEvents: [], flags: [], tickets: [], reopens: [], chases: [], notes: [], statusEvents: [], requests: [] };
+    const empty = { rounds: [], commitmentEvents: [], flags: [], tickets: [], reopens: [], chases: [], notes: [], statusEvents: [], requests: [], releaseLog: [] };
     const report = await this.metrics.computeReport(tenantId, { projectId, to: snapshotDate, now });
     const onTimeItems = new Map(report.people.map((p) => [p.userId, p.onTime.items]));
     const chargedChanges = new Map(report.people.map((p) => [p.userId, p.dueChanges.items]));
     const changeSample = new Map(report.people.map((p) => [p.userId, p.dueChanges.tasksCounted.length]));
     const assignees = new Set<number>(tasks.filter((t) => t.assigneeUserId != null && t.status !== 'Junk').map((t) => t.assigneeUserId));
     const base = {
-      tasks: tasks.map((t) => ({ ...t, improvementDecidedAt: t.improvementDecidedAt ? new Date(t.improvementDecidedAt) : null })),
+      tasks: tasks.map((t) => ({ ...t, improvementDecidedAt: t.improvementDecidedAt ? new Date(t.improvementDecidedAt) : null, createdAt: t.createdAt ? new Date(t.createdAt) : null })),
       onTimeItems,
       chargedChanges,
       changeSample,
       assignees,
     };
     if (ids.length === 0) return { ...base, ...empty };
-    const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests] = await Promise.all([
+    const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests, releaseLog] = await Promise.all([
       q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
       q(
@@ -241,6 +242,11 @@ export class TrackingMetricsService {
       q(`SELECT "taskId", "authorUserId", "createdAt" FROM task_progress_notes WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
       q(`SELECT "taskId", "toStatus", "occurredAt", "actorUserId" FROM task_status_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
       q(`SELECT source, "dependencyTicketId", "requestedOfUserId", "requestedAt", "respondedAt" FROM task_requests WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
+      q(
+        `SELECT i."taskId", r."releaseDate"::text AS "releaseDate" FROM release_items i JOIN releases r ON r.id = i."releaseId"
+          WHERE i."tenantId" = $1 AND i."taskId" = ANY($2)`,
+        [tenantId, ids],
+      ),
     ]);
     const dates = <T>(rows: any[], keys: string[]): T[] =>
       rows.map((r) => {
@@ -258,6 +264,7 @@ export class TrackingMetricsService {
       notes: dates(notes, ['createdAt']),
       statusEvents: dates(statusEvents, ['occurredAt']),
       requests: dates(requests, ['requestedAt', 'respondedAt']),
+      releaseLog: releaseLog as Array<{ taskId: number; releaseDate: string }>,
     };
   }
 

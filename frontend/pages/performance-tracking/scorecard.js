@@ -22,7 +22,7 @@ function valueText(m) {
   if (m.value === null || m.value === undefined) return '-';
   if (m.unit === 'percent') return `${m.value}%`;
   if (m.unit === 'days') return `${m.value} working days`;
-  if (m.unit === 'rate') return `${m.value} per 10 tasks due`;
+  if (m.unit === 'rate') return `${m.value} per 10 tasks ${m.metric === 'Q4' ? 'released' : 'due'}`;
   return String(m.value);
 }
 

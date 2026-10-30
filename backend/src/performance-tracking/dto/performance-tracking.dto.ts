@@ -133,6 +133,19 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.responseTargetWorkingHours[0])
   @Max(THRESHOLD_LIMITS.responseTargetWorkingHours[1])
   responseTargetWorkingHours?: number;
+
+  // Q4.
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.escapeWindowDays[0])
+  @Max(THRESHOLD_LIMITS.escapeWindowDays[1])
+  escapeWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.escapedPerTasks[0])
+  @Max(THRESHOLD_LIMITS.escapedPerTasks[1])
+  escapedPerTasks?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {
