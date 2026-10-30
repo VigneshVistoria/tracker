@@ -52,6 +52,8 @@ const NUMBER_FIELDS = [
   ['escalationsPerRounds', 'O4: report avoidable escalations per (QA rounds)', ''],
   ['releaseWindowDays', 'P1/P2: window (days of release dates)', 'Releases are few, so P1 and P2 look back further than the other measures.'],
   ['releaseMinSample', 'P1/P2: minimum releases before a score', 'Below this, P1 and P2 show "Not enough data".'],
+  ['securityWindowDays', 'P3/P4: window (days)', 'Security findings are few, so P3 and P4 look back further than the other measures.'],
+  ['securityMinSample', 'P3: minimum verified fixes before a score', 'Below this, P3 shows "Not enough data". P4 (SLA breaches) is shown from one finding due.'],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program
@@ -169,6 +171,11 @@ export default function PerformanceTrackingSettingsPage() {
     delete body.overrideRoles;
     body.techReviewCriteria = body.techReviewCriteria.map((c) => c.trim()).filter(Boolean);
     body.weeklyReportDeadlineDay = Number(body.weeklyReportDeadlineDay);
+    body.securitySlaDays = Object.fromEntries(Object.entries(body.securitySlaDays).map(([k, v]) => [k, Number(v)]));
+    if (body.securityRoles.length === 0) {
+      setError('Pick at least one role that records and verifies security findings.');
+      return;
+    }
     body.escalationReasons = body.escalationReasons.filter((r) => r.label.trim()).map((r) => ({ ...(r.code ? { code: r.code } : {}), label: r.label.trim(), avoidable: !!r.avoidable }));
     if (body.requestSources.length === 0 || body.chaseRoles.length === 0) {
       setError('Pick at least one request source and at least one role that can chase.');
@@ -386,6 +393,36 @@ export default function PerformanceTrackingSettingsPage() {
                   {ROLE_LABEL[v] || v}
                 </label>
               ))}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>P3/P4: who records security findings and verifies fixes (never the owner)</legend>
+              {page.choices.securityRoles.map((v) => (
+                <label key={v} style={inline}>
+                  <input type="checkbox" checked={form.securityRoles.includes(v)} onChange={() => toggleIn('securityRoles', v)} />
+                  {ROLE_LABEL[v] || v}
+                </label>
+              ))}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>P4: security fix SLA, working days after the day a finding was found (1-60)</legend>
+              <div style={{ ...inline, flexWrap: 'wrap' }}>
+                {['critical', 'high', 'medium', 'low'].map((s) => (
+                  <label key={s} style={inline}>
+                    {s[0].toUpperCase() + s.slice(1)}
+                    <input
+                      className={styles.input}
+                      style={{ width: '5rem' }}
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={form.securitySlaDays[s]}
+                      onChange={(e) => set('securitySlaDays', { ...form.securitySlaDays, [s]: e.target.value })}
+                    />
+                  </label>
+                ))}
+              </div>
             </fieldset>
 
             <fieldset style={fieldset}>

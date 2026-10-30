@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { UserRole } from '../users/user.entity';
 import { BlockerLagClockStart, NonComplianceDisplay, RequestSource } from './performance-tracking';
 import { EscalationReason } from '../task-qa-reviews/escalation-reasons';
+import { SlaDays } from '../security-findings/security-findings';
 
 // Performance Tracking thresholds (2026-10-28) - one row per tenant, edited
 // by Admin and Program Manager. A tenant with no row uses
@@ -143,6 +144,19 @@ export class PerformanceTrackingSettings {
 
   @Column({ type: 'int', default: 3 })
   releaseMinSample: number;
+
+  // P3/P4 (migrations/2026-11-performance-tracking-security-findings.sql).
+  @Column({ type: 'jsonb', default: () => `'{"critical": 2, "high": 5, "medium": 10, "low": 20}'` })
+  securitySlaDays: SlaDays;
+
+  @Column({ type: 'jsonb', default: () => `'["admin", "program_manager", "qa"]'` })
+  securityRoles: UserRole[];
+
+  @Column({ type: 'int', default: 90 })
+  securityWindowDays: number;
+
+  @Column({ type: 'int', default: 3 })
+  securityMinSample: number;
 
   @UpdateDateColumn()
   updatedAt: Date;

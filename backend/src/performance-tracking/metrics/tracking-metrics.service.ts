@@ -244,7 +244,20 @@ export class TrackingMetricsService {
       `SELECT id, "releaseDate"::text AS "releaseDate", "releasedByUserId", "stagingSignedOffOn"::text AS "stagingSignedOffOn", "changeTicketRef" FROM releases WHERE "tenantId" = $1 AND "projectId" = $2`,
       [tenantId, projectId],
     );
-    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers, releases };
+    // P3/P4 security findings belong to the project.
+    const securityFindings = (
+      await q(
+        `SELECT id, "ownerUserId", "ownerDueOn"::text AS "ownerDueOn", status, "fixedAt", "fixSubmittedAt", "firstVerifyResult", "firstVerifiedAt", "riskAcceptedAt" FROM security_findings WHERE "tenantId" = $1 AND "projectId" = $2`,
+        [tenantId, projectId],
+      )
+    ).map((r: any) => ({
+      ...r,
+      fixedAt: r.fixedAt ? new Date(r.fixedAt) : null,
+      fixSubmittedAt: r.fixSubmittedAt ? new Date(r.fixSubmittedAt) : null,
+      firstVerifiedAt: r.firstVerifiedAt ? new Date(r.firstVerifiedAt) : null,
+      riskAcceptedAt: r.riskAcceptedAt ? new Date(r.riskAcceptedAt) : null,
+    }));
+    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers, releases, securityFindings };
     const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests, releaseLog] = await Promise.all([
       q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt", "escalationReasonCode", "escalationAvoidable" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
@@ -286,6 +299,7 @@ export class TrackingMetricsService {
       weeklyStatus,
       handovers,
       releases,
+      securityFindings,
     };
   }
 

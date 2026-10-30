@@ -57,6 +57,14 @@
 //     before that date. Enough data at releaseMinSample (default 3).
 //  P2 Change ticket coverage (%) - the same releases that carry a change
 //     ticket. Same window and minimum.
+//  P3 Security fix verified first time (%) - the person's findings (as
+//     owner) whose first verification was decided in their own window
+//     (securityWindowDays, default 90, never before go-live), % passed.
+//     Enough data at securityMinSample (default 3).
+//  P4 Security SLA breaches (count) - the person's findings whose owner
+//     due day (SLA from when it was assigned to them) is in that window and
+//     was missed (security-findings.ts slaBreached); accepted risks never
+//     count. Shown from one finding due.
 //  C1 Response time (%) - B4: requests to the person (requestSources:
 //     dependency tickets they own, and requests made to them on a task)
 //     answered within responseTargetWorkingHours of THEIR working hours
@@ -110,8 +118,9 @@ import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-
 import { commitmentDeadline } from '../../performance-metrics/working-days';
 import { mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
 import { hasChangeTicket, onReleasePath } from '../../release-logs/release-path';
+import { FindingForMetrics, slaBreached } from '../../security-findings/security-findings';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'P1', 'P2', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'P1', 'P2', 'P3', 'P4', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -127,6 +136,8 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q5: { label: 'Technical review', unit: 'score', higherIsBetter: true },
   P1: { label: 'Release path compliance', unit: 'percent', higherIsBetter: true },
   P2: { label: 'Change ticket coverage', unit: 'percent', higherIsBetter: true },
+  P3: { label: 'Security fix verified first time', unit: 'percent', higherIsBetter: true },
+  P4: { label: 'Security SLA breaches', unit: 'count', higherIsBetter: false },
   C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
   C2: { label: 'Dependency wait caused (working days)', unit: 'count', higherIsBetter: false },
   C3: { label: 'Weekly report on time', unit: 'percent', higherIsBetter: true },
@@ -252,6 +263,8 @@ export interface TrackingMetricsInput {
   releaseLog?: Array<{ taskId: number; releaseDate: string }>;
   // P1/P2: this project's Release Log entries.
   releases?: Array<{ id: number; releaseDate: string; releasedByUserId: number | null; stagingSignedOffOn: string | null; changeTicketRef: string | null }>;
+  // P3/P4: this project's security findings.
+  securityFindings?: FindingForMetrics[];
   // Q5: this project's technical reviews.
   techReviews?: Array<{ id: number; revieweeUserId: number; reviewedAt: Date; average: number }>;
   // C4: this project's decided handovers.
@@ -323,6 +336,10 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
   // P1/P2 have their own, longer window (release dates are days).
   const releaseRollingFrom = addCalendarDays(snapshotDate, -(th.releaseWindowDays - 1));
   const releaseFrom = releaseRollingFrom > sinceDay ? releaseRollingFrom : sinceDay;
+  // P3/P4 likewise.
+  const securityRollingFrom = addCalendarDays(snapshotDate, -(th.securityWindowDays - 1));
+  const securityFrom = securityRollingFrom > sinceDay ? securityRollingFrom : sinceDay;
+  const securityFromAt = new Date(Math.max(startOfDayInZone(securityFrom, zone).getTime(), input.trackingSince.getTime()));
   const fromAt = new Date(Math.max(startOfDayInZone(windowFrom, zone).getTime(), input.trackingSince.getTime()));
   const toAt = startOfDayInZone(addCalendarDays(snapshotDate, 1), zone);
   // Open-ended things (a blocker still open) run to the end of the
@@ -642,6 +659,36 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     });
     releaseRow('P2', ticketed.length, {
       noTicket: releases.filter((r) => !hasChangeTicket(r)).map((r) => r.id),
+    });
+
+    // P3, P4
+    const mineFindings = (input.securityFindings ?? []).filter((f) => f.ownerUserId === userId);
+    const verified = mineFindings.filter((f) => f.firstVerifiedAt && f.firstVerifiedAt.getTime() >= securityFromAt.getTime() && f.firstVerifiedAt.getTime() < toAt.getTime());
+    const firstTime = verified.filter((f) => f.firstVerifyResult === 'passed');
+    rows.push({
+      userId,
+      metric: 'P3',
+      value: pct(firstTime.length, verified.length),
+      numerator: firstTime.length,
+      denominator: verified.length,
+      sample: verified.length,
+      enoughData: verified.length > 0 && verified.length >= th.securityMinSample,
+      details: { windowFrom: securityFrom, windowDays: th.securityWindowDays, findingIds: verified.map((f) => f.id), failedFirstTime: verified.filter((f) => f.firstVerifyResult !== 'passed').map((f) => f.id) },
+    });
+    const findingsDue = mineFindings
+      .filter((f) => f.ownerDueOn >= securityFrom && f.ownerDueOn <= snapshotDate)
+      .map((f) => ({ f, breached: slaBreached(f, f.ownerDueOn, snapshotDate, day) }))
+      .filter((x) => x.breached !== null);
+    const breaches = findingsDue.filter((x) => x.breached);
+    rows.push({
+      userId,
+      metric: 'P4',
+      value: findingsDue.length ? breaches.length : null,
+      numerator: breaches.length,
+      denominator: findingsDue.length,
+      sample: findingsDue.length,
+      enoughData: findingsDue.length > 0,
+      details: { windowFrom: securityFrom, windowDays: th.securityWindowDays, dueFindingIds: findingsDue.map((x) => x.f.id), breachedFindingIds: breaches.map((x) => x.f.id) },
     });
 
     // C1

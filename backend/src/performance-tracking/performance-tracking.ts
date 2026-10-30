@@ -13,6 +13,7 @@
 // Developer, Designer and DevOps are measured.
 import { UserRole } from '../users/user.entity';
 import { DEFAULT_ESCALATION_REASONS, EscalationReason } from '../task-qa-reviews/escalation-reasons';
+import { DEFAULT_SLA_DAYS, SECURITY_ROLE_CHOICES, SlaDays } from '../security-findings/security-findings';
 
 // Admin and Program Manager edit the thresholds and switch projects.
 export const PERFORMANCE_TRACKING_SETTINGS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
@@ -113,6 +114,12 @@ export interface PerformanceTrackingThresholds {
   // their own minimum number of releases before a score.
   releaseWindowDays: number;
   releaseMinSample: number;
+  // P3/P4: SLA working days per severity, who records and verifies
+  // findings, and (like P1/P2) their own window and minimum.
+  securitySlaDays: SlaDays;
+  securityRoles: UserRole[];
+  securityWindowDays: number;
+  securityMinSample: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -150,13 +157,17 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   escalationsPerRounds: 10,
   releaseWindowDays: 90,
   releaseMinSample: 3,
+  securitySlaDays: { ...DEFAULT_SLA_DAYS },
+  securityRoles: [...SECURITY_ROLE_CHOICES],
+  securityWindowDays: 90,
+  securityMinSample: 3,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
   | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin' | 'escalationsPerRounds'
-  | 'releaseWindowDays' | 'releaseMinSample';
+  | 'releaseWindowDays' | 'releaseMinSample' | 'securityWindowDays' | 'securityMinSample';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -178,6 +189,8 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   escalationsPerRounds: [1, 100],
   releaseWindowDays: [28, 365],
   releaseMinSample: [1, 20],
+  securityWindowDays: [28, 365],
+  securityMinSample: [1, 20],
 };
 
 export function isValidTimeZone(zone: string): boolean {

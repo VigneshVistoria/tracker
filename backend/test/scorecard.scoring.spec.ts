@@ -75,6 +75,14 @@ describe('Performance Tracking B3 scoring', () => {
     expect(p1(2)).toMatchObject({ state: 'not_enough_data' });
   });
 
+  it('P3 needs securityMinSample verified fixes; P4 breaches are scored from one finding on the breach bands', () => {
+    const card = (rows: SnapshotRowLike[], opts: any = {}) => scorePerson(10, rows, { bands, minSample: 5, overrides: [], ...opts });
+    expect(card([row('P3', { numerator: 2, denominator: 2, sample: 2 })]).metrics.find((m) => m.metric === 'P3')).toMatchObject({ state: 'not_enough_data' });
+    expect(card([row('P3', { numerator: 2, denominator: 2, sample: 2 })], { securityMinSample: 2 }).metrics.find((m) => m.metric === 'P3')).toMatchObject({ state: 'scored', score: 5 });
+    expect(card([row('P4', { value: 1, numerator: 1, denominator: 1, sample: 1 })]).metrics.find((m) => m.metric === 'P4')).toMatchObject({ state: 'scored', score: 4 });
+    expect(card([row('P4', { value: 1, sample: 1 })]).competencies.find((c) => c.key === 'P')).toMatchObject({ label: 'Process', score: 4 });
+  });
+
   it('C3 is person-level: the same row in two projects is taken once; one week is enough', () => {
     expect(combineRows('C3', [row('C3', { numerator: 3, denominator: 4, sample: 4 }), row('C3', { projectId: 2, numerator: 3, denominator: 4, sample: 4 })])).toMatchObject({ value: 75, sample: 4 });
     const card = scorePerson(10, [row('C3', { numerator: 1, denominator: 1, sample: 1 })], { bands, minSample: 5, overrides: [] });

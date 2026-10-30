@@ -8,6 +8,7 @@ import { ReturnToQaNotificationsListener } from './return-to-qa-notifications.li
 import { DefectTriageNotificationsListener } from './defect-triage-notifications.listener';
 import { DueDateChangeNotificationsListener } from './due-date-change-notifications.listener';
 import { TaskFlagsNotificationsListener } from './task-flags-notifications.listener';
+import { SecurityFindingsNotificationsListener } from './security-findings-notifications.listener';
 import { GuardsModule } from '../common/guards.module';
 import { EventsModule } from '../events/events.module';
 import { UsersModule } from '../users/users.module';
@@ -15,6 +16,6 @@ import { UsersModule } from '../users/users.module';
 @Module({
   imports: [TypeOrmModule.forFeature([UserNotification]), GuardsModule, EventsModule, UsersModule],
   controllers: [UserNotificationsController],
-  providers: [UserNotificationsService, UserNotificationListenersService, ReturnToQaNotificationsListener, DefectTriageNotificationsListener, DueDateChangeNotificationsListener, TaskFlagsNotificationsListener],
+  providers: [UserNotificationsService, UserNotificationListenersService, ReturnToQaNotificationsListener, DefectTriageNotificationsListener, DueDateChangeNotificationsListener, TaskFlagsNotificationsListener, SecurityFindingsNotificationsListener],
 })
 export class UserNotificationsModule {}

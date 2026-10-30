@@ -66,6 +66,8 @@ import { TaskRequestsModule } from './task-requests/task-requests.module';
 import { TechReview } from './tech-reviews/tech-review.entity';
 import { TechReviewEvidence } from './tech-reviews/tech-review-evidence.entity';
 import { TechReviewsModule } from './tech-reviews/tech-reviews.module';
+import { SecurityFinding } from './security-findings/security-finding.entity';
+import { SecurityFindingsModule } from './security-findings/security-findings.module';
 import { WeeklyStatusReport } from './weekly-status/weekly-status-report.entity';
 import { WeeklyStatusModule } from './weekly-status/weekly-status.module';
 import { TaskHandover } from './task-handovers/task-handover.entity';
@@ -205,6 +207,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TaskRequest,
           TechReview,
           TechReviewEvidence,
+          SecurityFinding,
           WeeklyStatusReport,
           TaskHandover,
           KpiConfig,
@@ -286,6 +289,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     TaskActivityModule,
     TaskRequestsModule,
     TechReviewsModule,
+    SecurityFindingsModule,
     WeeklyStatusModule,
     TaskHandoversModule,
     PermissionsModule,

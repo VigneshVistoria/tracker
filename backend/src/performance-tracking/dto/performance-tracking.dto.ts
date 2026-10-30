@@ -1,5 +1,6 @@
-import { ArrayMaxSize, ArrayMinSize, ArrayNotEmpty, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayNotEmpty, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { UserRole } from '../../users/user.entity';
+import { SECURITY_ROLE_CHOICES } from '../../security-findings/security-findings';
 import {
   BLOCKER_LAG_CLOCK_STARTS,
   BlockerLagClockStart,
@@ -215,6 +216,29 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.releaseMinSample[0])
   @Max(THRESHOLD_LIMITS.releaseMinSample[1])
   releaseMinSample?: number;
+
+  // P3/P4. SLA days are checked in the service.
+  @IsOptional()
+  @IsObject()
+  securitySlaDays?: Record<string, number>;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(SECURITY_ROLE_CHOICES, { each: true })
+  securityRoles?: UserRole[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.securityWindowDays[0])
+  @Max(THRESHOLD_LIMITS.securityWindowDays[1])
+  securityWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.securityMinSample[0])
+  @Max(THRESHOLD_LIMITS.securityMinSample[1])
+  securityMinSample?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

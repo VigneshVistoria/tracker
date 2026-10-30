@@ -150,6 +150,8 @@ export const NAV_SECTIONS = [
       { href: '/performance-tracking/scorecard', label: 'Performance Scorecard', icon: Award, roles: [ADMIN, PM, EXEC] },
       // Performance Tracking Q5 (2026-10-30) - matches TECH_REVIEW_SEE_ALL_ROLES (developers see their own via the scorecard link).
       { href: '/performance-tracking/tech-reviews', label: 'Technical Review', icon: ClipboardCheck, roles: [ADMIN, PM, EXEC] },
+      // Performance Tracking P3/P4 (2026-10-30) - SECURITY_SEE_ALL_ROLES + the default securityRoles (QA); developers use the header link.
+      { href: '/performance-tracking/security-findings', label: 'Security Findings', icon: ShieldAlert, roles: [ADMIN, PM, EXEC, QA] },
       // Performance Tracking C3 (2026-10-30) - matches WEEKLY_STATUS_TEAM_ROLES.
       { href: '/weekly-status', label: 'Weekly Status Reports', icon: ClipboardList, roles: [ADMIN, PM, EXEC] },
       { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart, roles: [ADMIN, EXEC] },

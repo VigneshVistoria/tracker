@@ -24,6 +24,7 @@ import {
 import { UpdatePerformanceTrackingSettingsDto } from './dto/performance-tracking.dto';
 import { criteriaProblem } from '../tech-reviews/tech-reviews';
 import { codeFor, reasonsProblem } from '../task-qa-reviews/escalation-reasons';
+import { SECURITY_ROLE_CHOICES, SlaDays, slaDaysProblem } from '../security-findings/security-findings';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -64,6 +65,7 @@ export class PerformanceTrackingService {
         nonComplianceDisplay: NON_COMPLIANCE_DISPLAYS,
         requestSources: REQUEST_SOURCES,
         chaseRoles: CHASE_ROLE_CHOICES,
+        securityRoles: SECURITY_ROLE_CHOICES,
         // B4: the people who can be named as override users.
         overrideUsers: leaders.map((u) => ({ id: u.id, name: u.fullName || u.email, role: u.role })),
       },
@@ -92,6 +94,12 @@ export class PerformanceTrackingService {
     }
     after.requestSources = [...new Set(after.requestSources)];
     after.chaseRoles = [...new Set(after.chaseRoles)];
+    after.securityRoles = [...new Set(after.securityRoles)];
+    if (dto.securitySlaDays !== undefined) {
+      const problem = slaDaysProblem(dto.securitySlaDays);
+      if (problem) throw new BadRequestException(problem);
+      after.securitySlaDays = { ...(dto.securitySlaDays as SlaDays) };
+    }
     after.overrideUserIds = [...new Set(after.overrideUserIds)];
     if (dto.overrideUserIds !== undefined && after.overrideUserIds.length) {
       const people = await this.usersRepository.find({ where: { id: In(after.overrideUserIds), tenantId } });

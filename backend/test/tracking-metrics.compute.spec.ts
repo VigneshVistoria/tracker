@@ -369,6 +369,39 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(computeTrackingMetrics(input({ releases })), 10, 'P1')).toMatchObject({ denominator: 1 });
   });
 
+  it('P3/P4: security fixes verified first time, SLA breaches against the owner due day (90-day window)', () => {
+    const f = (id: number, ownerDueOn: string, extra: any = {}) => ({
+      id, ownerUserId: 10, ownerDueOn, status: 'open', fixedAt: null, fixSubmittedAt: null, firstVerifyResult: null, firstVerifiedAt: null, riskAcceptedAt: null, ...extra,
+    });
+    const p = computeTrackingMetrics(
+      input({
+        securityFindings: [
+          // Fixed (submitted 9 Nov EAT) on time for 10 Nov, passed first time.
+          f(1, '2026-11-10', { status: 'verified', fixedAt: at('2026-11-09T10:00:00Z'), fixSubmittedAt: at('2026-11-09T10:00:00Z'), firstVerifyResult: 'passed', firstVerifiedAt: at('2026-11-11T08:00:00Z') }),
+          // Failed first, the passing fix was submitted after the due day: breach.
+          f(2, '2026-11-12', { status: 'verified', fixedAt: at('2026-11-13T10:00:00Z'), fixSubmittedAt: at('2026-11-13T10:00:00Z'), firstVerifyResult: 'failed', firstVerifiedAt: at('2026-11-11T08:00:00Z') }),
+          // Still open after its due day: breach.
+          f(3, '2026-11-16'),
+          // Fix waiting for verification, submitted in time: not (yet) a breach.
+          f(4, '2026-11-18', { status: 'fix_submitted', fixSubmittedAt: at('2026-11-18T10:00:00Z') }),
+          // Risk accepted (even after the due day): never a breach, left out.
+          f(5, '2026-11-17', { status: 'risk_accepted', riskAcceptedAt: at('2026-11-16T10:00:00Z') }),
+          f(8, '2026-11-11', { status: 'risk_accepted', riskAcceptedAt: at('2026-11-18T10:00:00Z') }),
+          // Due after the snapshot: not in P4 yet.
+          f(6, '2026-11-25'),
+          // Someone else's.
+          f(7, '2026-11-16', { ownerUserId: 20 }),
+        ],
+      }),
+    );
+    expect(get(p, 10, 'P3')).toMatchObject({ value: 50, numerator: 1, denominator: 2, enoughData: false });
+    expect(get(p, 10, 'P3').details).toMatchObject({ windowDays: 90, findingIds: [1, 2], failedFirstTime: [2] });
+    expect(get(p, 10, 'P4')).toMatchObject({ value: 2, numerator: 2, denominator: 4, sample: 4, enoughData: true });
+    expect(get(p, 10, 'P4').details).toMatchObject({ dueFindingIds: [1, 2, 3, 4], breachedFindingIds: [2, 3] });
+    expect(get(p, 20, 'P4')).toMatchObject({ value: 1 });
+    expect(get(result, 10, 'P4')).toMatchObject({ value: null, sample: 0, enoughData: false });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');
