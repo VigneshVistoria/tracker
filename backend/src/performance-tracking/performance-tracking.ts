@@ -12,6 +12,7 @@
 // the assignee; O3 is Chase only; Blocked is a flag, not a status;
 // Developer, Designer and DevOps are measured.
 import { UserRole } from '../users/user.entity';
+import { DEFAULT_ESCALATION_REASONS, EscalationReason } from '../task-qa-reviews/escalation-reasons';
 
 // Admin and Program Manager edit the thresholds and switch projects.
 export const PERFORMANCE_TRACKING_SETTINGS_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
@@ -104,6 +105,10 @@ export interface PerformanceTrackingThresholds {
   weeklyReportMinLength: number;
   // C4: every handover template field (and a rejection reason) needs this many characters.
   handoverFieldMin: number;
+  // O4: the reasons QA picks on "Escalate to PM", each avoidable or not;
+  // reported per escalationsPerRounds QA rounds.
+  escalationReasons: EscalationReason[];
+  escalationsPerRounds: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -137,12 +142,14 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   weeklyReportDeadlineTime: '17:00',
   weeklyReportMinLength: 20,
   handoverFieldMin: 10,
+  escalationReasons: DEFAULT_ESCALATION_REASONS.map((r) => ({ ...r })),
+  escalationsPerRounds: 10,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
-  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin';
+  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin' | 'escalationsPerRounds';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -161,6 +168,7 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   weeklyReportDeadlineDay: [0, 6],
   weeklyReportMinLength: [5, 500],
   handoverFieldMin: [3, 500],
+  escalationsPerRounds: [1, 100],
 };
 
 export function isValidTimeZone(zone: string): boolean {

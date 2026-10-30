@@ -1,3 +1,4 @@
+import { PerformanceTrackingCoreModule } from '../performance-tracking/performance-tracking-core.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TaskQaReview } from './task-qa-review.entity';
@@ -29,6 +30,7 @@ import { NoteQualityModule } from '../note-quality/note-quality.module';
     AuditModule,
     GuardsModule,
     NoteQualityModule,
+    PerformanceTrackingCoreModule,
   ],
   controllers: [TaskQaReviewsController, QaReviewSettingsController, PmReviewsController, SubmissionChecklistController],
   providers: [TaskQaReviewsService, PmReviewsService, PmReviewReminderService, SubmissionChecklistService],

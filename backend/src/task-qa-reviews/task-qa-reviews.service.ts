@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PerformanceTrackingService } from '../performance-tracking/performance-tracking.service';
 import { EntityManager, In, IsNull, LessThan, Not, Repository } from 'typeorm';
 import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from './task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-review-artifact.entity';
@@ -84,6 +85,7 @@ export class TaskQaReviewsService {
     private eventEmitter: EventEmitter2,
     private noteQualityService: NoteQualityService,
     private submissionChecklistService: SubmissionChecklistService,
+    private tracking: PerformanceTrackingService,
   ) {}
 
   // Combined task detail view - every past QA review round for a task,
@@ -555,10 +557,21 @@ export class TaskQaReviewsService {
     if (task.isDefect && task.createdByUserId !== currentUser.id) {
       throw new ForbiddenException('Only the QA who raised this defect can escalate it.');
     }
+    // O4: on a tracked project QA must say why (code + avoidable kept as
+    // they are now - ./escalation-reasons.ts).
+    let reason: { code: string; avoidable: boolean } | null = null;
+    if (await this.trackingOn(task.projectId, tenantId)) {
+      const reasons = (await this.tracking.thresholds(tenantId)).escalationReasons;
+      const picked = reasons.find((r) => r.code === dto.reasonCode);
+      if (!picked) throw new BadRequestException('Pick the reason for the escalation.');
+      reason = { code: picked.code, avoidable: picked.avoidable };
+    }
     // findPendingRound() refuses a Peer Review round.
     const pending = await this.findPendingRound(taskId, tenantId);
 
     pending.status = 'escalated';
+    pending.escalationReasonCode = reason?.code ?? null;
+    pending.escalationAvoidable = reason?.avoidable ?? null;
     pending.qaComment = sanitizeRichText(dto.comment);
     pending.reviewedByUserId = currentUser.id;
     pending.reviewedByEmail = currentUser.email;
@@ -577,7 +590,7 @@ export class TaskQaReviewsService {
       tenantId,
       entityType: 'ProjectTask',
       entityId: taskId,
-      details: { roundNumber: savedReview.roundNumber, comment: dto.comment },
+      details: { roundNumber: savedReview.roundNumber, comment: dto.comment, ...(reason ? { reasonCode: reason.code, avoidable: reason.avoidable } : {}) },
     });
 
     this.eventEmitter.emit('task.escalatedToPm', {
@@ -756,8 +769,14 @@ export class TaskQaReviewsService {
   // dependencies the developer can pick.
   async intake(task: ProjectTask, tenantId: number) {
     const trackingOn = await this.trackingOn(task.projectId, tenantId);
-    if (!trackingOn) return { trackingOn, testFailedReasons: [], recordedDependencies: [] };
-    return { trackingOn, testFailedReasons: await this.testFailedReasons(tenantId), recordedDependencies: await this.recordedDependencies(task, tenantId) };
+    if (!trackingOn) return { trackingOn, testFailedReasons: [], recordedDependencies: [], escalationReasons: [] };
+    return {
+      trackingOn,
+      testFailedReasons: await this.testFailedReasons(tenantId),
+      recordedDependencies: await this.recordedDependencies(task, tenantId),
+      // O4: the reasons QA picks from on "Escalate to PM".
+      escalationReasons: (await this.tracking.thresholds(tenantId)).escalationReasons,
+    };
   }
 
   async testFailedReasons(tenantId: number): Promise<string[]> {
@@ -867,6 +886,8 @@ export class TaskQaReviewsService {
         ...(round.notReadyReason ? { notReadyReason: round.notReadyReason } : {}),
         ...(round.testFailedReason ? { testFailedReason: round.testFailedReason } : {}),
         ...(round.dependencyExempt != null ? { dependencyExempt: round.dependencyExempt } : {}),
+        // O4 escalation reason.
+        ...(round.escalationReasonCode ? { escalationReasonCode: round.escalationReasonCode, escalationAvoidable: round.escalationAvoidable } : {}),
       },
     );
     if (!upd.affected) {

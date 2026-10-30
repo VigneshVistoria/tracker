@@ -506,6 +506,8 @@ export default function TaskDetailPage() {
   // developer's "dependencies met?" answer and the reopen dialog.
   const [qaIntake, setQaIntake] = useState(null);
   const [testFailedReason, setTestFailedReason] = useState('');
+  // Performance Tracking O4: the reason for "Escalate to PM" (tracked projects).
+  const [escalateReason, setEscalateReason] = useState('');
   const [depsMet, setDepsMet] = useState('');
   const [depsWaitingOn, setDepsWaitingOn] = useState('');
   const [depsPicked, setDepsPicked] = useState([]);
@@ -2011,11 +2013,15 @@ export default function TaskDetailPage() {
       setError('A comment explaining why PM intervention is needed is required.');
       return;
     }
+    if (qaIntake?.trackingOn && !escalateReason) {
+      setError('Pick the reason for the escalation.');
+      return;
+    }
     setQaActionBusy(true);
     try {
       const decided = await apiFetch(`/tasks/${task.id}/qa-escalate`, {
         method: 'PATCH',
-        body: JSON.stringify({ comment: escalateComment }),
+        body: JSON.stringify({ comment: escalateComment, ...(qaIntake?.trackingOn ? { reasonCode: escalateReason } : {}) }),
       });
       const failedShots = await uploadShotsAfterDecision([
         { path: `/tasks/${task.id}/qa-reviews/${decided.id}/attachments`, shots: qaShots, label: 'your intervention request' },
@@ -2024,6 +2030,7 @@ export default function TaskDetailPage() {
       setQaShots([]);
       loadDecisionShots();
       setEscalateComment('');
+      setEscalateReason('');
       setShowEscalateForm(false);
       const [refreshedTask, refreshedReviews] = await Promise.all([
         apiFetch(`/tasks/${task.id}`),
@@ -4008,6 +4015,17 @@ export default function TaskDetailPage() {
 
           {showEscalateForm && (
             <form onSubmit={handleQaEscalate} style={{ marginTop: 'var(--space-3)' }}>
+              {qaIntake?.trackingOn && (qaIntake.escalationReasons || []).length > 0 && (
+                <div className={styles.fieldNarrow}>
+                  <label className={styles.label} htmlFor="tdEscalateReason">Reason</label>
+                  <select id="tdEscalateReason" className={styles.input} value={escalateReason} onChange={(e) => setEscalateReason(e.target.value)}>
+                    <option value="">Pick...</option>
+                    {qaIntake.escalationReasons.map((r) => (
+                      <option key={r.code} value={r.code}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="tdEscalateComment">Intervention Comment</label>
                 <RichTextEditor

@@ -1,6 +1,7 @@
 import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { UserRole } from '../users/user.entity';
 import { BlockerLagClockStart, NonComplianceDisplay, RequestSource } from './performance-tracking';
+import { EscalationReason } from '../task-qa-reviews/escalation-reasons';
 
 // Performance Tracking thresholds (2026-10-28) - one row per tenant, edited
 // by Admin and Program Manager. A tenant with no row uses
@@ -127,6 +128,14 @@ export class PerformanceTrackingSettings {
   // C4 (migrations/2026-11-performance-tracking-handovers.sql).
   @Column({ type: 'int', default: 10 })
   handoverFieldMin: number;
+
+  // O4 (migrations/2026-11-performance-tracking-escalation-reasons.sql).
+  // The column default holds the 7 starting reasons; written in full on save.
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  escalationReasons: EscalationReason[];
+
+  @Column({ type: 'int', default: 10 })
+  escalationsPerRounds: number;
 
   @UpdateDateColumn()
   updatedAt: Date;

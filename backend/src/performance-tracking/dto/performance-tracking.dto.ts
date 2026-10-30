@@ -190,6 +190,19 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.handoverFieldMin[0])
   @Max(THRESHOLD_LIMITS.handoverFieldMin[1])
   handoverFieldMin?: number;
+
+  // O4. Each {code?, label, avoidable} is checked in the service (a new
+  // reason without a code gets one from its label).
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  escalationReasons?: Array<{ code?: string; label: string; avoidable: boolean }>;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.escalationsPerRounds[0])
+  @Max(THRESHOLD_LIMITS.escalationsPerRounds[1])
+  escalationsPerRounds?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

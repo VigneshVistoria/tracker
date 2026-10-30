@@ -188,4 +188,13 @@ export class TaskQaReview {
 
   @Column({ type: 'boolean', nullable: true })
   dependencyExempt: boolean | null;
+
+  // Performance Tracking O4 (./escalation-reasons.ts) - the reason QA
+  // picked on "Escalate to PM" (tracked projects) and whether it was
+  // avoidable then. migrations/2026-11-performance-tracking-escalation-reasons.sql.
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  escalationReasonCode: string | null;
+
+  @Column({ type: 'boolean', nullable: true })
+  escalationAvoidable: boolean | null;
 }

@@ -241,7 +241,7 @@ export class TrackingMetricsService {
     ).map((r: any) => ({ id: r.id, revieweeUserId: r.revieweeUserId, reviewedAt: new Date(r.reviewedAt), average: Number(r.average) }));
     if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers };
     const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests, releaseLog] = await Promise.all([
-      q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
+      q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt", "escalationReasonCode", "escalationAvoidable" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
       q(
         `SELECT "taskId", kind, "setByAssignee", "assigneeUserId", "committedDueDateAtSet"::text AS "committedDueDateAtSet", "blockingOwnerUserId", external, "dependencyTicketId", "setAt", "clearedAt"

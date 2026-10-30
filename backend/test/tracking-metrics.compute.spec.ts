@@ -311,6 +311,24 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(result, 10, 'C4')).toMatchObject({ value: null, sample: 0 });
   });
 
+  it('O4: avoidable escalations per 10 QA rounds the person submitted', () => {
+    const base = input();
+    const o4 = computeTrackingMetrics(
+      input({
+        rounds: [
+          ...base.rounds,
+          round(4, 'escalated', '2026-11-18T09:00:00Z', '2026-11-19T08:00:00Z', { escalationReasonCode: 'developer_unresponsive', escalationAvoidable: true }),
+          round(1, 'escalated', '2026-11-05T09:00:00Z', '2026-11-06T08:00:00Z', { escalationReasonCode: 'requirement_unclear', escalationAvoidable: false }),
+        ],
+      }),
+    );
+    // QA rounds decided in the window by 10: task 1 pass, task 2 not ready + fail + pass, the 2 escalations = 6.
+    expect(get(o4, 10, 'O4')).toMatchObject({ numerator: 1, denominator: 6, sample: 6 });
+    expect(get(o4, 10, 'O4').value).toBeCloseTo(1.67, 2);
+    expect(get(o4, 10, 'O4').details).toMatchObject({ avoidableTaskIds: [4], escalations: 2, byReason: { developer_unresponsive: 1, requirement_unclear: 1 } });
+    expect(get(result, 10, 'O4')).toMatchObject({ value: 0, numerator: 0, denominator: 4 });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');

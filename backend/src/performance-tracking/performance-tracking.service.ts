@@ -23,6 +23,7 @@ import {
 } from './performance-tracking';
 import { UpdatePerformanceTrackingSettingsDto } from './dto/performance-tracking.dto';
 import { criteriaProblem } from '../tech-reviews/tech-reviews';
+import { codeFor, reasonsProblem } from '../task-qa-reviews/escalation-reasons';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -44,6 +45,7 @@ export class PerformanceTrackingService {
     for (const key of Object.keys(PERFORMANCE_TRACKING_DEFAULTS) as (keyof PerformanceTrackingThresholds)[]) {
       if ((row as any)[key] !== undefined && (row as any)[key] !== null) (out as any)[key] = (row as any)[key];
     }
+    if (!Array.isArray(out.escalationReasons) || out.escalationReasons.length === 0) out.escalationReasons = PERFORMANCE_TRACKING_DEFAULTS.escalationReasons.map((r) => ({ ...r }));
     return out;
   }
 
@@ -107,6 +109,22 @@ export class PerformanceTrackingService {
       const problem = criteriaProblem(dto.techReviewCriteria);
       if (problem) throw new BadRequestException(problem);
       after.techReviewCriteria = dto.techReviewCriteria.map((c) => c.trim());
+    }
+    if (dto.escalationReasons !== undefined) {
+      // New reasons get a code from their label; existing codes never change.
+      const used = new Set(dto.escalationReasons.filter((r) => r && r.code).map((r) => r.code!));
+      after.escalationReasons = dto.escalationReasons.map((r) => {
+        let code = r?.code;
+        if (!code) {
+          const base = codeFor(String(r?.label ?? ''));
+          code = base;
+          for (let n = 2; used.has(code); n++) code = `${base}_${n}`;
+          used.add(code);
+        }
+        return { code, label: String(r?.label ?? '').trim(), avoidable: r?.avoidable as boolean };
+      });
+      const problem = reasonsProblem(after.escalationReasons);
+      if (problem) throw new BadRequestException(problem);
     }
     if (!HHMM.test(after.weeklyReportDeadlineTime)) throw new BadRequestException('The weekly report deadline time must be HH:MM, e.g. 17:00.');
     const calendar = calendarProblem({ timeZone: after.calendarTimeZone, workStart: after.calendarWorkStart, workEnd: after.calendarWorkEnd, weekendDays: after.calendarWeekendDays });

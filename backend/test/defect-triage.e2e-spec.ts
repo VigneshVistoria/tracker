@@ -71,7 +71,7 @@ describe('Defect triage (e2e)', () => {
     ds = t.dataSource;
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
-    await ds.query(`TRUNCATE project_tasks, defect_triages, task_qa_reviews, task_defect_artifacts, user_notifications, audit_logs, team_settings RESTART IDENTITY CASCADE`);
+    await ds.query(`TRUNCATE project_tasks, task_dependency_tickets, defect_triages, task_qa_reviews, task_defect_artifacts, user_notifications, audit_logs, team_settings RESTART IDENTITY CASCADE`);
     // Create Defect checks the Project -> Module -> Phase chain.
     moduleId = (
       await ds.query(`INSERT INTO modules ("tenantId", "projectId", "name", "isActive") VALUES ($1, $2, 'Claims', true) RETURNING id`, [f.tenants.t1, f.projects.pLms])

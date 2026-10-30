@@ -87,6 +87,9 @@
 //     the end of the snapshot day).
 //  O3 Chase only (rate) - chases of the person in the window per
 //     chasesPerTasks of their tasks due in the window.
+//  O4 Avoidable escalations (rate) - QA rounds of the person's (as the
+//     submitter) that QA escalated to PM with a reason marked avoidable,
+//     per escalationsPerRounds of their QA rounds decided in the window.
 //  O5 Self-initiated improvements (count) - Improvements the person
 //     created that a PM accepted in the window.
 //  L1 Requirement traceability (%) - Feature tasks first submitted by the
@@ -101,7 +104,7 @@ import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-
 import { commitmentDeadline } from '../../performance-metrics/working-days';
 import { mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -123,6 +126,7 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   O1: { label: 'Blocker raise lag', unit: 'days', higherIsBetter: false },
   O2: { label: 'Blocked-task ageing', unit: 'days', higherIsBetter: false },
   O3: { label: 'Chase only', unit: 'rate', higherIsBetter: false },
+  O4: { label: 'Avoidable escalations', unit: 'rate', higherIsBetter: false },
   O5: { label: 'Self-initiated improvements', unit: 'count', higherIsBetter: true },
   L1: { label: 'Requirement traceability', unit: 'percent', higherIsBetter: true },
   L2: { label: 'Client impact statement', unit: 'percent', higherIsBetter: true },
@@ -160,6 +164,9 @@ export interface TmRound {
   reviewType: string;
   reviewedAt: Date | null;
   dependencyExempt: boolean | null;
+  // O4 (optional so older callers and tests need not set them).
+  escalationReasonCode?: string | null;
+  escalationAvoidable?: boolean | null;
 }
 
 // Assignment and Due date events (task_commitment_events).
@@ -735,6 +742,21 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'O3', due.length ? (chases.length / due.length) * th.chasesPerTasks : null, due.length, chases.length, due.length, {
       perTasks: th.chasesPerTasks,
       chasedTaskIds: [...new Set(chases.map((c) => c.taskId))],
+    });
+
+    // O4
+    const qaRounds = input.rounds.filter(
+      (r) => tasks.has(r.taskId) && r.reviewType === 'qa' && r.submittedByUserId === userId && ['approved', 'rejected', 'not_ready', 'escalated'].includes(r.status) && inWindow(r.reviewedAt),
+    );
+    const escalations = qaRounds.filter((r) => r.status === 'escalated');
+    const avoidable = escalations.filter((r) => r.escalationAvoidable === true);
+    const byReason: Record<string, number> = {};
+    for (const r of escalations) byReason[r.escalationReasonCode ?? 'none'] = (byReason[r.escalationReasonCode ?? 'none'] ?? 0) + 1;
+    push(userId, 'O4', qaRounds.length ? (avoidable.length / qaRounds.length) * th.escalationsPerRounds : null, qaRounds.length, avoidable.length, qaRounds.length, {
+      perTasks: th.escalationsPerRounds,
+      avoidableTaskIds: avoidable.map((r) => r.taskId),
+      escalations: escalations.length,
+      byReason,
     });
 
     // O5

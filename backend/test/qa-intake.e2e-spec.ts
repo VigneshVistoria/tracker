@@ -129,7 +129,7 @@ describe('QA intake + reopen after Pass (Performance Tracking S4, e2e)', () => {
 
     it('no reason, no declaration, no reopen', async () => {
       const id = await newTask();
-      expect((await get(f.users.devA, `/tasks/${id}/qa-intake`).expect(200)).body).toEqual({ trackingOn: false, testFailedReasons: [], recordedDependencies: [] });
+      expect((await get(f.users.devA, `/tasks/${id}/qa-intake`).expect(200)).body).toEqual({ trackingOn: false, testFailedReasons: [], recordedDependencies: [], escalationReasons: [] });
       await submit(id).expect(201);
       expect((await latestRound(id)).dependencyDeclaration).toBeNull();
       await reject(id).expect(200);

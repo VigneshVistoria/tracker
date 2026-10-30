@@ -155,6 +155,12 @@ const WEEKLY_STATUS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-1
 // C4: task handovers (folder left out of synchronize) and the setting.
 const HANDOVERS_DIR = path.join(SRC, 'task-handovers');
 const HANDOVERS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-handovers.sql');
+// O4: the task_qa_reviews columns dropped from what synchronize made and
+// re-added by the real migration (plus 2 settings columns).
+const ESCALATION_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-escalation-reasons.sql');
+const ESCALATION_COLUMNS: Record<string, string[]> = {
+  task_qa_reviews: ['escalationReasonCode', 'escalationAvoidable'],
+};
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
 
@@ -259,6 +265,10 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(TECH_REVIEWS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(WEEKLY_STATUS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(HANDOVERS_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(ESCALATION_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(ESCALATION_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);

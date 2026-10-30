@@ -1,4 +1,4 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 // QA escalates the pending QA Feedback round to PM instead of Approve/
 // Reject - a comment explaining why (unclear/unrelated resolution) is
@@ -7,4 +7,11 @@ export class QaEscalateTaskDto {
   @IsString()
   @MinLength(1, { message: 'A comment explaining the escalation is required.' })
   comment: string;
+
+  // Performance Tracking O4: required on a tracked project (checked in
+  // the service against the editable list).
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  reasonCode?: string;
 }

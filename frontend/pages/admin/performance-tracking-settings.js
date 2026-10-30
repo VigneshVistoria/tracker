@@ -49,6 +49,7 @@ const NUMBER_FIELDS = [
   ['techReviewsPerMonth', 'Q5: technical reviews per person per month', 'More than this are refused.'],
   ['weeklyReportMinLength', 'C3: weekly report "Done" and "Plan" at least (characters)', ''],
   ['handoverFieldMin', 'C4: every handover field (and a rejection reason) at least (characters)', ''],
+  ['escalationsPerRounds', 'O4: report avoidable escalations per (QA rounds)', ''],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program
@@ -166,6 +167,7 @@ export default function PerformanceTrackingSettingsPage() {
     delete body.overrideRoles;
     body.techReviewCriteria = body.techReviewCriteria.map((c) => c.trim()).filter(Boolean);
     body.weeklyReportDeadlineDay = Number(body.weeklyReportDeadlineDay);
+    body.escalationReasons = body.escalationReasons.filter((r) => r.label.trim()).map((r) => ({ ...(r.code ? { code: r.code } : {}), label: r.label.trim(), avoidable: !!r.avoidable }));
     if (body.requestSources.length === 0 || body.chaseRoles.length === 0) {
       setError('Pick at least one request source and at least one role that can chase.');
       return;
@@ -393,6 +395,32 @@ export default function PerformanceTrackingSettingsPage() {
                 </label>
               ))}
               {form.overrideUserIds.length === 0 && <p className={styles.helpText}>Nobody can override scores.</p>}
+            </fieldset>
+
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>O4: reasons QA picks on &quot;Escalate to PM&quot; (past escalations keep the reason and flag they had)</legend>
+              {form.escalationReasons.map((r, i) => (
+                <div key={r.code || `new${i}`} style={{ ...inline, marginBottom: 'var(--space-1)' }}>
+                  <input
+                    aria-label={`Escalation reason ${i + 1}`}
+                    className={styles.input}
+                    style={{ width: '22rem' }}
+                    maxLength={80}
+                    value={r.label}
+                    onChange={(e) => set('escalationReasons', form.escalationReasons.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                  />
+                  <label style={inline}>
+                    <input type="checkbox" checked={!!r.avoidable} onChange={() => set('escalationReasons', form.escalationReasons.map((x, j) => (j === i ? { ...x, avoidable: !x.avoidable } : x)))} />
+                    Avoidable
+                  </label>
+                  <button className={styles.buttonSecondary} type="button" onClick={() => set('escalationReasons', form.escalationReasons.filter((_, j) => j !== i))} disabled={form.escalationReasons.length <= 1}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button className={styles.buttonSecondary} type="button" onClick={() => set('escalationReasons', [...form.escalationReasons, { label: '', avoidable: false }])} disabled={form.escalationReasons.length >= 20}>
+                Add reason
+              </button>
             </fieldset>
 
             <fieldset style={fieldset}>
