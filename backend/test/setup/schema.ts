@@ -161,6 +161,12 @@ const ESCALATION_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-p
 const ESCALATION_COLUMNS: Record<string, string[]> = {
   task_qa_reviews: ['escalationReasonCode', 'escalationAvoidable'],
 };
+// P1/P2: the releases columns dropped from what synchronize made and
+// re-added by the real migration.
+const RELEASE_PATH_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-release-path.sql');
+// P1/P2 settings: 90-day release window, minimum 3 releases.
+const RELEASE_SETTINGS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-release-settings.sql');
+const RELEASE_PATH_COLUMNS = ['releasedByUserId', 'stagingSignedOffOn', 'stagingSignedOffByUserId', 'changeTicketRef'];
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
 
@@ -269,6 +275,9 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(ESCALATION_MIGRATION, 'utf8'));
+  await base.query(`ALTER TABLE "releases" ${RELEASE_PATH_COLUMNS.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  await base.query(fs.readFileSync(RELEASE_PATH_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(RELEASE_SETTINGS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);

@@ -32,6 +32,20 @@ export class Release {
   @Column({ type: 'text', nullable: true })
   artifacts: string;
 
+  // Performance Tracking P1/P2 (migrations/2026-11-performance-tracking-
+  // release-path.sql), entered by the PM - see release-path.ts.
+  @Column({ type: 'int', nullable: true })
+  releasedByUserId: number | null;
+
+  @Column({ type: 'date', nullable: true })
+  stagingSignedOffOn: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  stagingSignedOffByUserId: number | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  changeTicketRef: string | null;
+
   @Column({ nullable: true })
   createdByUserId: number;
 

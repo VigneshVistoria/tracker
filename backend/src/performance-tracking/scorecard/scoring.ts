@@ -28,6 +28,7 @@ import { METRIC_INFO, TrackingMetric, TRACKING_METRICS } from '../metrics/tracki
 export const COMPETENCIES: Record<string, { label: string; metrics: TrackingMetric[] }> = {
   D: { label: 'Delivery', metrics: ['D1', 'D2', 'D3', 'D4'] },
   Q: { label: 'Quality', metrics: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5'] },
+  P: { label: 'Process', metrics: ['P1', 'P2'] },
   C: { label: 'Collaboration', metrics: ['C1', 'C2', 'C3', 'C4', 'C5'] },
   O: { label: 'Ownership', metrics: ['O1', 'O2', 'O3', 'O4', 'O5'] },
   L: { label: 'Client focus', metrics: ['L1', 'L2'] },
@@ -107,8 +108,11 @@ export function bandScore(metric: TrackingMetric, value: number, bands: Bands): 
 }
 
 // Q5 (2 reviews a month) and C3 (4 weekly deadlines in a 28-day window)
-// never reach the shared minimum: one is enough.
-export const minSampleFor = (metric: TrackingMetric, minSample: number) => (METRIC_INFO[metric].unit === 'score' || metric === 'C3' ? 1 : minSample);
+// never reach the shared minimum: one is enough. P1/P2 have their own
+// minimum number of releases (setting releaseMinSample, default 3).
+export const RELEASE_METRICS: TrackingMetric[] = ['P1', 'P2'];
+export const minSampleFor = (metric: TrackingMetric, minSample: number, releaseMinSample = 3) =>
+  RELEASE_METRICS.includes(metric) ? releaseMinSample : METRIC_INFO[metric].unit === 'score' || metric === 'C3' ? 1 : minSample;
 
 // Person-level metrics (C3): every tracked project carries the same row,
 // so the scorecard takes one (the largest sample) instead of adding them.
@@ -145,7 +149,7 @@ export function combineRows(metric: TrackingMetric, rows: SnapshotRowLike[]): { 
 export function scorePerson(
   userId: number,
   rows: SnapshotRowLike[],
-  options: { bands: Bands; minSample: number; overrides: ActiveOverride[] },
+  options: { bands: Bands; minSample: number; releaseMinSample?: number; overrides: ActiveOverride[] },
 ): PersonScorecard {
   const mine = rows.filter((r) => r.userId === userId);
   const scoring = mine.filter((r) => r.phase === 'scoring');
@@ -159,7 +163,7 @@ export function scorePerson(
     let computed: number | null = null;
     if (inBaseline) state = 'baseline';
     else if (UNSCORED_METRICS.includes(metric)) state = 'not_scored';
-    else if (combined.value === null || combined.sample < minSampleFor(metric, options.minSample)) state = 'not_enough_data';
+    else if (combined.value === null || combined.sample < minSampleFor(metric, options.minSample, options.releaseMinSample)) state = 'not_enough_data';
     else {
       state = 'scored';
       computed = bandScore(metric, combined.value, options.bands);

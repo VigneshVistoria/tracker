@@ -19,6 +19,17 @@ const VIEW_ROLES = ['program_manager'];
 
 const EMPTY_FORM = { project: null, appName: '', version: '', releaseDate: '', artifacts: '' };
 
+// Performance Tracking P1/P2 (backend release-path.ts): who released,
+// the staging sign-off and the change ticket. Released by = Developer,
+// Designer or DevOps; the sign-off is by any other staff account.
+const RELEASER_ROLES = ['developer', 'designer', 'devops'];
+const pathOf = (r) => ({
+  releasedByUserId: r.releasedByUserId ? String(r.releasedByUserId) : '',
+  stagingSignedOffOn: r.stagingSignedOffOn || '',
+  stagingSignedOffByUserId: r.stagingSignedOffByUserId ? String(r.stagingSignedOffByUserId) : '',
+  changeTicketRef: r.changeTicketRef || '',
+});
+
 export default function ReleaseLogPage() {
   const confirmAction = useConfirm();
   const router = useRouter();
@@ -42,6 +53,9 @@ export default function ReleaseLogPage() {
   const [removingId, setRemovingId] = useState(null);
   const [artifactsDraft, setArtifactsDraft] = useState('');
   const [savingArtifacts, setSavingArtifacts] = useState(false);
+  const [staff, setStaff] = useState([]);
+  const [pathDraft, setPathDraft] = useState(pathOf({}));
+  const [savingPath, setSavingPath] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [emailTo, setEmailTo] = useState('');
   const [emailing, setEmailing] = useState(false);
@@ -63,6 +77,7 @@ export default function ReleaseLogPage() {
       .then((release) => {
         setSelected(release);
         setArtifactsDraft(release.artifacts || '');
+        setPathDraft(pathOf(release));
         return apiFetch(`/releases/ticket-options?projectId=${release.projectId}`);
       })
       .then(setTicketOptions)
@@ -83,6 +98,7 @@ export default function ReleaseLogPage() {
     setUser(parsed);
     setEmailTo(parsed.email || '');
     apiFetch('/projects').then(setProjects).catch(() => {});
+    apiFetch('/users/assignable').then((rows) => setStaff(rows.filter((u) => u.role !== 'client'))).catch(() => {});
     loadReleases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -198,6 +214,29 @@ export default function ReleaseLogPage() {
     }
   };
 
+  const handleSavePath = async () => {
+    setSavingPath(true);
+    setDetailError('');
+    const id = (v) => (v ? Number(v) : null);
+    try {
+      await apiFetch(`/releases/${selected.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          releasedByUserId: id(pathDraft.releasedByUserId),
+          stagingSignedOffOn: pathDraft.stagingSignedOffOn || null,
+          stagingSignedOffByUserId: id(pathDraft.stagingSignedOffByUserId),
+          changeTicketRef: pathDraft.changeTicketRef.trim() || null,
+        }),
+      });
+      showToast('Release path saved', 'success');
+      loadRelease(selected.id);
+    } catch (err) {
+      setDetailError(err.message);
+    } finally {
+      setSavingPath(false);
+    }
+  };
+
   const pdfFilename = (release) =>
     `release-${`${release.appName}-${release.version}`.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'log'}.pdf`;
 
@@ -238,6 +277,9 @@ export default function ReleaseLogPage() {
 
   const addedTaskIds = new Set((selected?.items || []).map((i) => i.taskId));
   const availableTickets = ticketOptions.filter((t) => !addedTaskIds.has(t.id));
+  const pathDirty = selected && JSON.stringify(pathDraft) !== JSON.stringify(pathOf(selected));
+  const signedOffLate = pathDraft.stagingSignedOffOn && selected && pathDraft.stagingSignedOffOn > selected.releaseDate;
+  const staffName = (u) => u.fullName || u.email;
   const artifactsDirty = selected && artifactsDraft !== (selected.artifacts || '');
 
   return (
@@ -432,6 +474,68 @@ export default function ReleaseLogPage() {
                   {savingArtifacts ? 'Saving...' : 'Save Artifacts'}
                 </button>
               </div>
+
+              <fieldset className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+                <legend className={styles.label}>Release path (Performance Tracking P1, P2)</legend>
+                <div className={styles.actions} style={{ justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label className={styles.label} htmlFor="relReleasedBy">Released by</label>
+                    <select
+                      className={styles.input}
+                      id="relReleasedBy"
+                      value={pathDraft.releasedByUserId}
+                      onChange={(e) => setPathDraft((d) => ({ ...d, releasedByUserId: e.target.value }))}
+                    >
+                      <option value="">Not set</option>
+                      {staff.filter((u) => RELEASER_ROLES.includes(u.role)).map((u) => (
+                        <option key={u.id} value={u.id}>{staffName(u)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label className={styles.label} htmlFor="relSignedOffOn">Staging sign-off date</label>
+                    <input
+                      className={styles.input}
+                      id="relSignedOffOn"
+                      type="date"
+                      value={pathDraft.stagingSignedOffOn}
+                      onChange={(e) => setPathDraft((d) => ({ ...d, stagingSignedOffOn: e.target.value }))}
+                    />
+                  </div>
+                  <div className={styles.field} style={{ marginBottom: 0 }}>
+                    <label className={styles.label} htmlFor="relSignedOffBy">Signed off by</label>
+                    <select
+                      className={styles.input}
+                      id="relSignedOffBy"
+                      value={pathDraft.stagingSignedOffByUserId}
+                      onChange={(e) => setPathDraft((d) => ({ ...d, stagingSignedOffByUserId: e.target.value }))}
+                    >
+                      <option value="">Not set</option>
+                      {staff.filter((u) => String(u.id) !== pathDraft.releasedByUserId).map((u) => (
+                        <option key={u.id} value={u.id}>{staffName(u)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={styles.field} style={{ flex: '1 1 220px', marginBottom: 0 }}>
+                    <label className={styles.label} htmlFor="relChangeTicket">Change ticket</label>
+                    <input
+                      className={styles.input}
+                      id="relChangeTicket"
+                      maxLength={200}
+                      value={pathDraft.changeTicketRef}
+                      onChange={(e) => setPathDraft((d) => ({ ...d, changeTicketRef: e.target.value }))}
+                      placeholder="Ticket number or link"
+                    />
+                  </div>
+                  <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={!pathDirty || savingPath} onClick={handleSavePath}>
+                    {savingPath ? 'Saving...' : 'Save release path'}
+                  </button>
+                </div>
+                <p className={styles.helpText} style={{ marginBottom: 0 }}>
+                  On the path when staging was signed off on or before the release date, by someone other than the person who released.
+                  {signedOffLate && <strong> This sign-off is after the release date, so it does not count.</strong>}
+                </p>
+              </fieldset>
 
               <div style={{ maxWidth: 480 }}>
                 <SearchSelectField

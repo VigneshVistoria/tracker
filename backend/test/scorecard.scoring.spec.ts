@@ -66,6 +66,15 @@ describe('Performance Tracking B3 scoring', () => {
     expect(card.metrics.find((m) => m.metric === 'Q5')).toMatchObject({ state: 'scored', score: 4 });
   });
 
+  it('P1/P2 need their own minimum of releases (default 3), not the shared one', () => {
+    const p1 = (sample: number, opts: any = {}) =>
+      scorePerson(10, [row('P1', { numerator: sample, denominator: sample, sample })], { bands, minSample: 5, overrides: [], ...opts }).metrics.find((m) => m.metric === 'P1');
+    expect(p1(2, { releaseMinSample: 3 })).toMatchObject({ state: 'not_enough_data', score: null });
+    expect(p1(3, { releaseMinSample: 3 })).toMatchObject({ state: 'scored', score: 5 });
+    expect(p1(3, { releaseMinSample: 4 })).toMatchObject({ state: 'not_enough_data' });
+    expect(p1(2)).toMatchObject({ state: 'not_enough_data' });
+  });
+
   it('C3 is person-level: the same row in two projects is taken once; one week is enough', () => {
     expect(combineRows('C3', [row('C3', { numerator: 3, denominator: 4, sample: 4 }), row('C3', { projectId: 2, numerator: 3, denominator: 4, sample: 4 })])).toMatchObject({ value: 75, sample: 4 });
     const card = scorePerson(10, [row('C3', { numerator: 1, denominator: 1, sample: 1 })], { bands, minSample: 5, overrides: [] });

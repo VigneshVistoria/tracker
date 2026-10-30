@@ -109,6 +109,7 @@ export class ScorecardService {
         ...scorePerson(userId, rows, {
           bands: thresholds,
           minSample: metricSettings.minSample,
+          releaseMinSample: thresholds.releaseMinSample,
           overrides: overrides.filter((o) => o.userId === userId).map((o) => this.toActive(o)),
         }),
         name: names.get(userId)?.name ?? `User #${userId}`,
@@ -120,6 +121,7 @@ export class ScorecardService {
       snapshotDate: date,
       projects: tracked,
       minSample: metricSettings.minSample,
+      release: { windowDays: thresholds.releaseWindowDays, minSample: thresholds.releaseMinSample },
       bands: { percentBands: thresholds.percentBands, breachBands: thresholds.breachBands },
       nonComplianceDisplay: thresholds.nonComplianceDisplay,
       overrideUserIds: thresholds.overrideUserIds,
@@ -326,6 +328,7 @@ export class ScorecardService {
       ['Night', snapshotDate ?? 'no data yet'],
       ['Projects tracked', built.projects.map((p) => `${p.name} (${p.phase === 'baseline' ? 'Baseline' : 'Scoring'})`).join(', ') || 'none'],
       ['Minimum sample', built.minSample],
+      ['P1/P2 window (days) and minimum releases', `${built.release.windowDays} days, ${built.release.minSample} releases`],
       ['Percent bands (score 5/4/3/2)', built.bands.percentBands.join(' / ')],
       ['Breach bands (score 5/4/3/2)', built.bands.breachBands.join(' / ')],
       ['Note', 'Personal performance data - handle as confidential.'],

@@ -51,6 +51,12 @@
 //  Q5 Technical review (score 1-5) - the average score of the person's
 //     technical reviews (tech-reviews/) written in the window; one review
 //     is enough data.
+//  P1 Release path compliance (%) - releases the person did (Released by)
+//     with a release date in their own window (releaseWindowDays, default
+//     90, never before go-live) that were signed off on staging on or
+//     before that date. Enough data at releaseMinSample (default 3).
+//  P2 Change ticket coverage (%) - the same releases that carry a change
+//     ticket. Same window and minimum.
 //  C1 Response time (%) - B4: requests to the person (requestSources:
 //     dependency tickets they own, and requests made to them on a task)
 //     answered within responseTargetWorkingHours of THEIR working hours
@@ -103,8 +109,9 @@ import { PerformanceTrackingThresholds } from '../performance-tracking';
 import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-calendar';
 import { commitmentDeadline } from '../../performance-metrics/working-days';
 import { mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
+import { hasChangeTicket, onReleasePath } from '../../release-logs/release-path';
 
-export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2'] as const;
+export const TRACKING_METRICS = ['D1', 'D2', 'D3', 'D4', 'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'P1', 'P2', 'C1', 'C2', 'C3', 'C4', 'C5', 'O1', 'O2', 'O3', 'O4', 'O5', 'L1', 'L2'] as const;
 export type TrackingMetric = (typeof TRACKING_METRICS)[number];
 
 // What the value is, and which way is better - for the scorecard (B3).
@@ -118,6 +125,8 @@ export const METRIC_INFO: Record<TrackingMetric, { label: string; unit: 'percent
   Q3: { label: 'Reopen rate', unit: 'percent', higherIsBetter: false },
   Q4: { label: 'Escaped defects', unit: 'rate', higherIsBetter: false },
   Q5: { label: 'Technical review', unit: 'score', higherIsBetter: true },
+  P1: { label: 'Release path compliance', unit: 'percent', higherIsBetter: true },
+  P2: { label: 'Change ticket coverage', unit: 'percent', higherIsBetter: true },
   C1: { label: 'Response time to requests', unit: 'percent', higherIsBetter: true },
   C2: { label: 'Dependency wait caused (working days)', unit: 'count', higherIsBetter: false },
   C3: { label: 'Weekly report on time', unit: 'percent', higherIsBetter: true },
@@ -241,6 +250,8 @@ export interface TrackingMetricsInput {
   requests?: TmRequest[];
   // Q4: Release Log dates (one row per task per release).
   releaseLog?: Array<{ taskId: number; releaseDate: string }>;
+  // P1/P2: this project's Release Log entries.
+  releases?: Array<{ id: number; releaseDate: string; releasedByUserId: number | null; stagingSignedOffOn: string | null; changeTicketRef: string | null }>;
   // Q5: this project's technical reviews.
   techReviews?: Array<{ id: number; revieweeUserId: number; reviewedAt: Date; average: number }>;
   // C4: this project's decided handovers.
@@ -309,6 +320,9 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
   const sinceDay = dateInZone(input.trackingSince, zone);
   const rollingFrom = addCalendarDays(snapshotDate, -(input.windowDays - 1));
   const windowFrom = rollingFrom > sinceDay ? rollingFrom : sinceDay;
+  // P1/P2 have their own, longer window (release dates are days).
+  const releaseRollingFrom = addCalendarDays(snapshotDate, -(th.releaseWindowDays - 1));
+  const releaseFrom = releaseRollingFrom > sinceDay ? releaseRollingFrom : sinceDay;
   const fromAt = new Date(Math.max(startOfDayInZone(windowFrom, zone).getTime(), input.trackingSince.getTime()));
   const toAt = startOfDayInZone(addCalendarDays(snapshotDate, 1), zone);
   // Open-ended things (a blocker still open) run to the end of the
@@ -605,6 +619,30 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'Q5', reviews.length ? reviews.reduce((s, r) => s + r.average, 0) / reviews.length : null, reviews.length, null, null, {
       reviewIds: reviews.map((r) => r.id),
     }, true);
+
+    // P1, P2
+    const releases = (input.releases ?? []).filter((r) => r.releasedByUserId === userId && r.releaseDate >= releaseFrom && r.releaseDate <= snapshotDate);
+    const onPath = releases.filter(onReleasePath);
+    const ticketed = releases.filter(hasChangeTicket);
+    const releaseRow = (metric: TrackingMetric, n: number, details: Record<string, unknown>) =>
+      rows.push({
+        userId,
+        metric,
+        value: pct(n, releases.length),
+        numerator: n,
+        denominator: releases.length,
+        sample: releases.length,
+        enoughData: releases.length > 0 && releases.length >= th.releaseMinSample,
+        details: { windowFrom: releaseFrom, windowDays: th.releaseWindowDays, ...details },
+      });
+    releaseRow('P1', onPath.length, {
+      releaseIds: releases.map((r) => r.id),
+      noSignOff: releases.filter((r) => r.stagingSignedOffOn === null).map((r) => r.id),
+      signedOffAfterRelease: releases.filter((r) => r.stagingSignedOffOn !== null && !onReleasePath(r)).map((r) => r.id),
+    });
+    releaseRow('P2', ticketed.length, {
+      noTicket: releases.filter((r) => !hasChangeTicket(r)).map((r) => r.id),
+    });
 
     // C1
     if (input.hoursFor) {

@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsOptional, IsDateString } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, IsDateString, IsInt } from 'class-validator';
 
 // Project is fixed once a Release is created - its rows are tickets from
 // that Project.
@@ -23,4 +23,22 @@ export class UpdateReleaseDto {
   @IsString()
   @MaxLength(5000)
   artifacts?: string;
+
+  // Performance Tracking P1/P2 (release-path.ts). null clears a field.
+  @IsOptional()
+  @IsInt()
+  releasedByUserId?: number | null;
+
+  @IsOptional()
+  @IsDateString({}, { message: 'Staging sign-off date must be a valid date.' })
+  stagingSignedOffOn?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  stagingSignedOffByUserId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  changeTicketRef?: string | null;
 }

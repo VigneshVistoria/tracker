@@ -9,6 +9,8 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { ProjectsService } from '../projects/projects.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
+import { UsersService } from '../users/users.service';
+import { releasePathProblem } from './release-path';
 
 @Injectable()
 export class ReleaseLogsService {
@@ -23,6 +25,7 @@ export class ReleaseLogsService {
     private qaReviewsRepository: Repository<TaskQaReview>,
     private projectsService: ProjectsService,
     private auditLogService: AuditLogService,
+    private usersService: UsersService,
   ) {}
 
   async findAll(tenantId: number, projectId?: number): Promise<(Release & { itemCount: number })[]> {
@@ -135,6 +138,14 @@ export class ReleaseLogsService {
     release.version = version;
     if (dto.releaseDate !== undefined) release.releaseDate = dto.releaseDate;
     if (dto.artifacts !== undefined) release.artifacts = dto.artifacts.trim() || null;
+    if (dto.releasedByUserId !== undefined) release.releasedByUserId = dto.releasedByUserId;
+    if (dto.stagingSignedOffOn !== undefined) release.stagingSignedOffOn = dto.stagingSignedOffOn ? dto.stagingSignedOffOn.slice(0, 10) : null;
+    if (dto.stagingSignedOffByUserId !== undefined) release.stagingSignedOffByUserId = dto.stagingSignedOffByUserId;
+    if (dto.changeTicketRef !== undefined) release.changeTicketRef = dto.changeTicketRef?.trim() || null;
+    const people = [release.releasedByUserId, release.stagingSignedOffByUserId].filter((id): id is number => id != null);
+    const roles = new Map((await this.usersService.findByIds(people, tenantId)).map((u) => [u.id, u.role]));
+    const problem = releasePathProblem(release, (id) => roles.get(id));
+    if (problem) throw new BadRequestException(problem);
 
     const saved = await this.releasesRepository.save(release);
 

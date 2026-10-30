@@ -151,7 +151,8 @@ export default function ScorecardPage() {
           <p className={styles.helpText} style={{ marginTop: 0 }}>
             Projects:{' '}
             {list.projects.map((p) => `${p.name} (${p.phase === 'baseline' ? `Baseline until ${formatDate(p.baselineEndsAt)}` : 'Scoring'})`).join(', ')}. Below {list.minSample}{' '}
-            items a measure shows &quot;Not enough data&quot;.
+            items a measure shows &quot;Not enough data&quot;
+            {list.release && ` (P1, P2: releases in the last ${list.release.windowDays} days, at least ${list.release.minSample})`}.
           </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>

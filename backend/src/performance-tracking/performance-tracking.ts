@@ -109,6 +109,10 @@ export interface PerformanceTrackingThresholds {
   // reported per escalationsPerRounds QA rounds.
   escalationReasons: EscalationReason[];
   escalationsPerRounds: number;
+  // P1/P2: releases are few, so they get their own longer window and
+  // their own minimum number of releases before a score.
+  releaseWindowDays: number;
+  releaseMinSample: number;
 }
 
 export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
@@ -144,12 +148,15 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   handoverFieldMin: 10,
   escalationReasons: DEFAULT_ESCALATION_REASONS.map((r) => ({ ...r })),
   escalationsPerRounds: 10,
+  releaseWindowDays: 90,
+  releaseMinSample: 3,
 };
 
 export type NumericThreshold =
   | 'baselineDays' | 'earlyWarningWorkingDays' | 'dateMovesFlagCount' | 'statusFreshWorkingDays'
   | 'chasesPerTasks' | 'reopenWindowDays' | 'chaseCooldownHours' | 'progressNoteMin' | 'responseTargetWorkingHours'
-  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin' | 'escalationsPerRounds';
+  | 'escapeWindowDays' | 'escapedPerTasks' | 'techReviewsPerMonth' | 'weeklyReportDeadlineDay' | 'weeklyReportMinLength' | 'handoverFieldMin' | 'escalationsPerRounds'
+  | 'releaseWindowDays' | 'releaseMinSample';
 
 // Validation limits, shared with the DTO.
 export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
@@ -169,6 +176,8 @@ export const THRESHOLD_LIMITS: Record<NumericThreshold, [number, number]> = {
   weeklyReportMinLength: [5, 500],
   handoverFieldMin: [3, 500],
   escalationsPerRounds: [1, 100],
+  releaseWindowDays: [28, 365],
+  releaseMinSample: [1, 20],
 };
 
 export function isValidTimeZone(zone: string): boolean {

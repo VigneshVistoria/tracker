@@ -32,8 +32,8 @@ describe('Performance Tracking scorecard (B3, e2e)', () => {
       await ds.query(
         `INSERT INTO performance_metric_snapshots ("tenantId", "snapshotDate", "projectId", "userId", metric, phase, value, numerator, denominator, sample, "enoughData", "windowFrom", details, "runId")
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '2026-10-24', '{}', 1)`,
-        // Q5 and C3 (one review / one week is enough data) have none here.
-        metric === 'Q5' || metric === 'C3'
+        // Q5, C3, P1 and P2 (one review / week / release is enough data) have none here.
+        ['Q5', 'C3', 'P1', 'P2'].includes(metric)
           ? [f.tenants.t1, NIGHT, f.projects.pA, userId, metric, phase, null, null, null, 0, false]
           : [f.tenants.t1, NIGHT, f.projects.pA, userId, metric, phase, big ? 90 : 50, big ? 90 : 1, big ? 100 : 2, big ? 100 : 2, big],
       );

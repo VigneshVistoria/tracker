@@ -329,6 +329,46 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(result, 10, 'O4')).toMatchObject({ value: 0, numerator: 0, denominator: 4 });
   });
 
+  it('P1/P2: releases the person did in the window - staging sign-off on or before the release date, change ticket', () => {
+    const rel = (id: number, releaseDate: string, extra: any = {}) => ({ id, releaseDate, releasedByUserId: 10, stagingSignedOffOn: null, changeTicketRef: null, ...extra });
+    const p = computeTrackingMetrics(
+      input({
+        releases: [
+          rel(1, '2026-11-05', { stagingSignedOffOn: '2026-11-04', changeTicketRef: 'CHG-1' }),
+          rel(2, '2026-11-10', { stagingSignedOffOn: '2026-11-10' }),
+          rel(3, '2026-11-12', { stagingSignedOffOn: '2026-11-13', changeTicketRef: ' ' }),
+          rel(4, '2026-11-18', { changeTicketRef: 'https://changes.example.com/7' }),
+          rel(5, '2026-10-30', { stagingSignedOffOn: '2026-10-29', changeTicketRef: 'CHG-0' }),
+          rel(6, '2026-11-11', { releasedByUserId: 20, stagingSignedOffOn: '2026-11-10' }),
+          rel(7, '2026-11-11', { releasedByUserId: null }),
+        ],
+      }),
+    );
+    // Person 10: releases 1-4 (5 is before go-live). On path: 1 and 2 (same day counts); 3 signed off after.
+    expect(get(p, 10, 'P1')).toMatchObject({ value: 50, numerator: 2, denominator: 4, sample: 4 });
+    expect(get(p, 10, 'P1').details).toEqual({ windowFrom: '2026-11-02', windowDays: 90, releaseIds: [1, 2, 3, 4], noSignOff: [4], signedOffAfterRelease: [3] });
+    expect(get(p, 10, 'P2')).toMatchObject({ value: 50, numerator: 2, denominator: 4 });
+    expect(get(p, 10, 'P2').details).toEqual({ windowFrom: '2026-11-02', windowDays: 90, noTicket: [2, 3] });
+    // Person 10 has 4 releases (>= 3): enough data; person 20 has 1: not enough.
+    expect(get(p, 10, 'P1')).toMatchObject({ enoughData: true });
+    expect(get(p, 20, 'P1')).toMatchObject({ value: 100, sample: 1, enoughData: false });
+    expect(get(result, 10, 'P1')).toMatchObject({ value: null, sample: 0, enoughData: false });
+  });
+
+  it('P1/P2: their own window (default 90 days, never before go-live) and minimum releases (default 3)', () => {
+    const rel = (id: number, releaseDate: string) => ({ id, releaseDate, releasedByUserId: 10, stagingSignedOffOn: releaseDate, changeTicketRef: 'CHG' });
+    const releases = [rel(1, '2026-08-01'), rel(2, '2026-09-10'), rel(3, '2026-10-01'), rel(4, '2026-11-18')];
+    // Go-live long ago: the 90-day window to 20 Nov starts 23 Aug, so release 1 is out; the 28-day window would keep only release 4.
+    const early = { trackingSince: at('2026-01-05T06:00:00Z'), releases };
+    const p = computeTrackingMetrics(input(early));
+    expect(get(p, 10, 'P1')).toMatchObject({ numerator: 3, denominator: 3, enoughData: true });
+    expect(get(p, 10, 'P1').details).toMatchObject({ windowFrom: '2026-08-23', windowDays: 90, releaseIds: [2, 3, 4] });
+    const strict = computeTrackingMetrics(input({ ...early, thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, releaseWindowDays: 60, releaseMinSample: 4 } }));
+    expect(get(strict, 10, 'P2')).toMatchObject({ denominator: 2, enoughData: false });
+    // Go-live 2 Nov caps the window.
+    expect(get(computeTrackingMetrics(input({ releases })), 10, 'P1')).toMatchObject({ denominator: 1 });
+  });
+
   it('nothing before go-live counts', () => {
     const late = computeTrackingMetrics(input({ trackingSince: at('2026-11-14T06:00:00Z') }));
     expect(late.windowFrom).toBe('2026-11-14');

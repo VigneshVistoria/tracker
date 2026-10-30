@@ -239,7 +239,12 @@ export class TrackingMetricsService {
     const techReviews = (
       await q(`SELECT id, "revieweeUserId", "reviewedAt", average FROM tech_reviews WHERE "tenantId" = $1 AND "projectId" = $2`, [tenantId, projectId])
     ).map((r: any) => ({ id: r.id, revieweeUserId: r.revieweeUserId, reviewedAt: new Date(r.reviewedAt), average: Number(r.average) }));
-    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers };
+    // P1/P2 Release Log entries belong to the project.
+    const releases = await q(
+      `SELECT id, "releaseDate"::text AS "releaseDate", "releasedByUserId", "stagingSignedOffOn"::text AS "stagingSignedOffOn", "changeTicketRef" FROM releases WHERE "tenantId" = $1 AND "projectId" = $2`,
+      [tenantId, projectId],
+    );
+    if (ids.length === 0) return { ...base, ...empty, techReviews, weeklyStatus, handovers, releases };
     const [rounds, commitmentEvents, flags, tickets, reopens, chases, notes, statusEvents, requests, releaseLog] = await Promise.all([
       q(`SELECT "taskId", "submittedByUserId", "submittedAt", status, "reviewType", "reviewedAt", "dependencyExempt", "escalationReasonCode", "escalationAvoidable" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "submittedAt", id`, [tenantId, ids]),
       q(`SELECT "taskId", kind, "assigneeUserId", "occurredAt", "newDueDate"::text AS "newDueDate" FROM task_commitment_events WHERE "tenantId" = $1 AND "taskId" = ANY($2) ORDER BY "occurredAt", id`, [tenantId, ids]),
@@ -280,6 +285,7 @@ export class TrackingMetricsService {
       techReviews,
       weeklyStatus,
       handovers,
+      releases,
     };
   }
 

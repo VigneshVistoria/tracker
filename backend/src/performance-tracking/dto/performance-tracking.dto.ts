@@ -203,6 +203,18 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Min(THRESHOLD_LIMITS.escalationsPerRounds[0])
   @Max(THRESHOLD_LIMITS.escalationsPerRounds[1])
   escalationsPerRounds?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.releaseWindowDays[0])
+  @Max(THRESHOLD_LIMITS.releaseWindowDays[1])
+  releaseWindowDays?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(THRESHOLD_LIMITS.releaseMinSample[0])
+  @Max(THRESHOLD_LIMITS.releaseMinSample[1])
+  releaseMinSample?: number;
 }
 
 export class SetPerformanceTrackingSwitchDto {

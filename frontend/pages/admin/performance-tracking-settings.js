@@ -50,6 +50,8 @@ const NUMBER_FIELDS = [
   ['weeklyReportMinLength', 'C3: weekly report "Done" and "Plan" at least (characters)', ''],
   ['handoverFieldMin', 'C4: every handover field (and a rejection reason) at least (characters)', ''],
   ['escalationsPerRounds', 'O4: report avoidable escalations per (QA rounds)', ''],
+  ['releaseWindowDays', 'P1/P2: window (days of release dates)', 'Releases are few, so P1 and P2 look back further than the other measures.'],
+  ['releaseMinSample', 'P1/P2: minimum releases before a score', 'Below this, P1 and P2 show "Not enough data".'],
 ];
 
 // Performance Tracking settings (B1, 2026-10-30) - Admin and Program

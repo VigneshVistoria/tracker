@@ -137,6 +137,13 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 10 })
   escalationsPerRounds: number;
 
+  // P1/P2 (migrations/2026-11-performance-tracking-release-settings.sql).
+  @Column({ type: 'int', default: 90 })
+  releaseWindowDays: number;
+
+  @Column({ type: 'int', default: 3 })
+  releaseMinSample: number;
+
   @UpdateDateColumn()
   updatedAt: Date;
 
