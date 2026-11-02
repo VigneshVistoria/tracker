@@ -7,7 +7,9 @@ import { RefusedRequestLoggingFilter } from './refused-request-logging.filter';
 import helmet from 'helmet';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: the GitHub webhook's signature is checked against the exact
+  // bytes received (req.rawBody).
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   app.use(helmet());
 
   // Default body-parser limit (100kb) is too small for a base64-encoded

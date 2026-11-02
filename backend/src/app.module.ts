@@ -71,6 +71,8 @@ import { SecurityFindingsModule } from './security-findings/security-findings.mo
 import { TaskUatResult } from './client-measures/task-uat-result.entity';
 import { ReleaseSatisfaction } from './client-measures/release-satisfaction.entity';
 import { TaskPriorityTierEvent } from './client-measures/task-priority-tier-event.entity';
+import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubWebhookDelivery } from './github-releases/github-releases.entity';
+import { GithubReleasesModule } from './github-releases/github-releases.module';
 import { ClientMeasuresModule } from './client-measures/client-measures.module';
 import { WeeklyStatusReport } from './weekly-status/weekly-status-report.entity';
 import { WeeklyStatusModule } from './weekly-status/weekly-status.module';
@@ -215,6 +217,10 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TaskUatResult,
           ReleaseSatisfaction,
           TaskPriorityTierEvent,
+          GithubSettings,
+          GithubRepoMapping,
+          GithubWebhookDelivery,
+          GithubStagingDeployment,
           WeeklyStatusReport,
           TaskHandover,
           KpiConfig,
@@ -302,6 +308,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     TaskHandoversModule,
     PermissionsModule,
     ReleaseLogsModule,
+    GithubReleasesModule,
     StatusReviewModule,
     DailyScrumModule,
     ProjectTimelineModule,

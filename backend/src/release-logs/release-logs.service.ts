@@ -86,13 +86,39 @@ export class ReleaseLogsService {
     tenantId: number,
     excludeId?: number,
   ): Promise<void> {
-    const existing = await this.releasesRepository.findOne({ where: { projectId, appName, version, tenantId } });
+    const existing = await this.findByVersion(projectId, appName, version, tenantId);
     if (existing && existing.id !== excludeId) {
-      throw new ConflictException(`${appName} ${version} already has a Release in this Project.`);
+      throw new ConflictException(
+        existing.source === 'github'
+          ? `${appName} ${existing.version} was already recorded from GitHub - open that Release and edit it.`
+          : `${appName} ${version} already has a Release in this Project.`,
+      );
     }
   }
 
-  async create(dto: CreateReleaseDto, user: { id: number; email: string }, tenantId: number): Promise<Release> {
+  // The Release for this app version, treating "1.2.0" and "v1.2.0" (any
+  // case) as the same version - GitHub tags often carry the "v".
+  findByVersion(projectId: number, appName: string, version: string, tenantId: number): Promise<Release | null> {
+    const v = version.trim().replace(/^v/i, '').toLowerCase();
+    return this.releasesRepository
+      .createQueryBuilder('r')
+      .where('r.tenantId = :tenantId AND r.projectId = :projectId AND lower(r.appName) = lower(:appName)', { tenantId, projectId, appName: appName.trim() })
+      .andWhere('lower(r.version) IN (:...versions)', { versions: [v, `v${v}`] })
+      .orderBy('r.id', 'ASC')
+      .getOne();
+  }
+
+  // P1/P2 from GitHub: a manual Release on the same day as one GitHub
+  // recorded may be the same release under another version name.
+  private findGithubSameDay(projectId: number, appName: string, releaseDate: string, tenantId: number, excludeId: number): Promise<Release | null> {
+    return this.releasesRepository
+      .createQueryBuilder('r')
+      .where('r.tenantId = :tenantId AND r.projectId = :projectId AND lower(r.appName) = lower(:appName)', { tenantId, projectId, appName })
+      .andWhere("r.releaseDate = :releaseDate AND r.source = 'github' AND r.id <> :excludeId", { releaseDate, excludeId })
+      .getOne();
+  }
+
+  async create(dto: CreateReleaseDto, user: { id: number; email: string }, tenantId: number): Promise<Release & { possibleDuplicateOf?: { id: number; version: string } }> {
     const project = await this.projectsService.findOne(dto.projectId, tenantId);
     const appName = dto.appName.trim();
     const version = dto.version.trim();
@@ -121,7 +147,8 @@ export class ReleaseLogsService {
       details: { projectId: saved.projectId, appName, version, releaseDate: saved.releaseDate },
     });
 
-    return saved;
+    const twin = await this.findGithubSameDay(saved.projectId, appName, saved.releaseDate, tenantId, saved.id);
+    return twin ? { ...saved, possibleDuplicateOf: { id: twin.id, version: twin.version } } : saved;
   }
 
   async update(id: number, dto: UpdateReleaseDto, user: { id: number; email: string }, tenantId: number): Promise<Release> {
@@ -172,27 +199,35 @@ export class ReleaseLogsService {
     });
   }
 
-  async addItem(releaseId: number, taskId: number, user: { id: number; email: string }, tenantId: number): Promise<ReleaseItem> {
-    const release = await this.findOne(releaseId, tenantId);
+  // Whether a task can go into a Release (shared with GitHub, which skips
+  // and lists the ones that can't instead of failing).
+  async itemCheck(
+    release: Release,
+    taskId: number,
+    tenantId: number,
+  ): Promise<{ ok: true; task: ProjectTask; review: TaskQaReview } | { ok: false; status: 404 | 400 | 409; message: string }> {
     const task = await this.tasksRepository.findOne({ where: { id: taskId, tenantId } });
-    if (!task) {
-      throw new NotFoundException(`Ticket #${taskId} not found`);
-    }
-    if (task.status === 'Junk') {
-      throw new BadRequestException(`Ticket #${taskId} is in Junk - it can't go into a Release.`);
-    }
+    if (!task) return { ok: false, status: 404, message: `Ticket #${taskId} not found` };
+    if (task.status === 'Junk') return { ok: false, status: 400, message: `Ticket #${taskId} is in Junk - it can't go into a Release.` };
     if (task.projectId !== release.projectId) {
-      throw new BadRequestException(`Ticket #${taskId} belongs to ${task.projectName}, not ${release.projectName}.`);
+      return { ok: false, status: 400, message: `Ticket #${taskId} belongs to ${task.projectName}, not ${release.projectName}.` };
     }
-    const existing = await this.releaseItemsRepository.findOne({ where: { releaseId, taskId, tenantId } });
-    if (existing) {
-      throw new ConflictException(`Ticket #${taskId} is already in this Release.`);
-    }
-
+    const existing = await this.releaseItemsRepository.findOne({ where: { releaseId: release.id, taskId, tenantId } });
+    if (existing) return { ok: false, status: 409, message: `Ticket #${taskId} is already in this Release.` };
     const review = await this.latestReview(taskId, tenantId);
-    if (!review) {
-      throw new BadRequestException(`Ticket #${taskId} has no Resolution yet - it hasn't been submitted for review.`);
+    if (!review) return { ok: false, status: 400, message: `Ticket #${taskId} has no Resolution yet - it hasn't been submitted for review.` };
+    return { ok: true, task, review };
+  }
+
+  async addItem(releaseId: number, taskId: number, user: { id: number | null; email: string }, tenantId: number): Promise<ReleaseItem> {
+    const release = await this.findOne(releaseId, tenantId);
+    const check = await this.itemCheck(release, taskId, tenantId);
+    if ('message' in check) {
+      if (check.status === 404) throw new NotFoundException(check.message);
+      if (check.status === 409) throw new ConflictException(check.message);
+      throw new BadRequestException(check.message);
     }
+    const { task, review } = check;
 
     const item = this.releaseItemsRepository.create({
       tenantId,
@@ -201,7 +236,7 @@ export class ReleaseLogsService {
       taskTitle: task.title,
       resolution: review.resolution,
       sourceReviewId: review.id,
-      addedByUserId: user.id,
+      addedByUserId: user.id ?? undefined,
     });
     const saved = await this.releaseItemsRepository.save(item);
 

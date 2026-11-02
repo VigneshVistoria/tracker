@@ -200,6 +200,8 @@ export const NAV_SECTIONS = [
       { href: '/admin/performance-tracking-settings', label: 'Performance Tracking Settings', icon: SlidersHorizontal, roles: [ADMIN, PM] },
       // Performance Tracking B4 (2026-10-30) - matches WorkCalendarService.assertEditor.
       { href: '/admin/work-calendars', label: 'Work Calendars', icon: CalendarClock, roles: [ADMIN, PM] },
+      // P1/P2 from GitHub (2026-11-02) - matches GithubReleasesController.editor.
+      { href: '/admin/github-releases', label: 'GitHub Releases', icon: GitBranch, roles: [ADMIN, PM] },
       { href: '/admin/rollback', label: 'Rollback', icon: RotateCcw, roles: [ADMIN] },
     ],
   },

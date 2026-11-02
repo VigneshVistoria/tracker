@@ -20,6 +20,7 @@ export default function EditUser() {
     role: 'developer',
     password: '',
     projectIds: [],
+    githubLogin: '',
   });
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
@@ -71,6 +72,7 @@ export default function EditUser() {
           role: user.role,
           password: '',
           projectIds: (user.projects || []).map((p) => p.id),
+          githubLogin: user.githubLogin || '',
         });
         setProjects(allProjects);
       })
@@ -184,6 +186,24 @@ export default function EditUser() {
               value={form.password}
               onChange={handleChange}
             />
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="githubLogin">GitHub username (optional)</label>
+            <input
+              className={styles.input}
+              id="githubLogin"
+              name="githubLogin"
+              maxLength={39}
+              autoComplete="off"
+              spellCheck={false}
+              value={form.githubLogin}
+              onChange={handleChange}
+              aria-describedby="githubLoginHelp"
+            />
+            <p id="githubLoginHelp" className={styles.helpText}>
+              Links releases made on GitHub to this person (Release Log &quot;Released by&quot;). Leave blank if they don&apos;t release.
+            </p>
           </div>
 
           <div className={styles.field}>

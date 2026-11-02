@@ -81,6 +81,12 @@ export class User {
   @Column({ default: false })
   isPlatformSuperadmin: boolean;
 
+  // GitHub username, set by an Admin - matches who released on GitHub to
+  // this user (migrations/2026-11-github-releases.sql). Unique per tenant,
+  // ignoring case.
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  githubLogin: string | null;
+
   // The projects this user is allowed to see/work in.
   @ManyToMany(() => Project)
   @JoinTable({ name: 'user_projects' })

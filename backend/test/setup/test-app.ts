@@ -14,7 +14,7 @@ export async function createTestApp() {
   // File storage is always the in-memory stand-in - never the real bucket.
   const storage = new MemoryStorage();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(StorageService).useValue(storage).compile();
-  const app: INestApplication = moduleRef.createNestApplication();
+  const app: INestApplication = moduleRef.createNestApplication({ rawBody: true }); // same as main.ts
   app.useGlobalPipes(createValidationPipe()); // same as main.ts
   const dataSource = app.get(DataSource);
   assertTestDatabase(dataSource.options as any);

@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEnum, IsArray, IsInt, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsArray, IsInt, MinLength, MaxLength, ValidateIf } from 'class-validator';
 import { UserRole } from '../user.entity';
 
 export class UpdateUserDto {
@@ -22,4 +22,11 @@ export class UpdateUserDto {
   @IsArray()
   @IsInt({ each: true })
   projectIds?: number[];
+
+  // GitHub username (P1/P2 from GitHub); null or "" removes it. The format
+  // is checked in the service.
+  @ValidateIf((_, v) => v !== null && v !== undefined)
+  @IsString()
+  @MaxLength(100)
+  githubLogin?: string | null;
 }

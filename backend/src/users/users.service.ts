@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -7,6 +7,7 @@ import { Project } from '../projects/project.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { EventsGateway } from '../events/events.gateway';
+import { GITHUB_LOGIN } from '../github-releases/github-releases';
 
 const SALT_ROUNDS = 10;
 
@@ -100,8 +101,18 @@ export class UsersService {
     if (dto.role !== undefined) user.role = dto.role;
     if (dto.password) user.passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     if (dto.projectIds !== undefined) user.projects = await this.resolveProjects(dto.projectIds, tenantId);
+    if (dto.githubLogin !== undefined) {
+      const login = (dto.githubLogin || '').trim().replace(/^@/, '') || null;
+      if (login && !GITHUB_LOGIN.test(login)) throw new BadRequestException('GitHub username: letters, digits and single hyphens, up to 39 characters.');
+      user.githubLogin = login;
+    }
 
-    return this.usersRepository.save(user);
+    try {
+      return await this.usersRepository.save(user);
+    } catch (err: any) {
+      if (err?.code === '23505' || err?.driverError?.code === '23505') throw new ConflictException('That GitHub username is already linked to another user.');
+      throw err;
+    }
   }
 
   // Program Manager is a normal role now (ReleaseBot, 2026-08-22) - more

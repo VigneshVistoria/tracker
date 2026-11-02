@@ -7,3 +7,7 @@ dist/
 
 # Throwaway test database (scripts/test-db.sh)
 .test-db/
+
+# GitHub App private key (P1/P2 from GitHub) - never committed
+secrets/
+*.pem

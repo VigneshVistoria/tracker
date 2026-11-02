@@ -24,5 +24,6 @@ import { MailModule } from '../mail/mail.module';
   ],
   controllers: [ReleaseLogsController],
   providers: [ReleaseLogsService, PdfReleaseService],
+  exports: [ReleaseLogsService],
 })
 export class ReleaseLogsModule {}

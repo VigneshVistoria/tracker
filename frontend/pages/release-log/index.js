@@ -163,6 +163,10 @@ export default function ReleaseLogPage() {
         }),
       });
       showToast('Release created', 'success');
+      // P1/P2 from GitHub: GitHub recorded a release of this app the same day.
+      if (created.possibleDuplicateOf) {
+        showToast(`Check for a duplicate: GitHub recorded ${form.appName} ${created.possibleDuplicateOf.version} on the same day.`, 'warning', 10000);
+      }
       resetForm();
       loadReleases();
       openRelease(created.id);
@@ -435,7 +439,10 @@ export default function ReleaseLogPage() {
                   style={r.id === selectedId ? { background: 'var(--color-teal-tint)' } : undefined}>
                   <td>{r.projectName}</td>
                   <td>{r.appName}</td>
-                  <td>{r.version}</td>
+                  <td>
+                  {r.version}
+                  {r.source === 'github' && <span className={styles.helpText}> (from GitHub)</span>}
+                </td>
                   <td>{formatDate(r.releaseDate)}</td>
                   <td>{r.itemCount}</td>
                   <td>
@@ -468,7 +475,19 @@ export default function ReleaseLogPage() {
               </h2>
               <p className={styles.helpText} style={{ marginTop: 0 }}>
                 {selected.projectName} · Released {formatDate(selected.releaseDate)}
+                {selected.source === 'github' && ' · Recorded from GitHub'}
+                {selected.githubRepo && <> · <code>{selected.githubRepo}</code>{selected.githubSha && <> @ <code>{selected.githubSha.slice(0, 7)}</code></>}</>}
               </p>
+              {selected.githubNotes?.length > 0 && (
+                <div className={styles.card} role="note" style={{ marginBottom: 'var(--space-4)' }}>
+                  <h3 className={styles.label} style={{ marginTop: 0 }}>From GitHub - for the PM to check</h3>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    {selected.githubNotes.map((n) => (
+                      <li key={n}>{n}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <form onSubmit={handleEmailPdf} className={styles.actions} style={{ justifyContent: 'flex-start', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 'var(--space-4)' }}>
                 <button className={styles.buttonSecondary} type="button" disabled={downloading} onClick={handleDownloadPdf}>
@@ -570,6 +589,21 @@ export default function ReleaseLogPage() {
                     {savingPath ? 'Saving...' : 'Save release path'}
                   </button>
                 </div>
+                {selected.githubStagingDeployedOn && !pathDraft.stagingSignedOffOn && (
+                  <p className={styles.helpText}>
+                    GitHub saw a staging deployment of this release on {formatDate(selected.githubStagingDeployedOn)}. Pick who signed it off, then save.{' '}
+                    <button
+                      className={styles.buttonSecondary}
+                      type="button"
+                      onClick={() => setPathDraft((d) => ({ ...d, stagingSignedOffOn: selected.githubStagingDeployedOn }))}
+                    >
+                      Use this date
+                    </button>
+                  </p>
+                )}
+                {selected.githubReleasedByLogin && !selected.releasedByUserId && (
+                  <p className={styles.helpText}>Released on GitHub by &quot;{selected.githubReleasedByLogin}&quot; - not linked to a Tracker user (Admin: Users, GitHub username).</p>
+                )}
                 <p className={styles.helpText} style={{ marginBottom: 0 }}>
                   On the path when staging was signed off on or before the release date, by someone other than the person who released.
                   {signedOffLate && <strong> This sign-off is after the release date, so it does not count.</strong>}

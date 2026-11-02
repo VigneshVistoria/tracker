@@ -18,11 +18,16 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../common/admin.guard';
 import { User, UserRole, DEVELOPER_EQUIVALENT_ROLES } from './user.entity';
 import { BlockPortalClientsGuard } from '../client-portal/block-portal-clients.guard';
+import { AuditLogService } from '../audit/audit-log.service';
+import { GITHUB_AUDIT } from '../github-releases/github-releases';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard) // every route requires login; admin-only ones add AdminGuard below
 export class UsersController {
-  constructor(private usersService: UsersService) {}
+  constructor(
+    private usersService: UsersService,
+    private auditLogService: AuditLogService,
+  ) {}
 
   // Any logged-in user can see their own full profile - used by the
   // frontend to know things like "am I the Program Manager" without
@@ -86,7 +91,20 @@ export class UsersController {
     if (id === req.currentUser.id && dto.role !== undefined && dto.role !== req.currentUser.role) {
       throw new ForbiddenException('You cannot change your own role');
     }
+    const before = dto.githubLogin !== undefined ? (await this.usersService.findByIdAndTenant(id, req.user.tenantId))?.githubLogin ?? null : null;
     const user = await this.usersService.update(id, dto, req.user.tenantId);
+    if (dto.githubLogin !== undefined && before !== user.githubLogin) {
+      await this.auditLogService.record({
+        userId: req.currentUser.id,
+        userEmail: req.currentUser.email,
+        userRole: req.currentUser.role,
+        action: GITHUB_AUDIT.USER_GITHUB_LOGIN_SET,
+        tenantId: req.user.tenantId,
+        entityType: 'User',
+        entityId: id,
+        details: { before, after: user.githubLogin },
+      });
+    }
     return this.toSafeUser(user);
   }
 

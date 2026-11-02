@@ -46,6 +46,35 @@ export class Release {
   @Column({ type: 'varchar', length: 200, nullable: true })
   changeTicketRef: string | null;
 
+  // P1/P2 from GitHub (migrations/2026-11-github-releases.sql) - see
+  // ../github-releases/github-releases.ts. GitHub only ever fills EMPTY
+  // fields; githubFilled lists which. githubStagingDeployedOn is a
+  // suggestion - the PM still records who signed off (stagingSignedOff*).
+  @Column({ type: 'varchar', length: 10, default: 'manual' })
+  source: 'manual' | 'github';
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  githubRepo: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  githubSha: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  githubDeliveryId: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  githubReleasedByLogin: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  githubStagingDeployedOn: string | null;
+
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  githubFilled: string[];
+
+  // Notes for the PM, e.g. tasks skipped and why.
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  githubNotes: string[];
+
   @Column({ nullable: true })
   createdByUserId: number;
 
