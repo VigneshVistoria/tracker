@@ -34,6 +34,13 @@ export async function apiFetch(path, options = {}) {
 
   if (!res.ok) {
     const message = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+    // A refused save (4xx on anything but a read) is also announced, so
+    // AppShell shows the reason as a toast - a page's own error box can be
+    // off-screen, far from the form that was submitted.
+    const method = (options.method || 'GET').toUpperCase();
+    if (method !== 'GET' && res.status >= 400 && res.status < 500 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('tracker:request-refused', { detail: message || 'Request failed' }));
+    }
     throw new Error(message || 'Request failed');
   }
 

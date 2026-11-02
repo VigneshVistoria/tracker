@@ -1,8 +1,9 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
+import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { createValidationPipe } from './validation-pipe';
+import { RefusedRequestLoggingFilter } from './refused-request-logging.filter';
 import helmet from 'helmet';
 
 async function bootstrap() {
@@ -19,6 +20,8 @@ async function bootstrap() {
   });
 
   app.useGlobalPipes(createValidationPipe());
+  // Logs the reason for every refused (4xx) request - see the filter.
+  app.useGlobalFilters(new RefusedRequestLoggingFilter(app.get(HttpAdapterHost).httpAdapter));
 
   const port = process.env.PORT || 3001;
   // Bind to loopback only - nginx is the sole intended entry point. Without

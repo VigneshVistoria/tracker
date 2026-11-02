@@ -15,6 +15,7 @@ import { navSectionsFor, isNavItemActive } from '../lib/navigation';
 import { loadPortalMe, resetPortalMe } from '../lib/clientTickets';
 import { signOut, storeSession, redirectToSignIn, webClientHeaders } from '../lib/session';
 import { useTheme } from '../lib/theme';
+import { useToast } from '../lib/toast';
 import ThemeToggle from './ui/ThemeToggle';
 
 const COLLAPSED_SECTIONS_KEY = 'navCollapsedSections';
@@ -137,6 +138,14 @@ export default function AppShell({ children, fullScreen = false }) {
       };
     }
   }, [router]);
+
+  // A refused save, announced by lib/api.js: show the server's reason.
+  const { showToast } = useToast();
+  useEffect(() => {
+    const onRefused = (e) => showToast(e.detail, 'error', 8000);
+    window.addEventListener('tracker:request-refused', onRefused);
+    return () => window.removeEventListener('tracker:request-refused', onRefused);
+  }, [showToast]);
 
   // A role or name change picked up by a session refresh (lib/session.js).
   useEffect(() => {

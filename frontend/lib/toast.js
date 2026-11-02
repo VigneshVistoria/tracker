@@ -15,9 +15,11 @@ export function ToastProvider({ children }) {
     delete timers.current[id];
   }, []);
 
+  // The same message already on screen isn't shown twice (a refused save
+  // is toasted by AppShell and often by the page too).
   const showToast = useCallback((message, type = 'info', duration = 4500) => {
     const id = ++idCounter;
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => (prev.some((t) => t.message === message && t.type === type) ? prev : [...prev, { id, message, type }]));
     timers.current[id] = setTimeout(() => dismiss(id), duration);
   }, [dismiss]);
 
