@@ -51,8 +51,11 @@ describe('Escalation reasons (Performance Tracking O4, e2e)', () => {
     ds = t.dataSource;
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
+    // task_dependency_tickets and task_blocking_defects have no FK to
+    // project_tasks, so CASCADE misses them: an open ticket left by an earlier
+    // suite on task #1 would block this suite's first submit once IDs restart.
     await ds.query(
-      `TRUNCATE project_tasks, task_qa_reviews, task_qa_review_artifacts, task_qa_review_qa_artifacts, performance_metric_snapshots, performance_metric_runs, performance_tracking_settings, user_notifications, audit_logs RESTART IDENTITY CASCADE`,
+      `TRUNCATE project_tasks, task_qa_reviews, task_qa_review_artifacts, task_qa_review_qa_artifacts, task_dependency_tickets, task_blocking_defects, performance_metric_snapshots, performance_metric_runs, performance_tracking_settings, user_notifications, audit_logs RESTART IDENTITY CASCADE`,
     );
     phaseId = (
       await ds.query(
