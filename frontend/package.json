@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --experimental-default-type=module --import ./lib/__tests__/register.mjs --test lib/__tests__/"
   },
   "dependencies": {
     "@tiptap/extension-placeholder": "^3.31.3",

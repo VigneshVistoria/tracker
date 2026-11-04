@@ -1857,3 +1857,29 @@ td.empty::before,
 .ticketActivity {
   color: var(--ds-text-secondary);
 }
+
+/* Task header "Stage / Acts next / Review due" (2026-11-04). A definition
+   list so each value keeps its label for screen readers; wraps on phones. */
+.nextStep {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2) var(--ds-space-5);
+  margin: 0 0 var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-size: var(--ds-text-sm);
+}
+.nextStepItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-2);
+}
+.nextStepItem dt {
+  color: var(--ds-text-secondary);
+}
+.nextStepItem dd {
+  margin: 0;
+  color: inherit;
+}

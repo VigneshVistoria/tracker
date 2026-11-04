@@ -170,6 +170,17 @@ describe('Peer Review Stage 1 (e2e)', () => {
       const queue = (await get(f.users.devNone, '/tasks/peer-review-queue').expect(200)).body.map((t: any) => t.id);
       expect(queue).toEqual(expect.arrayContaining([ids.peer, ids.peerFailed]));
     });
+
+    it('the review list names the picked Peer Reviewer (task header "who acts next")', async () => {
+      const rounds = (await get(f.users.devA, `/tasks/${ids.peer}/qa-reviews`).expect(200)).body;
+      const pending = rounds.find((r: any) => r.status === 'pending');
+      expect(pending.reviewType).toBe('peer');
+      expect(pending.reviewerFullName).toBeTruthy();
+      expect(pending.reviewerFullName).not.toBe(f.users.devA.email);
+      // QA rounds have no picked reviewer.
+      const qaRounds = (await get(f.users.devA, `/tasks/${ids.qaFailed}/qa-reviews`).expect(200)).body;
+      expect(qaRounds.every((r: any) => r.reviewerFullName === null)).toBe(true);
+    });
   });
 
   describe('QA cannot decide a peer round', () => {

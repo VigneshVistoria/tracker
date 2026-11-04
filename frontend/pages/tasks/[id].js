@@ -28,6 +28,7 @@ import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerMo
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
 import useHashTarget from '../../lib/useHashTarget';
+import { taskNextStep } from '../../lib/taskNextStep';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
@@ -1011,6 +1012,8 @@ export default function TaskDetailPage() {
   // "What needs me on this task" - mirrors the exact conditions of the
   // action cards below, so the banner can never point at a form that
   // isn't rendered for this user.
+  // Header "Stage / Acts next / Review due" (2026-11-04) - display only.
+  const nextStep = taskNextStep(task, qaReviews);
   const pendingAction = (() => {
     if (canActOnPmReview) {
       return { tone: 'info', icon: ClipboardList, title: 'Waiting for PM review', detail: 'Send it to QA, or back to the developer with feedback.', cta: 'Review now', target: 'pm-review' };
@@ -2185,6 +2188,29 @@ export default function TaskDetailPage() {
                 {task.assigneeFullName || task.assigneeEmail || 'Unassigned'}
               </span>
             </div>
+          )}
+          {!editingTitle && nextStep && (
+            <dl className={styles.nextStep} aria-label="Where this task is">
+              <div className={styles.nextStepItem}>
+                <dt>Stage</dt>
+                <dd><strong>{nextStep.stage}</strong></dd>
+              </div>
+              {nextStep.who && (
+                <div className={styles.nextStepItem}>
+                  <dt>Acts next</dt>
+                  <dd>{nextStep.who}</dd>
+                </div>
+              )}
+              {nextStep.due && (
+                <div className={`${styles.nextStepItem} ${nextStep.late ? styles.metaOverdue : ''}`}>
+                  <dt>Review due</dt>
+                  <dd>
+                    {formatDate(nextStep.due)}
+                    {nextStep.late && <> <Badge tone="error">Late</Badge></>}
+                  </dd>
+                </div>
+              )}
+            </dl>
           )}
           {canManage && !editingTitle && (
             <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>

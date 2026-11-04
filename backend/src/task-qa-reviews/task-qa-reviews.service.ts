@@ -51,6 +51,9 @@ export type TaskQaReviewForDisplay = TaskQaReviewWithArtifacts & {
   submittedByFullName: string;
   reviewedByFullName: string | null;
   revertedByFullName: string | null;
+  // The Peer Reviewer the submitter picked ('peer' rounds) - shown as
+  // "who acts next" in the task header while the round is pending.
+  reviewerFullName: string | null;
   qaArtifacts: TaskQaReviewQaArtifact[];
 };
 
@@ -128,6 +131,7 @@ export class TaskQaReviewsService {
       userIds.add(review.submittedByUserId);
       if (review.reviewedByUserId) userIds.add(review.reviewedByUserId);
       if (review.revertedByUserId) userIds.add(review.revertedByUserId);
+      if (review.reviewerUserId) userIds.add(review.reviewerUserId);
     }
     const users = await this.usersService.findByIds([...userIds], tenantId);
     const nameByUserId = new Map(users.map((u) => [u.id, u.fullName || u.email]));
@@ -141,6 +145,7 @@ export class TaskQaReviewsService {
         ? nameByUserId.get(review.reviewedByUserId) || review.reviewedByEmail
         : null,
       revertedByFullName: review.revertedByUserId ? nameByUserId.get(review.revertedByUserId) || null : null,
+      reviewerFullName: review.reviewerUserId ? nameByUserId.get(review.reviewerUserId) || null : null,
     }));
   }
 
