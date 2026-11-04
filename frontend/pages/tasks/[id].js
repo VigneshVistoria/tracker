@@ -28,6 +28,8 @@ import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerMo
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
 import useHashTarget from '../../lib/useHashTarget';
+import { TASK_PAGE_V2 } from '../../lib/featureFlags';
+import CollapsibleSection from '../../components/ui/CollapsibleSection';
 import { taskNextStep } from '../../lib/taskNextStep';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
@@ -2165,996 +2167,135 @@ export default function TaskDetailPage() {
     }
   };
 
-  return (
-    <AppShell>
-      <Breadcrumbs items={[{ label: 'My Tasks', href: '/tasks/mine' }, { label: `#${task.id}` }]} />
-      <div className={styles.pageHeader}>
-        <div>
-          {!editingTitle && <h1 className={styles.pageTitle}>#{task.id} - {task.title}</h1>}
-          {!editingTitle && (
-            <div className={styles.metaRow}>
-              <span className={styles.statusChip} style={statusBadgeStyle(task.status)}>
-                {statusLabel(task.status)}
-              </span>
-              {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
-              {task.isDefect && <Badge tone="error">Defect</Badge>}
-              <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
-                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(effectiveDueDate(task))}` : 'No due date'}
-                {/* PM review gate: the working days spent waiting for a PM extend it. */}
-                {task.dueDate && task.pmWaitWorkingDays > 0 && ` (${formatDate(task.dueDate)} + ${task.pmWaitWorkingDays} working ${task.pmWaitWorkingDays === 1 ? 'day' : 'days'} with PM)`}
-              </span>
-              <span className={`${styles.metaItem} ${styles.metaPerson}`}>
-                {(task.assigneeFullName || task.assigneeEmail) && <Avatar name={task.assigneeFullName || task.assigneeEmail} size="xs" />}
-                {task.assigneeFullName || task.assigneeEmail || 'Unassigned'}
-              </span>
-            </div>
-          )}
-          {!editingTitle && nextStep && (
-            <dl className={styles.nextStep} aria-label="Where this task is">
-              <div className={styles.nextStepItem}>
-                <dt>Stage</dt>
-                <dd><strong>{nextStep.stage}</strong></dd>
-              </div>
-              {nextStep.who && (
-                <div className={styles.nextStepItem}>
-                  <dt>Acts next</dt>
-                  <dd>{nextStep.who}</dd>
-                </div>
-              )}
-              {nextStep.due && (
-                <div className={`${styles.nextStepItem} ${nextStep.late ? styles.metaOverdue : ''}`}>
-                  <dt>Review due</dt>
-                  <dd>
-                    {formatDate(nextStep.due)}
-                    {nextStep.late && <> <Badge tone="error">Late</Badge></>}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          )}
-          {canManage && !editingTitle && (
-            <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
-              <button className={styles.buttonSecondary} type="button" onClick={() => setEditingTitle(true)}>
-                Edit Title
-              </button>
-            </div>
-          )}
-          {canManage && editingTitle && (
-            <div className={styles.field}>
-              <label className={styles.label} htmlFor="taskTitleEdit">Title</label>
-              <input
-                className={styles.input}
-                id="taskTitleEdit"
-                required
-                maxLength={TASK_TITLE_MAX_LENGTH}
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSaveTitle();
-                  if (e.key === 'Escape') handleCancelEditTitle();
-                }}
-                autoFocus
-              />
-              <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
-                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingTitle} onClick={handleSaveTitle}>
-                  {savingTitle ? 'Saving...' : 'Save Title'}
-                </button>
-                <button className={styles.buttonSecondary} type="button" disabled={savingTitle} onClick={handleCancelEditTitle}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          {!editingModulePhase && (
-            <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
-          )}
-          {canManage && !editingModulePhase && (
-            <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
-              <button className={styles.buttonSecondary} type="button" onClick={handleStartEditModulePhase}>
-                Edit Module / Phase
-              </button>
-            </div>
-          )}
-          {canManage && editingModulePhase && (
-            <div>
-              <p className={styles.pageSubtitle}>{task.projectName}</p>
-              <div className={styles.fieldGrid3}>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="taskModuleEdit">Module</label>
-                  <select
-                    className={styles.input}
-                    id="taskModuleEdit"
-                    required
-                    value={moduleDraftId}
-                    onChange={(e) => { setModuleDraftId(e.target.value); setPhaseDraftId(''); }}
-                    autoFocus
-                  >
-                    {/* Keeps the current value selectable even if it has since been deactivated (inactive ones aren't in moduleOptions). */}
-                    {!moduleOptions.some((m) => String(m.id) === String(task.moduleId)) && (
-                      <option value={String(task.moduleId)}>{task.moduleName}</option>
-                    )}
-                    {moduleOptions.map((m) => (
-                      <option key={m.id} value={String(m.id)}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="taskPhaseEdit">Phase</label>
-                  <select
-                    className={styles.input}
-                    id="taskPhaseEdit"
-                    required
-                    value={phaseDraftId}
-                    onChange={(e) => setPhaseDraftId(e.target.value)}
-                  >
-                    <option value="" disabled>Select a Phase</option>
-                    {moduleDraftId === String(task.moduleId) && !phaseOptions.some((p) => String(p.id) === String(task.phaseId)) && (
-                      <option value={String(task.phaseId)}>{task.phaseName}</option>
-                    )}
-                    {phaseOptions.map((p) => (
-                      <option key={p.id} value={String(p.id)}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
-                <button
-                  className={`${styles.button} ${styles.buttonAccent}`}
-                  type="button"
-                  disabled={savingModulePhase || !moduleDraftId || !phaseDraftId}
-                  onClick={handleSaveModulePhase}
-                >
-                  {savingModulePhase ? 'Saving...' : 'Save'}
-                </button>
-                <button className={styles.buttonSecondary} type="button" disabled={savingModulePhase} onClick={handleCancelEditModulePhase}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-          {(openLinkedDefects.length > 0 || (task.isDefect && blockedTasks.length > 0)) && (
-            <ul className={styles.blockingBadges} aria-label="Blocking links">
-              {openLinkedDefects.map((d) => (
-                <li key={`by-${d.id}`}>
-                  <Link href={`/tasks/${d.id}`}>
-                    <Badge tone="error" dot>Blocked by Defect #{d.id}</Badge>
-                  </Link>
-                </li>
-              ))}
-              {task.isDefect && blockedTasks.map((t) => (
-                <li key={`blocks-${t.id}`}>
-                  <Link href={`/tasks/${t.id}`}>
-                    <Badge tone="warning" dot>Blocks Task #{t.id}</Badge>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      {error && <div className={styles.error}>{error}</div>}
-
-      {pendingAction && (
-        <div className={`${styles.actionBanner} ${styles[`actionBanner_${pendingAction.tone}`]}`} role="status">
-          <pendingAction.icon size={20} aria-hidden="true" className={styles.actionBannerIcon} />
-          <div className={styles.actionBannerText}>
-            <strong>{pendingAction.title}</strong>
-            <span>{pendingAction.detail}</span>
-          </div>
-          {pendingAction.target && (
-            <button
-              type="button"
-              className={`${styles.button} ${styles.buttonAccent}`}
-              onClick={() => {
-                setActiveTab('overview');
-                requestAnimationFrame(() => {
-                  const el = document.getElementById(pendingAction.target);
-                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  el?.focus({ preventScroll: true });
-                });
-              }}
-            >
-              {pendingAction.cta}
-            </button>
-          )}
-        </div>
-      )}
-
-      {latestPmSendBack && (
-        <div id="task-pm-feedback" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
-          <h2 className={styles.cardTitle}>
-            PM feedback
-          </h2>
-          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
-            From {latestPmSendBack.reviewedByFullName || 'the Program Manager'}
-            {latestPmSendBack.reviewedAt ? ` · ${formatDate(latestPmSendBack.reviewedAt)}` : ''}
-          </p>
-          <RichTextDisplay value={latestPmSendBack.qaComment} />
-          {isAssignee && (
-            <p className={styles.helpText} style={{ marginBottom: 0 }}>
-              {pmSendBackFromQa
-                ? `Taken back from QA before review. Refine the task, then submit it again below - it goes ${task.pmReviewGateOn ? 'to the Program Manager first, then QA' : 'back to QA'}. This is not a QA rejection.`
-                : 'Refine the task, then submit it again below - it goes back to the Program Manager. This is not a QA rejection.'}
-            </p>
-          )}
-        </div>
-      )}
-
-      {latestNotReady && (
-        <div id="task-qa-not-ready" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
-          <h2 className={styles.cardTitle}>
-            Not ready for testing
-          </h2>
-          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
-            From {latestNotReady.reviewedByFullName || 'QA'}
-            {latestNotReady.reviewedAt ? ` · ${formatDate(latestNotReady.reviewedAt)}` : ''}
-          </p>
-          <p style={{ margin: '0 0 var(--space-2)' }}>
-            <strong>Reason:</strong> {latestNotReady.notReadyReason || 'Not given'}
-          </p>
-          <RichTextDisplay value={latestNotReady.qaComment} />
-          {isAssignee && (
-            <p className={styles.helpText} style={{ marginBottom: 0 }}>
-              QA could not start testing, so this is not a QA rejection. Fix what is missing, then submit it again below - it goes back to
-              QA as a first-time submission.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className={styles.tabs} role="tablist" aria-label="Task sections">
-        {[
-          { key: 'overview', label: 'Overview' },
-          { key: 'history', label: 'Review history', count: qaReviews.length },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            id={`task-tab-${tab.key}`}
-            aria-selected={activeTab === tab.key}
-            aria-controls={`task-panel-${tab.key}`}
-            tabIndex={activeTab === tab.key ? 0 : -1}
-            className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab(tab.key)}
+  // Task page layout v2 (lib/featureFlags.js): open dependency tickets
+  // first, resolved ones collapsed with a count.
+  const openTicketsList = tickets.filter((t) => t.status !== 'resolved');
+  const resolvedTicketsList = tickets.filter((t) => t.status === 'resolved');
+  const renderTicket = (ticket) => (
+    <div
+      key={ticket.id}
+      id={`dependency-${ticket.id}`}
+      tabIndex={-1}
+      className={highlightedTicketId === ticket.id ? styles.ticketHighlight : undefined}
+      style={{
+        padding: highlightedTicketId === ticket.id ? 'var(--space-3)' : 'var(--space-3) 0',
+        borderTop: '1px solid var(--color-border)',
+      }}
+    >
+      {editingTicketId === ticket.id ? (
+        <div className={styles.field} style={{ marginBottom: 'var(--space-2)' }}>
+          <label className={styles.label} htmlFor={`tdTicketTitleEdit-${ticket.id}`}>Dependency Title</label>
+          <input
+            className={styles.input}
+            id={`tdTicketTitleEdit-${ticket.id}`}
+            required
+            maxLength={TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH}
+            value={ticketTitleDraft}
+            onChange={(e) => setTicketTitleDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-                e.preventDefault();
-                const next = activeTab === 'overview' ? 'history' : 'overview';
-                setActiveTab(next);
-                document.getElementById(`task-tab-${next}`)?.focus();
-              }
+              if (e.key === 'Enter') handleSaveTicketTitle(ticket.id);
+              if (e.key === 'Escape') setEditingTicketId(null);
             }}
-          >
-            {tab.label}
-            {tab.count > 0 && <span className={styles.tabCount}>{tab.count}</span>}
-          </button>
-        ))}
-      </div>
-
-      {/* Panels stay mounted (hidden, not unmounted) so switching tabs never
-          loses a half-written review comment or form draft. */}
-      <div role="tabpanel" id="task-panel-overview" aria-labelledby="task-tab-overview" hidden={activeTab !== 'overview'}>
-
-      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        {task.isDefect && (
-          <span className={styles.badge} style={{ background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
-            Defect
-          </span>
-        )}
-        {!editingDescription && <RichTextDisplay value={task.description} />}
-        {canEditDescription && !editingDescription && (
+            autoFocus
+          />
           <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
-            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDescription(true)}>
-              Edit Description
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingTicketTitle} onClick={() => handleSaveTicketTitle(ticket.id)}>
+              {savingTicketTitle ? 'Saving...' : 'Save Title'}
             </button>
-          </div>
-        )}
-        {canEditDescription && editingDescription && (
-          <div style={{ marginTop: 'var(--space-3)' }}>
-            <RichTextEditor
-              id="taskDescriptionEdit"
-              value={descriptionDraft}
-              onChange={setDescriptionDraft}
-              placeholder="Describe the task..."
-            />
-            <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
-              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingDescription} onClick={handleSaveDescription}>
-                {savingDescription ? 'Saving...' : 'Save Description'}
-              </button>
-              <button className={styles.buttonSecondary} type="button" disabled={savingDescription} onClick={handleCancelEditDescription}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        <p className={styles.issueMeta}>
-          Assignee: {task.assigneeFullName || task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
-          {task.isDefect && <> &middot; Raised by {task.createdByEmail}</>}
-        </p>
-        {canManage && !editingAssignee && (
-          <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
-            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingAssignee(true)}>
-              Edit Assignee
-            </button>
-          </div>
-        )}
-        {canManage && editingAssignee && (
-          <div style={{ marginTop: 'var(--space-3)' }}>
-            <SearchSelectField
-              label="Assignee"
-              id="taskAssignee"
-              value={assigneeSelection}
-              onChange={setAssigneeSelection}
-              options={assignableUsers}
-              placeholder="Leave blank to send back to Task Backlog"
-            />
-            <p className={styles.helpText}>
-              Leave this blank to send the task back to the Task Backlog, unassigned. Past QA/Peer Review history stays
-              attributed to whoever was assigned at the time - reassigning never rewrites it. A Peer Review, PM
-              Intervention, or Dependency Ticket already in progress keeps going to whoever it's currently routed to.
-            </p>
-            <div className={styles.actions}>
-              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingAssignee} onClick={handleSaveAssignee}>
-                {savingAssignee ? 'Saving...' : 'Save Assignee'}
-              </button>
-              <button className={styles.buttonSecondary} type="button" disabled={savingAssignee} onClick={handleCancelEditAssignee}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-        {task.isDefect && defectArtifacts.length > 0 && (
-          <div style={{ marginTop: 'var(--space-2)' }}>
-            <span className={styles.issueMeta}>Evidence: </span>
-            <QaArtifactIcons artifacts={defectArtifacts} />
-          </div>
-        )}
-        {task.isDefect && <DefectScreenshots key={screenshotsVersion} taskId={task.id} />}
-        {task.isDefect && !isJunk && user.role === 'qa' && task.createdByUserId === user.id && task.status !== 'Returned to QA' && (
-          <ScreenshotUploader collapsed uploadPath={`/tasks/${task.id}/attachments`} onUploaded={() => setScreenshotsVersion((v) => v + 1)} />
-        )}
-        {canEditDefectScope && !editingDefectFields && (
-          <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
-            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDefectFields(true)}>
-              Edit Defect Details
-            </button>
-          </div>
-        )}
-      </div>
-
-      {canEditDefectScope && editingDefectFields && (
-        <form onSubmit={handleSaveDefectFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.cardTitle}>
-            Edit Defect Details
-          </h2>
-          <div className={styles.fieldGrid3}>
-            <SearchSelectField
-              label="Project"
-              id="defectProject"
-              required
-              value={defectProject}
-              onChange={(v) => { setDefectProject(v); setDefectModule(null); setDefectPhase(null); }}
-              options={projects}
-            />
-            <SearchSelectField
-              label="Module"
-              id="defectModule"
-              required
-              value={defectModule}
-              onChange={(v) => { setDefectModule(v); setDefectPhase(null); }}
-              options={defectModules}
-              disabled={!defectProject}
-              placeholder="Select a Project first"
-            />
-            <SearchSelectField
-              label="Phase"
-              id="defectPhase"
-              required
-              value={defectPhase}
-              onChange={setDefectPhase}
-              options={defectPhases}
-              disabled={!defectModule}
-              placeholder="Select a Module first"
-            />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="defectTitleField">Title</label>
-            <input
-              className={styles.input}
-              id="defectTitleField"
-              required
-              maxLength={TASK_TITLE_MAX_LENGTH}
-              value={defectTitle}
-              onChange={(e) => setDefectTitle(e.target.value)}
-            />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="defectDescription">Description</label>
-            <RichTextEditor
-              id="defectDescription"
-              value={defectDescription}
-              onChange={setDefectDescription}
-              placeholder="Describe the defect..."
-            />
-          </div>
-          <div className={styles.actions}>
-            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={savingDefectFields}>
-              {savingDefectFields ? 'Saving...' : 'Save Defect Details'}
-            </button>
-            <button className={styles.button} type="button" onClick={handleCancelEditDefectFields} disabled={savingDefectFields}>
+            <button className={styles.buttonSecondary} type="button" disabled={savingTicketTitle} onClick={() => setEditingTicketId(null)}>
               Cancel
             </button>
           </div>
-        </form>
-      )}
-
-      <form onSubmit={handleSaveFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <div className={styles.fieldGrid4}>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdEHrs">Estimated Hours</label>
-            <input
-              className={styles.input}
-              id="tdEHrs"
-              type="number"
-              min="0"
-              step="0.5"
-              disabled={!canEditFields || estimatedHoursLocked}
-              value={estimatedHours}
-              onChange={(e) => setEstimatedHours(e.target.value)}
-            />
-            {estimatedHoursLocked && (
-              <p className={styles.helpText}>Locked after first entry - only Admin or Program Manager can change it now.</p>
-            )}
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdDueDate">Due Date</label>
-            <input
-              className={styles.input}
-              id="tdDueDate"
-              type="date"
-              disabled={!canEditFields || dueDateLocked}
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-            {dueDateLocked && (
-              <p className={styles.helpText}>
-                {dueDateTracked
-                  ? 'Committed date - change it in the Due date commitment card below.'
-                  : 'Locked after first entry - only Program Manager can change it now.'}
-              </p>
-            )}
-            {!task.dueDate && dueDateTracked && isAssignee && (
-              <p className={styles.helpText}>The first date you save is your commitment - later changes need PM approval.</p>
-            )}
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdPriority">Priority</label>
-            {canManage ? (
-              <select
-                className={styles.input}
-                id="tdPriority"
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                <option value="">Not Set</option>
-                {TASK_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            ) : (
-              <div>
-                <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
-              </div>
-            )}
-          </div>
-
-          <div className={styles.field}>
-            <label className={styles.label}>Status</label>
-            <div>
-              <StatusBadge status={task.status} />
-            </div>
-            {hasPendingQaReview && (
-              <p className={styles.helpText}>
-                {latestQaReview.reviewType === 'peer'
-                  ? 'A Peer Review round is pending - status is controlled by the reviewer\'s Approve/Reject.'
-                  : latestQaReview.reviewType === 'pm'
-                    ? 'Waiting for PM review - a Program Manager sends it to QA or back to the developer.'
-                    : 'A QA review round is pending - status is controlled by QA Approve/Reject.'}
-              </p>
-            )}
-          </div>
         </div>
-
-        {canEditFields && (
-          <div className={styles.actions}>
-            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        )}
-      </form>
-
-      {!isJunk && <DueDateCommitmentPanel task={task} onChanged={refreshAfterReturnToQa} onState={setDueDateTracking} />}
-      {!isJunk && <TaskFlagsPanel task={task} tickets={tickets} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && <TaskActivityPanel task={task} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && <TaskRequestsPanel task={task} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && <TaskHandoverPanel task={task} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && !task.isDefect && <TaskFieldsCard task={task} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && task.isDefect && <EscapedDefectCard task={task} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && <ClientMeasuresCard task={task} onChanged={refreshAfterReturnToQa} />}
-      {qaIntake?.trackingOn && REOPEN_FROM_STATUSES.includes(task.status) && (user.role === 'program_manager' || user.role === 'admin') && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.cardTitle}>Reopen after Pass</h2>
-          <p className={styles.helpText} style={{ marginTop: 0 }}>
-            For the same work failing again - it goes back to Development with a new proposed Due date. A new problem should be raised as a
-            new defect instead.{task.reopenCount ? ` Reopened ${task.reopenCount} time${task.reopenCount === 1 ? '' : 's'} so far.` : ''}
-          </p>
-          <button className={styles.buttonSecondary} type="button" onClick={() => setReopenOpen(true)}>
-            Reopen
-          </button>
-        </div>
-      )}
-      {reopenOpen && (
-        <ReopenAfterPassModal
-          task={task}
-          onClose={() => setReopenOpen(false)}
-          onDone={async (message) => {
-            setReopenOpen(false);
-            await refreshAfterReturnToQa(message);
-          }}
-        />
-      )}
-
-      {canManagePeerReviewFlag && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.cardTitle}>
-            Review Routing
-          </h2>
-          <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <input
-              type="checkbox"
-              checked={peerReviewEnabled}
-              onChange={(e) => setPeerReviewEnabled(e.target.checked)}
-            />
-            Peer Review
-          </label>
-          <p className={styles.helpText}>
-            Skips QA - the assignee will pick another developer to review this task instead. Only affects the next
-            time this task is submitted for review - it won&apos;t change a round that&apos;s already in progress.
-          </p>
-          <div className={styles.actions}>
-            <button
-              className={`${styles.button} ${styles.buttonAccent}`}
-              type="button"
-              disabled={savingPeerReviewFlag || peerReviewEnabled === !!task.peerReviewEnabled}
-              onClick={handleSavePeerReviewFlag}
-            >
-              {savingPeerReviewFlag ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {(isJunk || isProgramManager || junkHistory.length > 0) && JUNK_VIEW_ROLES.includes(user.role) && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-junk">
-          <h2 className={styles.cardTitle}>Junk</h2>
-          {isJunk ? (
-            <>
-              <dl style={{ margin: '0 0 var(--ds-space-3)', display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 'var(--ds-space-1) var(--ds-space-4)' }}>
-                <dt className={styles.issueMeta}>Marked by</dt>
-                <dd style={{ margin: 0 }}>{task.junkedByEmail || 'Unknown'}</dd>
-                <dt className={styles.issueMeta}>When</dt>
-                <dd style={{ margin: 0 }}>{task.junkedAt ? formatDateTime(task.junkedAt) : 'Unknown'}</dd>
-                <dt className={styles.issueMeta}>Reason</dt>
-                <dd style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{task.junkReason || '—'}</dd>
-                <dt className={styles.issueMeta}>Previous status</dt>
-                <dd style={{ margin: 0 }}>{statusLabel(task.statusBeforeJunk || 'Escalated')}</dd>
-              </dl>
-              {isProgramManager ? (
-                <div className={styles.actions}>
-                  <button
-                    className={`${styles.button} ${styles.buttonAccent}`}
-                    type="button"
-                    disabled={restoringJunk}
-                    onClick={handleRestoreJunk}
-                  >
-                    {restoringJunk ? 'Restoring...' : 'Restore'}
-                  </button>
-                </div>
-              ) : (
-                <p className={styles.helpText}>Hidden from Developers and QA. Only a Program Manager can restore it.</p>
-              )}
-            </>
-          ) : isProgramManager ? (
-            <>
-              <p className={styles.helpText}>
-                Created by mistake? Junk hides this ticket from Developers and QA and leaves it out of every count and report.
-                Nothing is deleted - you can restore it from the Junk list.
-              </p>
-              <div className={styles.actions}>
-                <button className={styles.buttonSecondary} type="button" onClick={() => setJunkModalOpen(true)}>
-                  Mark as Junk
-                </button>
-              </div>
-            </>
-          ) : null}
-          {junkHistory.length > 0 && (
-            <>
-              <h3 className={styles.issueMeta} style={{ margin: 'var(--ds-space-4) 0 var(--ds-space-2)' }}>History</h3>
-              <ul style={{ margin: 0, paddingLeft: 'var(--ds-space-5)', lineHeight: 'var(--ds-leading-normal)' }}>
-                {junkHistory.map((h) => (
-                  <li key={h.id}>
-                    {formatDateTime(h.createdAt)} - {h.action === 'task_restored_from_junk' ? 'Restored' : 'Marked as Junk'} by {h.userEmail || 'Unknown'}
-                    {h.details?.previousStatus && h.details?.newStatus
-                      ? (
-                        <>
-                          {' ('}{statusLabel(h.details.previousStatus)}{' '}
-                          {/* Icon, not a → character - the app font has no arrow glyph. */}
-                          <ArrowRight size={13} aria-hidden="true" style={{ verticalAlign: 'middle' }} />
-                          <span className="sr-only">to</span>{' '}{statusLabel(h.details.newStatus)})
-                        </>
-                      )
-                      : ''}
-                    {h.action !== 'task_restored_from_junk' && h.details?.reason ? `: ${h.details.reason}` : ''}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <JunkReasonModal
-            open={junkModalOpen}
-            tasks={[{ id: task.id, title: task.title, status: task.status }]}
-            onClose={() => setJunkModalOpen(false)}
-            submit={submitJunk}
-          />
-        </div>
-      )}
-
-      {!isJunk && task.isDefect && <DefectTriagePanel task={task} onChanged={refreshAfterReturnToQa} />}
-      {!isJunk && <ReturnToQaPanel task={task} user={user} onChanged={refreshAfterReturnToQa} />}
-
-      {(canRevertQaDecision || canSendBackFromQa) && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-pm-actions">
-          <h2 className={styles.cardTitle}>
-            PM actions
-          </h2>
-          {canSendBackFromQa && (
-            <>
-              <p className={styles.helpText}>
-                Waiting for QA (round {latestQaReview.roundNumber}). Not ready for QA - for example the description is unclear? Send it back
-                to the developer with a reason. It leaves the QA queue and does not count as a QA rejection.
-              </p>
-              <div className={styles.actions}>
-                <button className={styles.buttonSecondary} type="button" onClick={() => setSendBackModalOpen(true)}>
-                  Send back to developer
-                </button>
-              </div>
-              <SendBackToDeveloperModal
-                open={sendBackModalOpen}
-                taskId={task.id}
-                currentDeveloper={task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeFullName || task.assigneeEmail } : null}
-                developers={developers}
-                canPickOther={user.role === 'program_manager'}
-                onClose={() => setSendBackModalOpen(false)}
-                submit={submitSendBackFromQa}
-              />
-            </>
-          )}
-          {canRevertQaDecision && (
-            <>
-              <p className={styles.helpText}>
-                {latestRound.reviewedByFullName || 'QA'} {latestRound.status === 'approved' ? 'approved' : 'rejected'} round {latestRound.roundNumber}
-                {latestRound.reviewedAt ? ` on ${formatDate(latestRound.reviewedAt)}` : ''}. Made by mistake? Revert it and the task goes back to
-                waiting for QA with the same submission.
-              </p>
-              <div className={styles.actions}>
-                <button className={styles.buttonSecondary} type="button" onClick={() => setRevertModalOpen(true)}>
-                  Revert QA decision
-                </button>
-              </div>
-              <RevertQaDecisionModal
-                open={revertModalOpen}
-                taskId={task.id}
-                decision={latestRound.status}
-                decidedBy={latestRound.reviewedByFullName}
-                onClose={() => setRevertModalOpen(false)}
-                submit={submitRevertQaDecision}
-              />
-            </>
-          )}
-        </div>
-      )}
-
-      {canManageHoldClosed && (
-        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.cardTitle}>
-            Hold / Close
-          </h2>
-          {task.status === 'Closed' ? (
-            <>
-              <p className={styles.helpText}>
-                This task is Closed. Reopening returns it to the status it had before it was closed.
-              </p>
-              <div className={styles.actions}>
-                <button
-                  className={`${styles.button} ${styles.buttonAccent}`}
-                  type="button"
-                  disabled={savingHoldClosed}
-                  onClick={handleReopen}
-                >
-                  {savingHoldClosed ? 'Saving...' : 'Reopen'}
-                </button>
-              </div>
-            </>
-          ) : task.status === 'Hold' ? (
-            <>
-              <p className={styles.helpText}>
-                On Hold{task.priorStatus ? ` - was "${task.priorStatus}" before being paused` : ''}. Releasing
-                resumes it at that status.
-              </p>
-              <div className={styles.actions}>
-                <button
-                  className={`${styles.button} ${styles.buttonAccent}`}
-                  type="button"
-                  disabled={savingHoldClosed}
-                  onClick={handleRelease}
-                >
-                  {savingHoldClosed ? 'Saving...' : 'Release from Hold'}
-                </button>
-                <button
-                  className={styles.buttonSecondary}
-                  type="button"
-                  disabled={savingHoldClosed}
-                  onClick={handleClose}
-                >
-                  Close
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className={styles.helpText}>
-                Pause or force-end this task from its current status ({statusLabel(task.status)}) - no reason or comment
-                required. Either can be undone later - releasing or reopening returns it to this same status.
-              </p>
-              <div className={styles.actions}>
-                <button
-                  className={styles.buttonSecondary}
-                  type="button"
-                  disabled={savingHoldClosed}
-                  onClick={handleHold}
-                >
-                  {savingHoldClosed ? 'Saving...' : 'Put on Hold'}
-                </button>
-                <button
-                  className={styles.buttonSecondary}
-                  type="button"
-                  disabled={savingHoldClosed}
-                  onClick={handleClose}
-                >
-                  Close
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.cardTitle}>
-          QA Review Due Date
-        </h2>
-        <p style={{ margin: 0 }} className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
-          {task.qaReviewDueDate ? formatDate(task.qaReviewDueDate) : 'Not yet submitted for QA or Peer Review.'}
+      ) : (
+        <p style={{ margin: 0, fontWeight: 600 }}>
+          {ticket.title}{' '}
+          <span className={styles.badge} style={ticket.status === 'resolved' ? { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' } : { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
+            {ticket.status === 'resolved' ? 'Resolved' : 'Open'}
+          </span>
         </p>
-        <p className={styles.helpText}>
-          Auto-set to 5 business days from whenever this task is submitted for QA or Peer Review, and reset fresh on
-          every resubmission - separate from the task's own Due Date above.
-        </p>
-        {canEditQaReviewDueDate && (
+      )}
+      <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
+      <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+        Owner: {ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
+        {formatDate(ticket.createdAt)}
+        {ticket.needByDate && <> &middot; Needed by {formatDate(ticket.needByDate)}</>}
+        {ticket.needByDate && isDependencyOverdue(ticket) && (
           <>
-            <div className={styles.fieldNarrow}>
-              <label className={styles.label} htmlFor="tdQaReviewDueDate">Adjust QA Review Due Date</label>
-              <input
-                className={styles.input}
-                id="tdQaReviewDueDate"
-                type="date"
-                value={qaReviewDueDateDraft}
-                onChange={(e) => setQaReviewDueDateDraft(e.target.value)}
-              />
-            </div>
-            <div className={styles.actions}>
-              <button
-                className={`${styles.button} ${styles.buttonAccent}`}
-                type="button"
-                disabled={savingQaReviewDueDate || !qaReviewDueDateDraft || qaReviewDueDateDraft === (task.qaReviewDueDate || '')}
-                onClick={handleSaveQaReviewDueDate}
-              >
-                {savingQaReviewDueDate ? 'Saving...' : 'Save'}
-              </button>
-            </div>
+            {' '}
+            <Badge tone="error">Overdue</Badge>
           </>
         )}
-      </div>
-
-      {isAssignee && (
-        <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-          <h2 className={styles.cardTitle}>
-            Create Dependency Ticket
-          </h2>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdTicketTitle">Dependency Title</label>
-            <input
-              className={styles.input}
-              id="tdTicketTitle"
-              required
-              maxLength={TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH}
-              value={ticketTitle}
-              onChange={(e) => setTicketTitle(e.target.value)}
-              aria-describedby="tdTicketTitleHint"
-            />
-            <p id="tdTicketTitleHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              A short one-line summary, shown wherever this dependency is listed.
-            </p>
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdTicketDesc">Dependency Description</label>
-            <textarea
-              className={styles.textarea}
-              id="tdTicketDesc"
-              required
-              value={ticketDescription}
-              onChange={(e) => setTicketDescription(e.target.value)}
-            />
-          </div>
-          <div className={styles.fieldNarrow}>
-            <SearchSelectField
-              label="Dependency Owner (Developer)"
-              id="tdTicketOwner"
-              required
-              value={ticketOwner}
-              onChange={setTicketOwner}
-              options={developers}
-            />
-          </div>
-          {dueDateTracked && (
-            <div className={styles.fieldNarrow}>
-              <label className={styles.label} htmlFor="tdTicketNeedBy">Needed by</label>
-              <input
-                className={styles.input}
-                id="tdTicketNeedBy"
-                type="date"
-                required
-                value={ticketNeedBy}
-                onChange={(e) => setTicketNeedBy(e.target.value)}
-                aria-describedby="tdTicketNeedByHint"
-              />
-              <p id="tdTicketNeedByHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-                The owner is overdue from the next day. Only you or a PM/Admin can change it later, with a reason.
-              </p>
-            </div>
-          )}
-          <div className={styles.actions}>
-            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={filingTicket}>
-              {filingTicket ? 'Filing...' : 'File Dependency Ticket'}
-            </button>
-          </div>
-        </form>
+      </p>
+      {editingTicketId !== ticket.id && (ticket.createdByUserId === user.id || canManage || user.role === 'admin') && (
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
+          onClick={() => {
+            setEditingTicketId(ticket.id);
+            setTicketTitleDraft(ticket.title);
+          }}
+        >
+          Edit Title
+        </button>
       )}
+      {editingTicketId !== ticket.id && canChangeDependencyOwner && ticket.status === 'open' && (
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
+          onClick={() => setOwnerChangeTicket(ticket)}
+          aria-label={`Change owner of ${ticket.title}`}
+        >
+          Change owner
+        </button>
+      )}
+      {editingTicketId !== ticket.id && dueDateTracked && ticket.status === 'open' && !isJunk &&
+        (ticket.createdByUserId === user.id || user.role === 'program_manager' || user.role === 'admin') && (
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
+          onClick={() => setNeedByTicket(ticket)}
+        >
+          {ticket.needByDate ? 'Change needed-by' : 'Set needed-by'}
+        </button>
+      )}
+      {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          style={{ marginTop: 'var(--space-2)' }}
+          onClick={() => handleResolveTicket(ticket.id)}
+        >
+          Mark Resolved
+        </button>
+      )}
+    </div>
+  );
 
+  const dependencyCard = (
+    <>
       <div id="dependency-tickets" className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         <h2 className={styles.cardTitle}>
           Dependency Tickets
         </h2>
         {tickets.length === 0 && <div className={styles.empty}>No dependency tickets filed for this task.</div>}
-        {tickets.map((ticket) => (
-          <div
-            key={ticket.id}
-            id={`dependency-${ticket.id}`}
-            tabIndex={-1}
-            className={highlightedTicketId === ticket.id ? styles.ticketHighlight : undefined}
-            style={{
-              padding: highlightedTicketId === ticket.id ? 'var(--space-3)' : 'var(--space-3) 0',
-              borderTop: '1px solid var(--color-border)',
-            }}
+        {(TASK_PAGE_V2 ? openTicketsList : tickets).map(renderTicket)}
+        {TASK_PAGE_V2 && tickets.length > 0 && openTicketsList.length === 0 && (
+          <div className={styles.empty}>No open dependency tickets.</div>
+        )}
+        {TASK_PAGE_V2 && resolvedTicketsList.length > 0 && (
+          <CollapsibleSection
+            count={resolvedTicketsList.length}
+            label={resolvedTicketsList.length === 1 ? 'resolved dependency' : 'resolved dependencies'}
+            storageKey={`taskSection:resolvedDependencies:${user.id}`}
           >
-            {editingTicketId === ticket.id ? (
-              <div className={styles.field} style={{ marginBottom: 'var(--space-2)' }}>
-                <label className={styles.label} htmlFor={`tdTicketTitleEdit-${ticket.id}`}>Dependency Title</label>
-                <input
-                  className={styles.input}
-                  id={`tdTicketTitleEdit-${ticket.id}`}
-                  required
-                  maxLength={TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH}
-                  value={ticketTitleDraft}
-                  onChange={(e) => setTicketTitleDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveTicketTitle(ticket.id);
-                    if (e.key === 'Escape') setEditingTicketId(null);
-                  }}
-                  autoFocus
-                />
-                <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
-                  <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingTicketTitle} onClick={() => handleSaveTicketTitle(ticket.id)}>
-                    {savingTicketTitle ? 'Saving...' : 'Save Title'}
-                  </button>
-                  <button className={styles.buttonSecondary} type="button" disabled={savingTicketTitle} onClick={() => setEditingTicketId(null)}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <p style={{ margin: 0, fontWeight: 600 }}>
-                {ticket.title}{' '}
-                <span className={styles.badge} style={ticket.status === 'resolved' ? { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' } : { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
-                  {ticket.status === 'resolved' ? 'Resolved' : 'Open'}
-                </span>
-              </p>
-            )}
-            <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
-            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Owner: {ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
-              {formatDate(ticket.createdAt)}
-              {ticket.needByDate && <> &middot; Needed by {formatDate(ticket.needByDate)}</>}
-              {ticket.needByDate && isDependencyOverdue(ticket) && (
-                <>
-                  {' '}
-                  <Badge tone="error">Overdue</Badge>
-                </>
-              )}
-            </p>
-            {editingTicketId !== ticket.id && (ticket.createdByUserId === user.id || canManage || user.role === 'admin') && (
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
-                onClick={() => {
-                  setEditingTicketId(ticket.id);
-                  setTicketTitleDraft(ticket.title);
-                }}
-              >
-                Edit Title
-              </button>
-            )}
-            {editingTicketId !== ticket.id && canChangeDependencyOwner && ticket.status === 'open' && (
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
-                onClick={() => setOwnerChangeTicket(ticket)}
-                aria-label={`Change owner of ${ticket.title}`}
-              >
-                Change owner
-              </button>
-            )}
-            {editingTicketId !== ticket.id && dueDateTracked && ticket.status === 'open' && !isJunk &&
-              (ticket.createdByUserId === user.id || user.role === 'program_manager' || user.role === 'admin') && (
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                style={{ marginTop: 'var(--space-2)', marginRight: 'var(--space-2)' }}
-                onClick={() => setNeedByTicket(ticket)}
-              >
-                {ticket.needByDate ? 'Change needed-by' : 'Set needed-by'}
-              </button>
-            )}
-            {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                style={{ marginTop: 'var(--space-2)' }}
-                onClick={() => handleResolveTicket(ticket.id)}
-              >
-                Mark Resolved
-              </button>
-            )}
-          </div>
-        ))}
-        {dependencyHistory.length > 0 && (
+            {resolvedTicketsList.map(renderTicket)}
+          </CollapsibleSection>
+        )}
+        {!TASK_PAGE_V2 && dependencyHistory.length > 0 && (
           <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
             <h3 className={styles.issueMeta} style={{ margin: '0 0 var(--ds-space-2)' }}>Dependency history</h3>
             <ul style={{ margin: 0, paddingLeft: 'var(--ds-space-5)' }}>
@@ -3165,6 +2306,21 @@ export default function TaskDetailPage() {
               ))}
             </ul>
           </div>
+        )}
+        {TASK_PAGE_V2 && dependencyHistory.length > 0 && (
+          <CollapsibleSection
+            count={dependencyHistory.length}
+            label={dependencyHistory.length === 1 ? 'dependency history entry' : 'dependency history entries'}
+            storageKey={`taskSection:dependencyHistory:${user.id}`}
+          >
+            <ul style={{ margin: 0, paddingLeft: 'var(--ds-space-5)' }}>
+              {dependencyHistory.map((h) => (
+                <li key={h.id} className={styles.issueMeta} style={{ marginBottom: 'var(--ds-space-1)' }}>
+                  {formatDateTime(h.createdAt)} &middot; {h.actorName} {dependencyHistoryText(h)}
+                </li>
+              ))}
+            </ul>
+          </CollapsibleSection>
         )}
       </div>
       <DependencyNeedByModal
@@ -3183,103 +2339,14 @@ export default function TaskDetailPage() {
         onClose={() => setOwnerChangeTicket(null)}
         submit={handleChangeTicketOwner}
       />
+    </>
+  );
 
-      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.cardTitle}>
-          Linked Defects
-        </h2>
-        {linkedDefects.length === 0 && (
-          <div className={styles.empty}>No defects have been filed against this task.</div>
-        )}
-        {linkedDefects.map((defect) => (
-          <div key={defect.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ margin: 0 }}>
-              <Link href={`/tasks/${defect.id}`}>{defect.title}</Link> <StatusBadge status={defect.status} />
-            </p>
-            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Assignee: {defect.assigneeEmail} &middot; Filed by {defect.createdByEmail} &middot;{' '}
-              {formatDate(defect.createdAt)}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.cardTitle}>
-          {task.isDefect ? 'Blocked Tasks' : 'Blocking Defects'}
-        </h2>
-        <p className={styles.helpText} style={{ marginTop: 0 }}>
-          {task.isDefect
-            ? 'Tasks this defect blocks. While it is unresolved (not Pass, Junk, or Closed), they cannot be submitted for QA.'
-            : 'Existing defects linked as blocking this task. While any is unresolved (not Pass, Junk, or Closed), this task cannot be submitted for QA.'}
-        </p>
-        {task.isDefect && blockedTasks.length === 0 && <div className={styles.empty}>This defect is not blocking any task.</div>}
-        {!task.isDefect && blockingDefects.length === 0 && <div className={styles.empty}>No defects linked as blocking.</div>}
-        {task.isDefect && blockedTasks.map((t) => (
-          <div key={t.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ margin: 0 }}>
-              <Link href={`/tasks/${t.id}`}>#{t.id} - {t.title}</Link> <StatusBadge status={t.status} />
-            </p>
-            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              {t.linkType === 'spun-off' ? 'Raised from this task\'s QA rejection' : 'Linked as blocking'}
-            </p>
-            {canChangeBlockingLinks && t.linkType === 'manual' && (
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                style={{ marginTop: 'var(--space-2)' }}
-                aria-label={`Unlink Task #${t.id}`}
-                onClick={() => handleUnlinkBlocking(t.id, task.id)}
-              >
-                Unlink
-              </button>
-            )}
-          </div>
-        ))}
-        {!task.isDefect && blockingDefects.map((d) => (
-          <div key={d.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
-            <p style={{ margin: 0 }}>
-              <Link href={`/tasks/${d.id}`}>#{d.id} - {d.title}</Link> <StatusBadge status={d.status} />
-            </p>
-            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Assignee: {d.assigneeEmail} &middot; Linked by {d.linkedByEmail} &middot; {formatDate(d.linkedAt)}
-            </p>
-            {canChangeBlockingLinks && (
-              <button
-                className={styles.buttonSecondary}
-                type="button"
-                style={{ marginTop: 'var(--space-2)' }}
-                aria-label={`Unlink Defect #${d.id}`}
-                onClick={() => handleUnlinkBlocking(task.id, d.id)}
-              >
-                Unlink
-              </button>
-            )}
-          </div>
-        ))}
-        {canChangeBlockingLinks && (
-          <div style={{ marginTop: 'var(--space-3)' }}>
-            <SearchSelectField
-              label={task.isDefect ? 'Link Blocked Task' : 'Link Blocking Defect'}
-              id="blockingLinkSelect"
-              value={blockingSelection}
-              onChange={setBlockingSelection}
-              options={blockingCandidateOptions}
-            />
-            <div className={styles.actions}>
-              <button
-                className={`${styles.button} ${styles.buttonAccent}`}
-                type="button"
-                disabled={!blockingSelection || savingBlockingLink}
-                onClick={handleLinkBlocking}
-              >
-                {savingBlockingLink ? 'Linking...' : 'Link'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
+  // The assignee's / reviewer's action cards (submit, PM, QA and Peer
+  // review). With TASK_PAGE_V2 they render at the top of Overview, right
+  // under the banners, instead of after every other card.
+  const actionCards = (
+    <>
       {isAssignee && !hasPendingQaReview && isAlreadyApproved && !isJunk && (
         <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <p style={{ margin: 0 }}>
@@ -4211,7 +3278,993 @@ export default function TaskDetailPage() {
           )}
         </div>
       )}
+    </>
+  );
 
+  return (
+    <AppShell>
+      <Breadcrumbs items={[{ label: 'My Tasks', href: '/tasks/mine' }, { label: `#${task.id}` }]} />
+      <div className={styles.pageHeader}>
+        <div>
+          {!editingTitle && <h1 className={styles.pageTitle}>#{task.id} - {task.title}</h1>}
+          {!editingTitle && (
+            <div className={styles.metaRow}>
+              <span className={styles.statusChip} style={statusBadgeStyle(task.status)}>
+                {statusLabel(task.status)}
+              </span>
+              {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
+              {task.isDefect && <Badge tone="error">Defect</Badge>}
+              <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
+                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(effectiveDueDate(task))}` : 'No due date'}
+                {/* PM review gate: the working days spent waiting for a PM extend it. */}
+                {task.dueDate && task.pmWaitWorkingDays > 0 && ` (${formatDate(task.dueDate)} + ${task.pmWaitWorkingDays} working ${task.pmWaitWorkingDays === 1 ? 'day' : 'days'} with PM)`}
+              </span>
+              <span className={`${styles.metaItem} ${styles.metaPerson}`}>
+                {(task.assigneeFullName || task.assigneeEmail) && <Avatar name={task.assigneeFullName || task.assigneeEmail} size="xs" />}
+                {task.assigneeFullName || task.assigneeEmail || 'Unassigned'}
+              </span>
+            </div>
+          )}
+          {!editingTitle && nextStep && (
+            <dl className={styles.nextStep} aria-label="Where this task is">
+              <div className={styles.nextStepItem}>
+                <dt>Stage</dt>
+                <dd><strong>{nextStep.stage}</strong></dd>
+              </div>
+              {nextStep.who && (
+                <div className={styles.nextStepItem}>
+                  <dt>Acts next</dt>
+                  <dd>{nextStep.who}</dd>
+                </div>
+              )}
+              {nextStep.due && (
+                <div className={`${styles.nextStepItem} ${nextStep.late ? styles.metaOverdue : ''}`}>
+                  <dt>Review due</dt>
+                  <dd>
+                    {formatDate(nextStep.due)}
+                    {nextStep.late && <> <Badge tone="error">Late</Badge></>}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          )}
+          {canManage && !editingTitle && (
+            <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
+              <button className={styles.buttonSecondary} type="button" onClick={() => setEditingTitle(true)}>
+                Edit Title
+              </button>
+            </div>
+          )}
+          {canManage && editingTitle && (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="taskTitleEdit">Title</label>
+              <input
+                className={styles.input}
+                id="taskTitleEdit"
+                required
+                maxLength={TASK_TITLE_MAX_LENGTH}
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTitle();
+                  if (e.key === 'Escape') handleCancelEditTitle();
+                }}
+                autoFocus
+              />
+              <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+                <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingTitle} onClick={handleSaveTitle}>
+                  {savingTitle ? 'Saving...' : 'Save Title'}
+                </button>
+                <button className={styles.buttonSecondary} type="button" disabled={savingTitle} onClick={handleCancelEditTitle}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {!editingModulePhase && (
+            <p className={styles.pageSubtitle}>{task.projectName} &middot; {task.moduleName} &middot; {task.phaseName}</p>
+          )}
+          {canManage && !editingModulePhase && (
+            <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
+              <button className={styles.buttonSecondary} type="button" onClick={handleStartEditModulePhase}>
+                Edit Module / Phase
+              </button>
+            </div>
+          )}
+          {canManage && editingModulePhase && (
+            <div>
+              <p className={styles.pageSubtitle}>{task.projectName}</p>
+              <div className={styles.fieldGrid3}>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="taskModuleEdit">Module</label>
+                  <select
+                    className={styles.input}
+                    id="taskModuleEdit"
+                    required
+                    value={moduleDraftId}
+                    onChange={(e) => { setModuleDraftId(e.target.value); setPhaseDraftId(''); }}
+                    autoFocus
+                  >
+                    {/* Keeps the current value selectable even if it has since been deactivated (inactive ones aren't in moduleOptions). */}
+                    {!moduleOptions.some((m) => String(m.id) === String(task.moduleId)) && (
+                      <option value={String(task.moduleId)}>{task.moduleName}</option>
+                    )}
+                    {moduleOptions.map((m) => (
+                      <option key={m.id} value={String(m.id)}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="taskPhaseEdit">Phase</label>
+                  <select
+                    className={styles.input}
+                    id="taskPhaseEdit"
+                    required
+                    value={phaseDraftId}
+                    onChange={(e) => setPhaseDraftId(e.target.value)}
+                  >
+                    <option value="" disabled>Select a Phase</option>
+                    {moduleDraftId === String(task.moduleId) && !phaseOptions.some((p) => String(p.id) === String(task.phaseId)) && (
+                      <option value={String(task.phaseId)}>{task.phaseName}</option>
+                    )}
+                    {phaseOptions.map((p) => (
+                      <option key={p.id} value={String(p.id)}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className={styles.actions} style={{ marginBottom: 'var(--space-2)' }}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  disabled={savingModulePhase || !moduleDraftId || !phaseDraftId}
+                  onClick={handleSaveModulePhase}
+                >
+                  {savingModulePhase ? 'Saving...' : 'Save'}
+                </button>
+                <button className={styles.buttonSecondary} type="button" disabled={savingModulePhase} onClick={handleCancelEditModulePhase}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {(openLinkedDefects.length > 0 || (task.isDefect && blockedTasks.length > 0)) && (
+            <ul className={styles.blockingBadges} aria-label="Blocking links">
+              {openLinkedDefects.map((d) => (
+                <li key={`by-${d.id}`}>
+                  <Link href={`/tasks/${d.id}`}>
+                    <Badge tone="error" dot>Blocked by Defect #{d.id}</Badge>
+                  </Link>
+                </li>
+              ))}
+              {task.isDefect && blockedTasks.map((t) => (
+                <li key={`blocks-${t.id}`}>
+                  <Link href={`/tasks/${t.id}`}>
+                    <Badge tone="warning" dot>Blocks Task #{t.id}</Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {error && <div className={styles.error}>{error}</div>}
+
+      {pendingAction && (
+        <div className={`${styles.actionBanner} ${styles[`actionBanner_${pendingAction.tone}`]}`} role="status">
+          <pendingAction.icon size={20} aria-hidden="true" className={styles.actionBannerIcon} />
+          <div className={styles.actionBannerText}>
+            <strong>{pendingAction.title}</strong>
+            <span>{pendingAction.detail}</span>
+          </div>
+          {pendingAction.target && (
+            <button
+              type="button"
+              className={`${styles.button} ${styles.buttonAccent}`}
+              onClick={() => {
+                setActiveTab('overview');
+                requestAnimationFrame(() => {
+                  const el = document.getElementById(pendingAction.target);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  el?.focus({ preventScroll: true });
+                });
+              }}
+            >
+              {pendingAction.cta}
+            </button>
+          )}
+        </div>
+      )}
+
+      {latestPmSendBack && (
+        <div id="task-pm-feedback" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
+          <h2 className={styles.cardTitle}>
+            PM feedback
+          </h2>
+          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
+            From {latestPmSendBack.reviewedByFullName || 'the Program Manager'}
+            {latestPmSendBack.reviewedAt ? ` · ${formatDate(latestPmSendBack.reviewedAt)}` : ''}
+          </p>
+          <RichTextDisplay value={latestPmSendBack.qaComment} />
+          {isAssignee && (
+            <p className={styles.helpText} style={{ marginBottom: 0 }}>
+              {pmSendBackFromQa
+                ? `Taken back from QA before review. Refine the task, then submit it again below - it goes ${task.pmReviewGateOn ? 'to the Program Manager first, then QA' : 'back to QA'}. This is not a QA rejection.`
+                : 'Refine the task, then submit it again below - it goes back to the Program Manager. This is not a QA rejection.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {latestNotReady && (
+        <div id="task-qa-not-ready" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)', borderLeft: '4px solid var(--ds-color-error)' }}>
+          <h2 className={styles.cardTitle}>
+            Not ready for testing
+          </h2>
+          <p className={styles.issueMeta} style={{ marginTop: 0 }}>
+            From {latestNotReady.reviewedByFullName || 'QA'}
+            {latestNotReady.reviewedAt ? ` · ${formatDate(latestNotReady.reviewedAt)}` : ''}
+          </p>
+          <p style={{ margin: '0 0 var(--space-2)' }}>
+            <strong>Reason:</strong> {latestNotReady.notReadyReason || 'Not given'}
+          </p>
+          <RichTextDisplay value={latestNotReady.qaComment} />
+          {isAssignee && (
+            <p className={styles.helpText} style={{ marginBottom: 0 }}>
+              QA could not start testing, so this is not a QA rejection. Fix what is missing, then submit it again below - it goes back to
+              QA as a first-time submission.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className={styles.tabs} role="tablist" aria-label="Task sections">
+        {[
+          { key: 'overview', label: 'Overview' },
+          { key: 'history', label: 'Review history', count: qaReviews.length },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            id={`task-tab-${tab.key}`}
+            aria-selected={activeTab === tab.key}
+            aria-controls={`task-panel-${tab.key}`}
+            tabIndex={activeTab === tab.key ? 0 : -1}
+            className={`${styles.tab} ${activeTab === tab.key ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault();
+                const next = activeTab === 'overview' ? 'history' : 'overview';
+                setActiveTab(next);
+                document.getElementById(`task-tab-${next}`)?.focus();
+              }
+            }}
+          >
+            {tab.label}
+            {tab.count > 0 && <span className={styles.tabCount}>{tab.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Panels stay mounted (hidden, not unmounted) so switching tabs never
+          loses a half-written review comment or form draft. */}
+      <div role="tabpanel" id="task-panel-overview" aria-labelledby="task-tab-overview" hidden={activeTab !== 'overview'}>
+
+      {TASK_PAGE_V2 && actionCards}
+      {/* An empty Dependency Tickets card stays further down - nothing open to act on. */}
+      {TASK_PAGE_V2 && tickets.length > 0 && dependencyCard}
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        {task.isDefect && (
+          <span className={styles.badge} style={{ background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
+            Defect
+          </span>
+        )}
+        {!editingDescription && <RichTextDisplay value={task.description} />}
+        {canEditDescription && !editingDescription && (
+          <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDescription(true)}>
+              Edit Description
+            </button>
+          </div>
+        )}
+        {canEditDescription && editingDescription && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <RichTextEditor
+              id="taskDescriptionEdit"
+              value={descriptionDraft}
+              onChange={setDescriptionDraft}
+              placeholder="Describe the task..."
+            />
+            <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingDescription} onClick={handleSaveDescription}>
+                {savingDescription ? 'Saving...' : 'Save Description'}
+              </button>
+              <button className={styles.buttonSecondary} type="button" disabled={savingDescription} onClick={handleCancelEditDescription}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        <p className={styles.issueMeta}>
+          Assignee: {task.assigneeFullName || task.assigneeEmail || 'Unassigned'} &middot; Ageing: {task.ageingDays}d
+          {task.isDefect && <> &middot; Raised by {task.createdByEmail}</>}
+        </p>
+        {canManage && !editingAssignee && (
+          <div className={styles.actions} style={{ marginTop: 'var(--space-2)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingAssignee(true)}>
+              Edit Assignee
+            </button>
+          </div>
+        )}
+        {canManage && editingAssignee && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <SearchSelectField
+              label="Assignee"
+              id="taskAssignee"
+              value={assigneeSelection}
+              onChange={setAssigneeSelection}
+              options={assignableUsers}
+              placeholder="Leave blank to send back to Task Backlog"
+            />
+            <p className={styles.helpText}>
+              Leave this blank to send the task back to the Task Backlog, unassigned. Past QA/Peer Review history stays
+              attributed to whoever was assigned at the time - reassigning never rewrites it. A Peer Review, PM
+              Intervention, or Dependency Ticket already in progress keeps going to whoever it's currently routed to.
+            </p>
+            <div className={styles.actions}>
+              <button className={`${styles.button} ${styles.buttonAccent}`} type="button" disabled={savingAssignee} onClick={handleSaveAssignee}>
+                {savingAssignee ? 'Saving...' : 'Save Assignee'}
+              </button>
+              <button className={styles.buttonSecondary} type="button" disabled={savingAssignee} onClick={handleCancelEditAssignee}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        {task.isDefect && defectArtifacts.length > 0 && (
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            <span className={styles.issueMeta}>Evidence: </span>
+            <QaArtifactIcons artifacts={defectArtifacts} />
+          </div>
+        )}
+        {task.isDefect && <DefectScreenshots key={screenshotsVersion} taskId={task.id} />}
+        {task.isDefect && !isJunk && user.role === 'qa' && task.createdByUserId === user.id && task.status !== 'Returned to QA' && (
+          <ScreenshotUploader collapsed uploadPath={`/tasks/${task.id}/attachments`} onUploaded={() => setScreenshotsVersion((v) => v + 1)} />
+        )}
+        {canEditDefectScope && !editingDefectFields && (
+          <div className={styles.actions} style={{ marginTop: 'var(--space-3)' }}>
+            <button className={styles.buttonSecondary} type="button" onClick={() => setEditingDefectFields(true)}>
+              Edit Defect Details
+            </button>
+          </div>
+        )}
+      </div>
+
+      {canEditDefectScope && editingDefectFields && (
+        <form onSubmit={handleSaveDefectFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
+            Edit Defect Details
+          </h2>
+          <div className={styles.fieldGrid3}>
+            <SearchSelectField
+              label="Project"
+              id="defectProject"
+              required
+              value={defectProject}
+              onChange={(v) => { setDefectProject(v); setDefectModule(null); setDefectPhase(null); }}
+              options={projects}
+            />
+            <SearchSelectField
+              label="Module"
+              id="defectModule"
+              required
+              value={defectModule}
+              onChange={(v) => { setDefectModule(v); setDefectPhase(null); }}
+              options={defectModules}
+              disabled={!defectProject}
+              placeholder="Select a Project first"
+            />
+            <SearchSelectField
+              label="Phase"
+              id="defectPhase"
+              required
+              value={defectPhase}
+              onChange={setDefectPhase}
+              options={defectPhases}
+              disabled={!defectModule}
+              placeholder="Select a Module first"
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="defectTitleField">Title</label>
+            <input
+              className={styles.input}
+              id="defectTitleField"
+              required
+              maxLength={TASK_TITLE_MAX_LENGTH}
+              value={defectTitle}
+              onChange={(e) => setDefectTitle(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="defectDescription">Description</label>
+            <RichTextEditor
+              id="defectDescription"
+              value={defectDescription}
+              onChange={setDefectDescription}
+              placeholder="Describe the defect..."
+            />
+          </div>
+          <div className={styles.actions}>
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={savingDefectFields}>
+              {savingDefectFields ? 'Saving...' : 'Save Defect Details'}
+            </button>
+            <button className={styles.button} type="button" onClick={handleCancelEditDefectFields} disabled={savingDefectFields}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      <form onSubmit={handleSaveFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <div className={styles.fieldGrid4}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdEHrs">Estimated Hours</label>
+            <input
+              className={styles.input}
+              id="tdEHrs"
+              type="number"
+              min="0"
+              step="0.5"
+              disabled={!canEditFields || estimatedHoursLocked}
+              value={estimatedHours}
+              onChange={(e) => setEstimatedHours(e.target.value)}
+            />
+            {estimatedHoursLocked && (
+              <p className={styles.helpText}>Locked after first entry - only Admin or Program Manager can change it now.</p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdDueDate">Due Date</label>
+            <input
+              className={styles.input}
+              id="tdDueDate"
+              type="date"
+              disabled={!canEditFields || dueDateLocked}
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+            {dueDateLocked && (
+              <p className={styles.helpText}>
+                {dueDateTracked
+                  ? 'Committed date - change it in the Due date commitment card below.'
+                  : 'Locked after first entry - only Program Manager can change it now.'}
+              </p>
+            )}
+            {!task.dueDate && dueDateTracked && isAssignee && (
+              <p className={styles.helpText}>The first date you save is your commitment - later changes need PM approval.</p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdPriority">Priority</label>
+            {canManage ? (
+              <select
+                className={styles.input}
+                id="tdPriority"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+              >
+                <option value="">Not Set</option>
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            ) : (
+              <div>
+                <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>
+              </div>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label}>Status</label>
+            <div>
+              <StatusBadge status={task.status} />
+            </div>
+            {hasPendingQaReview && (
+              <p className={styles.helpText}>
+                {latestQaReview.reviewType === 'peer'
+                  ? 'A Peer Review round is pending - status is controlled by the reviewer\'s Approve/Reject.'
+                  : latestQaReview.reviewType === 'pm'
+                    ? 'Waiting for PM review - a Program Manager sends it to QA or back to the developer.'
+                    : 'A QA review round is pending - status is controlled by QA Approve/Reject.'}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {canEditFields && (
+          <div className={styles.actions}>
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        )}
+      </form>
+
+      {!isJunk && <DueDateCommitmentPanel task={task} onChanged={refreshAfterReturnToQa} onState={setDueDateTracking} />}
+      {!isJunk && <TaskFlagsPanel task={task} tickets={tickets} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && <TaskActivityPanel task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && <TaskRequestsPanel task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && <TaskHandoverPanel task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && !task.isDefect && <TaskFieldsCard task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && task.isDefect && <EscapedDefectCard task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && <ClientMeasuresCard task={task} onChanged={refreshAfterReturnToQa} />}
+      {qaIntake?.trackingOn && REOPEN_FROM_STATUSES.includes(task.status) && (user.role === 'program_manager' || user.role === 'admin') && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>Reopen after Pass</h2>
+          <p className={styles.helpText} style={{ marginTop: 0 }}>
+            For the same work failing again - it goes back to Development with a new proposed Due date. A new problem should be raised as a
+            new defect instead.{task.reopenCount ? ` Reopened ${task.reopenCount} time${task.reopenCount === 1 ? '' : 's'} so far.` : ''}
+          </p>
+          <button className={styles.buttonSecondary} type="button" onClick={() => setReopenOpen(true)}>
+            Reopen
+          </button>
+        </div>
+      )}
+      {reopenOpen && (
+        <ReopenAfterPassModal
+          task={task}
+          onClose={() => setReopenOpen(false)}
+          onDone={async (message) => {
+            setReopenOpen(false);
+            await refreshAfterReturnToQa(message);
+          }}
+        />
+      )}
+
+      {canManagePeerReviewFlag && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
+            Review Routing
+          </h2>
+          <label className={styles.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <input
+              type="checkbox"
+              checked={peerReviewEnabled}
+              onChange={(e) => setPeerReviewEnabled(e.target.checked)}
+            />
+            Peer Review
+          </label>
+          <p className={styles.helpText}>
+            Skips QA - the assignee will pick another developer to review this task instead. Only affects the next
+            time this task is submitted for review - it won&apos;t change a round that&apos;s already in progress.
+          </p>
+          <div className={styles.actions}>
+            <button
+              className={`${styles.button} ${styles.buttonAccent}`}
+              type="button"
+              disabled={savingPeerReviewFlag || peerReviewEnabled === !!task.peerReviewEnabled}
+              onClick={handleSavePeerReviewFlag}
+            >
+              {savingPeerReviewFlag ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(isJunk || isProgramManager || junkHistory.length > 0) && JUNK_VIEW_ROLES.includes(user.role) && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-junk">
+          <h2 className={styles.cardTitle}>Junk</h2>
+          {isJunk ? (
+            <>
+              <dl style={{ margin: '0 0 var(--ds-space-3)', display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: 'var(--ds-space-1) var(--ds-space-4)' }}>
+                <dt className={styles.issueMeta}>Marked by</dt>
+                <dd style={{ margin: 0 }}>{task.junkedByEmail || 'Unknown'}</dd>
+                <dt className={styles.issueMeta}>When</dt>
+                <dd style={{ margin: 0 }}>{task.junkedAt ? formatDateTime(task.junkedAt) : 'Unknown'}</dd>
+                <dt className={styles.issueMeta}>Reason</dt>
+                <dd style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{task.junkReason || '—'}</dd>
+                <dt className={styles.issueMeta}>Previous status</dt>
+                <dd style={{ margin: 0 }}>{statusLabel(task.statusBeforeJunk || 'Escalated')}</dd>
+              </dl>
+              {isProgramManager ? (
+                <div className={styles.actions}>
+                  <button
+                    className={`${styles.button} ${styles.buttonAccent}`}
+                    type="button"
+                    disabled={restoringJunk}
+                    onClick={handleRestoreJunk}
+                  >
+                    {restoringJunk ? 'Restoring...' : 'Restore'}
+                  </button>
+                </div>
+              ) : (
+                <p className={styles.helpText}>Hidden from Developers and QA. Only a Program Manager can restore it.</p>
+              )}
+            </>
+          ) : isProgramManager ? (
+            <>
+              <p className={styles.helpText}>
+                Created by mistake? Junk hides this ticket from Developers and QA and leaves it out of every count and report.
+                Nothing is deleted - you can restore it from the Junk list.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.buttonSecondary} type="button" onClick={() => setJunkModalOpen(true)}>
+                  Mark as Junk
+                </button>
+              </div>
+            </>
+          ) : null}
+          {junkHistory.length > 0 && (
+            <>
+              <h3 className={styles.issueMeta} style={{ margin: 'var(--ds-space-4) 0 var(--ds-space-2)' }}>History</h3>
+              <ul style={{ margin: 0, paddingLeft: 'var(--ds-space-5)', lineHeight: 'var(--ds-leading-normal)' }}>
+                {junkHistory.map((h) => (
+                  <li key={h.id}>
+                    {formatDateTime(h.createdAt)} - {h.action === 'task_restored_from_junk' ? 'Restored' : 'Marked as Junk'} by {h.userEmail || 'Unknown'}
+                    {h.details?.previousStatus && h.details?.newStatus
+                      ? (
+                        <>
+                          {' ('}{statusLabel(h.details.previousStatus)}{' '}
+                          {/* Icon, not a → character - the app font has no arrow glyph. */}
+                          <ArrowRight size={13} aria-hidden="true" style={{ verticalAlign: 'middle' }} />
+                          <span className="sr-only">to</span>{' '}{statusLabel(h.details.newStatus)})
+                        </>
+                      )
+                      : ''}
+                    {h.action !== 'task_restored_from_junk' && h.details?.reason ? `: ${h.details.reason}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <JunkReasonModal
+            open={junkModalOpen}
+            tasks={[{ id: task.id, title: task.title, status: task.status }]}
+            onClose={() => setJunkModalOpen(false)}
+            submit={submitJunk}
+          />
+        </div>
+      )}
+
+      {!isJunk && task.isDefect && <DefectTriagePanel task={task} onChanged={refreshAfterReturnToQa} />}
+      {!isJunk && <ReturnToQaPanel task={task} user={user} onChanged={refreshAfterReturnToQa} />}
+
+      {(canRevertQaDecision || canSendBackFromQa) && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="task-pm-actions">
+          <h2 className={styles.cardTitle}>
+            PM actions
+          </h2>
+          {canSendBackFromQa && (
+            <>
+              <p className={styles.helpText}>
+                Waiting for QA (round {latestQaReview.roundNumber}). Not ready for QA - for example the description is unclear? Send it back
+                to the developer with a reason. It leaves the QA queue and does not count as a QA rejection.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.buttonSecondary} type="button" onClick={() => setSendBackModalOpen(true)}>
+                  Send back to developer
+                </button>
+              </div>
+              <SendBackToDeveloperModal
+                open={sendBackModalOpen}
+                taskId={task.id}
+                currentDeveloper={task.assigneeUserId ? { id: task.assigneeUserId, name: task.assigneeFullName || task.assigneeEmail } : null}
+                developers={developers}
+                canPickOther={user.role === 'program_manager'}
+                onClose={() => setSendBackModalOpen(false)}
+                submit={submitSendBackFromQa}
+              />
+            </>
+          )}
+          {canRevertQaDecision && (
+            <>
+              <p className={styles.helpText}>
+                {latestRound.reviewedByFullName || 'QA'} {latestRound.status === 'approved' ? 'approved' : 'rejected'} round {latestRound.roundNumber}
+                {latestRound.reviewedAt ? ` on ${formatDate(latestRound.reviewedAt)}` : ''}. Made by mistake? Revert it and the task goes back to
+                waiting for QA with the same submission.
+              </p>
+              <div className={styles.actions}>
+                <button className={styles.buttonSecondary} type="button" onClick={() => setRevertModalOpen(true)}>
+                  Revert QA decision
+                </button>
+              </div>
+              <RevertQaDecisionModal
+                open={revertModalOpen}
+                taskId={task.id}
+                decision={latestRound.status}
+                decidedBy={latestRound.reviewedByFullName}
+                onClose={() => setRevertModalOpen(false)}
+                submit={submitRevertQaDecision}
+              />
+            </>
+          )}
+        </div>
+      )}
+
+      {canManageHoldClosed && (
+        <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
+            Hold / Close
+          </h2>
+          {task.status === 'Closed' ? (
+            <>
+              <p className={styles.helpText}>
+                This task is Closed. Reopening returns it to the status it had before it was closed.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleReopen}
+                >
+                  {savingHoldClosed ? 'Saving...' : 'Reopen'}
+                </button>
+              </div>
+            </>
+          ) : task.status === 'Hold' ? (
+            <>
+              <p className={styles.helpText}>
+                On Hold{task.priorStatus ? ` - was "${task.priorStatus}" before being paused` : ''}. Releasing
+                resumes it at that status.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={`${styles.button} ${styles.buttonAccent}`}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleRelease}
+                >
+                  {savingHoldClosed ? 'Saving...' : 'Release from Hold'}
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleClose}
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className={styles.helpText}>
+                Pause or force-end this task from its current status ({statusLabel(task.status)}) - no reason or comment
+                required. Either can be undone later - releasing or reopening returns it to this same status.
+              </p>
+              <div className={styles.actions}>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleHold}
+                >
+                  {savingHoldClosed ? 'Saving...' : 'Put on Hold'}
+                </button>
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  disabled={savingHoldClosed}
+                  onClick={handleClose}
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <h2 className={styles.cardTitle}>
+          QA Review Due Date
+        </h2>
+        <p style={{ margin: 0 }} className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
+          {task.qaReviewDueDate ? formatDate(task.qaReviewDueDate) : 'Not yet submitted for QA or Peer Review.'}
+        </p>
+        <p className={styles.helpText}>
+          Auto-set to 5 business days from whenever this task is submitted for QA or Peer Review, and reset fresh on
+          every resubmission - separate from the task's own Due Date above.
+        </p>
+        {canEditQaReviewDueDate && (
+          <>
+            <div className={styles.fieldNarrow}>
+              <label className={styles.label} htmlFor="tdQaReviewDueDate">Adjust QA Review Due Date</label>
+              <input
+                className={styles.input}
+                id="tdQaReviewDueDate"
+                type="date"
+                value={qaReviewDueDateDraft}
+                onChange={(e) => setQaReviewDueDateDraft(e.target.value)}
+              />
+            </div>
+            <div className={styles.actions}>
+              <button
+                className={`${styles.button} ${styles.buttonAccent}`}
+                type="button"
+                disabled={savingQaReviewDueDate || !qaReviewDueDateDraft || qaReviewDueDateDraft === (task.qaReviewDueDate || '')}
+                onClick={handleSaveQaReviewDueDate}
+              >
+                {savingQaReviewDueDate ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {isAssignee && (
+        <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+          <h2 className={styles.cardTitle}>
+            Create Dependency Ticket
+          </h2>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdTicketTitle">Dependency Title</label>
+            <input
+              className={styles.input}
+              id="tdTicketTitle"
+              required
+              maxLength={TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH}
+              value={ticketTitle}
+              onChange={(e) => setTicketTitle(e.target.value)}
+              aria-describedby="tdTicketTitleHint"
+            />
+            <p id="tdTicketTitleHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              A short one-line summary, shown wherever this dependency is listed.
+            </p>
+          </div>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="tdTicketDesc">Dependency Description</label>
+            <textarea
+              className={styles.textarea}
+              id="tdTicketDesc"
+              required
+              value={ticketDescription}
+              onChange={(e) => setTicketDescription(e.target.value)}
+            />
+          </div>
+          <div className={styles.fieldNarrow}>
+            <SearchSelectField
+              label="Dependency Owner (Developer)"
+              id="tdTicketOwner"
+              required
+              value={ticketOwner}
+              onChange={setTicketOwner}
+              options={developers}
+            />
+          </div>
+          {dueDateTracked && (
+            <div className={styles.fieldNarrow}>
+              <label className={styles.label} htmlFor="tdTicketNeedBy">Needed by</label>
+              <input
+                className={styles.input}
+                id="tdTicketNeedBy"
+                type="date"
+                required
+                value={ticketNeedBy}
+                onChange={(e) => setTicketNeedBy(e.target.value)}
+                aria-describedby="tdTicketNeedByHint"
+              />
+              <p id="tdTicketNeedByHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+                The owner is overdue from the next day. Only you or a PM/Admin can change it later, with a reason.
+              </p>
+            </div>
+          )}
+          <div className={styles.actions}>
+            <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={filingTicket}>
+              {filingTicket ? 'Filing...' : 'File Dependency Ticket'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {(!TASK_PAGE_V2 || tickets.length === 0) && dependencyCard}
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <h2 className={styles.cardTitle}>
+          Linked Defects
+        </h2>
+        {linkedDefects.length === 0 && (
+          <div className={styles.empty}>No defects have been filed against this task.</div>
+        )}
+        {linkedDefects.map((defect) => (
+          <div key={defect.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p style={{ margin: 0 }}>
+              <Link href={`/tasks/${defect.id}`}>{defect.title}</Link> <StatusBadge status={defect.status} />
+            </p>
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Assignee: {defect.assigneeEmail} &middot; Filed by {defect.createdByEmail} &middot;{' '}
+              {formatDate(defect.createdAt)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+        <h2 className={styles.cardTitle}>
+          {task.isDefect ? 'Blocked Tasks' : 'Blocking Defects'}
+        </h2>
+        <p className={styles.helpText} style={{ marginTop: 0 }}>
+          {task.isDefect
+            ? 'Tasks this defect blocks. While it is unresolved (not Pass, Junk, or Closed), they cannot be submitted for QA.'
+            : 'Existing defects linked as blocking this task. While any is unresolved (not Pass, Junk, or Closed), this task cannot be submitted for QA.'}
+        </p>
+        {task.isDefect && blockedTasks.length === 0 && <div className={styles.empty}>This defect is not blocking any task.</div>}
+        {!task.isDefect && blockingDefects.length === 0 && <div className={styles.empty}>No defects linked as blocking.</div>}
+        {task.isDefect && blockedTasks.map((t) => (
+          <div key={t.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p style={{ margin: 0 }}>
+              <Link href={`/tasks/${t.id}`}>#{t.id} - {t.title}</Link> <StatusBadge status={t.status} />
+            </p>
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              {t.linkType === 'spun-off' ? 'Raised from this task\'s QA rejection' : 'Linked as blocking'}
+            </p>
+            {canChangeBlockingLinks && t.linkType === 'manual' && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)' }}
+                aria-label={`Unlink Task #${t.id}`}
+                onClick={() => handleUnlinkBlocking(t.id, task.id)}
+              >
+                Unlink
+              </button>
+            )}
+          </div>
+        ))}
+        {!task.isDefect && blockingDefects.map((d) => (
+          <div key={d.id} style={{ padding: 'var(--space-3) 0', borderTop: '1px solid var(--color-border)' }}>
+            <p style={{ margin: 0 }}>
+              <Link href={`/tasks/${d.id}`}>#{d.id} - {d.title}</Link> <StatusBadge status={d.status} />
+            </p>
+            <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+              Assignee: {d.assigneeEmail} &middot; Linked by {d.linkedByEmail} &middot; {formatDate(d.linkedAt)}
+            </p>
+            {canChangeBlockingLinks && (
+              <button
+                className={styles.buttonSecondary}
+                type="button"
+                style={{ marginTop: 'var(--space-2)' }}
+                aria-label={`Unlink Defect #${d.id}`}
+                onClick={() => handleUnlinkBlocking(task.id, d.id)}
+              >
+                Unlink
+              </button>
+            )}
+          </div>
+        ))}
+        {canChangeBlockingLinks && (
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <SearchSelectField
+              label={task.isDefect ? 'Link Blocked Task' : 'Link Blocking Defect'}
+              id="blockingLinkSelect"
+              value={blockingSelection}
+              onChange={setBlockingSelection}
+              options={blockingCandidateOptions}
+            />
+            <div className={styles.actions}>
+              <button
+                className={`${styles.button} ${styles.buttonAccent}`}
+                type="button"
+                disabled={!blockingSelection || savingBlockingLink}
+                onClick={handleLinkBlocking}
+              >
+                {savingBlockingLink ? 'Linking...' : 'Link'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!TASK_PAGE_V2 && actionCards}
       </div>
 
       <div role="tabpanel" id="task-panel-history" aria-labelledby="task-tab-history" hidden={activeTab !== 'history'}>
