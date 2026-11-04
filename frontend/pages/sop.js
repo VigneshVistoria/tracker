@@ -38,7 +38,7 @@ const SECTIONS = [
 const ROLES = [
   ['Developer / Designer / DevOps', 'Sets Estimated Hours and Due Date, does the work, raises dependency tickets when blocked, submits for QA or peer review with evidence, fixes rejections, resolves dependency tickets routed to them, performs peer reviews when assigned.'],
   ['QA', 'Reviews submissions: approves (Pass), rejects (Failed), raises defects, or sends unclear submissions to the PM for intervention.'],
-  ['Peer Reviewer', 'Another developer picked by the submitter. Approves or rejects peer review rounds.'],
+  ['Peer Reviewer', 'Another team member picked by the submitter, ideally with the same role (a designer reviews a designer). Approves or rejects peer review rounds.'],
   ['Program Manager', 'Creates and assigns tasks; owns Title, Description, Priority and Project/Module/Phase; changes locked estimates and due dates; handles interventions; enables peer review; puts tasks on Hold or Closes them.'],
   ['Admin', 'Creates user accounts; can Hold/Close/Reopen tasks and enable peer review.'],
 ];

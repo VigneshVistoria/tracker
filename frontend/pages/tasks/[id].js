@@ -33,6 +33,7 @@ import CollapsibleSection from '../../components/ui/CollapsibleSection';
 import SubmissionCards from '../../components/SubmissionCards';
 import { groupSubmissions } from '../../lib/submissions';
 import { taskNextStep } from '../../lib/taskNextStep';
+import { peerReviewerOptions } from '../../lib/peerReviewers';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
@@ -2579,9 +2580,13 @@ export default function TaskDetailPage() {
               required
               value={peerReviewer}
               onChange={setPeerReviewer}
-              options={developers.filter((d) => d.id !== user.id)}
+              options={peerReviewerOptions(developers, user)}
             />
           </div>
+          <p className={styles.helpText}>
+            Pick another team member, ideally with the same role as you - a designer reviews a designer's work. People with your role are
+            listed first.
+          </p>
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingQa}>
               {submittingQa ? 'Submitting...' : 'Submit for Peer Review'}
@@ -3845,7 +3850,7 @@ export default function TaskDetailPage() {
             Peer Review
           </label>
           <p className={styles.helpText}>
-            Skips QA - the assignee will pick another developer to review this task instead. Only affects the next
+            Skips QA - the assignee will pick another team member, ideally with the same role, to review this task instead. Only affects the next
             time this task is submitted for review - it won&apos;t change a round that&apos;s already in progress.
           </p>
           <div className={styles.actions}>

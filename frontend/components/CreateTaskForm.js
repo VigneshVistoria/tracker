@@ -195,7 +195,7 @@ export default function CreateTaskForm({
         <p className={styles.helpText}>
           {assignee?.role === 'qa'
             ? 'Required for a QA assignee - a Developer/Designer/DevOps reviews their work instead of QA reviewing itself.'
-            : 'Skips QA - the assignee will pick another developer to review this task instead.'}
+            : 'Skips QA - the assignee will pick another team member, ideally with the same role, to review this task instead.'}
         </p>
       </div>
 
