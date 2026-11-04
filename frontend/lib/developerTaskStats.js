@@ -24,7 +24,12 @@ export function yesterdayISO() {
 // 'Returned to QA' (2026-10-18): with QA, not the developer - mirrors
 // isPastEffectiveDue() in backend/src/tasks/pm-review.ts.
 // 'Disputed' (2026-10-27): a disputed defect, with the PM.
-const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Pending PM Review', 'Returned to QA', 'Disputed'];
+// Waiting for QA / a peer (2026-11-04, user feedback): with the reviewer,
+// not the developer - never the developer's overdue work. The review delay
+// shows separately (isQaReviewOverdue below, header "Review due").
+// Mirrors isDeveloperOverdue() in backend/src/tasks/pm-review.ts.
+export const AWAITING_REVIEW_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
+const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Pending PM Review', 'Returned to QA', 'Disputed', ...AWAITING_REVIEW_STATUSES];
 export function effectiveDueDate(task) {
   if (!task.dueDate) return null;
   let remaining = task.pmWaitWorkingDays || 0;

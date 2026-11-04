@@ -26,7 +26,7 @@ import { TaskStatusConfigService } from '../task-status-config/task-status-confi
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
 import { addBusinessDays, toDateOnlyString } from '../common/business-days';
-import { isPastEffectiveDue } from './pm-review';
+import { isDeveloperOverdue } from './pm-review';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
 import { NOT_READY_STATUS } from './qa-not-ready';
 import {
@@ -1315,7 +1315,8 @@ export class TasksService {
       // paused or force-closed never counts as overdue, even if
       // showHoldClosed is on and it's sitting in cardScopeTasks.
       overdue: cardScopeTasks.filter(
-        (t) => isPastEffectiveDue(t, today) && !COMPLETED_STATUSES.includes(t.status) && !HOLD_CLOSED_STATUSES.includes(t.status),
+        // Not while waiting for QA / a peer (isDeveloperOverdue, 2026-11-04).
+        (t) => isDeveloperOverdue(t, today) && !COMPLETED_STATUSES.includes(t.status) && !HOLD_CLOSED_STATUSES.includes(t.status),
       ).length,
       defects: cardScopeTasks.filter((t) => t.isDefect).length,
     };

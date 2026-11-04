@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask, openTickets } from '../lib/developerTaskStats';
+import {
+  todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask, openTickets, AWAITING_REVIEW_STATUSES,
+} from '../lib/developerTaskStats';
 import {
   COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, selectableStatuses, statusLabel,
 } from '../lib/taskTableShared';
@@ -34,14 +36,22 @@ const ROW_RAIL_CLASS = buildRowRailClass(styles);
 // another yet show a bigger number). `sections` is which rows clicking it
 // shows; 'tickets' tiles open the dependency ticket view instead
 // (taskViews/DependencyTicketBoard.js) in the given direction.
+//
+// "Waiting for QA / review" (2026-11-04, user feedback): submitted work is
+// with QA, a peer or the PM, so it leaves "Open tasks" and is never
+// overdue for the developer. The review delay shows on the task header.
 const CARD_DEFS = [
   { key: 'myTasks', label: 'Open tasks', sections: 'all' },
+  { key: 'waitingReview', label: 'Waiting for QA / review', sections: 'tasks' },
   { key: 'rejected', label: 'Rejected', accent: 'danger', sections: 'tasks' },
   { key: 'inbound', label: 'You’re waiting on', kind: 'tickets', direction: 'inbound' },
   { key: 'outbound', label: 'Waiting on you', kind: 'tickets', direction: 'outbound' },
   { key: 'overdue', label: 'Overdue tasks', accent: 'warning', sections: 'tasks' },
   { key: 'defects', label: 'Defects', sections: 'tasks' },
 ];
+
+const WITH_REVIEWER_STATUSES = [...AWAITING_REVIEW_STATUSES, 'Pending PM Review', 'Returned to QA'];
+const isWithReviewer = (task) => WITH_REVIEWER_STATUSES.includes(task.status);
 
 const noAssignee = null;
 const emailLabel = (email) => email || '—';
@@ -132,7 +142,8 @@ export default function DeveloperTaskWorkboard({
   const { rejectedTasks, overdueTasks, overdueOutbound } = computeDeveloperTaskStats(visibleTasks, outbound, todayISO());
 
   const counts = {
-    myTasks: visibleTasks.length,
+    myTasks: visibleTasks.filter((t) => !isWithReviewer(t)).length,
+    waitingReview: visibleTasks.filter(isWithReviewer).length,
     rejected: rejectedTasks.length,
     inbound: openInbound.length,
     outbound: openOutbound.length,
@@ -184,6 +195,10 @@ export default function DeveloperTaskWorkboard({
       // Pass/Junk/Hold/Closed), so the rows always match the number.
       if (activeCard === 'overdue' && !isOverdueTask(task)) return false;
       if (activeCard === 'defects' && !task.isDefect) return false;
+      // Same split as the two tiles' counts. A status picked by hand wins,
+      // so "Feedback" from the dropdown still finds those tasks.
+      if (activeCard === 'myTasks' && statusFilter === 'All' && isWithReviewer(task)) return false;
+      if (activeCard === 'waitingReview' && !isWithReviewer(task)) return false;
       return true;
     });
   }, [visibleTasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard]);

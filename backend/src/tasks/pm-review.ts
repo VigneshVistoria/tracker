@@ -39,3 +39,19 @@ export function isPastEffectiveDue(
   const due = effectiveDueDate(task);
   return !!due && due < today;
 }
+
+// Submitted and waiting for a reviewer (QA or a peer) - 2026-11-04.
+export const AWAITING_REVIEW_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
+
+// Overdue as the developer's own work, for lists and cards only: work
+// waiting for a reviewer is with the reviewer, not the developer (user
+// feedback 2026-11-04). The review delay shows separately (task header
+// "Review due", QA queue, Non-Compliance "Overdue in review").
+// isPastEffectiveDue() above stays as it is for KPI and Non-Compliance,
+// so no score changes.
+export function isDeveloperOverdue(
+  task: { status: string; dueDate: string | null; pmWaitWorkingDays?: number | null },
+  today: string,
+): boolean {
+  return !AWAITING_REVIEW_STATUSES.includes(task.status) && isPastEffectiveDue(task, today);
+}

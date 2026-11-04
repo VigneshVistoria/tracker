@@ -693,6 +693,53 @@ export default function NonComplianceReportPage() {
             )}
           </div>
 
+          {/* --- Review delay, separate from the developer (2026-11-04) --- */}
+          <div className={styles.card} style={{ marginTop: 'var(--space-4)' }}>
+            <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-1)', fontWeight: 600 }}>Overdue in review - QA and peer reviewers (information only)</h2>
+            <p className={styles.issueMeta} style={{ margin: '0 0 var(--space-3)' }}>
+              Submitted work still waiting for QA or a peer after its review due date (5 working days from each submission), by developer. This is the reviewers&apos; delay: it never counts as Late to QA or as the developer&apos;s overdue work.
+            </p>
+            {(() => {
+              const rows = report.developers.filter((d) => d.overdueInReview && d.overdueInReview.count > 0);
+              if (rows.length === 0) return <div className={styles.empty}>Nothing overdue in review in this period.</div>;
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Developer</th>
+                      <th style={{ textAlign: 'center', padding: '10px 12px', borderBottom: '1px solid var(--color-border)', fontSize: 11 }}>Overdue in review</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...rows]
+                      .sort((a, b) => b.overdueInReview.count - a.overdueInReview.count || devName(a).localeCompare(devName(b)))
+                      .map((dev) => (
+                        <tr key={dev.userId}>
+                          <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)' }}>{devName(dev)}</td>
+                          <td style={{ padding: '12px', borderBottom: '1px solid var(--color-border)', textAlign: 'center' }}>
+                            <span className={nc.metricValue}>{dev.overdueInReview.count}</span>
+                            <details className={nc.taskList}>
+                              <summary>view {dev.overdueInReview.items.length}</summary>
+                              <ul>
+                                {dev.overdueInReview.items.map((item) => (
+                                  <li key={item.taskId}>
+                                    <a href={`/tasks/${item.taskId}`} target="_blank" rel="noopener noreferrer">#{item.taskId}</a> {item.title}{' '}
+                                    <span className={nc.tag}>
+                                      {item.status}, review due {formatDate(item.qaReviewDueDate)}, {item.daysOverdue} day{item.daysOverdue === 1 ? '' : 's'} over
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              );
+            })()}
+          </div>
+
           {/* --- Defect triage - information only (2026-10-27) --- */}
           <div className={styles.card} style={{ marginTop: 'var(--space-4)' }}>
             <h2 className={styles.pageSubtitle} style={{ margin: '0 0 var(--space-1)', fontWeight: 600 }}>All developers - defect triage (information only)</h2>

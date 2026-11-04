@@ -114,7 +114,8 @@ describe('Daily Scrum grouping', () => {
     expect(reasonsOf(escalated.id)).toEqual(['intervention']);
     expect(reasonsOf(defectBlocked.id)).toEqual(['blocking_defect']);
     expect(reasonsOf(waiting.id)).toEqual(['waiting_on_dependency']);
-    expect(reasonsOf(inQaOverdue.id)).toEqual(['overdue']);
+    // With QA, not the developer: no overdue chip (2026-11-04).
+    expect(reasonsOf(inQaOverdue.id)).toEqual([]);
     expect(reasonsOf(many.id)).toEqual(['sent_back', 'blocking_defect', 'overdue']);
     expect(one.counts).toEqual({ today: 2, blockers: 7, withReviewers: 2, active: 11 });
     // Every blocker once in "Needs your attention", most reasons first.

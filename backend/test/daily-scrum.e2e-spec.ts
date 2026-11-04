@@ -248,14 +248,15 @@ describe('Daily Scrum (e2e)', () => {
       for (const k of ['held', 'junk', 'passed', 'closed']) expect(all).not.toContain(ids[k]);
     });
 
-    it('shows the reasons as chips; an overdue ticket in QA stays With reviewers', () => {
+    it('shows the reasons as chips; a ticket in QA past its due date stays With reviewers, with no overdue chip', () => {
       const reasons = (key: string) => [...body.person.blockers, ...body.person.withReviewers].find((i: any) => i.taskId === ids[key]).reasons;
       expect(reasons('overdue')).toEqual(['overdue']);
       expect(reasons('failed')).toEqual(['sent_back']);
       expect(reasons('escalated')).toEqual(['intervention']);
       expect(reasons('waiting')).toEqual(['waiting_on_dependency']);
       expect(reasons('blocked')).toEqual(['blocking_defect']);
-      expect(reasons('inQaOverdue')).toEqual(['overdue']);
+      // With QA, not the developer (2026-11-04).
+      expect(reasons('inQaOverdue')).toEqual([]);
     });
 
     it('lists what happened since the last working day - nothing older, nothing on Junk', () => {

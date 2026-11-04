@@ -162,7 +162,9 @@ export function reasonsFor(task: ScrumTaskInput, blocked: Set<number>, waiting: 
   if (task.status === 'Escalated') reasons.add('intervention');
   // dueDate is the effective one (+ PM wait, see the service); never
   // overdue while waiting for a PM.
-  if (task.status !== 'Pending PM Review' && task.status !== 'Disputed' && task.dueDate && task.dueDate < today) reasons.add('overdue');
+  // Nor while with a reviewer (QA, peer, PM - REVIEW_STATUSES; 2026-11-04):
+  // it shows under "With reviewers", not as the developer's overdue work.
+  if (!REVIEW_STATUSES.includes(task.status) && task.dueDate && task.dueDate < today) reasons.add('overdue');
   return REASON_ORDER.filter((r) => reasons.has(r));
 }
 

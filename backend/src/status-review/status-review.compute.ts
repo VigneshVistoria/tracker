@@ -196,9 +196,10 @@ export function computeStatusReview(input: ComputeInput): StatusReviewSummary {
       priority: t.priority,
       projectName: t.projectName,
       moduleName: t.moduleName,
-      // Never while waiting for a PM (PM review gate); the service passes
-      // the effective due date (dueDate + PM wait) as dueDate.
-      overdue: t.status !== 'Pending PM Review' && t.status !== 'Disputed' && !!t.dueDate && t.dueDate < today,
+      // Never while with a reviewer - QA, a peer or the PM (the 'qa'
+      // bucket; was PM-only before 2026-11-04). The service passes the
+      // effective due date (dueDate + PM wait) as dueDate.
+      overdue: !BUCKET_STATUSES.qa.includes(t.status) && !!t.dueDate && t.dueDate < today,
       blocked: blocked.has(t.id),
       dueSoon: !!t.dueDate && t.dueDate >= today && t.dueDate <= dueSoonUntil,
       waitingOn: [],
