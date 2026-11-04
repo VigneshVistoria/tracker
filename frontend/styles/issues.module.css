@@ -1883,3 +1883,38 @@ td.empty::before,
   margin: 0;
   color: inherit;
 }
+/* Header "Edit due date" (2026-11-04) - replaces the QA Review Due Date card. */
+.nextStepEdit {
+  margin-left: var(--ds-space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ds-text-link, var(--ds-accent));
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.nextStepEdit:focus-visible {
+  outline: 2px solid var(--ds-focus-ring, currentColor);
+  outline-offset: 2px;
+}
+.nextStepEditor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+.nextStepEditor .input {
+  width: auto;
+}
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

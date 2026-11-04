@@ -54,7 +54,8 @@ function Decision({ round, screenshots }) {
     <li className={styles.decision}>
       <div className={styles.decisionHead}>
         <span className={styles.decisionType}>{ROUND_LABEL[round.reviewType] || 'Review'}</span>
-        <Badge tone={outcome.tone}>{outcome.text}</Badge>
+        {/* A pending round is the newest one; its status is already the card's badge. */}
+        {round.status !== 'pending' && <Badge tone={outcome.tone}>{outcome.text}</Badge>}
       </div>
       {round.status === 'pending' ? (
         round.reviewType === 'peer' && round.reviewerFullName && (

@@ -11,7 +11,7 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch, apiUpload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
-import { isQaReviewOverdue, isOverdueTask, effectiveDueDate } from '../../lib/developerTaskStats';
+import { isOverdueTask, effectiveDueDate } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
@@ -421,6 +421,9 @@ export default function TaskDetailPage() {
   // Admin only.
   const [qaReviewDueDateDraft, setQaReviewDueDateDraft] = useState('');
   const [savingQaReviewDueDate, setSavingQaReviewDueDate] = useState(false);
+  // 2026-11-04: edited inline from the header's "Review due" (the separate
+  // card was removed); same endpoint, permission and audit as before.
+  const [editingQaReviewDueDate, setEditingQaReviewDueDate] = useState(false);
 
   const [ticketTitle, setTicketTitle] = useState('');
   const [ticketDescription, setTicketDescription] = useState('');
@@ -1497,7 +1500,8 @@ export default function TaskDetailPage() {
         body: JSON.stringify({ qaReviewDueDate: qaReviewDueDateDraft }),
       });
       setTask(updated);
-      showToast('QA Review Due Date updated', 'success');
+      setEditingQaReviewDueDate(false);
+      showToast('Review due date updated', 'success');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -3330,7 +3334,47 @@ export default function TaskDetailPage() {
                   <dd>
                     {formatDate(nextStep.due)}
                     {nextStep.late && <> <Badge tone="error">Late</Badge></>}
+                    {canEditQaReviewDueDate && !editingQaReviewDueDate && (
+                      <button
+                        type="button"
+                        className={styles.nextStepEdit}
+                        onClick={() => {
+                          setQaReviewDueDateDraft(task.qaReviewDueDate ?? '');
+                          setEditingQaReviewDueDate(true);
+                        }}
+                      >
+                        Edit due date
+                      </button>
+                    )}
                   </dd>
+                  {canEditQaReviewDueDate && editingQaReviewDueDate && (
+                    <dd className={styles.nextStepEditor}>
+                      <label className={styles.srOnly} htmlFor="tdQaReviewDueDate">Review due date</label>
+                      <input
+                        className={styles.input}
+                        id="tdQaReviewDueDate"
+                        type="date"
+                        value={qaReviewDueDateDraft}
+                        onChange={(e) => setQaReviewDueDateDraft(e.target.value)}
+                      />
+                      <button
+                        className={`${styles.button} ${styles.buttonAccent}`}
+                        type="button"
+                        disabled={savingQaReviewDueDate || !qaReviewDueDateDraft || qaReviewDueDateDraft === (task.qaReviewDueDate || '')}
+                        onClick={handleSaveQaReviewDueDate}
+                      >
+                        {savingQaReviewDueDate ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        className={styles.buttonSecondary}
+                        type="button"
+                        disabled={savingQaReviewDueDate}
+                        onClick={() => setEditingQaReviewDueDate(false)}
+                      >
+                        Cancel
+                      </button>
+                    </dd>
+                  )}
                 </div>
               )}
             </dl>
@@ -4070,43 +4114,6 @@ export default function TaskDetailPage() {
           )}
         </div>
       )}
-
-      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.cardTitle}>
-          QA Review Due Date
-        </h2>
-        <p style={{ margin: 0 }} className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
-          {task.qaReviewDueDate ? formatDate(task.qaReviewDueDate) : 'Not yet submitted for QA or Peer Review.'}
-        </p>
-        <p className={styles.helpText}>
-          Auto-set to 5 business days from whenever this task is submitted for QA or Peer Review, and reset fresh on
-          every resubmission - separate from the task's own Due Date above.
-        </p>
-        {canEditQaReviewDueDate && (
-          <>
-            <div className={styles.fieldNarrow}>
-              <label className={styles.label} htmlFor="tdQaReviewDueDate">Adjust QA Review Due Date</label>
-              <input
-                className={styles.input}
-                id="tdQaReviewDueDate"
-                type="date"
-                value={qaReviewDueDateDraft}
-                onChange={(e) => setQaReviewDueDateDraft(e.target.value)}
-              />
-            </div>
-            <div className={styles.actions}>
-              <button
-                className={`${styles.button} ${styles.buttonAccent}`}
-                type="button"
-                disabled={savingQaReviewDueDate || !qaReviewDueDateDraft || qaReviewDueDateDraft === (task.qaReviewDueDate || '')}
-                onClick={handleSaveQaReviewDueDate}
-              >
-                {savingQaReviewDueDate ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
 
       {isAssignee && (
         <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
