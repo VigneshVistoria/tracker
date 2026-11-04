@@ -151,6 +151,11 @@ describe('Dependency ticket owner change (e2e)', () => {
     const notes = await notificationsFor(devC, 1);
     expect(notes).toHaveLength(1);
     expect(notes[0].title).toBe(`Dependency on task #${taskId} reassigned to you`);
+    // Deep-links to the ticket itself (its card on the parent task), not the
+    // Open-filtered Dependency Clearance list - and the new owner can open it.
+    expect(notes[0].link).toBe(`/tasks/${taskId}#dependency-${ticketId}`);
+    await get(devC, `/tasks/${taskId}`).expect(200);
+    await get(devC, `/task-dependency-tickets?parentTaskId=${taskId}`).expect(200);
 
     // Moves between the old and new owner's "others waiting on you" lists.
     expect((await get(devC, '/task-dependency-tickets/mine').expect(200)).body.map((t: any) => t.id)).toContain(ticketId);

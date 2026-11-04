@@ -10,6 +10,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { redirectToSignIn } from '../../lib/session';
 import { formatDate, formatDateTime } from '../../lib/formatDate';
+import useHashTarget from '../../lib/useHashTarget';
 
 const SEVERITY_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
 const SEVERITY_TONE = { critical: 'error', high: 'error', medium: 'warning', low: 'neutral' };
@@ -31,6 +32,9 @@ export default function SecurityFindingsPage() {
   const [draft, setDraft] = useState(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Notification deep link (#finding-N): scroll to the row once loaded.
+  useHashTarget({ ready: !!page });
 
   const load = () =>
     apiFetch('/security-findings')

@@ -27,6 +27,7 @@ import ReasonHint, { ChoiceHint } from '../../components/ReasonHint';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
+import useHashTarget from '../../lib/useHashTarget';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
@@ -630,6 +631,14 @@ export default function TaskDetailPage() {
     el.scrollIntoView({ block: 'center' });
     el.focus({ preventScroll: true });
   }, [tickets, loading]);
+
+  // Notification deep links (#flags, #activity, #due-date, #pm-review,
+  // #dependency-N...) - wait for the panel to load, then scroll to it,
+  // switching back to Overview if the History tab is open.
+  useHashTarget({
+    ready: !loading && !!task,
+    reveal: (hashId) => setActiveTab(document.getElementById(hashId)?.closest('#task-panel-history') ? 'history' : 'overview'),
+  });
 
   const handleSaveTicketTitle = async (ticketId) => {
     if (!ticketTitleDraft.trim()) {
@@ -3011,7 +3020,7 @@ export default function TaskDetailPage() {
         </form>
       )}
 
-      <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
+      <div id="dependency-tickets" className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         <h2 className={styles.cardTitle}>
           Dependency Tickets
         </h2>

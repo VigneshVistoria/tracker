@@ -18,6 +18,7 @@ export default function DependencyClearancePage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!router.isReady) return;
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
       redirectToSignIn(router);
@@ -31,7 +32,16 @@ export default function DependencyClearancePage() {
     setUser(parsed);
     setLoading(true);
     apiFetch('/task-dependency-tickets/mine')
-      .then(setTickets)
+      .then((list) => {
+        // ?ticket=N opens that ticket directly (its card on the parent
+        // task), whatever its status - the list below filters to Open.
+        const wanted = list.find((t) => String(t.id) === String(router.query.ticket));
+        if (wanted) {
+          router.replace(`/tasks/${wanted.parentTaskId}#dependency-${wanted.id}`);
+          return;
+        }
+        setTickets(list);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [router]);

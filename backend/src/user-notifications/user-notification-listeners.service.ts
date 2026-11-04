@@ -105,6 +105,13 @@ export interface DependencyTicketEvent {
   actorEmail: string;
 }
 
+// Opens the ticket itself - its card on the parent task, highlighted -
+// whatever its status. The Dependency Clearance list filters to Open by
+// default, so linking there hid a ticket once it was resolved (2026-11-04).
+export function dependencyTicketLink(e: Pick<DependencyTicketEvent, 'parentTaskId' | 'ticketId'>): string {
+  return `/tasks/${e.parentTaskId}#dependency-${e.ticketId}`;
+}
+
 @Injectable()
 export class UserNotificationListenersService {
   private readonly logger = new Logger(UserNotificationListenersService.name);
@@ -329,7 +336,7 @@ export class UserNotificationListenersService {
         type: 'dependency.assigned',
         title: `Dependency on task #${e.parentTaskId} assigned to you`,
         body: e.title,
-        link: '/dependency-clearance',
+        link: dependencyTicketLink(e),
         actorUserId: e.actorUserId,
         actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
       });
@@ -347,7 +354,7 @@ export class UserNotificationListenersService {
         type: 'dependency.assigned',
         title: `Dependency on task #${e.parentTaskId} reassigned to you`,
         body: e.title,
-        link: '/dependency-clearance',
+        link: dependencyTicketLink(e),
         actorUserId: e.actorUserId,
         actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
       });

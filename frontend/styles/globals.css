@@ -224,3 +224,13 @@ button {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Notification deep links (lib/useHashTarget.js, 2026-11-04): the record a
+   notification opened is outlined for a moment after it scrolls into view.
+   Outline + focus, so it is never colour alone. */
+.deep-link-highlight {
+  outline: 2px solid var(--ds-color-warning);
+  outline-offset: 2px;
+  border-radius: var(--ds-radius-sm);
+  transition: outline-color var(--ds-transition-slow);
+}

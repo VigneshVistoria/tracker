@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { notificationHref } from '../lib/notificationLinks';
 import {
   Bell,
   BellOff,
@@ -135,7 +136,8 @@ export default function NotificationBell() {
       setCount((c) => (c ? c - 1 : c));
       apiFetch(`/notifications/${item.id}/read`, { method: 'PATCH' }).catch(() => {});
     }
-    if (item.link) router.push(item.link);
+    const href = notificationHref(item);
+    if (href) router.push(href);
   };
 
   const markAllRead = async () => {
