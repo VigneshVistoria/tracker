@@ -19,6 +19,8 @@ import { TEAM_SETTINGS_DEFAULTS, dateInZone, isValidTimeZone, startOfDayInZone }
 import { MailService } from '../mail/mail.service';
 import { PdfPerformanceReportService, AssigneePerformanceStat } from './pdf-performance-report.service';
 import { UsersService } from '../users/users.service';
+import { AWAITING_REVIEW_STATUSES, PM_REVIEW_STATUS } from '../tasks/pm-review';
+import { RETURNED_TO_QA_STATUS } from '../tasks/return-to-qa';
 
 // Reads project_tasks (tasks and defects, isDefect) - the old issues table
 // this used to read is empty since the move to project tasks (fixed
@@ -139,7 +141,13 @@ export class WeeklyReportsService {
 
     const DELAYED_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days with no status movement
     const now = new Date();
-    const isDelayed = (issue: ProjectTask) => now.getTime() - new Date(issue.updatedAt).getTime() >= DELAYED_AFTER_MS;
+    // Not while it is with a reviewer (user decision 2026-11-04): a task
+    // waiting for QA, a peer or the PM is not "no update for 7 days" on
+    // the developer's side. Escalated/Disputed (with the PM for a
+    // decision) still count, as before.
+    const WITH_REVIEWER_STATUSES = [...AWAITING_REVIEW_STATUSES, PM_REVIEW_STATUS, RETURNED_TO_QA_STATUS];
+    const isDelayed = (issue: ProjectTask) =>
+      !WITH_REVIEWER_STATUSES.includes(issue.status) && now.getTime() - new Date(issue.updatedAt).getTime() >= DELAYED_AFTER_MS;
     const isRiskCategory = (issue: ProjectTask) =>
       issue.priority === TaskPriority.IMMEDIATE || issue.status === 'Escalated';
 

@@ -8,7 +8,7 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { TaskDependencyTicket } from '../task-dependency-tickets/task-dependency-ticket.entity';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
-import { effectiveDueDate, isPastEffectiveDue } from '../tasks/pm-review';
+import { effectiveDueDate, isDeveloperOverdue, developerDueDate, reviewWaitWorkingDays } from '../tasks/pm-review';
 
 // Only status a task can be scored as "done" against - see the gap
 // analysis: the two Released statuses are deliberately, permanently dead
@@ -192,15 +192,40 @@ export class KpiService {
     });
     const blockedTaskIds = new Set(inboundOpenTickets.map((t) => t.parentTaskId));
 
+    // Review time is not the developer's (user decision 2026-11-04): the
+    // due date moves by the working days spent waiting for QA / a peer,
+    // the same way it already moves for PM wait (pmWaitWorkingDays).
+    const roundsByTask = new Map<number, TaskQaReview[]>();
+    if (dueTasks.length > 0) {
+      const rounds = await this.qaReviewsRepository.find({
+        where: { tenantId, taskId: In(dueTasks.map((t) => t.id)), reviewType: In(['qa', 'peer']) },
+        order: { roundNumber: 'ASC' },
+      });
+      for (const r of rounds) {
+        if (!roundsByTask.has(r.taskId)) roundsByTask.set(r.taskId, []);
+        roundsByTask.get(r.taskId)!.push(r);
+      }
+    }
+
     const openTasks = dueTasks.filter((t) => t.status !== COMPLETED_STATUS);
-    // Judged against the effective due date (dueDate + working days spent
-    // waiting for a PM) and never while waiting for one - PM review gate.
-    const overdueTasks = openTasks.filter((t) => isPastEffectiveDue(t, todayStr) && !blockedTaskIds.has(t.id));
+    // Judged against the effective due date (dueDate + PM wait + review
+    // wait), and never while the task is with a PM, QA or a peer.
+    const overdueTasks = openTasks.filter(
+      (t) => isDeveloperOverdue(t, todayStr, reviewWaitWorkingDays(roundsByTask.get(t.id) ?? [])) && !blockedTaskIds.has(t.id),
+    );
     const overduePercent = ticketsDue > 0 ? (overdueTasks.length / ticketsDue) * 100 : 0;
 
-    const lateCompletedTasks = completedTasks.filter(
-      (t) => t.completedAt && t.dueDate && this.toDateOnly(new Date(t.completedAt)) > effectiveDueDate(t)! && !blockedTaskIds.has(t.id),
-    );
+    // Late = the submission that passed was made after the due date (+ PM
+    // wait + review wait on the earlier rounds) - not the day QA passed it,
+    // so the final review's queue time is never the developer's. Tasks
+    // with no passing round on record fall back to completedAt, as before.
+    const lateCompletedTasks = completedTasks.filter((t) => {
+      if (!t.completedAt || !t.dueDate || blockedTaskIds.has(t.id)) return false;
+      const rounds = roundsByTask.get(t.id) ?? [];
+      const passed = [...rounds].reverse().find((r) => r.status === 'approved');
+      if (!passed) return this.toDateOnly(new Date(t.completedAt)) > effectiveDueDate(t)!;
+      return this.toDateOnly(new Date(passed.submittedAt)) > developerDueDate(t, reviewWaitWorkingDays(rounds, passed))!;
+    });
     const targetMissPercent = ticketsCompleted > 0 ? (lateCompletedTasks.length / ticketsCompleted) * 100 : 0;
 
     const hoursComparable = completedTasks.filter((t) => t.estimatedHours != null && t.actualHours != null);

@@ -1,4 +1,4 @@
-import { addBusinessDays, toDateOnlyString } from '../common/business-days';
+import { addBusinessDays, businessDaysBetween, toDateOnlyString } from '../common/business-days';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
 import { DISPUTED_STATUS } from './defect-triage';
 
@@ -47,11 +47,48 @@ export const AWAITING_REVIEW_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review
 // waiting for a reviewer is with the reviewer, not the developer (user
 // feedback 2026-11-04). The review delay shows separately (task header
 // "Review due", QA queue, Non-Compliance "Overdue in review").
-// isPastEffectiveDue() above stays as it is for KPI and Non-Compliance,
-// so no score changes.
+// isPastEffectiveDue() above stays as it is for Non-Compliance Late to QA.
+//
+// reviewWaitDays (KPI, 2026-11-04): working days the task already spent
+// waiting for QA / peer reviewers (reviewWaitWorkingDays below), added to
+// the due date the same way PM wait is. Lists and cards pass 0.
 export function isDeveloperOverdue(
   task: { status: string; dueDate: string | null; pmWaitWorkingDays?: number | null },
   today: string,
+  reviewWaitDays = 0,
 ): boolean {
-  return !AWAITING_REVIEW_STATUSES.includes(task.status) && isPastEffectiveDue(task, today);
+  if (AWAITING_REVIEW_STATUSES.includes(task.status)) return false;
+  if (!isPastEffectiveDue(task, today)) return false;
+  if (reviewWaitDays <= 0) return true;
+  return developerDueDate(task, reviewWaitDays)! < today;
+}
+
+// Review time is not the developer's (KPI, user decision 2026-11-04).
+// A QA / peer round counts from submission to the reviewer's decision.
+// Not counted: PM rounds (already in pmWaitWorkingDays), 'not_ready'
+// (no real hand-over - the developer's clock kept running, same rule as
+// Non-Compliance Late to QA), 'reverted' (the re-opened round with the
+// same submit time covers that wait) and undecided rounds.
+const REVIEW_WAIT_TYPES = ['qa', 'peer'];
+const REVIEW_WAIT_STATUSES = ['approved', 'rejected', 'escalated', 'withdrawn'];
+export type ReviewWaitRound = { id?: number; reviewType: string; status: string; submittedAt: Date | string; reviewedAt: Date | string | null };
+
+export function reviewWaitWorkingDays(rounds: ReviewWaitRound[], exceptRound?: ReviewWaitRound): number {
+  let days = 0;
+  for (const r of rounds) {
+    if (r === exceptRound) continue;
+    if (!REVIEW_WAIT_TYPES.includes(r.reviewType) || !REVIEW_WAIT_STATUSES.includes(r.status) || !r.reviewedAt) continue;
+    days += businessDaysBetween(new Date(r.submittedAt), new Date(r.reviewedAt));
+  }
+  return days;
+}
+
+// Effective due date (+ PM wait) plus review wait, in working days.
+export function developerDueDate(
+  task: { dueDate: string | null; pmWaitWorkingDays?: number | null },
+  reviewWaitDays: number,
+): string | null {
+  const due = effectiveDueDate(task);
+  if (!due || reviewWaitDays <= 0) return due;
+  return toDateOnlyString(addBusinessDays(new Date(`${due}T00:00:00Z`), reviewWaitDays));
 }
