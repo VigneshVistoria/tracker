@@ -30,6 +30,8 @@ import { useConfirm } from '../../lib/confirm';
 import useHashTarget from '../../lib/useHashTarget';
 import { TASK_PAGE_V2 } from '../../lib/featureFlags';
 import CollapsibleSection from '../../components/ui/CollapsibleSection';
+import SubmissionCards from '../../components/SubmissionCards';
+import { groupSubmissions } from '../../lib/submissions';
 import { taskNextStep } from '../../lib/taskNextStep';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
@@ -3522,7 +3524,7 @@ export default function TaskDetailPage() {
       <div className={styles.tabs} role="tablist" aria-label="Task sections">
         {[
           { key: 'overview', label: 'Overview' },
-          { key: 'history', label: 'Review history', count: qaReviews.length },
+          { key: 'history', label: 'Review history', count: TASK_PAGE_V2 ? groupSubmissions(qaReviews).length : qaReviews.length },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -4268,6 +4270,14 @@ export default function TaskDetailPage() {
       </div>
 
       <div role="tabpanel" id="task-panel-history" aria-labelledby="task-tab-history" hidden={activeTab !== 'history'}>
+      {TASK_PAGE_V2 ? (
+      <div className={styles.card}>
+        <h2 className={styles.cardTitle}>
+          Submissions
+        </h2>
+        <SubmissionCards reviews={qaReviews} decisionScreenshots={decisionShots} userId={user.id} />
+      </div>
+      ) : (
       <div className={styles.card}>
         <h2 className={styles.cardTitle}>
           Timeline
@@ -4284,6 +4294,7 @@ export default function TaskDetailPage() {
           bodyVerticalAlign="top"
         />
       </div>
+      )}
       </div>
     </AppShell>
   );
