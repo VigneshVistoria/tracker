@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
+  BadgeCheck,
   Bug,
   CalendarX,
   CheckCircle2,
@@ -34,8 +35,11 @@ import { apiFetch } from '../lib/api';
 import { getSocket } from '../lib/socket';
 import { useToast } from '../lib/toast';
 import { canCreateTickets, DEVELOPER_EQUIVALENT_ROLES } from '../lib/status';
-import { isOverdueTask } from '../lib/developerTaskStats';
+import { countMyTaskCard } from '../lib/developerTaskStats';
 import { formatPercent } from '../lib/formatNumber';
+import {
+  buildHref, passedPeriodRange, PASSED_PERIODS, DEFAULT_PASSED_PERIOD, ISSUE_STATUS_GROUPS,
+} from '../lib/listPresets';
 
 // Top-level Dashboard loads `user` and picks a per-role home. Every view
 // reads only endpoints that role could already reach (the backend still
@@ -112,6 +116,34 @@ function attentionSummary(items, loading) {
 }
 
 const len = (v) => (Array.isArray(v) ? v.length : v);
+
+// Every tile links to the list that shows exactly the rows it counts
+// (2026-11-04, user feedback) - the list page reads the preset from the
+// URL (lib/listPresets.js).
+const TEAM_OVERDUE_HREF = buildHref('/tasks/team', { card: 'overdue' });
+const TEAM_DEPENDENCY_HREF = buildHref('/tasks/team', { card: 'openDependency' });
+const QA_PENDING_HREF = buildHref('/tasks/qa-review', { card: 'pending' });
+const QA_RESUBMISSIONS_HREF = buildHref('/tasks/qa-review', { card: 'resubmissions' });
+const OPEN_DEFECTS_HREF = buildHref('/tasks/my-defects', { card: 'pending' });
+
+// Passed testing (leadership): Pass or Released with completedAt in the
+// period, assigned tasks and defects - the same /tasks/team query the
+// card opens, so statCounts.passed is that list's total.
+function usePassedCount(period) {
+  const range = passedPeriodRange(period);
+  const [count, setCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setCount(null);
+    apiFetch(buildHref('/tasks/team', { pageSize: 1, passedFrom: range.passedFrom, passedTo: range.passedTo }))
+      .then((res) => !cancelled && setCount(res.statCounts.passed ?? 0))
+      .catch(() => !cancelled && setCount(undefined));
+    return () => {
+      cancelled = true;
+    };
+  }, [range.passedFrom, range.passedTo]);
+  return { count, href: buildHref('/tasks/team', { card: 'passed', ...range }) };
+}
 const pick = (v, fn) => (v === null || v === undefined ? v : fn(v));
 
 function NewIssueButton({ user }) {
@@ -127,12 +159,14 @@ function NewIssueButton({ user }) {
 function LeadershipHome({ user }) {
   const isExec = user.role === 'executive';
   const isAdmin = user.role === 'admin';
+  // qa-queue with defects: the same rows QA Review lists for this role
+  // (the backend leaves defects out for Executive on both).
   const endpoints = isExec
-    ? { mine: '/tasks/mine', team: '/tasks/team?pageSize=1', qa: '/tasks/qa-queue', issues: '/issues', projects: '/projects' }
+    ? { mine: '/tasks/mine', team: '/tasks/team?pageSize=1', qa: '/tasks/qa-queue?include=defects', issues: '/issues', projects: '/projects' }
     : {
         mine: '/tasks/mine',
         team: '/tasks/team?pageSize=1',
-        qa: '/tasks/qa-queue',
+        qa: '/tasks/qa-queue?include=defects',
         defects: '/tasks/defect-queue',
         escalations: '/tasks/escalations',
         backlog: '/tasks/backlog',
@@ -141,6 +175,9 @@ function LeadershipHome({ user }) {
       };
   const [data, reload] = useDashboardData(endpoints);
   useLiveIssueRefresh(reload);
+  const [passedPeriod, setPassedPeriod] = useState(DEFAULT_PASSED_PERIOD);
+  const passed = usePassedCount(passedPeriod);
+  const passedPeriodLabel = PASSED_PERIODS.find((p) => p.key === passedPeriod).label;
 
   const teamStats = pick(data.team, (t) => t.statCounts);
   const overdue = pick(teamStats, (s) => s.overdue);
@@ -169,6 +206,28 @@ function LeadershipHome({ user }) {
     <AppShell>
       <DashboardHeader user={user} summary={summary} actions={<NewIssueButton user={user} />} />
 
+      <div className={styles.periodBar}>
+        <label htmlFor="passedPeriod" className={styles.periodLabel}>
+          Passed testing period
+        </label>
+        <select
+          id="passedPeriod"
+          className={styles.periodSelect}
+          value={passedPeriod}
+          aria-describedby="passedPeriodHint"
+          onChange={(e) => setPassedPeriod(e.target.value)}
+        >
+          {PASSED_PERIODS.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <span id="passedPeriodHint" className={styles.periodHint}>
+          Applies to the Passed testing card only. The other cards count what is open right now.
+        </span>
+      </div>
+
       <TileGrid label="Needs attention">
         {!isExec && (
           <AttentionTile
@@ -181,7 +240,7 @@ function LeadershipHome({ user }) {
           />
         )}
         <AttentionTile
-          href="/tasks/team"
+          href={TEAM_OVERDUE_HREF}
           icon={CalendarX}
           value={overdue}
           label="Overdue tasks"
@@ -199,7 +258,7 @@ function LeadershipHome({ user }) {
           />
         )}
         <AttentionTile
-          href="/tasks/qa-review"
+          href={QA_PENDING_HREF}
           icon={FlaskConical}
           value={qaPending}
           label="Awaiting QA"
@@ -211,7 +270,7 @@ function LeadershipHome({ user }) {
         />
         {isExec ? (
           <AttentionTile
-            href="/tasks/team"
+            href={TEAM_DEPENDENCY_HREF}
             icon={Link2}
             value={pick(teamStats, (s) => s.openDependency)}
             label="Blocked by dependency"
@@ -220,14 +279,22 @@ function LeadershipHome({ user }) {
           />
         ) : (
           <AttentionTile
-            href="/tasks/my-defects"
+            href={OPEN_DEFECTS_HREF}
             icon={Bug}
             value={openDefects}
             label="Open defects"
             tone="warning"
-            caption={{ active: 'Pending QA review', clear: 'No open defects' }}
+            caption={{ active: 'Not yet passed or closed', clear: 'No open defects' }}
           />
         )}
+        <AttentionTile
+          href={passed.href}
+          icon={BadgeCheck}
+          value={passed.count}
+          label="Passed testing"
+          tone="info"
+          caption={{ active: `${passedPeriodLabel} · tasks and defects`, clear: `None passed · ${passedPeriodLabel.toLowerCase()}` }}
+        />
       </TileGrid>
 
       <div className={styles.columns}>
@@ -250,9 +317,15 @@ function LeadershipHome({ user }) {
               <StatRow
                 items={[
                   { label: 'Active tasks', value: teamStats ? teamStats.total : '–' },
+                  { label: 'On hold', value: teamStats ? teamStats.hold : '–' },
                   { label: 'Rejected by QA', value: teamStats ? teamStats.rejected : '–' },
                   { label: 'Blocked by dependency', value: teamStats ? teamStats.openDependency : '–' },
-                  { label: 'Open defects', value: teamStats ? teamStats.defects : '–' },
+                  // Same number as the Open defects card (assigned or not)
+                  // where this role has the Defect queue; Executive doesn't,
+                  // so it gets Team Tasks' assigned-only count, labelled so.
+                  isExec
+                    ? { label: 'Open defects (assigned)', value: teamStats ? teamStats.defects : '–' }
+                    : { label: 'Open defects', value: openDefects ?? '–' },
                 ]}
               />
             </Panel>
@@ -289,7 +362,9 @@ function ShortcutLink({ href, icon: Icon, label, meta }) {
 function QaHome({ user }) {
   const [data, reload] = useDashboardData({
     mine: '/tasks/mine',
-    qa: '/tasks/qa-queue',
+    // With defects: QA Review lists the defects this QA raised that are
+    // back for retest too, so the card counts them as well.
+    qa: '/tasks/qa-queue?include=defects',
     defects: '/tasks/defect-queue',
     execution: '/test-cases/execution-summary',
     issues: '/issues',
@@ -297,7 +372,7 @@ function QaHome({ user }) {
   useLiveIssueRefresh(reload);
 
   const qaStats = pick(data.qa, (q) => q.statCounts);
-  const myOverdue = pick(data.mine, (tasks) => tasks.filter((t) => isOverdueTask(t)).length);
+  const myOverdue = pick(data.mine, (tasks) => countMyTaskCard('overdue', tasks));
   const loading = Object.values(data).some((v) => v === null);
   const exec = data.execution?.overall;
   const executable = exec ? exec.total - exec.na : 0;
@@ -327,7 +402,7 @@ function QaHome({ user }) {
 
       <TileGrid label="Needs attention">
         <AttentionTile
-          href="/tasks/qa-review"
+          href={QA_PENDING_HREF}
           icon={FlaskConical}
           value={pick(qaStats, (s) => s.pending)}
           label="Review queue"
@@ -338,7 +413,7 @@ function QaHome({ user }) {
           }}
         />
         <AttentionTile
-          href="/tasks/qa-review"
+          href={QA_RESUBMISSIONS_HREF}
           icon={RotateCcw}
           value={pick(qaStats, (s) => s.resubmissions)}
           label="Resubmissions"
@@ -346,15 +421,15 @@ function QaHome({ user }) {
           caption={{ active: 'Fixed and sent back', clear: 'None waiting' }}
         />
         <AttentionTile
-          href="/tasks/my-defects"
+          href={OPEN_DEFECTS_HREF}
           icon={Bug}
           value={pick(data.defects, (d) => d.statCounts.pending)}
           label="My open defects"
           tone="warning"
-          caption={{ active: 'Still being worked on', clear: 'No open defects' }}
+          caption={{ active: 'Not yet passed or closed', clear: 'No open defects' }}
         />
         <AttentionTile
-          href="/tasks/mine"
+          href={buildHref('/tasks/mine', { card: 'overdue' })}
           icon={CalendarX}
           value={myOverdue}
           label="My overdue tasks"
@@ -395,14 +470,17 @@ function QaHome({ user }) {
   );
 }
 
-const CLIENT_IN_FLIGHT = ['In Progress', 'In Review', 'QA Testing', 'QA Failed'];
+const CLIENT_IN_FLIGHT = ISSUE_STATUS_GROUPS['in-progress'].statuses;
 
 function ClientHome({ user }) {
   const [data, reload] = useDashboardData({ issues: '/issues', mine: '/tasks/mine' });
   useLiveIssueRefresh(reload);
   const issues = data.issues;
   const count = (fn) => pick(issues, (list) => list.filter(fn).length);
-  const openTasks = pick(data.mine, (tasks) => upNextTasks(tasks, 100).length);
+  // Open and the client's to act on (not Hold/Closed/done, not with a
+  // reviewer) - the same rule as My Tasks' "Open tasks", which the tile
+  // opens. No cap.
+  const openTasks = pick(data.mine, (tasks) => countMyTaskCard('myTasks', tasks));
 
   return (
     <AppShell>
@@ -420,7 +498,7 @@ function ClientHome({ user }) {
 
       <TileGrid label="Your tickets">
         <AttentionTile
-          href="/issues"
+          href={buildHref('/issues', { status: 'Backlog' })}
           icon={Ticket}
           value={count((i) => i.status === 'Backlog')}
           label="Not started"
@@ -428,7 +506,7 @@ function ClientHome({ user }) {
           caption={{ active: 'Queued for the team', clear: 'Nothing queued' }}
         />
         <AttentionTile
-          href="/issues"
+          href={buildHref('/issues', { status: 'in-progress' })}
           icon={RotateCcw}
           value={count((i) => CLIENT_IN_FLIGHT.includes(i.status))}
           label="In progress"
@@ -436,14 +514,14 @@ function ClientHome({ user }) {
           caption={{ active: 'Being worked on', clear: 'Nothing in progress' }}
         />
         <AttentionTile
-          href="/issues"
+          href={buildHref('/issues', { status: 'Ready for Production' })}
           icon={CheckCircle2}
           value={count((i) => i.status === 'Ready for Production')}
           label="Ready"
           caption={{ active: 'Ready for production', clear: 'None yet' }}
         />
         <AttentionTile
-          href="/tasks/mine"
+          href={buildHref('/tasks/mine', { card: 'myTasks' })}
           icon={ListTodo}
           value={openTasks}
           label="Tasks for you"

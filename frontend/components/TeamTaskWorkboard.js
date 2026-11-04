@@ -1,8 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { ChevronRight, ChevronLeft, X } from 'lucide-react';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
-import { yesterdayISO } from '../lib/developerTaskStats';
+import { effectiveDueDate, isOverdueTask, todayISO } from '../lib/developerTaskStats';
+import { readCardParam, readPassedParams, syncedQuery, sameQuery } from '../lib/listPresets';
 import {
   buildRowTintClass, buildRowRailClass, visibleStatusTabs,
   priorityStripeColor, statusBadgeStyle,
@@ -98,25 +100,37 @@ function buildWorkloadWeeks(weekOffset) {
 // clear" count - this card counts the selected person's own *tasks* that
 // are blocked on someone else, that tab counts open *tickets* the
 // selected person owns and is blocking others with.
+//
+// 'passed' (Passed testing, 2026-11-04) only appears while a completedAt
+// period is set - it comes from the leadership dashboard's card
+// (?card=passed&passedFrom=&passedTo=), and statCounts.passed is only
+// returned for a period.
 const CARD_DEFS = [
   { key: 'total', label: 'Team Tasks' },
   { key: 'rejected', label: 'Rejected', accent: 'danger' },
   { key: 'openDependency', label: 'Waiting on Dependency' },
   { key: 'overdue', label: 'Overdue', accent: 'warning' },
   { key: 'defects', label: 'Defects' },
+  { key: 'passed', label: 'Passed testing' },
 ];
+const CARD_KEYS = CARD_DEFS.map((c) => c.key);
+// URL params this page owns (see lib/listPresets.js).
+const URL_PRESET_KEYS = ['card', 'passedFrom', 'passedTo'];
 
 // The filters each tile applies when clicked (Phase/Assignee are left as
-// they are). Overdue only ever touched "Due to", so "Due from" isn't part
-// of its match.
+// they are). Overdue (2026-11-04) is its own filter (overdue=Yes, the
+// exact rule behind its count) rather than "Due to yesterday", which also
+// caught tasks waiting for QA/a peer/the PM. Every tile but Passed testing
+// clears the Passed period.
 function cardPreset(key) {
-  const base = { status: 'All', dependency: 'All', defect: 'All', dueFrom: '', dueTo: '' };
+  const base = { status: 'All', dependency: 'All', defect: 'All', dueFrom: '', dueTo: '', overdue: 'All' };
   switch (key) {
     case 'total': return base;
     case 'rejected': return { ...base, status: 'Failed' };
     case 'openDependency': return { ...base, dependency: 'Yes' };
-    case 'overdue': return { ...base, dueFrom: null, dueTo: yesterdayISO() };
+    case 'overdue': return { ...base, overdue: 'Yes' };
     case 'defects': return { ...base, defect: 'Yes' };
+    case 'passed': return base;
     default: return null;
   }
 }
@@ -124,12 +138,14 @@ function cardPreset(key) {
 function presetMatches(key, f) {
   const p = cardPreset(key);
   if (!p) return false;
+  if ((key === 'passed') !== f.passedActive) return false;
   return (
     f.status === p.status &&
     f.dependency === p.dependency &&
     f.defect === p.defect &&
-    (p.dueFrom === null || f.dueFrom === p.dueFrom) &&
-    f.dueTo === p.dueTo
+    f.dueFrom === p.dueFrom &&
+    f.dueTo === p.dueTo &&
+    f.overdue === p.overdue
   );
 }
 
@@ -198,6 +214,22 @@ function WorkloadCell({ tasks }) {
   );
 }
 
+// An active filter with no field of its own (Overdue, Passed testing),
+// shown in the filter bar so it's visible and can be cleared.
+function FilterChip({ label, clearLabel, onClear }) {
+  return (
+    <div className={styles.filterGroup}>
+      <span className={styles.filterLabel}>Active filter</span>
+      <span className={styles.filterChip}>
+        <span>{label}</span>
+        <button type="button" className={styles.filterChipClear} aria-label={clearLabel} onClick={onClear}>
+          <X size={13} aria-hidden="true" />
+        </button>
+      </span>
+    </div>
+  );
+}
+
 // `canMarkJunk` (Program Manager only - the backend enforces the same
 // rule) adds a checkbox column to the Table view and a "Mark as Junk" bar
 // for the selection. The selection is kept by id across pages, tabs and
@@ -205,6 +237,11 @@ function WorkloadCell({ tasks }) {
 // views can be handled in one go.
 export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canMarkJunk = false, canExport = false }) {
   const { showToast } = useToast();
+  const router = useRouter();
+  // Nothing is fetched until the URL/remembered preset has been applied,
+  // so the first list shown is already the right one.
+  const [initialized, setInitialized] = useState(false);
+  const initRef = useRef(false);
   const [selected, setSelected] = useState(() => new Map());
   const [junkOpen, setJunkOpen] = useState(false);
   const [activeCard, setActiveCard] = useState(null);
@@ -221,6 +258,14 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   const [assigneeFilter, setAssigneeFilter] = useState('All');
   const [dueFrom, setDueFrom] = useState('');
   const [dueTo, setDueTo] = useState('');
+  // 'All' | 'Yes' - set by the Overdue card (no dropdown of its own; shown
+  // as a clearable chip while on).
+  const [overdueFilter, setOverdueFilter] = useState('All');
+  // Passed testing period (completedAt, YYYY-MM-DD) - set by the
+  // dashboard's Passed testing card, shown as a clearable chip.
+  const [passedFrom, setPassedFrom] = useState('');
+  const [passedTo, setPassedTo] = useState('');
+  const passedActive = Boolean(passedFrom || passedTo);
   // Completed tasks (Pass/Junk/Released) stay always-hidden here, same as
   // ever (see this file's top comment - no per-user override, confirmed
   // with the user 2026-09). Hold/Closed get their own independent
@@ -238,7 +283,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
 
   const [tasks, setTasks] = useState([]);
   const [total, setTotal] = useState(0);
-  const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0, defects: 0 });
+  const [statCounts, setStatCounts] = useState({ total: 0, rejected: 0, openDependency: 0, overdue: 0, defects: 0, hold: 0 });
   const [assignees, setAssignees] = useState([]);
   const [phases, setPhases] = useState([]);
   // Open dependency tickets the selected assignee owns - the Development /
@@ -267,26 +312,36 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   const showHoldClosedStorageKey = `${storageKey}ShowHoldClosed`;
 
   useEffect(() => {
+    if (!router.isReady || initRef.current) return;
+    initRef.current = true;
+    // A card in the URL (a dashboard tile's link) wins over the remembered
+    // one. It shows exactly the rows the tile counted, so Hold/Closed are
+    // hidden for this visit whatever the saved toggle says (the tile's
+    // count leaves them out); the saved toggle itself isn't changed.
+    const urlCard = readCardParam(router.query, CARD_KEYS);
+    const urlPassed = readPassedParams(router.query);
+    const fromUrl = urlCard && (urlCard !== 'passed' || urlPassed);
     const stored = localStorage.getItem(storageKey);
-    if (stored && cardPreset(stored)) {
-      // Re-apply the remembered tile's filters too, so it never reopens
-      // highlighted while showing a different (default) filter set.
-      setActiveCard(stored);
-      const preset = cardPreset(stored);
-      setStatusFilter(preset.status);
-      setDependencyFilter(preset.dependency);
-      setDefectFilter(preset.defect);
-      if (preset.dueFrom !== null) setDueFrom(preset.dueFrom);
-      setDueTo(preset.dueTo);
+    const card = fromUrl ? urlCard : stored && stored !== 'passed' && cardPreset(stored) ? stored : null;
+    if (card) {
+      // Re-apply the tile's filters too, so it never opens highlighted
+      // while showing a different (default) filter set.
+      setActiveCard(card);
+      applyFilters(cardPreset(card));
+    }
+    if (urlPassed) {
+      setPassedFrom(urlPassed.passedFrom);
+      setPassedTo(urlPassed.passedTo);
     }
     const storedViewMode = localStorage.getItem(viewModeStorageKey);
     if (storedViewMode === 'tile' || storedViewMode === 'table' || storedViewMode === 'workload') setViewMode(storedViewMode);
     const storedPageSize = Number(localStorage.getItem(pageSizeStorageKey));
     if (PAGE_SIZE_OPTIONS.includes(storedPageSize)) setPageSize(storedPageSize);
-    setShowHoldClosed(localStorage.getItem(showHoldClosedStorageKey) === 'true');
+    setShowHoldClosed(fromUrl ? false : localStorage.getItem(showHoldClosedStorageKey) === 'true');
+    setInitialized(true);
     // storageKey is a static prop per page, not expected to change at runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router.isReady]);
 
   // Same "reset statusFilter if it becomes invalid" reasoning as My Tasks'
   // handleShowCompletedChange (DeveloperTaskWorkboard.js) - turning the
@@ -307,7 +362,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   const devFailedTabValue = devFailedTab.statuses.join(',');
   const onDevFailedTab = statusFilter === devFailedTabValue;
   const taskOnlyFiltersActive =
-    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || typeFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo);
+    phaseFilter !== 'All' || dependencyFilter !== 'All' || defectFilter !== 'All' || typeFilter !== 'All' || Boolean(dueFrom) || Boolean(dueTo) ||
+    overdueFilter !== 'All' || passedActive;
   const includeDependencies = onDevFailedTab && !taskOnlyFiltersActive;
 
   useEffect(() => {
@@ -318,15 +374,15 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
-  useEffect(() => {
+  // The filters every request below sends (list, Workload, export) - one
+  // place, so the three can't drift apart.
+  // statusFilter is either 'All' or a raw status/comma-joined status list
+  // ready to send straight through - set directly by the status tabs
+  // (tab.statuses.join(',')) below, or a single exact status when a stat
+  // card sets it (e.g. 'Failed' for the Rejected card, which must stay a
+  // precise match to that card's own count - see handleCardClick).
+  const filterParams = () => {
     const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('pageSize', String(pageSize));
-    // statusFilter is either 'All' or a raw status/comma-joined status list
-    // ready to send straight through - set directly by the status tabs
-    // (tab.statuses.join(',')) below, or a single exact status when a stat
-    // card sets it (e.g. 'Failed' for the Rejected card, which must stay a
-    // precise match to that card's own count - see handleCardClick).
     if (statusFilter !== 'All') params.set('status', statusFilter);
     if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
     if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
@@ -335,7 +391,18 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
     if (dueFrom) params.set('dueFrom', dueFrom);
     if (dueTo) params.set('dueTo', dueTo);
+    if (overdueFilter !== 'All') params.set('overdue', overdueFilter);
+    if (passedFrom) params.set('passedFrom', passedFrom);
+    if (passedTo) params.set('passedTo', passedTo);
     if (showHoldClosed) params.set('showHoldClosed', 'true');
+    return params;
+  };
+
+  useEffect(() => {
+    if (!initialized) return undefined;
+    const params = filterParams();
+    params.set('page', String(page));
+    params.set('pageSize', String(pageSize));
     if (includeDependencies) params.set('includeDependencies', 'true');
 
     let cancelled = false;
@@ -364,25 +431,18 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, page, pageSize, includeDependencies, refreshKey]);
+    // filterParams reads exactly the filter state listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, overdueFilter, passedFrom, passedTo, showHoldClosed, page, pageSize, includeDependencies, refreshKey]);
 
   // Workload view's own fetch - same filters as above, minus page/pageSize
   // (all=true instead, see TasksService.findTeam()) since the weekly grid
   // needs every matching task to bucket correctly. Only runs while
   // Workload is the active view.
   useEffect(() => {
-    if (viewMode !== 'workload') return;
-    const params = new URLSearchParams();
+    if (viewMode !== 'workload' || !initialized) return undefined;
+    const params = filterParams();
     params.set('all', 'true');
-    if (statusFilter !== 'All') params.set('status', statusFilter);
-    if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
-    if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
-    if (defectFilter !== 'All') params.set('isDefect', defectFilter);
-    if (typeFilter !== 'All') params.set('taskType', typeFilter);
-    if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
-    if (dueFrom) params.set('dueFrom', dueFrom);
-    if (dueTo) params.set('dueTo', dueTo);
-    if (showHoldClosed) params.set('showHoldClosed', 'true');
 
     let cancelled = false;
     setWorkloadLoading(true);
@@ -401,7 +461,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     return () => {
       cancelled = true;
     };
-  }, [viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, viewMode, statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, overdueFilter, passedFrom, passedTo, showHoldClosed]);
 
   // Any filter (or page size) change invalidates the current page -
   // jumping back to page 1 avoids landing on a now out-of-range page
@@ -409,7 +470,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   useEffect(() => {
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, pageSize]);
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, overdueFilter, passedFrom, passedTo, showHoldClosed, pageSize]);
 
   const handleViewModeChange = (mode) => {
     setViewMode(mode);
@@ -433,11 +494,17 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   // Completed tasks (Pass/Junk/Released) are always hidden on Team Tasks
   // now - confirmed with the user 2026-09 when the "Show completed tasks"
   // toggle was removed - so the tabs that are entirely completed statuses
-  // (Pass, Released - No Showstoppers) never show here.
-  const visibleTabs = visibleStatusTabs(false, showHoldClosed);
+  // (Pass, Released - No Showstoppers) never show here. The one exception
+  // is a Passed testing period, which is only completed tasks.
+  const visibleTabs = visibleStatusTabs(passedActive, showHoldClosed);
 
   const cards = useMemo(
-    () => CARD_DEFS.map((c) => ({ ...c, count: statCounts[c.key] ?? 0, kind: 'table' })),
+    () =>
+      CARD_DEFS.filter((c) => c.key !== 'passed' || statCounts.passed !== undefined).map((c) => ({
+        ...c,
+        count: statCounts[c.key] ?? 0,
+        kind: 'table',
+      })),
     [statCounts],
   );
 
@@ -457,6 +524,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   const filerCount = (row) => dependencyCountsByFiler[row.createdByEmail] || 0;
 
   const workloadWeeks = useMemo(() => buildWorkloadWeeks(weekOffset), [weekOffset]);
+  const today = todayISO();
 
   // Groups workloadTasks by assignee, then buckets each assignee's tasks
   // into Overdue / one column per visible week / Later / No Due Date - see
@@ -475,6 +543,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
           label: assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || `#${t.assigneeUserId}`,
           total: 0,
           overdue: [],
+          withReviewer: [],
+          earlier: [],
           weekBuckets: workloadWeeks.map(() => []),
           later: [],
           noDueDate: [],
@@ -482,35 +552,79 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
       }
       const row = byAssignee.get(t.assigneeUserId);
       row.total += 1;
-      if (!t.dueDate) {
-        row.noDueDate.push(t);
-      } else if (t.dueDate < workloadWeeks[0].start) {
+      // Overdue = the Overdue card's rule (2026-11-04), not just "due
+      // before this window": past-due work that is with QA/a peer/the PM
+      // or paused (Hold/Closed) isn't the assignee's overdue work, so it
+      // gets its own column and every row still adds up. Weeks use the
+      // effective due date (+ PM wait), same as overdue does.
+      const due = effectiveDueDate(t);
+      if (isOverdueTask(t, today)) {
         row.overdue.push(t);
-      } else if (t.dueDate > workloadWeeks[workloadWeeks.length - 1].end) {
+      } else if (!due) {
+        row.noDueDate.push(t);
+      } else if (due < today && due < workloadWeeks[0].start) {
+        row.withReviewer.push(t);
+      } else if (due < workloadWeeks[0].start) {
+        row.earlier.push(t);
+      } else if (due > workloadWeeks[workloadWeeks.length - 1].end) {
         row.later.push(t);
       } else {
-        const weekIndex = workloadWeeks.findIndex((w) => t.dueDate >= w.start && t.dueDate <= w.end);
+        const weekIndex = workloadWeeks.findIndex((w) => due >= w.start && due <= w.end);
         row.weekBuckets[weekIndex].push(t);
       }
     }
     return Array.from(byAssignee.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [workloadTasks, workloadWeeks, assigneeLabelById]);
+  }, [workloadTasks, workloadWeeks, assigneeLabelById, today]);
+  // "Earlier" only exists while looking ahead (Next week): due before the
+  // window but not yet past due.
+  const showEarlier = workloadRows.some((r) => r.earlier.length > 0);
+
+  function applyFilters(preset) {
+    setStatusFilter(preset.status);
+    setDependencyFilter(preset.dependency);
+    setDefectFilter(preset.defect);
+    setDueFrom(preset.dueFrom);
+    setDueTo(preset.dueTo);
+    setOverdueFilter(preset.overdue);
+  }
+
+  const clearPassed = () => {
+    setPassedFrom('');
+    setPassedTo('');
+    // Its card goes with the period - fall back to all team tasks rather
+    // than collapsing the list.
+    setActiveCard((prev) => (prev === 'passed' ? 'total' : prev));
+  };
 
   const applyCardPreset = (key) => {
     const preset = cardPreset(key);
     if (!preset) return;
-    setStatusFilter(preset.status);
-    setDependencyFilter(preset.dependency);
-    setDefectFilter(preset.defect);
-    if (preset.dueFrom !== null) setDueFrom(preset.dueFrom);
-    setDueTo(preset.dueTo);
+    applyFilters(preset);
+    // The Passed period only belongs to its own card.
+    if (key !== 'passed') clearPassed();
   };
 
   // A tile only looks selected while the filters it applied are still in
   // effect - changing a filter afterwards (or a stale remembered tile)
   // no longer leaves a tile shaded that isn't actually active.
-  const currentFilters = { status: statusFilter, dependency: dependencyFilter, defect: defectFilter, dueFrom, dueTo };
+  const currentFilters = { status: statusFilter, dependency: dependencyFilter, defect: defectFilter, dueFrom, dueTo, overdue: overdueFilter, passedActive };
   const isCardSelected = (key) => activeCard === key && presetMatches(key, currentFilters);
+  const selectedCard = activeCard && presetMatches(activeCard, currentFilters) ? activeCard : null;
+
+  // Keep the URL in step with the selected card (and Passed period), so a
+  // reload or a copied link shows the same rows. Shallow - no refetch of
+  // the page itself.
+  useEffect(() => {
+    if (!initialized) return;
+    const next = syncedQuery(router.query, URL_PRESET_KEYS, {
+      card: selectedCard,
+      passedFrom,
+      passedTo,
+    });
+    if (!sameQuery(router.query, next)) router.replace({ pathname: router.pathname, query: next }, undefined, { shallow: true });
+    // router.query changes with every replace; reacting to it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, selectedCard, passedFrom, passedTo]);
 
   const handleCardClick = (card) => {
     // Clicking the open tile again closes the section - unless its filters
@@ -521,7 +635,9 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
     }
     const next = activeCard === card.key ? null : card.key;
     setActiveCard(next);
-    localStorage.setItem(storageKey, next || '');
+    // Passed testing needs its period, which only the URL carries - it
+    // isn't remembered across visits.
+    localStorage.setItem(storageKey, next && next !== 'passed' ? next : '');
     if (next) applyCardPreset(next);
   };
 
@@ -555,23 +671,15 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   // fetch above, minus paging (the server exports every matching row),
   // plus the current column sort so the file matches the screen.
   const exportParams = useMemo(() => {
-    const params = new URLSearchParams();
-    if (statusFilter !== 'All') params.set('status', statusFilter);
-    if (phaseFilter !== 'All') params.set('phaseId', phaseFilter);
-    if (dependencyFilter !== 'All') params.set('dependency', dependencyFilter);
-    if (defectFilter !== 'All') params.set('isDefect', defectFilter);
-    if (typeFilter !== 'All') params.set('taskType', typeFilter);
-    if (assigneeFilter !== 'All') params.set('assigneeUserId', assigneeFilter);
-    if (dueFrom) params.set('dueFrom', dueFrom);
-    if (dueTo) params.set('dueTo', dueTo);
-    if (showHoldClosed) params.set('showHoldClosed', 'true');
+    const params = filterParams();
     if (includeDependencies) params.set('includeDependencies', 'true');
     if (sort) {
       params.set('sortKey', sort.key);
       params.set('sortDir', sort.dir);
     }
     return params.toString();
-  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, showHoldClosed, includeDependencies, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, phaseFilter, dependencyFilter, defectFilter, typeFilter, assigneeFilter, dueFrom, dueTo, overdueFilter, passedFrom, passedTo, showHoldClosed, includeDependencies, sort]);
 
   const baseColumns = useMemo(
     () => buildTaskColumns({ assigneeLabel: showAssignee ? assigneeLabel : null, labelForEmail, expandedTaskIds, toggleExpanded }),
@@ -798,6 +906,17 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
 
             <ViewToggle id="teamViewLabel" value={viewMode} onChange={handleViewModeChange} modes={['table', 'tile', 'workload']} />
 
+            {overdueFilter === 'Yes' && (
+              <FilterChip label="Overdue only" clearLabel="Clear the Overdue filter" onClear={() => setOverdueFilter('All')} />
+            )}
+            {passedActive && (
+              <FilterChip
+                label={`Passed testing: ${passedFrom ? formatDate(passedFrom) : 'any date'} – ${passedTo ? formatDate(passedTo) : 'any date'}`}
+                clearLabel="Clear the Passed testing period"
+                onClear={clearPassed}
+              />
+            )}
+
             {canExport && viewMode === 'table' && <TeamTasksExportMenu params={exportParams} />}
           </div>
 
@@ -823,7 +942,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
 
           {onDevFailedTab && viewMode !== 'workload' && taskOnlyFiltersActive && dependenciesToClearCount > 0 && (
             <p className={styles.issueMeta}>
-              {dependenciesToClearCount === 1 ? '1 dependency to clear is' : `${dependenciesToClearCount} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, Type, or Due date filters are active.
+              {dependenciesToClearCount === 1 ? '1 dependency to clear is' : `${dependenciesToClearCount} dependencies to clear are`} hidden while Project Phase, Dependency, Defect, Type, Due date, Overdue or Passed testing filters are active.
             </p>
           )}
 
@@ -863,10 +982,17 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
                 ) : (
                   <div
                     className={styles.workloadGrid}
-                    style={{ gridTemplateColumns: `220px repeat(${workloadWeeks.length + 3}, minmax(140px, 1fr))` }}
+                    style={{ gridTemplateColumns: `220px repeat(${workloadWeeks.length + 4 + (showEarlier ? 1 : 0)}, minmax(140px, 1fr))` }}
                   >
                     <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>Assignee</div>
                     <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>Overdue</div>
+                    <div
+                      className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}
+                      title="Past the due date but not overdue: with QA, a peer reviewer or the PM (or on Hold/Closed when shown)"
+                    >
+                      With reviewer
+                    </div>
+                    {showEarlier && <div className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>Earlier</div>}
                     {workloadWeeks.map((w) => (
                       <div key={w.key} className={`${styles.workloadCell} ${styles.workloadHeaderCell}`}>
                         {formatDate(w.start)} – {formatDate(w.end)}
@@ -882,6 +1008,8 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
                           <div className={styles.workloadAssigneeCount}>{row.total} open</div>
                         </div>
                         <WorkloadCell tasks={row.overdue} />
+                        <WorkloadCell tasks={row.withReviewer} />
+                        {showEarlier && <WorkloadCell tasks={row.earlier} />}
                         {row.weekBuckets.map((bucket, i) => (
                           <WorkloadCell key={workloadWeeks[i].key} tasks={bucket} />
                         ))}

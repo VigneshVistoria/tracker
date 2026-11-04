@@ -5,7 +5,7 @@ import { TaskFlag } from '../task-flags/task-flag.entity';
 import { TaskReopen } from './task-reopen.entity';
 import { DueDateProposedEvent } from './due-date-change';
 import { TaskType, fieldProblems, missingBeforeSubmission, parseTaskType } from './task-fields';
-import { Between, EntityManager, In, IsNull, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { And, Between, EntityManager, FindOperator, In, IsNull, LessThan, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
 import { TaskBlockingDefect } from './task-blocking-defect.entity';
@@ -82,6 +82,15 @@ export interface TeamTaskFilters {
   taskType?: string;
   dueFrom?: string;
   dueTo?: string;
+  // 'Yes' - only tasks counted by statCounts.overdue (isTeamOverdue below),
+  // for the Overdue card and the dashboard's Overdue tile (2026-11-04).
+  overdue?: string;
+  // Passed testing (2026-11-04): YYYY-MM-DD, inclusive. Either one set
+  // limits the list to PASSED_STATUSES with completedAt in the range
+  // (completed statuses shown whatever showCompleted says) and adds
+  // statCounts.passed.
+  passedFrom?: string;
+  passedTo?: string;
   showCompleted?: boolean;
   // Same "hidden by default, toggle to reveal" shape as showCompleted
   // above, for Hold/Closed instead of Pass/Junk/Released - see
@@ -107,7 +116,9 @@ export interface TeamTasksResult {
   // when filters.includeDependencies - tell them apart by `kind`.
   tasks: Array<ProjectTaskWithComputed | TeamDependencyRow>;
   total: number;
-  statCounts: { total: number; rejected: number; openDependency: number; overdue: number; defects: number };
+  // hold: Hold tasks, shown on their own (not open) - 2026-11-04.
+  // passed: only when passedFrom/passedTo is set - same rows as the list.
+  statCounts: { total: number; rejected: number; openDependency: number; overdue: number; defects: number; hold: number; passed?: number };
   assignees: Array<{ id: number; email: string; fullName: string | null }>;
   phases: Array<{ id: number; name: string }>;
   // Open dependency tickets the selected assignee (or, with no assignee
@@ -192,6 +203,38 @@ const COMPLETED_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers', 'Relea
 // overdue or drag down KPI while nobody's expected to be acting on it.
 export const HOLD_CLOSED_STATUSES = ['Hold', 'Closed'];
 
+// Open (user definition, 2026-11-04, dashboard cards): every status except
+// these. Hold is not open - it is counted separately.
+const NOT_OPEN_STATUSES = [...COMPLETED_STATUSES, ...HOLD_CLOSED_STATUSES];
+
+// Passed testing (2026-11-04): QA or a peer passed it (both set Pass), or
+// it was released since. Junk is not a pass.
+export const PASSED_STATUSES = ['Pass', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+
+// Team Tasks / dashboard "Overdue": the developer's own overdue work
+// (isDeveloperOverdue without review wait - that is KPI-only), never a
+// completed, Hold or Closed task.
+export function isTeamOverdue(
+  task: { status: string; dueDate: string | null; pmWaitWorkingDays?: number | null },
+  today: string,
+): boolean {
+  return isDeveloperOverdue(task, today) && !COMPLETED_STATUSES.includes(task.status) && !HOLD_CLOSED_STATUSES.includes(task.status);
+}
+
+// completedAt between two dates (YYYY-MM-DD, inclusive, UTC - the same
+// day boundary every other date in this service uses).
+function completedAtRange(from?: string, to?: string): FindOperator<any> {
+  const nextDay = (d: string) => {
+    const x = new Date(`${d}T00:00:00Z`);
+    x.setUTCDate(x.getUTCDate() + 1);
+    return x.toISOString().slice(0, 10);
+  };
+  const start = from ? MoreThanOrEqual(`${from} 00:00:00`) : null;
+  const end = to ? LessThan(`${nextDay(to)} 00:00:00`) : null;
+  if (start && end) return And(start, end);
+  return (start || end)!;
+}
+
 // Junk (widened 2026-10-09, confirmed with the user): a ticket created by
 // mistake. Program Manager can junk any ticket from any status with a
 // reason (markJunk(), including in bulk) and restore it to exactly where
@@ -267,14 +310,14 @@ const PEER_REVIEW_PENDING_STATUSES = ['Peer Review', 'Re-Peer-Review'];
 // developer, still open.
 // 'Disputed' (2026-10-27): the developer disputed it, waiting for the PM -
 // still open.
-const OPEN_DEFECT_STATUSES = ['Development', 'Feedback', 'Re-Feedback', 'Escalated', 'Returned to QA', NOT_READY_STATUS, DISPUTED_STATUS];
+// Since 2026-11-04 the Defect queue's Open uses the app-wide Open
+// definition instead (NOT_OPEN_STATUSES above): every status except
+// Pass/Released/Junk/Closed and Hold - so a Failed or PM Feedback defect
+// is open too, matching the dashboard's "Open defects" everywhere.
 
 // "Resolved" for a *linked* defect (assertNoOpenLinkedDefects() below) -
-// deliberately not OPEN_DEFECT_STATUSES's complement. That constant
-// answers "does this belong in QA's My Defects open-count", where
-// 'Failed' already counts as not-open because a QA rejection is expected
-// to loop straight back into 'Re-Feedback' via the Assignee's resubmit.
-// A linked defect blocking a parent task needs a stricter bar: if QA
+// deliberately not the complement of the Defect queue's Open (which
+// once left 'Failed' out, see above). A linked defect blocking a parent task needs a stricter bar: if QA
 // rejects the linked defect itself and nobody has resubmitted it yet, it
 // must keep blocking the parent - it is not resolved just because it's
 // momentarily sitting at 'Failed'. Only an actual QA pass, the PM
@@ -1092,12 +1135,12 @@ export class TasksService {
       currentUser.role === UserRole.QA
         ? { tenantId, isDefect: true, createdByUserId: currentUser.id }
         : { tenantId, isDefect: true };
-    // "Pending"/open here means OPEN_DEFECT_STATUSES (Development through
-    // Escalated), not QA_PENDING_STATUSES - unlike findQaQueue() above, a
-    // defect needs to stay visible to the QA who raised it the whole time
-    // it's open, not just while a QA review round is actually pending.
+    // "Pending"/open here means Open (NOT_OPEN_STATUSES, 2026-11-04), not
+    // QA_PENDING_STATUSES - unlike findQaQueue() above, a defect needs to
+    // stay visible to the QA who raised it the whole time it's open, not
+    // just while a QA review round is actually pending. Assigned or not.
     const openTasks = await this.tasksRepository.find({
-      where: { ...baseWhere, status: In(OPEN_DEFECT_STATUSES) },
+      where: { ...baseWhere, status: Not(In(NOT_OPEN_STATUSES)) },
       order: { createdAt: 'DESC', id: 'DESC' },
     });
     const today = new Date().toISOString().slice(0, 10);
@@ -1117,7 +1160,7 @@ export class TasksService {
     let tasks: ProjectTask[];
     if (status === 'Pass' || status === 'Failed') {
       tasks = await this.tasksRepository.find({ where: { ...baseWhere, status }, order: { createdAt: 'DESC', id: 'DESC' } });
-    } else if (OPEN_DEFECT_STATUSES.includes(status || '')) {
+    } else if (status && status !== 'All' && !NOT_OPEN_STATUSES.includes(status)) {
       tasks = openTasks.filter((t) => t.status === status);
     } else {
       tasks = openTasks;
@@ -1208,7 +1251,14 @@ export class TasksService {
     const pageSize = filters.pageSize && filters.pageSize > 0 ? Math.min(Math.floor(filters.pageSize), 200) : 50;
 
     const where: Record<string, any> = { tenantId, assigneeUserId: Not(IsNull()) };
-    if (filters.status && filters.status !== 'All') {
+    const passedRange = filters.passedFrom || filters.passedTo ? completedAtRange(filters.passedFrom, filters.passedTo) : null;
+    if (passedRange) {
+      // Passed testing: completed statuses are the point, so the default
+      // hiding doesn't apply; a status tab narrows within PASSED_STATUSES.
+      const requested = filters.status && filters.status !== 'All' ? filters.status.split(',').map((s) => s.trim()) : PASSED_STATUSES;
+      where.status = In(requested.filter((s) => PASSED_STATUSES.includes(s)));
+      where.completedAt = passedRange;
+    } else if (filters.status && filters.status !== 'All') {
       // An explicit status filter can never bring Junk back.
       const statusList = filters.status.split(',').map((s) => s.trim()).filter((s) => s && s !== JUNK_STATUS);
       where.status = In(statusList);
@@ -1242,7 +1292,11 @@ export class TasksService {
     const matching = this.sortByPriority(await this.tasksRepository.find({ where, order: { createdAt: 'DESC', id: 'DESC' } }));
     const openDependencyIds = await this.findOpenDependencyTaskIds(matching.map((t) => t.id));
 
+    const today = new Date().toISOString().slice(0, 10);
     let filtered = matching;
+    if (filters.overdue === 'Yes') {
+      filtered = filtered.filter((t) => isTeamOverdue(t, today));
+    }
     if (filters.dependency === 'Yes') {
       filtered = filtered.filter((t) => openDependencyIds.has(t.id));
     } else if (filters.dependency === 'No') {
@@ -1305,8 +1359,7 @@ export class TasksService {
     cardWhere.status = Not(In(this.defaultHiddenStatuses(filters)));
     const cardScopeTasks = await this.tasksRepository.find({ where: cardWhere });
     const cardOpenDependencyIds = await this.findOpenDependencyTaskIds(cardScopeTasks.map((t) => t.id));
-    const today = new Date().toISOString().slice(0, 10);
-    const statCounts = {
+    const statCounts: TeamTasksResult['statCounts'] = {
       total: cardScopeTasks.length,
       rejected: cardScopeTasks.filter((t) => t.status === 'Failed').length,
       openDependency: cardScopeTasks.filter((t) => cardOpenDependencyIds.has(t.id)).length,
@@ -1314,12 +1367,17 @@ export class TasksService {
       // the same treatment (see HOLD_CLOSED_STATUSES) so a task the PM
       // paused or force-closed never counts as overdue, even if
       // showHoldClosed is on and it's sitting in cardScopeTasks.
-      overdue: cardScopeTasks.filter(
-        // Not while waiting for QA / a peer (isDeveloperOverdue, 2026-11-04).
-        (t) => isDeveloperOverdue(t, today) && !COMPLETED_STATUSES.includes(t.status) && !HOLD_CLOSED_STATUSES.includes(t.status),
-      ).length,
+      // Not while waiting for QA / a peer (isDeveloperOverdue, 2026-11-04).
+      // The list's overdue=Yes filter uses the same isTeamOverdue().
+      overdue: cardScopeTasks.filter((t) => isTeamOverdue(t, today)).length,
       defects: cardScopeTasks.filter((t) => t.isDefect).length,
+      hold: await this.tasksRepository.count({ where: { tenantId, assigneeUserId: cardWhere.assigneeUserId, status: 'Hold' } }),
     };
+    if (passedRange) {
+      statCounts.passed = await this.tasksRepository.count({
+        where: { tenantId, assigneeUserId: cardWhere.assigneeUserId, status: In(PASSED_STATUSES), completedAt: passedRange },
+      });
+    }
 
     const assignees = await this.findTeamAssignees(tenantId);
     const phases = await this.findTeamPhases(tenantId);

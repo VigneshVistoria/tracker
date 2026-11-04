@@ -7,6 +7,7 @@ import { formatDate } from '../../lib/formatDate';
 import { isOverdueTask, todayISO } from '../../lib/developerTaskStats';
 import { COMPLETED_STATUSES, HOLD_CLOSED_STATUSES, statusBadgeStyle, statusLabel, priorityTone, priorityLabel } from '../../lib/taskTableShared';
 import styles from '../../styles/dashboardHome.module.css';
+import { buildHref } from '../../lib/listPresets';
 
 function greetingFor(date) {
   const hour = date.getHours();
@@ -194,7 +195,7 @@ export function IssuePipeline({ issues, loading, linkable = true }) {
         return (
           <li key={stage.status} className={styles.pipelineStage}>
             {linkable ? (
-              <Link href="/issues" className={styles.pipelineLink}>
+              <Link href={buildHref('/issues', { status: stage.status })} className={styles.pipelineLink}>
                 {content}
               </Link>
             ) : (

@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
+import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import styles from '../styles/issues.module.css';
 import dashboardStyles from '../styles/dashboard.module.css';
 import {
-  todayISO, yesterdayISO, computeDeveloperTaskStats, isOverdueTask, openTickets, AWAITING_REVIEW_STATUSES,
+  todayISO, computeDeveloperTaskStats, isOverdueTask, openTickets, MY_TASK_CARD_FILTERS, countMyTaskCard,
 } from '../lib/developerTaskStats';
+import { readCardParam, syncedQuery, sameQuery } from '../lib/listPresets';
 import {
   COMPLETED_STATUSES, LEGEND_ITEMS, buildRowTintClass, buildRowRailClass, selectableStatuses, statusLabel,
 } from '../lib/taskTableShared';
@@ -40,18 +42,29 @@ const ROW_RAIL_CLASS = buildRowRailClass(styles);
 // "Waiting for QA / review" (2026-11-04, user feedback): submitted work is
 // with QA, a peer or the PM, so it leaves "Open tasks" and is never
 // overdue for the developer. The review delay shows on the task header.
+//
+// Open / On hold (2026-11-04, user feedback - a card's number must match
+// its list): "Open tasks" is open work that is the assignee's to act on
+// (lib/developerTaskStats.js isOpenTask - no Hold/Closed/completed, no
+// work with a reviewer) and lists task rows only; dependency tickets
+// waiting on you have their own "Waiting on you" card. Hold is counted on
+// its own card. Each task card counts and lists through the same
+// MY_TASK_CARD_FILTERS predicate.
 const CARD_DEFS = [
-  { key: 'myTasks', label: 'Open tasks', sections: 'all' },
+  { key: 'myTasks', label: 'Open tasks', sections: 'tasks' },
   { key: 'waitingReview', label: 'Waiting for QA / review', sections: 'tasks' },
   { key: 'rejected', label: 'Rejected', accent: 'danger', sections: 'tasks' },
   { key: 'inbound', label: 'You’re waiting on', kind: 'tickets', direction: 'inbound' },
   { key: 'outbound', label: 'Waiting on you', kind: 'tickets', direction: 'outbound' },
   { key: 'overdue', label: 'Overdue tasks', accent: 'warning', sections: 'tasks' },
-  { key: 'defects', label: 'Defects', sections: 'tasks' },
+  { key: 'defects', label: 'Open defects', sections: 'tasks' },
+  { key: 'hold', label: 'On hold', sections: 'tasks' },
 ];
+const CARD_KEYS = CARD_DEFS.map((c) => c.key);
 
-const WITH_REVIEWER_STATUSES = [...AWAITING_REVIEW_STATUSES, 'Pending PM Review', 'Returned to QA'];
-const isWithReviewer = (task) => WITH_REVIEWER_STATUSES.includes(task.status);
+// Status filter a card sets when it opens (Rejected = Failed); every other
+// card starts from All and narrows by its own predicate.
+const cardStatusPreset = (key) => (key === 'rejected' ? 'Failed' : 'All');
 
 const noAssignee = null;
 const emailLabel = (email) => email || '—';
@@ -65,7 +78,13 @@ export default function DeveloperTaskWorkboard({
   userId,
   showCards = true,
   hideEmptyCards = false,
+  // My Tasks page only: read ?card= on first load (a dashboard tile's
+  // link) and keep the URL in step with the open card.
+  urlSync = false,
 }) {
+  const router = useRouter();
+  const initRef = useRef(false);
+  const [initialized, setInitialized] = useState(!urlSync);
   // null = collapsed. Otherwise the key of whichever tile is driving the
   // expanded view below.
   const [activeCard, setActiveCard] = useState(null);
@@ -85,14 +104,32 @@ export default function DeveloperTaskWorkboard({
   const viewModeStorageKey = `${storageKey}ViewMode:${userId}`;
 
   useEffect(() => {
+    if (urlSync && !router.isReady) return;
+    if (initRef.current) return;
+    initRef.current = true;
     const stored = localStorage.getItem(storageKey);
-    if (stored && CARD_DEFS.some((c) => c.key === stored)) setActiveCard(stored);
+    const card = (urlSync && readCardParam(router.query, CARD_KEYS)) || (stored && CARD_KEYS.includes(stored) ? stored : null);
+    if (card) {
+      // Re-apply the card's filter too (Rejected = Failed), not only its
+      // highlight, so the rows match the number after a reload.
+      setActiveCard(card);
+      setStatusFilter(cardStatusPreset(card));
+    }
     setShowCompleted(localStorage.getItem(showCompletedStorageKey) === 'true');
     const storedViewMode = localStorage.getItem(viewModeStorageKey);
     if (storedViewMode === 'table' || storedViewMode === 'tile') setViewMode(storedViewMode);
+    setInitialized(true);
     // storageKey/userId are static per page, not expected to change at runtime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router.isReady]);
+
+  useEffect(() => {
+    if (!urlSync || !initialized) return;
+    const next = syncedQuery(router.query, ['card'], { card: activeCard });
+    if (!sameQuery(router.query, next)) router.replace({ pathname: router.pathname, query: next }, undefined, { shallow: true });
+    // router.query changes with every replace; reacting to it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSync, initialized, activeCard]);
 
   const handleShowCompletedChange = (checked) => {
     setShowCompleted(checked);
@@ -139,16 +176,20 @@ export default function DeveloperTaskWorkboard({
   const openInbound = useMemo(() => openTickets(inbound), [inbound]);
   const dependencyRows = useMemo(() => openOutbound.map(toDependencyRow), [openOutbound]);
 
-  const { rejectedTasks, overdueTasks, overdueOutbound } = computeDeveloperTaskStats(visibleTasks, outbound, todayISO());
+  const today = todayISO();
+  const { overdueOutbound } = computeDeveloperTaskStats(visibleTasks, outbound, today);
 
+  // Task cards never count a completed task, so "Show completed tasks"
+  // doesn't move them.
   const counts = {
-    myTasks: visibleTasks.filter((t) => !isWithReviewer(t)).length,
-    waitingReview: visibleTasks.filter(isWithReviewer).length,
-    rejected: rejectedTasks.length,
+    myTasks: countMyTaskCard('myTasks', tasks, today),
+    waitingReview: countMyTaskCard('waitingReview', tasks, today),
+    rejected: countMyTaskCard('rejected', tasks, today),
     inbound: openInbound.length,
     outbound: openOutbound.length,
-    overdue: overdueTasks.length,
-    defects: visibleTasks.filter((t) => t.isDefect).length,
+    overdue: countMyTaskCard('overdue', tasks, today),
+    defects: countMyTaskCard('defects', tasks, today),
+    hold: countMyTaskCard('hold', tasks, today),
   };
   const cards = CARD_DEFS.map((c) => ({
     ...c,
@@ -165,10 +206,10 @@ export default function DeveloperTaskWorkboard({
       localStorage.setItem(storageKey, next || '');
       return next;
     });
-    setStatusFilter(card.key === 'rejected' ? 'Failed' : 'All');
+    setStatusFilter(cardStatusPreset(card.key));
     setDependencyFilter('All');
     setDueFrom('');
-    setDueTo(card.key === 'overdue' ? yesterdayISO() : '');
+    setDueTo('');
   };
 
   const handleGenericToggle = () => {
@@ -191,17 +232,17 @@ export default function DeveloperTaskWorkboard({
       }
       if (dueFrom && (!task.dueDate || task.dueDate < dueFrom)) return false;
       if (dueTo && (!task.dueDate || task.dueDate > dueTo)) return false;
-      // Same rule as the tile's count (isOverdueTask also leaves out
-      // Pass/Junk/Hold/Closed), so the rows always match the number.
-      if (activeCard === 'overdue' && !isOverdueTask(task)) return false;
+      // Same predicate as the card's count, so the rows always match the
+      // number. A status picked by hand wins over the card's own status
+      // rule (so "Feedback" from the dropdown still finds those tasks);
+      // Overdue and Defects keep their rule either way.
+      const cardFilter = MY_TASK_CARD_FILTERS[activeCard];
+      if (cardFilter && statusFilter === 'All' && !cardFilter(task, today)) return false;
+      if (activeCard === 'overdue' && !isOverdueTask(task, today)) return false;
       if (activeCard === 'defects' && !task.isDefect) return false;
-      // Same split as the two tiles' counts. A status picked by hand wins,
-      // so "Feedback" from the dropdown still finds those tasks.
-      if (activeCard === 'myTasks' && statusFilter === 'All' && isWithReviewer(task)) return false;
-      if (activeCard === 'waitingReview' && !isWithReviewer(task)) return false;
       return true;
     });
-  }, [visibleTasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard]);
+  }, [visibleTasks, statusFilter, dependencyFilter, dueFrom, dueTo, activeCard, today]);
 
   // Tickets carry no status/due date of their own to filter on, so while
   // a task-only filter is set they're left out, with a note instead -
@@ -321,6 +362,28 @@ export default function DeveloperTaskWorkboard({
 
       {activeCard && activeCardDef && activeCardDef.kind !== 'tickets' && (
         <>
+          {/* No cards on this page for this role: say which list a
+              dashboard link opened, with a way back to all open tasks. */}
+          {!showCards && activeCard !== 'myTasks' && (
+            <div className={styles.filterBar}>
+              <div className={styles.filterGroup}>
+                <span className={styles.filterLabel}>Showing</span>
+                <span className={styles.filterChip}>
+                  <span>
+                    {activeCardDef.label} ({activeCardDef.count})
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.filterChipClear}
+                    aria-label={`Clear: show all open tasks instead of ${activeCardDef.label}`}
+                    onClick={() => handleCardClick(cards.find((c) => c.key === 'myTasks'))}
+                  >
+                    <X size={13} aria-hidden="true" />
+                  </button>
+                </span>
+              </div>
+            </div>
+          )}
           <StatusLegend items={LEGEND_ITEMS} />
 
           <div className={`${styles.filterBar} ${styles.teamFilterBar}`}>

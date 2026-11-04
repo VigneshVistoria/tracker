@@ -86,6 +86,7 @@ export default function MyTasksPage() {
           storageKey={ACTIVE_CARD_STORAGE_KEY}
           userId={user.id}
           showCards={DEVELOPER_EQUIVALENT_ROLES.includes(user.role)}
+          urlSync
         />
       )}
     </AppShell>

@@ -28,8 +28,13 @@ export function yesterdayISO() {
 // not the developer - never the developer's overdue work. The review delay
 // shows separately (isQaReviewOverdue below, header "Review due").
 // Mirrors isDeveloperOverdue() in backend/src/tasks/pm-review.ts.
+// Released (2026-11-04): completed, same as Pass - Team Tasks' count
+// (backend isTeamOverdue) already left both Released statuses out.
 export const AWAITING_REVIEW_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
-const NEVER_OVERDUE_STATUSES = ['Pass', 'Junk', 'Hold', 'Closed', 'Pending PM Review', 'Returned to QA', 'Disputed', ...AWAITING_REVIEW_STATUSES];
+const NEVER_OVERDUE_STATUSES = [
+  'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Hold', 'Closed',
+  'Pending PM Review', 'Returned to QA', 'Disputed', ...AWAITING_REVIEW_STATUSES,
+];
 export function effectiveDueDate(task) {
   if (!task.dueDate) return null;
   let remaining = task.pmWaitWorkingDays || 0;
@@ -90,4 +95,34 @@ export function computeDeveloperTaskStats(tasks, outbound, today = todayISO()) {
     overdueOutbound,
     overdueCount: overdueTasks.length,
   };
+}
+
+// Open (user definition, 2026-11-04 - dashboard cards and the lists they
+// open): every status except these. Hold is not open either; it is
+// counted on its own ("On hold"). Mirrors NOT_OPEN_STATUSES in
+// backend/src/tasks/tasks.service.ts.
+const NOT_OPEN_STATUSES = ['Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Hold', 'Closed'];
+export const isOpenTask = (task) => !NOT_OPEN_STATUSES.includes(task.status);
+
+// Submitted work that is with QA, a peer or the PM - not the assignee's to
+// act on, so it sits under "Waiting for QA / review", not "Open tasks".
+export const WITH_REVIEWER_STATUSES = [...AWAITING_REVIEW_STATUSES, 'Pending PM Review', 'Returned to QA'];
+export const isWithReviewer = (task) => WITH_REVIEWER_STATUSES.includes(task.status);
+
+// What each My Tasks / Developer Dashboard card counts - the count and the
+// rows the card opens both use this, so they can't disagree. Dependency
+// ticket cards (inbound/outbound) count tickets, not tasks, so they're
+// not here.
+export const MY_TASK_CARD_FILTERS = {
+  myTasks: (t) => isOpenTask(t) && !isWithReviewer(t),
+  waitingReview: (t) => isWithReviewer(t),
+  rejected: (t) => t.status === 'Failed',
+  overdue: (t, today) => isOverdueTask(t, today),
+  defects: (t) => Boolean(t.isDefect) && isOpenTask(t),
+  hold: (t) => t.status === 'Hold',
+};
+
+export function countMyTaskCard(key, tasks, today = todayISO()) {
+  const fn = MY_TASK_CARD_FILTERS[key];
+  return fn ? tasks.filter((t) => fn(t, today)).length : 0;
 }

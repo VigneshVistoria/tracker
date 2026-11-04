@@ -1763,6 +1763,41 @@ td.empty::before,
   accent-color: var(--ds-color-primary-600);
 }
 
+/* An active filter with no field of its own (Team Tasks' Overdue /
+   Passed testing, My Tasks' card from a dashboard link) - label plus a
+   clear button. */
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: 36px;
+  padding: 0 var(--ds-space-1) 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border-focus);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+}
+.filterChipClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: none;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+.filterChipClear:hover {
+  color: var(--ds-text-primary);
+}
+.filterChipClear:focus-visible {
+  box-shadow: var(--ds-shadow-focus);
+  outline: none;
+}
+
 /* Mobile (≤640px): the shared .filterBar stacks its groups; keep them
    left-aligned and full width here rather than pushed to the right. */
 @media (max-width: 640px) {

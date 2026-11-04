@@ -37,6 +37,10 @@ export interface TeamExportQuery {
   taskType?: string;
   dueFrom?: string;
   dueTo?: string;
+  // Set by the Overdue card / Passed testing preset (2026-11-04).
+  overdue?: string;
+  passedFrom?: string;
+  passedTo?: string;
   showHoldClosed: boolean;
   includeDependencies: boolean;
   sortKey?: string;
@@ -208,6 +212,10 @@ export function describeFilters(query: TeamExportQuery, result: Pick<TeamTasksRe
     ...(query.taskType && TASK_TYPE_EXPORT_LABEL[query.taskType] ? [['Type', TASK_TYPE_EXPORT_LABEL[query.taskType]] as [string, string]] : []),
     ['Due from', query.dueFrom ? formatLongDate(query.dueFrom) : 'Any'],
     ['Due to', query.dueTo ? formatLongDate(query.dueTo) : 'Any'],
+    ...(query.overdue === 'Yes' ? [['Overdue', 'Overdue only'] as [string, string]] : []),
+    ...(query.passedFrom || query.passedTo
+      ? [['Passed testing', `${query.passedFrom ? formatLongDate(query.passedFrom) : 'Any'} to ${query.passedTo ? formatLongDate(query.passedTo) : 'Any'}`] as [string, string]]
+      : []),
     ['Hold/Closed', query.showHoldClosed ? 'Shown' : 'Hidden'],
   ];
   if (query.includeDependencies) {

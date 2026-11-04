@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import {
   Hash, User, FolderKanban, FileText, Flag, Activity, CalendarDays, CalendarClock,
   ChevronDown, ChevronUp, Tag,
@@ -15,6 +16,7 @@ import { LEGEND_ITEMS, buildRowTintClass, priorityRank, priorityTone, priorityLa
 import { formatDate } from '../lib/formatDate';
 import { stripHtmlForPreview } from '../lib/richText';
 import { apiFetch } from '../lib/api';
+import { readCardParam, syncedQuery, sameQuery } from '../lib/listPresets';
 
 // QA Review queue - same icon-header/sortable table, row-tint, and
 // stat-cards-as-filter-presets pattern as My Tasks (DeveloperTaskWorkboard).
@@ -52,7 +54,11 @@ const DEFECT_LEGEND_ITEMS = LEGEND_ITEMS.filter(
     item.label === statusLabel('Escalated') ||
     item.label === 'Pass' ||
     item.label.startsWith('Failed') ||
-    item.label === 'Returned to QA',
+    item.label === 'Returned to QA' ||
+    // Open now covers every open status (2026-11-04), incl. Disputed,
+    // PM Feedback and Not Ready for Testing.
+    item.label === 'Pending PM Review / Disputed' ||
+    item.label === 'PM Feedback / Not Ready for Testing',
 );
 
 const CARD_DEFS = [
@@ -74,6 +80,7 @@ const DEFECT_CARD_DEFS = [
   { ...CARD_DEFS[0], label: 'Open' },
   ...CARD_DEFS.slice(1),
 ];
+const CARD_KEYS = CARD_DEFS.map((c) => c.key);
 
 // includeDefects (QA Review page only, 2026-10-13): asks the backend for
 // defects waiting on this QA's retest too (?include=defects - see
@@ -86,6 +93,11 @@ const TYPE_FILTERS = [
 ];
 
 export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-queue', showDefectColumns = false, includeDefects = false }) {
+  const router = useRouter();
+  const initRef = useRef(false);
+  // Nothing is fetched until the URL/remembered card is applied, so the
+  // first list loaded is already the card's.
+  const [initialized, setInitialized] = useState(false);
   const [activeCard, setActiveCard] = useState(null);
   const [statusFilter, setStatusFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -103,14 +115,42 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const stored = localStorage.getItem(storageKey);
-    if (stored) setActiveCard(stored);
-    // storageKey is a static prop per page, not expected to change at runtime.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Opens a card: its highlight and its filter together (2026-11-04 - the
+  // remembered card used to come back highlighted but unfiltered).
+  const applyCard = (key) => {
+    const def = CARD_DEFS.find((c) => c.key === key);
+    setStatusFilter(def ? def.statusFilter : 'All');
+    setOnlyReviewOverdue(Boolean(def?.overdue));
+    setDueTo('');
+    setDueFrom('');
+  };
 
   useEffect(() => {
+    if (!router.isReady || initRef.current) return;
+    initRef.current = true;
+    // A card in the URL (a dashboard tile's link) wins over the remembered one.
+    const stored = localStorage.getItem(storageKey);
+    const card = readCardParam(router.query, CARD_KEYS) || (CARD_KEYS.includes(stored) ? stored : null);
+    if (card) {
+      setActiveCard(card);
+      applyCard(card);
+    }
+    setInitialized(true);
+    // storageKey is a static prop per page, not expected to change at runtime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
+
+  // Keep ?card= in step with the open card (shallow, no page reload).
+  useEffect(() => {
+    if (!initialized) return;
+    const next = syncedQuery(router.query, ['card'], { card: activeCard });
+    if (!sameQuery(router.query, next)) router.replace({ pathname: router.pathname, query: next }, undefined, { shallow: true });
+    // router.query changes with every replace; reacting to it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized, activeCard]);
+
+  useEffect(() => {
+    if (!initialized) return undefined;
     const params = new URLSearchParams();
     if (statusFilter !== 'All') params.set('status', statusFilter);
     if (includeDefects) params.set('include', 'defects');
@@ -133,7 +173,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
     return () => {
       cancelled = true;
     };
-  }, [statusFilter, endpoint, includeDefects]);
+  }, [initialized, statusFilter, endpoint, includeDefects]);
 
   // Distinct list of assignees among the tasks currently loaded, for the
   // Assignee filter - rebuilds whenever the loaded set changes (e.g.
@@ -163,10 +203,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
       localStorage.setItem(storageKey, next || '');
       return next;
     });
-    setStatusFilter(card.statusFilter);
-    setOnlyReviewOverdue(Boolean(card.overdue));
-    setDueTo('');
-    setDueFrom('');
+    applyCard(card.key);
   };
 
   const handleGenericToggle = () => {

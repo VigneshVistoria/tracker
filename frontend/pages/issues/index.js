@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AppShell from '../../components/AppShell';
@@ -11,6 +11,7 @@ import { badgeClassFor, STATUS_OPTIONS, MODE_OPTIONS, canCreateTickets, getIssue
 import { formatDate } from '../../lib/formatDate';
 import LoadingState from '../../components/ui/LoadingState';
 import { redirectToSignIn } from '../../lib/session';
+import { ISSUE_STATUS_GROUPS, issueMatchesStatus, readIssueStatusParam, syncedQuery, sameQuery } from '../../lib/listPresets';
 
 const MOVE_ACTION_TO_REQUEST = {
   patch: (id, targetStatus) => ({ path: `/issues/${id}`, options: { method: 'PATCH', body: JSON.stringify({ status: targetStatus }) } }),
@@ -117,6 +118,27 @@ export default function IssuesList() {
   const [showstopperFilter, setShowstopperFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('table');
+  // ?status= (a dashboard tile's link: one status, or a group such as
+  // 'in-progress') is applied once on first load; afterwards the URL
+  // follows the Status filter, so a reload shows the same rows.
+  const statusInitRef = useRef(false);
+  const [statusReady, setStatusReady] = useState(false);
+
+  useEffect(() => {
+    if (!router.isReady || statusInitRef.current) return;
+    statusInitRef.current = true;
+    const preset = readIssueStatusParam(router.query, STATUS_OPTIONS);
+    if (preset) setStatusFilter(preset);
+    setStatusReady(true);
+  }, [router.isReady, router.query]);
+
+  useEffect(() => {
+    if (!statusReady) return;
+    const next = syncedQuery(router.query, ['status'], { status: statusFilter === 'All' ? '' : statusFilter });
+    if (!sameQuery(router.query, next)) router.replace({ pathname: router.pathname, query: next }, undefined, { shallow: true });
+    // router.query changes with every replace; reacting to it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusReady, statusFilter]);
 
   const load = useCallback(() => {
     apiFetch('/issues')
@@ -168,7 +190,7 @@ export default function IssuesList() {
   const visibleIssues = useMemo(() => {
     return issues.filter((issue) => {
       if (modeFilter !== 'All' && issue.mode !== modeFilter) return false;
-      if (statusFilter !== 'All' && issue.status !== statusFilter) return false;
+      if (!issueMatchesStatus(issue, statusFilter)) return false;
       if (showstopperFilter !== 'All') {
         const wants = showstopperFilter === 'Yes';
         if (Boolean(issue.showstopper) !== wants) return false;
@@ -250,6 +272,7 @@ export default function IssuesList() {
           <label className={styles.filterLabel} htmlFor="statusFilter">Status</label>
           <select id="statusFilter" className={styles.filterSelect} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="All">All</option>
+            {Object.entries(ISSUE_STATUS_GROUPS).map(([key, g]) => <option key={key} value={key}>{g.label}</option>)}
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>

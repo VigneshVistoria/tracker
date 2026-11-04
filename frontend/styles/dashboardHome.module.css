@@ -46,6 +46,43 @@
   flex-wrap: wrap;
 }
 
+/* ---------- Passed testing period (leadership) ---------- */
+.periodBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-2) var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
+}
+
+.periodLabel {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+
+.periodSelect {
+  min-height: 36px;
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  font: inherit;
+  font-size: var(--ds-text-sm);
+}
+
+.periodSelect:focus-visible {
+  border-color: var(--ds-border-focus);
+  box-shadow: var(--ds-shadow-focus);
+  outline: none;
+}
+
+.periodHint {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
 /* ---------- Attention tiles ---------- */
 .tileGrid {
   display: grid;

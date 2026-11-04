@@ -108,6 +108,15 @@ const ROLES_ALLOWED_TO_VIEW_TEAM_TASKS: UserRole[] = [UserRole.ADMIN, UserRole.E
 const ROLES_ALLOWED_TO_EXPORT_TEAM_TASKS: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// Passed testing range on Team Tasks (2026-11-04).
+function assertDateOnly(...dates: Array<string | undefined>) {
+  for (const d of dates) {
+    if (d && (!DATE_ONLY_RE.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)))) {
+      throw new BadRequestException('Passed dates must be YYYY-MM-DD.');
+    }
+  }
+}
+
 @Controller('tasks')
 @UseGuards(JwtAuthGuard)
 export class TasksController {
@@ -243,6 +252,9 @@ export class TasksController {
     @Query('taskType') taskType: string | undefined,
     @Query('dueFrom') dueFrom: string | undefined,
     @Query('dueTo') dueTo: string | undefined,
+    @Query('overdue') overdue: string | undefined,
+    @Query('passedFrom') passedFrom: string | undefined,
+    @Query('passedTo') passedTo: string | undefined,
     @Query('showCompleted') showCompleted: string | undefined,
     @Query('showHoldClosed') showHoldClosed: string | undefined,
     @Query('all') all: string | undefined,
@@ -253,6 +265,7 @@ export class TasksController {
     if (!ROLES_ALLOWED_TO_VIEW_TEAM_TASKS.includes(currentUser.role)) {
       throw new ForbiddenException('Only Admin, Executive, or Program Manager can view Team Tasks.');
     }
+    assertDateOnly(passedFrom, passedTo);
     return this.tasksService.findTeam(req.user.tenantId, {
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
@@ -264,6 +277,9 @@ export class TasksController {
       taskType: taskType || undefined,
       dueFrom,
       dueTo,
+      overdue: overdue === 'Yes' ? 'Yes' : undefined,
+      passedFrom: passedFrom || undefined,
+      passedTo: passedTo || undefined,
       showCompleted: showCompleted === 'true',
       showHoldClosed: showHoldClosed === 'true',
       all: all === 'true',
@@ -286,6 +302,9 @@ export class TasksController {
     @Query('taskType') taskType: string | undefined,
     @Query('dueFrom') dueFrom: string | undefined,
     @Query('dueTo') dueTo: string | undefined,
+    @Query('overdue') overdue: string | undefined,
+    @Query('passedFrom') passedFrom: string | undefined,
+    @Query('passedTo') passedTo: string | undefined,
     @Query('showHoldClosed') showHoldClosed: string | undefined,
     @Query('includeDependencies') includeDependencies: string | undefined,
     @Query('sortKey') sortKey: string | undefined,
@@ -301,6 +320,7 @@ export class TasksController {
     for (const d of [dueFrom, dueTo]) {
       if (d && !DATE_ONLY_RE.test(d)) throw new BadRequestException('Due dates must be YYYY-MM-DD.');
     }
+    assertDateOnly(passedFrom, passedTo);
     const positiveInt = (v: string | undefined) => {
       if (!v) return undefined;
       const n = Number(v);
@@ -316,6 +336,9 @@ export class TasksController {
       taskType: taskType || undefined,
       dueFrom: dueFrom || undefined,
       dueTo: dueTo || undefined,
+      overdue: overdue === 'Yes' ? 'Yes' : undefined,
+      passedFrom: passedFrom || undefined,
+      passedTo: passedTo || undefined,
       showHoldClosed: showHoldClosed === 'true',
       includeDependencies: includeDependencies === 'true',
       sortKey: sortKey || undefined,
