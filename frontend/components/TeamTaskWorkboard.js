@@ -844,7 +844,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="teamDueFrom">Due from</label>
+              <label className={styles.filterLabel} htmlFor="teamDueFrom">Task due from</label>
               <div className={styles.dateFieldWrap}>
                 <input
                   id="teamDueFrom"
@@ -868,7 +868,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="teamDueTo">Due to</label>
+              <label className={styles.filterLabel} htmlFor="teamDueTo">Task due to</label>
               <div className={styles.dateFieldWrap}>
                 <input
                   id="teamDueTo"

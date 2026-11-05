@@ -7,7 +7,7 @@ import styles from './CollapsibleSection.module.css';
 // default; the user's choice is remembered per browser under
 // `storageKey` (include the user id in it). The content stays in the DOM
 // (hidden), so a notification deep link to something inside opens it.
-export default function CollapsibleSection({ label, count, storageKey, defaultOpen = false, children }) {
+export default function CollapsibleSection({ id, label, count, storageKey, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen);
   const contentRef = useRef(null);
   const contentId = useId();
@@ -20,12 +20,14 @@ export default function CollapsibleSection({ label, count, storageKey, defaultOp
 
   useEffect(() => {
     const onReveal = (e) => {
+      // A deep link to the section itself (id) or to something inside it.
+      if (id && e.detail?.id === id) return setOpen(true);
       const el = e.detail?.id && document.getElementById(e.detail.id);
       if (el && contentRef.current?.contains(el)) setOpen(true);
     };
     window.addEventListener(REVEAL_EVENT, onReveal);
     return () => window.removeEventListener(REVEAL_EVENT, onReveal);
-  }, []);
+  }, [id]);
 
   const toggle = () => {
     const next = !open;
@@ -34,7 +36,7 @@ export default function CollapsibleSection({ label, count, storageKey, defaultOp
   };
 
   return (
-    <div className={styles.section}>
+    <div id={id} className={styles.section}>
       <button type="button" className={styles.toggle} aria-expanded={open} aria-controls={contentId} onClick={toggle}>
         <ChevronDown size={16} aria-hidden="true" className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`} />
         <span>

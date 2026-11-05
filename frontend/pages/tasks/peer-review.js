@@ -79,7 +79,7 @@ export default function PeerReviewQueuePage() {
             className={styles.issueMeta}
             style={{ margin: 'var(--space-1) 0 0' }}
           >
-            QA Review Due:{' '}
+            Review due:{' '}
             <span className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
               {task.qaReviewDueDate ? formatDate(task.qaReviewDueDate) : '—'}
             </span>

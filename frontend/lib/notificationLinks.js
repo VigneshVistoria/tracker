@@ -10,5 +10,8 @@ export function notificationHref(item) {
     const match = /task #(\d+)/.exec(item.title || '');
     if (match) return `/tasks/${match[1]}#dependency-tickets`;
   }
+  // Resolved-dependency notifications saved before 2026-11-05 linked to
+  // the bare task: open its resolved/cancelled group instead.
+  if (item?.type === 'dependency.resolved' && link && /^\/tasks\/\d+$/.test(link)) return `${link}#resolved-dependencies`;
   return link;
 }

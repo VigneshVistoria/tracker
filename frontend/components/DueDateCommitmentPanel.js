@@ -247,7 +247,7 @@ function CommitmentLine({ state, task }) {
     );
   }
   if (state.state === 'unassigned') {
-    return <p style={{ marginTop: 0 }}>Due {formatDate(state.dueDate)}. Nobody is assigned, so nobody has committed to it yet.</p>;
+    return <p style={{ marginTop: 0 }}>Task due {formatDate(state.dueDate)}. Nobody is assigned, so nobody has committed to it yet.</p>;
   }
   if (state.state === 'needs_commitment') {
     return (

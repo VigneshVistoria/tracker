@@ -281,7 +281,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
       },
       {
         key: 'qaReviewDueDate',
-        header: <ColHeader icon={CalendarClock} label="QA Review Due" />,
+        header: <ColHeader icon={CalendarClock} label="Review due" showLabel />,
         sortable: true,
         render: (t) => (
           <span className={isQaReviewOverdue(t) ? styles.dueDateOverdue : undefined}>
@@ -408,7 +408,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="qaDueFrom">Assignee Due (from)</label>
+              <label className={styles.filterLabel} htmlFor="qaDueFrom">Task due (from)</label>
               <input
                 id="qaDueFrom"
                 type="date"
@@ -419,7 +419,7 @@ export default function QaReviewWorkboard({ storageKey, endpoint = '/tasks/qa-qu
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="qaDueTo">Assignee Due (to)</label>
+              <label className={styles.filterLabel} htmlFor="qaDueTo">Task due (to)</label>
               <input
                 id="qaDueTo"
                 type="date"

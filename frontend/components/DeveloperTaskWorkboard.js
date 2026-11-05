@@ -417,7 +417,7 @@ export default function DeveloperTaskWorkboard({
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="dueFrom">Due from</label>
+              <label className={styles.filterLabel} htmlFor="dueFrom">Task due from</label>
               <input
                 id="dueFrom"
                 type="date"
@@ -428,7 +428,7 @@ export default function DeveloperTaskWorkboard({
             </div>
 
             <div className={styles.filterGroup}>
-              <label className={styles.filterLabel} htmlFor="dueTo">Due to</label>
+              <label className={styles.filterLabel} htmlFor="dueTo">Task due to</label>
               <input
                 id="dueTo"
                 type="date"

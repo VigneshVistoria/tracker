@@ -65,7 +65,7 @@ export default function MyTasksPage() {
         <div>
           <h1 className={styles.pageTitle}>My Tasks</h1>
           <p className={styles.pageSubtitle}>
-            Tasks assigned to you. Open a task to set Estimated Hours and Due Date, and file a Dependency
+            Tasks assigned to you. Open a task to set Estimated Hours and the task due date, and file a Dependency
             Ticket if you&apos;re blocked.
           </p>
         </div>

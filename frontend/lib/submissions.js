@@ -85,6 +85,9 @@ const ARTIFACT_LABELS = {
   'Screenshot': 'Screenshot',
   'Demo Video': 'Demo video',
   'Technical Documentation': 'Technical documentation',
+  'Design file': 'Design file',
+  'Prototype': 'Prototype',
+  'Design spec': 'Design spec',
 };
 
 // "Pull request", or "Pull request 2" when a submission has more than one.

@@ -129,3 +129,50 @@
     padding: var(--ds-space-3);
   }
 }
+
+/* Earlier submissions, collapsed until clicked (2026-11-05). */
+.collapsed {
+  padding-top: var(--ds-space-3);
+  padding-bottom: var(--ds-space-3);
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.toggle:focus-visible {
+  outline: 2px solid var(--ds-focus-ring, var(--ds-color-primary-600));
+  outline-offset: 2px;
+  border-radius: var(--ds-radius-sm);
+}
+.chevron {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.chevronOpen {
+  transform: rotate(0deg);
+}
+.collapsedDate {
+  color: var(--ds-text-muted);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-regular, 400);
+}
+.olderHint {
+  margin: var(--ds-space-2) 0;
+  color: var(--ds-text-muted);
+  font-size: var(--ds-text-xs);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chevron { transition: none; }
+}
+
+.latestWork {
+  margin-bottom: var(--ds-space-4);
+}

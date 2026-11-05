@@ -58,7 +58,7 @@ export function isOverdueTask(task, today = todayISO()) {
 // once QA/the reviewer has acted (Pass/Failed/Escalated/etc.) it's no
 // longer meaningfully overdue for review. Mirrors TasksService.
 // findQaQueue()/findDefectQueue()'s 'overdue' stat count server-side.
-const QA_REVIEW_PENDING_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
+export const QA_REVIEW_PENDING_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review', 'Re-Peer-Review'];
 export function isQaReviewOverdue(task, today = todayISO()) {
   return Boolean(
     task.qaReviewDueDate && task.qaReviewDueDate < today && QA_REVIEW_PENDING_STATUSES.includes(task.status),

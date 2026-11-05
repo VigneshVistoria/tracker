@@ -372,7 +372,9 @@ export class UserNotificationListenersService {
         type: 'dependency.resolved',
         title: `Dependency on task #${e.parentTaskId} was cleared`,
         body: e.title,
-        link: `/tasks/${e.parentTaskId}`,
+        // The exact ticket (2026-11-05): the task page opens the resolved
+        // group and highlights it.
+        link: dependencyTicketLink(e),
         actorUserId: e.actorUserId,
         actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
       });

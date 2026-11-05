@@ -47,7 +47,7 @@ export default function TicketCard({ item, owner, compact = false }) {
       <p className={styles.cardMeta}>
         {owner ? `${owner} · ` : ''}
         {item.isDefect ? 'Defect · ' : ''}
-        {item.status} · Due {compact ? formatMonthDay(item.dueDate) : formatDate(item.dueDate)}
+        {item.status} · Task due {compact ? formatMonthDay(item.dueDate) : formatDate(item.dueDate)}
         {!compact && item.projectName ? ` · ${item.projectName}` : ''}
       </p>
       {chips && (

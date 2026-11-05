@@ -1,10 +1,11 @@
-import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, Send, Undo2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, PenTool, MousePointerClick, Ruler, Paperclip, Send, Undo2, ChevronDown } from 'lucide-react';
 import { formatDate } from '../lib/formatDate';
 import { groupSubmissions, roundOutcome, labelArtifacts } from '../lib/submissions';
 import Avatar from './ui/Avatar';
 import Badge from './ui/Badge';
 import RichTextDisplay from './ui/RichTextDisplay';
-import CollapsibleSection from './ui/CollapsibleSection';
+import { REVEAL_EVENT } from '../lib/useHashTarget';
 import { ScreenshotGallery } from './DefectScreenshots';
 import { SubmissionChecklistSummary } from './SubmissionChecklist';
 import styles from '../styles/submissionCards.module.css';
@@ -22,9 +23,31 @@ const ARTIFACT_ICONS = {
   'Build Pipeline Link': Workflow,
   'Deployment Report': FileBarChart,
   'Demo Video': Video,
+  'Design file': PenTool,
+  'Prototype': MousePointerClick,
+  'Design spec': Ruler,
 };
 
 const ROUND_LABEL = { peer: 'Peer review', pm: 'PM review', qa: 'QA review' };
+
+// "Latest work" (2026-11-05): the newest submission's main links (see
+// latestWork() in lib/artifactTypes.js), shown above the submit form so
+// nobody has to scroll to Review history for them.
+export function LatestWork({ work, isDesign }) {
+  if (!work) return null;
+  return (
+    <section className={`${styles.card} ${styles.latestWork}`} aria-labelledby="latest-work-title">
+      <h2 className={styles.title} id="latest-work-title">
+        {isDesign ? 'Latest prototype and handover' : 'Latest build and pull request'}
+      </h2>
+      <p className={styles.meta}>
+        From submission {work.number} · {formatDate(work.submittedAt)} ·{' '}
+        <a href={`#submission-${work.number}`}>see it in Review history</a>
+      </p>
+      <ArtifactLinks artifacts={work.artifacts} label="Links:" />
+    </section>
+  );
+}
 
 function ArtifactLinks({ artifacts, label }) {
   if (!artifacts || artifacts.length === 0) return null;
@@ -91,17 +114,45 @@ function Decision({ round, screenshots }) {
   );
 }
 
+// Earlier submissions start collapsed - just their heading, outcome and
+// date - and open on click (2026-11-05). The latest is always open. Not
+// remembered between visits, so every task opens on its latest round.
 function SubmissionCard({ submission, latest, screenshots }) {
   const s = submission;
+  const [open, setOpen] = useState(!!latest);
+  const bodyId = `submission-${s.number}-body`;
+  useEffect(() => {
+    if (latest) return undefined;
+    // A deep link to this submission (#submission-N) opens it.
+    const onReveal = (e) => {
+      if (e.detail?.id === `submission-${s.number}`) setOpen(true);
+    };
+    window.addEventListener(REVEAL_EVENT, onReveal);
+    return () => window.removeEventListener(REVEAL_EVENT, onReveal);
+  }, [latest, s.number]);
+  const heading = (
+    <>
+      Submission {s.number}
+      {latest && <span className={styles.latestTag}>Latest</span>}
+      {!latest && !open && <span className={styles.collapsedDate}>{formatDate(s.submittedAt)}</span>}
+    </>
+  );
   return (
-    <article className={`${styles.card} ${latest ? styles.latest : ''}`} id={`submission-${s.number}`} aria-labelledby={`submission-${s.number}-title`}>
+    <article className={`${styles.card} ${latest ? styles.latest : ''} ${open ? '' : styles.collapsed}`} id={`submission-${s.number}`} aria-labelledby={`submission-${s.number}-title`}>
       <header className={styles.head}>
         <h3 className={styles.title} id={`submission-${s.number}-title`}>
-          Submission {s.number}
-          {latest && <span className={styles.latestTag}>Latest</span>}
+          {latest ? (
+            heading
+          ) : (
+            <button type="button" className={styles.toggle} aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>
+              <ChevronDown size={16} aria-hidden="true" className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`} />
+              {heading}
+            </button>
+          )}
         </h3>
         <Badge tone={s.outcome.tone}>{s.outcome.text}</Badge>
       </header>
+      <div id={bodyId} hidden={!open}>
       <p className={styles.meta}>
         <Send size={12} aria-hidden="true" />
         <Avatar name={s.submittedByFullName} size="xs" /> {s.submittedByFullName || 'Unknown'} · {formatDate(s.submittedAt)}
@@ -125,6 +176,7 @@ function SubmissionCard({ submission, latest, screenshots }) {
           <Decision key={r.id ?? r.roundNumber} round={r} screenshots={screenshots} />
         ))}
       </ol>
+      </div>
     </article>
   );
 }
@@ -139,16 +191,13 @@ export default function SubmissionCards({ reviews, decisionScreenshots = [], use
     <div>
       <SubmissionCard submission={latest} latest screenshots={decisionScreenshots} />
       {older.length > 0 && (
-        <CollapsibleSection
-          count={older.length}
-          label={older.length === 1 ? 'older submission' : 'older submissions'}
-          storageKey={`taskSection:olderSubmissions:${userId}`}
-        >
-          {older.map((s) => (
-            <SubmissionCard key={s.key} submission={s} screenshots={decisionScreenshots} />
-          ))}
-        </CollapsibleSection>
+        <p className={styles.olderHint}>
+          {older.length === 1 ? 'An earlier submission' : `${older.length} earlier submissions`} - click one to open it.
+        </p>
       )}
+      {older.map((s) => (
+        <SubmissionCard key={s.key} submission={s} screenshots={decisionScreenshots} />
+      ))}
     </div>
   );
 }

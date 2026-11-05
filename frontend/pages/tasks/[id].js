@@ -25,15 +25,16 @@ import ScreenshotAttach from '../../components/ScreenshotAttach';
 import ScreenshotUploader from '../../components/ScreenshotUploader';
 import ReasonHint, { ChoiceHint } from '../../components/ReasonHint';
 import ChangeDependencyOwnerModal from '../../components/ChangeDependencyOwnerModal';
-import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, PenTool, MousePointerClick, Ruler, Paperclip, ClipboardList, Bug, Globe, RefreshCw, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { useConfirm } from '../../lib/confirm';
-import useHashTarget from '../../lib/useHashTarget';
+import useHashTarget, { REVEAL_EVENT } from '../../lib/useHashTarget';
 import { TASK_PAGE_V2 } from '../../lib/featureFlags';
 import CollapsibleSection from '../../components/ui/CollapsibleSection';
-import SubmissionCards from '../../components/SubmissionCards';
+import SubmissionCards, { LatestWork } from '../../components/SubmissionCards';
 import { groupSubmissions } from '../../lib/submissions';
 import { taskNextStep } from '../../lib/taskNextStep';
 import { peerReviewerOptions } from '../../lib/peerReviewers';
+import { artifactTypeGroups, latestWork } from '../../lib/artifactTypes';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
@@ -128,15 +129,6 @@ function StatusBadge({ status, task }) {
   );
 }
 
-const ARTIFACT_TYPES = [
-  'APK Build',
-  'Build Pipeline Link',
-  'Deployment Report',
-  'Pull Request Link',
-  'Screenshot',
-  'Demo Video',
-  'Technical Documentation',
-];
 
 // Artifact Type is a fixed enum today (see TaskArtifactType on the
 // backend), but this map still falls back to a generic icon for any
@@ -150,6 +142,9 @@ const ARTIFACT_ICONS = {
   'Build Pipeline Link': Workflow,
   'Deployment Report': FileBarChart,
   'Demo Video': Video,
+  'Design file': PenTool,
+  'Prototype': MousePointerClick,
+  'Design spec': Ruler,
 };
 
 function ArtifactIcons({ artifacts }) {
@@ -663,6 +658,16 @@ export default function TaskDetailPage() {
     if (!el) return;
     ticketHashHandled.current = true;
     setHighlightedTicketId(ticketId);
+    // A resolved/cancelled ticket sits in the collapsed group: open it
+    // first (useHashTarget's reveal), then scroll once it's visible.
+    if (el.closest('[hidden]')) {
+      window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: { id: `dependency-${ticketId}` } }));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        el.scrollIntoView({ block: 'center' });
+        el.focus({ preventScroll: true });
+      }));
+      return;
+    }
     el.scrollIntoView({ block: 'center' });
     el.focus({ preventScroll: true });
   }, [tickets, loading]);
@@ -976,6 +981,17 @@ export default function TaskDetailPage() {
   const estimatedHoursLocked = task.estimatedHours != null && !canManage;
   // Dependency task (Stage 2): never reviewed - Resolve replaces Submit for QA.
   const isDependencyTask = task.dependencyTicketId != null;
+  // Design work (2026-11-05): the assignee's role picks the artifact menu
+  // (design types first for a Designer). The submit forms are the
+  // assignee's own, so their role is known even without the team list.
+  const assigneeRole = developers.find((d) => d.id === task.assigneeUserId)?.role || (isAssignee ? user.role : null);
+  const renderArtifactTypeOptions = (row) =>
+    artifactTypeGroups(assigneeRole).map((g) => {
+      const opts = g.types
+        .filter((t) => t === row.type || !artifacts.some((r) => r.type === t))
+        .map((t) => <option key={t} value={t}>{t}</option>);
+      return g.label ? <optgroup key={g.label} label={g.label}>{opts}</optgroup> : opts;
+    });
   // Due Date: one-time entry for the Assignee, same lock pattern as
   // E.Hrs - Program Manager can always re-edit it, no lock applies to PM.
   // With Performance Tracking on, a set date is locked for everyone here -
@@ -2402,6 +2418,7 @@ export default function TaskDetailPage() {
         )}
         {TASK_PAGE_V2 && resolvedTicketsList.length > 0 && (
           <CollapsibleSection
+            id="resolved-dependencies"
             count={resolvedTicketsList.length}
             label={resolvedTicketsList.length === 1 ? 'resolved or cancelled dependency' : 'resolved or cancelled dependencies'}
             storageKey={`taskSection:resolvedDependencies:${user.id}`}
@@ -2491,6 +2508,13 @@ export default function TaskDetailPage() {
         </div>
       )}
 
+      {/* Less scrolling (2026-11-05): the latest submission's prototype /
+          handover (design) or build / PR (development) links, above the
+          submit form - which stays below for when they're ready to submit. */}
+      {TASK_PAGE_V2 && !isDependencyTask && (
+        <LatestWork work={latestWork(qaReviews, assigneeRole)} isDesign={assigneeRole === 'designer'} />
+      )}
+
       {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && !usesPeerReview && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
         <div id="task-action-submit" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
@@ -2538,9 +2562,7 @@ export default function TaskDetailPage() {
                   onChange={(e) => updateArtifactRow(index, 'type', e.target.value)}
                 >
                   <option value="" disabled>— Select artifact type —</option>
-                  {ARTIFACT_TYPES.filter(
-                    (t) => t === row.type || !artifacts.some((r) => r.type === t),
-                  ).map((t) => <option key={t} value={t}>{t}</option>)}
+                  {renderArtifactTypeOptions(row)}
                 </select>
               </div>
               <div className={styles.field}>
@@ -2643,9 +2665,7 @@ export default function TaskDetailPage() {
                   onChange={(e) => updateArtifactRow(index, 'type', e.target.value)}
                 >
                   <option value="" disabled>— Select artifact type —</option>
-                  {ARTIFACT_TYPES.filter(
-                    (t) => t === row.type || !artifacts.some((r) => r.type === t),
-                  ).map((t) => <option key={t} value={t}>{t}</option>)}
+                  {renderArtifactTypeOptions(row)}
                 </select>
               </div>
               <div className={styles.field}>
@@ -2704,6 +2724,7 @@ export default function TaskDetailPage() {
           <p className={styles.helpText}>
             Pick another team member, ideally with the same role as you - a designer reviews a designer's work. People with your role are
             listed first.
+            {!developers.some((d) => d.id !== user.id && d.role === user.role) && ' There is nobody else with your role in the team yet, so everyone is listed with their role.'}
           </p>
           <div className={styles.actions}>
             <button className={`${styles.button} ${styles.buttonAccent}`} type="submit" disabled={submittingQa}>
@@ -3420,7 +3441,7 @@ export default function TaskDetailPage() {
               {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
               {task.isDefect && <Badge tone="error">Defect</Badge>}
               <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
-                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · due' : 'Due'} ${formatDate(effectiveDueDate(task))}` : 'No due date'}
+                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · task due' : 'Task due'} ${formatDate(effectiveDueDate(task))}` : 'No task due date'}
                 {/* PM review gate: the working days spent waiting for a PM extend it. */}
                 {task.dueDate && task.pmWaitWorkingDays > 0 && ` (${formatDate(task.dueDate)} + ${task.pmWaitWorkingDays} working ${task.pmWaitWorkingDays === 1 ? 'day' : 'days'} with PM)`}
               </span>
@@ -3933,7 +3954,7 @@ export default function TaskDetailPage() {
           </div>
 
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdDueDate">Due Date</label>
+            <label className={styles.label} htmlFor="tdDueDate">Task due date</label>
             <input
               className={styles.input}
               id="tdDueDate"

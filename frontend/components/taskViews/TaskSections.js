@@ -8,7 +8,7 @@ import Table from '../ui/Table';
 import Badge from '../ui/Badge';
 import ColHeader from '../ColHeader';
 import styles from '../../styles/issues.module.css';
-import { isOverdueTask } from '../../lib/developerTaskStats';
+import { isOverdueTask, isQaReviewOverdue, QA_REVIEW_PENDING_STATUSES } from '../../lib/developerTaskStats';
 import { priorityTone, priorityLabel, priorityRank, statusBadgeStyle, statusLabel } from '../../lib/taskTableShared';
 import { formatDate } from '../../lib/formatDate';
 
@@ -347,8 +347,13 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand }) 
         <span><Layers size={12} aria-hidden="true" /> {task.moduleName || '—'}</span>
         {assigneeLabel && <span><User size={12} aria-hidden="true" /> {assigneeLabel}</span>}
         <span className={isOverdueTask(task) ? styles.dueDateOverdue : undefined}>
-          <CalendarClock size={12} aria-hidden="true" /> {formatDate(task.dueDate)}
+          <CalendarClock size={12} aria-hidden="true" /> Task due {formatDate(task.dueDate)}
         </span>
+        {task.qaReviewDueDate && QA_REVIEW_PENDING_STATUSES.includes(task.status) && (
+          <span className={isQaReviewOverdue(task) ? styles.dueDateOverdue : undefined}>
+            <CalendarClock size={12} aria-hidden="true" /> Review due {formatDate(task.qaReviewDueDate)}
+          </span>
+        )}
       </div>
       {depCount > 0 && (
         <DependencyToggle
@@ -480,7 +485,7 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
     },
     {
       key: 'dueDate',
-      header: <ColHeader icon={CalendarClock} label="Due" tooltip="Due date (dependency: its parent task's due date, labelled Task due)" showLabel />,
+      header: <ColHeader icon={CalendarClock} label="Task due" tooltip="The task's due date (dependency: its parent task's due date). While a task waits for QA or a peer, its Review due date is shown under it." showLabel />,
       width: 112,
       align: 'center',
       sortable: true,
@@ -496,8 +501,17 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
             </span>
           );
         }
+        const reviewDue = t.qaReviewDueDate && QA_REVIEW_PENDING_STATUSES.includes(t.status);
         return (
-          <span className={`${styles.teamNowrap} ${isOverdueTask(t) ? styles.dueDateOverdue : ''}`}>{formatDate(t.dueDate)}</span>
+          <>
+            <span className={`${styles.teamNowrap} ${isOverdueTask(t) ? styles.dueDateOverdue : ''}`}>{formatDate(t.dueDate)}</span>
+            {reviewDue && (
+              <span className={`${styles.teamParentDue} ${isQaReviewOverdue(t) ? styles.dueDateOverdue : ''}`}>
+                <span className={styles.teamParentDueLabel}>Review due</span>
+                <span className={styles.teamNowrap}>{formatDate(t.qaReviewDueDate)}</span>
+              </span>
+            )}
+          </>
         );
       },
     },

@@ -240,7 +240,7 @@ describe('Dependency tasks (e2e)', () => {
       expect(ticket.status).toBe('resolved');
       expect(ticket.resolvedAt).not.toBeNull();
       const notes = await waitFor(() =>
-        ds.query(`SELECT * FROM user_notifications WHERE "userId" = $1 AND type = 'dependency.resolved' AND link = $2`, [f.users.devA.id, `/tasks/${parentId}`]),
+        ds.query(`SELECT * FROM user_notifications WHERE "userId" = $1 AND type = 'dependency.resolved' AND link = $2`, [f.users.devA.id, `/tasks/${parentId}#dependency-${ticketId}`]),
       );
       expect(notes.length).toBe(1);
       expect((await ds.query(`SELECT count(*)::int AS n FROM task_qa_reviews WHERE "taskId" = $1`, [dependencyTaskId]))[0].n).toBe(0);
@@ -551,7 +551,7 @@ describe('Dependency tasks (e2e)', () => {
       await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
       expect((await ticketRow(ticketId)).status).toBe('resolved');
       await new Promise((r) => setTimeout(r, 300));
-      const notes = await ds.query(`SELECT * FROM user_notifications WHERE type = 'dependency.resolved' AND link = $1`, [`/tasks/${parentId}`]);
+      const notes = await ds.query(`SELECT * FROM user_notifications WHERE type = 'dependency.resolved' AND link LIKE $1`, [`/tasks/${parentId}%`]);
       expect(notes).toHaveLength(0);
       for (const u of [f.users.pm, f.users.admin]) {
         const t = await newTicket(ext);
@@ -560,7 +560,7 @@ describe('Dependency tasks (e2e)', () => {
       // A PM resolving tells the requester, as for any ticket.
       const t = await newTicket(ext);
       await patch(f.users.pm, `/task-dependency-tickets/${t.ticketId}/resolve`).expect(200);
-      expect((await waitFor(() => ds.query(`SELECT * FROM user_notifications WHERE "userId" = $1 AND type = 'dependency.resolved' AND link = $2`, [f.users.devA.id, `/tasks/${t.parentId}`]))).length).toBe(1);
+      expect((await waitFor(() => ds.query(`SELECT * FROM user_notifications WHERE "userId" = $1 AND type = 'dependency.resolved' AND link = $2`, [f.users.devA.id, `/tasks/${t.parentId}#dependency-${t.ticketId}`]))).length).toBe(1);
     });
 
     it('the owner is fixed: Change owner is a 400 and nothing changes', async () => {

@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { redirectToSignIn } from '../../lib/session';
 import { CHECKLIST_LABELS } from '../../components/SubmissionChecklist';
+import { ALL_ARTIFACT_TYPES as ARTIFACT_TYPES } from '../../lib/artifactTypes';
 
 // Submission checklist settings (defect triage Stage 2, 2026-10-27) - Admin
 // and Program Manager (backend: SubmissionChecklistController). Per project:
@@ -20,7 +21,6 @@ const ITEM_MAX = 100;
 const MAX_ITEMS = 30;
 const MIN_TEXT_MAX = 200;
 // Mirrors TaskArtifactType (task-qa-review.entity.ts).
-const ARTIFACT_TYPES = ['APK Build', 'Build Pipeline Link', 'Deployment Report', 'Pull Request Link', 'Screenshot', 'Demo Video', 'Technical Documentation'];
 const ITEMS = ['rootCause', 'changeLink', 'testSteps', 'testData', 'evidence', 'affectedAreas', 'buildConfirmation'];
 
 export default function SubmissionChecklistSettingsPage() {

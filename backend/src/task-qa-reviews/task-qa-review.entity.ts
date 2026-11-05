@@ -13,6 +13,12 @@ export enum TaskArtifactType {
   SCREENSHOT = 'Screenshot',
   DEMO_VIDEO = 'Demo Video',
   TECHNICAL_DOCUMENTATION = 'Technical Documentation',
+  // Design work (2026-11-05, migrations/2026-11-design-artifact-types.sql):
+  // offered first when the assignee is a Designer. Any assignee may use
+  // any type - the list order is display only.
+  DESIGN_FILE = 'Design file',
+  PROTOTYPE = 'Prototype',
+  DESIGN_SPEC = 'Design spec',
 }
 
 // 'escalated' - QA Feedback escalated to PM instead of Approve/Reject
