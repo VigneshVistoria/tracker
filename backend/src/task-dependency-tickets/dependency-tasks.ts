@@ -39,6 +39,25 @@ export const DEPENDENCY_TASK_AUDIT = {
   TASK_REASSIGNED: 'dependency_task_reassigned',
 } as const;
 
+// Stage 2 (2026-11-05): a dependency task is worked in Development, shown
+// as "In progress" (no new status - user decision 7).
+export const DEPENDENCY_TASK_IN_PROGRESS_LABEL = 'In progress';
+export function dependencyTaskStatusLabel(status: string): string {
+  return status === 'Development' ? DEPENDENCY_TASK_IN_PROGRESS_LABEL : status;
+}
+
+// What a ticket list shows about its linked task (Stage 2).
+export interface DependencyTaskSummary {
+  id: number;
+  status: string;
+  statusLabel: string;
+  assigneeUserId: number | null;
+  estimatedHours: number | null;
+  dueDate: string | null;
+  dueDateCommittedAt: Date | null;
+  lastProgressNote: { body: string; createdAt: string } | null;
+}
+
 export function isDependencyTask(task: { dependencyTicketId?: number | null }): boolean {
   return task.dependencyTicketId != null;
 }

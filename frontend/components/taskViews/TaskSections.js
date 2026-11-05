@@ -337,7 +337,7 @@ function TaskTile({ task, assigneeLabel, railClass, expanded, onToggleExpand }) 
         </div>
         <div className={styles.taskTileBadges}>
           {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>}
-          <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status)}</span>
+          <span className={styles.badge} style={statusBadgeStyle(task.status)}>{statusLabel(task.status, task)}</span>
         </div>
       </div>
       <div className={styles.taskTileDesc} title={task.title}>
@@ -475,7 +475,7 @@ export function buildTaskColumns({ assigneeLabel, labelForEmail, expandedTaskIds
         isDependencyRow(t) ? (
           <Badge tone="warning">{t.status}</Badge>
         ) : (
-          <span className={`${styles.badge} ${styles.teamNowrap}`} style={statusBadgeStyle(t.status)}>{statusLabel(t.status)}</span>
+          <span className={`${styles.badge} ${styles.teamNowrap}`} style={statusBadgeStyle(t.status)}>{statusLabel(t.status, t)}</span>
         ),
     },
     {

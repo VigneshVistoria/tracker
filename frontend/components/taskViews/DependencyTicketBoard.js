@@ -76,6 +76,7 @@ function compareTickets(sortKey) {
 }
 
 function StatusBadge({ ticket }) {
+  if (ticket.status === 'cancelled') return <Badge tone="neutral">Cancelled</Badge>;
   return <Badge tone={ticket.open ? 'warning' : 'success'}>{ticket.open ? 'Open' : 'Resolved'}</Badge>;
 }
 
@@ -143,6 +144,28 @@ function FromTo({ ticket }) {
 
 // "#79 Tariff Policy config" (link) then module · phase and the parent
 // task's priority - one line each, ellipsis + tooltip when long.
+// Dependency tasks (Stage 2, 2026-11-05): the owner's task behind the
+// ticket - link, status ("In progress"), estimate and due date.
+function LinkedTask({ ticket }) {
+  const dt = ticket.dependencyTask;
+  if (!dt) return null;
+  const bits = [
+    dt.statusLabel,
+    dt.estimatedHours != null ? `Est. ${dt.estimatedHours} h` : 'No estimate',
+    dt.dueDate ? `Due ${formatDate(dt.dueDate)}` : 'No due date',
+  ];
+  return (
+    <span className={styles.ticketParentMeta}>
+      <span className={styles.teamOneLine} title={dt.lastProgressNote ? `Latest note: ${dt.lastProgressNote.body}` : undefined}>
+        <Link href={`/tasks/${dt.id}`} className={styles.ticketParentLink} onClick={(e) => e.stopPropagation()}>
+          Task #{dt.id}
+        </Link>{' '}
+        · {bits.join(' · ')}
+      </span>
+    </span>
+  );
+}
+
 function ParentTask({ ticket }) {
   const title = `#${ticket.parentTaskId}${ticket.parentTaskTitle ? ` ${ticket.parentTaskTitle}` : ''}`;
   const context = [ticket.parentTaskModuleName, ticket.parentTaskPhaseName].filter(Boolean).join(' · ');
@@ -166,6 +189,7 @@ function ParentTask({ ticket }) {
           {ticket.parentTaskPriority && <Badge tone={priorityTone(ticket.parentTaskPriority)}>{priorityLabel(ticket.parentTaskPriority)}</Badge>}
         </span>
       )}
+      <LinkedTask ticket={ticket} />
     </div>
   );
 }

@@ -118,11 +118,11 @@ const STATUS_COLOR = {
 const NOT_READY_STATUS = 'Not Ready for Testing';
 const NOT_READY_COMMENT_MIN = 10;
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, task }) {
   const color = STATUS_COLOR[status] || { bg: 'var(--color-slate-tint)', fg: 'var(--color-ink-soft)' };
   return (
     <span className={styles.badge} style={{ background: color.bg, color: color.fg }}>
-      {statusLabel(status)}
+      {statusLabel(status, task)}
     </span>
   );
 }
@@ -412,6 +412,12 @@ export default function TaskDetailPage() {
   const [saving, setSaving] = useState(false);
 
   const [estimatedHours, setEstimatedHours] = useState('');
+  // Dependency tasks (Stage 2, 2026-11-05): the owner may give the estimate
+  // in days (1 day = 8 hours); it's always stored as hours.
+  const [estimateUnit, setEstimateUnit] = useState('hours');
+  // The dependency ticket this task clears (task.dependencyTicketId), with
+  // its parent task - for the banner and the Resolve button.
+  const [dependencyTicket, setDependencyTicket] = useState(null);
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState('');
 
@@ -682,6 +688,28 @@ export default function TaskDetailPage() {
     loadTickets();
   };
 
+  useEffect(() => {
+    if (!user || !task?.dependencyTicketId) {
+      setDependencyTicket(null);
+      return;
+    }
+    apiFetch(`/task-dependency-tickets/${task.dependencyTicketId}`).then(setDependencyTicket).catch(() => setDependencyTicket(null));
+  }, [user, task?.dependencyTicketId, task?.status, task?.assigneeUserId]);
+
+  // Resolve from the dependency task's own page: resolves its ticket, which
+  // moves this task straight to Pass (no review) and unblocks the parent.
+  const handleResolveDependencyTask = async () => {
+    if (!dependencyTicket) return;
+    setError('');
+    try {
+      await apiFetch(`/task-dependency-tickets/${dependencyTicket.id}/resolve`, { method: 'PATCH' });
+      showToast('Resolved - the requester has been notified', 'success');
+      setTask(await apiFetch(`/tasks/${task.id}`));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleResolveTicket = async (ticketId) => {
     setError('');
     try {
@@ -916,6 +944,8 @@ export default function TaskDetailPage() {
   const isAssignee = task.assigneeUserId === user.id;
   const canEditFields = (canManage || isAssignee) && !isJunk;
   const estimatedHoursLocked = task.estimatedHours != null && !canManage;
+  // Dependency task (Stage 2): never reviewed - Resolve replaces Submit for QA.
+  const isDependencyTask = task.dependencyTicketId != null;
   // Due Date: one-time entry for the Assignee, same lock pattern as
   // E.Hrs - Program Manager can always re-edit it, no lock applies to PM.
   // With Performance Tracking on, a set date is locked for everyone here -
@@ -970,6 +1000,7 @@ export default function TaskDetailPage() {
   const isAlreadyApproved = latestDecidedReview?.status === 'approved';
   // Defect triage (2026-10-27): not while Disputed or waiting for Accept.
   const canSubmitForReview =
+    !isDependencyTask &&
     !isAlreadyApproved &&
     !(task.isDefect && task.triageStatus === 'pending') &&
     !['Hold', 'Closed', 'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Returned to QA', 'Disputed'].includes(task.status);
@@ -1161,8 +1192,9 @@ export default function TaskDetailPage() {
     setSaving(true);
     try {
       const payload = {};
-      if (!estimatedHoursLocked && estimatedHours !== '' && Number(estimatedHours) !== task.estimatedHours) {
-        payload.estimatedHours = Number(estimatedHours);
+      const estimateInHours = isDependencyTask && estimateUnit === 'days' ? Number(estimatedHours) * 8 : Number(estimatedHours);
+      if (!estimatedHoursLocked && estimatedHours !== '' && estimateInHours !== task.estimatedHours) {
+        payload.estimatedHours = estimateInHours;
       }
       if (!dueDateLocked && dueDate && dueDate !== task.dueDate) {
         payload.dueDate = dueDate;
@@ -1172,6 +1204,10 @@ export default function TaskDetailPage() {
       }
       const updated = await apiFetch(`/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
       setTask(updated);
+      if (isDependencyTask) {
+        setEstimatedHours(updated.estimatedHours ?? '');
+        setEstimateUnit('hours');
+      }
       showToast('Task updated', 'success');
     } catch (err) {
       setError(err.message);
@@ -2218,11 +2254,28 @@ export default function TaskDetailPage() {
         <p style={{ margin: 0, fontWeight: 600 }}>
           {ticket.title}{' '}
           <span className={styles.badge} style={ticket.status === 'resolved' ? { background: 'var(--color-teal-tint)', color: 'var(--color-teal-dark)' } : { background: 'var(--color-red-tint)', color: 'var(--color-red-dark)' }}>
-            {ticket.status === 'resolved' ? 'Resolved' : 'Open'}
+            {ticket.status === 'resolved' ? 'Resolved' : ticket.status === 'cancelled' ? 'Cancelled' : 'Open'}
           </span>
         </p>
       )}
       <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
+      {/* Dependency tasks (Stage 2): the owner's task behind this ticket. */}
+      {ticket.dependencyTask && (
+        <div className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+          <Link href={`/tasks/${ticket.dependencyTask.id}`}>Task #{ticket.dependencyTask.id}</Link> &middot; {ticket.dependencyTask.statusLabel}
+          {' '}&middot;{' '}
+          {ticket.dependencyTask.estimatedHours != null ? `Estimate ${ticket.dependencyTask.estimatedHours} h` : 'No estimate yet'}
+          {' '}&middot;{' '}
+          {ticket.dependencyTask.dueDate
+            ? `Due ${formatDate(ticket.dependencyTask.dueDate)}${ticket.dependencyTask.dueDateCommittedAt ? ' (committed by the owner)' : ''}`
+            : 'No due date yet'}
+          {ticket.dependencyTask.lastProgressNote && (
+            <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>
+              Latest note ({formatDate(ticket.dependencyTask.lastProgressNote.createdAt)}): {ticket.dependencyTask.lastProgressNote.body}
+            </p>
+          )}
+        </div>
+      )}
       <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
         Owner: {ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
         {formatDate(ticket.createdAt)}
@@ -2269,7 +2322,7 @@ export default function TaskDetailPage() {
           {ticket.needByDate ? 'Change needed-by' : 'Set needed-by'}
         </button>
       )}
-      {ticket.status !== 'resolved' && (ticket.ownerEmail === user.email || canManage) && (
+      {ticket.status === 'open' && (ticket.ownerEmail === user.email || canManage) && (
         <button
           className={styles.buttonSecondary}
           type="button"
@@ -3301,7 +3354,7 @@ export default function TaskDetailPage() {
           {!editingTitle && (
             <div className={styles.metaRow}>
               <span className={styles.statusChip} style={statusBadgeStyle(task.status)}>
-                {statusLabel(task.status)}
+                {statusLabel(task.status, task)}
               </span>
               {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
               {task.isDefect && <Badge tone="error">Defect</Badge>}
@@ -3314,6 +3367,29 @@ export default function TaskDetailPage() {
                 {(task.assigneeFullName || task.assigneeEmail) && <Avatar name={task.assigneeFullName || task.assigneeEmail} size="xs" />}
                 {task.assigneeFullName || task.assigneeEmail || 'Unassigned'}
               </span>
+            </div>
+          )}
+          {!editingTitle && isDependencyTask && dependencyTicket && (
+            <div role="note" aria-label="Dependency task" className={styles.card} style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+              <p style={{ margin: 0 }}>
+                <strong>Dependency task.</strong> Clears ticket “{dependencyTicket.title}” on{' '}
+                <Link href={`/tasks/${dependencyTicket.parentTaskId}#dependency-${dependencyTicket.id}`}>
+                  #{dependencyTicket.parentTaskId}{dependencyTicket.parentTaskTitle ? ` - ${dependencyTicket.parentTaskTitle}` : ''}
+                </Link>
+                , requested by {dependencyTicket.createdByName || dependencyTicket.createdByEmail}
+                {dependencyTicket.needByDate ? `, needed by ${formatDate(dependencyTicket.needByDate)}` : ''}.
+              </p>
+              <p className={styles.helpText} style={{ margin: 'var(--space-1) 0 0' }}>
+                {dependencyTicket.status === 'open' &&
+                  'Give your estimate and due date, add progress notes as you go, and Resolve when it is done - it is not reviewed. The parent task stays blocked until then.'}
+                {dependencyTicket.status === 'resolved' && 'Resolved - the parent task is no longer blocked by it.'}
+                {dependencyTicket.status === 'cancelled' && `Cancelled${dependencyTicket.cancelReason ? `: ${dependencyTicket.cancelReason}` : ''}.`}
+              </p>
+              {dependencyTicket.status === 'open' && (isAssignee || canManage || user.role === 'admin') && !isJunk && (
+                <button type="button" className={`${styles.button} ${styles.buttonAccent}`} style={{ marginTop: 'var(--space-2)' }} onClick={handleResolveDependencyTask}>
+                  Resolve
+                </button>
+              )}
             </div>
           )}
           {!editingTitle && nextStep && (
@@ -3764,17 +3840,32 @@ export default function TaskDetailPage() {
       <form onSubmit={handleSaveFields} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         <div className={styles.fieldGrid4}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor="tdEHrs">Estimated Hours</label>
-            <input
-              className={styles.input}
-              id="tdEHrs"
-              type="number"
-              min="0"
-              step="0.5"
-              disabled={!canEditFields || estimatedHoursLocked}
-              value={estimatedHours}
-              onChange={(e) => setEstimatedHours(e.target.value)}
-            />
+            <label className={styles.label} htmlFor="tdEHrs">{isDependencyTask ? 'Estimate' : 'Estimated Hours'}</label>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <input
+                className={styles.input}
+                id="tdEHrs"
+                type="number"
+                min="0"
+                step="0.5"
+                disabled={!canEditFields || estimatedHoursLocked}
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+              />
+              {isDependencyTask && (
+                <select
+                  className={styles.input}
+                  aria-label="Estimate unit"
+                  style={{ width: 'auto' }}
+                  disabled={!canEditFields || estimatedHoursLocked}
+                  value={estimateUnit}
+                  onChange={(e) => setEstimateUnit(e.target.value)}
+                >
+                  <option value="hours">hours</option>
+                  <option value="days">days (8 h)</option>
+                </select>
+              )}
+            </div>
             {estimatedHoursLocked && (
               <p className={styles.helpText}>Locked after first entry - only Admin or Program Manager can change it now.</p>
             )}
@@ -3826,7 +3917,7 @@ export default function TaskDetailPage() {
           <div className={styles.field}>
             <label className={styles.label}>Status</label>
             <div>
-              <StatusBadge status={task.status} />
+              <StatusBadge status={task.status} task={task} />
             </div>
             {hasPendingQaReview && (
               <p className={styles.helpText}>

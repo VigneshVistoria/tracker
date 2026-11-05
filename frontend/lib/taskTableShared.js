@@ -61,7 +61,11 @@ export const JUNK_STATUS = 'Junk';
 // is "Intervention" (renamed 2026-10, label-only per the user).
 const STATUS_LABELS = { Escalated: 'Intervention' };
 
-export function statusLabel(status) {
+// Pass the task as the second argument where it's at hand: a dependency
+// task (task.dependencyTicketId set, 2026-11-05) is worked in Development,
+// which its people read as "In progress" - label only, no new status.
+export function statusLabel(status, task) {
+  if (task?.dependencyTicketId != null && status === 'Development') return 'In progress';
   return STATUS_LABELS[status] || status;
 }
 

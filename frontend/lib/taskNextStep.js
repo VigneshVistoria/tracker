@@ -54,6 +54,10 @@ export function taskNextStep(task, reviews = []) {
     const who = task.isDefect ? task.createdByFullName || task.createdByEmail || 'QA who raised it' : 'QA team';
     return reviewDue(QA_STAGES[task.status], who);
   }
-  // Development (or any status added later): with the assignee.
+  // Development (or any status added later): with the assignee. A dependency
+  // task (2026-11-05) reads "In progress" - it is resolved, not reviewed.
+  if (task.dependencyTicketId != null) {
+    return { stage: 'In progress', who: assignee || 'Unassigned', due: null, late: false };
+  }
   return { stage: 'In development', who: assignee || 'Unassigned', due: null, late: false };
 }

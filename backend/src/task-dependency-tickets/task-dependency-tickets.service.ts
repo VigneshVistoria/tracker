@@ -4,7 +4,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
-import { DEPENDENCY_TASKS_SWITCH_ROLES, DEPENDENCY_TASK_AUDIT, DEPENDENCY_TASK_RESOLVED_STATUSES } from './dependency-tasks';
+import {
+  DEPENDENCY_TASKS_SWITCH_ROLES,
+  DEPENDENCY_TASK_AUDIT,
+  DEPENDENCY_TASK_RESOLVED_STATUSES,
+  DependencyTaskSummary,
+  dependencyTaskStatusLabel,
+} from './dependency-tasks';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
@@ -32,6 +38,9 @@ export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
   parentTaskProjectName: string | null;
   parentTaskModuleName: string | null;
   parentTaskPhaseName: string | null;
+  // Dependency tasks Stage 2: the linked task, or null (switch off, older
+  // ticket, or external owner).
+  dependencyTask: DependencyTaskSummary | null;
 }
 
 @Injectable()
@@ -103,12 +112,64 @@ export class TaskDependencyTicketsService {
     return em.findOne(ProjectTask, { where: { dependencyTicketId: ticketId, tenantId } });
   }
 
+  // Dependency tasks Stage 2: the linked task of each ticket (status,
+  // estimate, due date, latest progress note), keyed by ticket id. One
+  // query for the whole list.
+  async dependencyTaskSummaries(ticketIds: number[], tenantId: number): Promise<Map<number, DependencyTaskSummary>> {
+    const out = new Map<number, DependencyTaskSummary>();
+    if (!ticketIds.length) return out;
+    const rows: any[] = await this.dataSource.query(
+      `SELECT t.id, t."dependencyTicketId", t.status, t."assigneeUserId", t."estimatedHours", t."dueDate"::text AS "dueDate", t."dueDateCommittedAt",
+              (SELECT json_build_object('body', n.body, 'createdAt', n."createdAt")
+                 FROM task_progress_notes n
+                WHERE n."taskId" = t.id AND n."tenantId" = t."tenantId"
+                ORDER BY n."createdAt" DESC, n.id DESC LIMIT 1) AS "lastProgressNote"
+         FROM project_tasks t
+        WHERE t."tenantId" = $1 AND t."dependencyTicketId" = ANY($2::int[])`,
+      [tenantId, ticketIds],
+    );
+    for (const r of rows) {
+      out.set(r.dependencyTicketId, {
+        id: r.id,
+        status: r.status,
+        statusLabel: dependencyTaskStatusLabel(r.status),
+        assigneeUserId: r.assigneeUserId ?? null,
+        estimatedHours: r.estimatedHours == null ? null : Number(r.estimatedHours),
+        dueDate: r.dueDate ?? null,
+        dueDateCommittedAt: r.dueDateCommittedAt ?? null,
+        lastProgressNote: r.lastProgressNote ?? null,
+      });
+    }
+    return out;
+  }
+
+  // Dependency tasks Stage 2: one ticket, for the banner on its dependency
+  // task's page. Visible to whoever can see the parent task, the ticket's
+  // owner, or whoever can see the dependency task itself.
+  async findOneForViewer(id: number, currentUser: any, tenantId: number): Promise<TaskDependencyTicketWithParent> {
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) throw new NotFoundException('Dependency ticket not found.');
+    const [enriched] = await this.withParentTaskFields([ticket], tenantId, { keepJunkParents: true });
+    let allowed = ticket.ownerUserId === currentUser.id || ticket.createdByUserId === currentUser.id;
+    if (!allowed) {
+      const parent = await this.tasksService.findOne(ticket.parentTaskId, tenantId);
+      allowed = await this.tasksService.canView(parent, currentUser);
+    }
+    if (!allowed && enriched.dependencyTask) {
+      const task = await this.tasksService.findOne(enriched.dependencyTask.id, tenantId);
+      allowed = await this.tasksService.canView(task, currentUser);
+    }
+    if (!allowed) throw new ForbiddenException('You do not have access to this dependency ticket.');
+    return enriched;
+  }
+
   // Combined task detail view - dependency tickets filed against a given
-  // parent task, with owner/filer full names for display (2026-10-14).
+  // parent task, with owner/filer full names for display (2026-10-14), and
+  // the linked dependency task's progress (Stage 2).
   async findForTask(
     parentTaskId: number,
     tenantId: number,
-  ): Promise<Array<TaskDependencyTicket & { ownerName: string | null; createdByName: string | null }>> {
+  ): Promise<Array<TaskDependencyTicket & { ownerName: string | null; createdByName: string | null; dependencyTask: DependencyTaskSummary | null }>> {
     const tickets = await this.ticketsRepository.find({
       where: { parentTaskId, tenantId },
       order: { createdAt: 'DESC' },
@@ -116,10 +177,12 @@ export class TaskDependencyTicketsService {
     const userIds = [...new Set(tickets.flatMap((t) => [t.createdByUserId, t.ownerUserId]).filter((id) => id != null))];
     const users = await this.usersService.findByIds(userIds, tenantId);
     const nameById = new Map(users.map((u) => [u.id, u.fullName || null]));
+    const linked = await this.dependencyTaskSummaries(tickets.map((t) => t.id), tenantId);
     return tickets.map((t) => ({
       ...t,
       ownerName: nameById.get(t.ownerUserId) ?? null,
       createdByName: nameById.get(t.createdByUserId) ?? null,
+      dependencyTask: linked.get(t.id) ?? null,
     }));
   }
 
@@ -194,6 +257,7 @@ export class TaskDependencyTicketsService {
   private async withParentTaskFields(
     allTickets: TaskDependencyTicket[],
     tenantId: number,
+    opts: { keepJunkParents?: boolean } = {},
   ): Promise<TaskDependencyTicketWithParent[]> {
     let tickets = allTickets;
     const parentTaskIds = [...new Set(tickets.map((t) => t.parentTaskId))];
@@ -201,7 +265,10 @@ export class TaskDependencyTicketsService {
     const parentTaskById = new Map(parentTasks.map((t) => [t.id, t]));
     // Tickets raised on a Junk task are hidden with it (Outbound and
     // Inbound cards alike) until the task is restored.
-    tickets = tickets.filter((t) => parentTaskById.get(t.parentTaskId)?.status !== JUNK_STATUS);
+    if (!opts.keepJunkParents) {
+      tickets = tickets.filter((t) => parentTaskById.get(t.parentTaskId)?.status !== JUNK_STATUS);
+    }
+    const linked = await this.dependencyTaskSummaries(tickets.map((t) => t.id), tenantId);
     // One batch lookup for every filer/owner on the list - only their
     // full names leave this method, never the rest of the user row.
     const userIds = [...new Set(tickets.flatMap((t) => [t.createdByUserId, t.ownerUserId]).filter((id) => id != null))];
@@ -220,6 +287,7 @@ export class TaskDependencyTicketsService {
         parentTaskProjectName: parent?.projectName ?? null,
         parentTaskModuleName: parent?.moduleName ?? null,
         parentTaskPhaseName: parent?.phaseName ?? null,
+        dependencyTask: linked.get(ticket.id) ?? null,
       };
     });
   }

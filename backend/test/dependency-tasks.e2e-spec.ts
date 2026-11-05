@@ -350,6 +350,56 @@ describe('Dependency tasks (e2e)', () => {
     });
   });
 
+  describe('Stage 2: ticket lists show the linked task', () => {
+    it('parent page, owner inbox and requester list carry status ("In progress"), estimate, due date and latest note', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      await http().patch(`/tasks/${dependencyTaskId}`).set(auth(devC)).send({ estimatedHours: 16, dueDate: '2026-12-20' }).expect(200);
+      await post(devC, `/tasks/${dependencyTaskId}/activity/notes`, { body: 'Started on the claims endpoint today.' }).expect(201);
+      await post(devC, `/tasks/${dependencyTaskId}/activity/notes`, { body: 'Endpoint ready, testing.' }).expect(201);
+      const expected = {
+        id: dependencyTaskId,
+        status: 'Development',
+        statusLabel: 'In progress',
+        assigneeUserId: devC.id,
+        estimatedHours: 16,
+        dueDate: '2026-12-20',
+        lastProgressNote: { body: 'Endpoint ready, testing.' },
+      };
+      const forParent = (await get(f.users.devA, `/task-dependency-tickets?parentTaskId=${parentId}`).expect(200)).body;
+      expect(forParent.find((t: any) => t.id === ticketId).dependencyTask).toMatchObject(expected);
+      expect(forParent.find((t: any) => t.id === ticketId).dependencyTask.dueDateCommittedAt).not.toBeNull();
+      const mine = (await get(devC, '/task-dependency-tickets/mine').expect(200)).body;
+      expect(mine.find((t: any) => t.id === ticketId).dependencyTask).toMatchObject(expected);
+      const sent = (await get(f.users.devA, '/task-dependency-tickets/created-by-me').expect(200)).body;
+      expect(sent.find((t: any) => t.id === ticketId).dependencyTask).toMatchObject(expected);
+
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      const after = (await get(devC, '/task-dependency-tickets/mine').expect(200)).body;
+      expect(after.find((t: any) => t.id === ticketId).dependencyTask).toMatchObject({ status: 'Pass', statusLabel: 'Pass' });
+    });
+
+    it('a ticket without a task (switch off) has dependencyTask null', async () => {
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      expect(dependencyTaskId).toBeNull();
+      const forParent = (await get(f.users.devA, `/task-dependency-tickets?parentTaskId=${parentId}`).expect(200)).body;
+      expect(forParent.find((t: any) => t.id === ticketId).dependencyTask).toBeNull();
+    });
+
+    it('GET /task-dependency-tickets/:id: requester, owner and PM yes; others 403; other tenant 404; no login 401', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      await http().get(`/task-dependency-tickets/${ticketId}`).expect(401);
+      for (const u of [f.users.devA, devC, f.users.pm]) {
+        const res = await get(u, `/task-dependency-tickets/${ticketId}`).expect(200);
+        expect(res.body).toMatchObject({ id: ticketId, parentTaskId: parentId, parentTaskTitle: expect.any(String), ownerName: 'Name devC', dependencyTask: { id: dependencyTaskId, statusLabel: 'In progress' } });
+      }
+      await get(f.users.devNone, `/task-dependency-tickets/${ticketId}`).expect(403);
+      await get(f.users.pmT2, `/task-dependency-tickets/${ticketId}`).expect(404);
+      await get(f.users.devA, '/task-dependency-tickets/999999').expect(404);
+    });
+  });
+
   describe('progress notes', () => {
     it('the owner can add notes on a dependency task even with tracking off; ordinary tasks still need tracking', async () => {
       await setSwitch(true);

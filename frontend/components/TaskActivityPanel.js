@@ -24,7 +24,8 @@ export default function TaskActivityPanel({ task, onChanged }) {
   }, [task.id]);
   useEffect(load, [load, task.status, task.assigneeUserId]);
 
-  if (!state?.trackingOn) return null;
+  // Dependency tasks (2026-11-05) keep progress notes even with tracking off.
+  if (!state?.trackingOn && !state?.dependencyTask) return null;
   const done = async (message) => {
     setDialog(null);
     await onChanged(message);
@@ -34,7 +35,7 @@ export default function TaskActivityPanel({ task, onChanged }) {
 
   return (
     <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }} id="activity">
-      <h2 className={styles.cardTitle}>Progress &amp; chases</h2>
+      <h2 className={styles.cardTitle}>{state.trackingOn ? <>Progress &amp; chases</> : 'Progress notes'}</h2>
 
       {lastNote ? (
         <div style={{ marginBottom: 'var(--ds-space-3)' }}>

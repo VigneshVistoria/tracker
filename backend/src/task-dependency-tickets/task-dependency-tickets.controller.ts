@@ -79,6 +79,15 @@ export class TaskDependencyTicketsController {
     return this.ticketsService.findHistoryForTask(parentTaskId, req.user.tenantId);
   }
 
+  // Dependency tasks Stage 2: one ticket (with its parent and linked task),
+  // for the banner on the dependency task's page. After 'history', 'mine',
+  // 'created-by-me' and 'projects' so those literal paths still match first.
+  @Get(':id')
+  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.ticketsService.findOneForViewer(id, currentUser, req.user.tenantId);
+  }
+
   @Post()
   async create(@Body() dto: CreateTaskDependencyTicketDto, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);

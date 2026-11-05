@@ -156,7 +156,7 @@ export function TaskList({ tasks, loading, emptyText }) {
               </span>
               {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)}</Badge>}
               <span className={styles.statusChip} style={statusBadgeStyle(task.status)}>
-                {statusLabel(task.status)}
+                {statusLabel(task.status, task)}
               </span>
             </Link>
           </li>
