@@ -12,10 +12,18 @@ BEGIN
   IF EXISTS (SELECT 1 FROM "task_dependency_tickets" WHERE "status" = 'cancelled') THEN
     RAISE EXCEPTION 'Rollback stopped: cancelled dependency tickets exist.';
   END IF;
+  IF EXISTS (SELECT 1 FROM "task_dependency_tickets" WHERE "ownerExternal" IS NOT NULL) THEN
+    RAISE EXCEPTION 'Rollback stopped: dependency tickets with an external owner exist.';
+  END IF;
 END $$;
 
 DROP TRIGGER "TRG_project_tasks_sync_dependency_ticket" ON "project_tasks";
 DROP FUNCTION tracker_sync_dependency_ticket();
+ALTER TABLE "task_dependency_tickets" DROP CONSTRAINT "CHK_task_dependency_tickets_owner";
+ALTER TABLE "task_dependency_tickets"
+  DROP COLUMN "ownerExternal",
+  ALTER COLUMN "ownerUserId" SET NOT NULL,
+  ALTER COLUMN "ownerEmail" SET NOT NULL;
 ALTER TABLE "task_dependency_tickets" DROP CONSTRAINT "CHK_task_dependency_tickets_status";
 ALTER TABLE "task_dependency_tickets" DROP COLUMN "cancelReason", DROP COLUMN "cancelledByUserId", DROP COLUMN "cancelledAt";
 DROP INDEX "UQ_project_tasks_dependency_ticket";

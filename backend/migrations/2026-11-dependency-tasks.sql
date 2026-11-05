@@ -6,7 +6,8 @@
 --
 --  * projects."dependencyTasksEnabled" - the per-project switch.
 --  * project_tasks."dependencyTicketId" - the link, one task per ticket.
---  * task_dependency_tickets: cancel fields + status 'cancelled'.
+--  * task_dependency_tickets: cancel fields + status 'cancelled', and a
+--    free-text external owner (ownerUserId/ownerEmail become optional).
 --  * A trigger keeps the ticket in step with its task's status, whatever
 --    path changed it: Pass / Closed / Released -> resolved (unblocks the
 --    parent), Junk -> cancelled (unblocks), back to any working status ->
@@ -28,6 +29,18 @@ ALTER TABLE "task_dependency_tickets"
   ADD COLUMN "cancelReason" text NULL;
 ALTER TABLE "task_dependency_tickets" ADD CONSTRAINT "CHK_task_dependency_tickets_status"
   CHECK ("status" IN ('open', 'resolved', 'cancelled'));
+
+-- External owners (Stage 4, added here so there is one migration): a
+-- free-text owner instead of a user. Such a ticket has no user/email and
+-- never gets a dependency task. Exactly one kind of owner per ticket;
+-- every existing ticket has a user owner, so all pass the check.
+ALTER TABLE "task_dependency_tickets"
+  ADD COLUMN "ownerExternal" varchar(200) NULL,
+  ALTER COLUMN "ownerUserId" DROP NOT NULL,
+  ALTER COLUMN "ownerEmail" DROP NOT NULL;
+ALTER TABLE "task_dependency_tickets" ADD CONSTRAINT "CHK_task_dependency_tickets_owner"
+  CHECK (("ownerUserId" IS NOT NULL AND "ownerEmail" IS NOT NULL AND "ownerExternal" IS NULL)
+      OR ("ownerUserId" IS NULL AND "ownerEmail" IS NULL AND btrim("ownerExternal") <> ''));
 
 -- MUST match DEPENDENCY_TASK_RESOLVED_STATUSES / DEPENDENCY_TASK_CANCELLED_STATUS
 -- in backend/src/task-dependency-tickets/dependency-tasks.ts - a test checks.

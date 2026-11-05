@@ -187,7 +187,7 @@ const DEPENDENCY_TASKS_MIGRATION = path.resolve(__dirname, '../../migrations/202
 const DEPENDENCY_TASKS_COLUMNS: Record<string, string[]> = {
   projects: ['dependencyTasksEnabled'],
   project_tasks: ['dependencyTicketId'],
-  task_dependency_tickets: ['cancelledAt', 'cancelledByUserId', 'cancelReason'],
+  task_dependency_tickets: ['cancelledAt', 'cancelledByUserId', 'cancelReason', 'ownerExternal'],
 };
 const GITHUB_TABLES = ['github_settings', 'github_repo_mappings', 'github_webhook_deliveries', 'github_staging_deployments'];
 const GITHUB_COLUMNS: Record<string, string[]> = {

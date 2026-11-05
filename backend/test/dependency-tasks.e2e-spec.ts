@@ -308,6 +308,18 @@ describe('Dependency tasks (e2e)', () => {
       expect((await ticketRow(ticketId)).status).toBe('open');
     });
 
+    it('owner check: a user owner or a free-text external owner, never both or neither', async () => {
+      const { ticketId } = await newTicket();
+      const bad = [
+        `UPDATE task_dependency_tickets SET "ownerExternal" = 'City office' WHERE id = $1`,
+        `UPDATE task_dependency_tickets SET "ownerUserId" = NULL WHERE id = $1`,
+        `UPDATE task_dependency_tickets SET "ownerUserId" = NULL, "ownerEmail" = NULL, "ownerExternal" = '  ' WHERE id = $1`,
+      ];
+      for (const q of bad) await expect(ds.query(q, [ticketId])).rejects.toThrow(/CHK_task_dependency_tickets_owner/);
+      await ds.query(`UPDATE task_dependency_tickets SET "ownerUserId" = NULL, "ownerEmail" = NULL, "ownerExternal" = 'City office' WHERE id = $1`, [ticketId]);
+      expect(await ticketRow(ticketId)).toMatchObject({ ownerUserId: null, ownerEmail: null, ownerExternal: 'City office' });
+    });
+
     it('the status lists match the trigger in the migration', () => {
       const sql = fs.readFileSync(path.resolve(__dirname, '../migrations/2026-11-dependency-tasks.sql'), 'utf8');
       const resolvedLine = sql.split('\n').find((l) => l.includes(`IF NEW."status" IN (`))!;
