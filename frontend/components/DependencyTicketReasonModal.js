@@ -22,6 +22,8 @@ const COPY = {
     confirm: 'Reopen ticket',
     variant: 'primary',
     text: 'The parent task is blocked by it again, and its dependency task goes back to In progress. The owner is told, with this reason.',
+    // When the owner reopens their own ticket, it's the requester who is told.
+    ownerText: 'The parent task is blocked by it again, and its dependency task goes back to In progress. Whoever raised it is told, with this reason.',
     placeholder: 'e.g. The endpoint still returns an error for claims over 10k',
   },
 };
@@ -30,7 +32,7 @@ const COPY = {
 // Reopen (requester or Program Manager). `mode` is 'cancel' or 'reopen';
 // `submit` receives the trimmed reason and does the request - its error is
 // shown here and the dialog stays open.
-export default function DependencyTicketReasonModal({ mode, ticket, onClose, submit }) {
+export default function DependencyTicketReasonModal({ mode, ticket, onClose, submit, actorIsOwner = false }) {
   const open = !!ticket && !!mode;
   const copy = COPY[mode] || COPY.cancel;
   const [reason, setReason] = useState('');
@@ -87,7 +89,7 @@ export default function DependencyTicketReasonModal({ mode, ticket, onClose, sub
       {ticket && (
         <p style={{ marginTop: 0, fontWeight: 600 }}>{ticket.title || `Ticket #${ticket.id}`}</p>
       )}
-      <p className={styles.issueMeta}>{copy.text}</p>
+      <p className={styles.issueMeta}>{(actorIsOwner && copy.ownerText) || copy.text}</p>
       <label className={styles.label} htmlFor="dependencyTicketReason">
         Reason (required)
       </label>

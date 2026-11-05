@@ -2444,6 +2444,7 @@ export default function TaskDetailPage() {
         ticket={ticketReasonAction?.ticket}
         onClose={() => setTicketReasonAction(null)}
         submit={handleTicketReasonSubmit}
+        actorIsOwner={ticketReasonAction?.ticket?.ownerUserId != null && ticketReasonAction.ticket.ownerUserId === user?.id}
       />
       <ChangeDependencyOwnerModal
         open={!!ownerChangeTicket}
@@ -4259,7 +4260,8 @@ export default function TaskDetailPage() {
         </div>
       )}
 
-      {isAssignee && (
+      {/* Not on a dependency task's own page - it clears a ticket, it doesn't raise them. */}
+      {isAssignee && !isDependencyTask && (
         <form onSubmit={handleFileTicket} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
           <h2 className={styles.cardTitle}>
             Create Dependency Ticket
