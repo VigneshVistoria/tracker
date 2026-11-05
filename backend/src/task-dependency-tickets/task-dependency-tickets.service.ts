@@ -9,6 +9,8 @@ import {
   DEPENDENCY_TASK_AUDIT,
   DEPENDENCY_TASK_RESOLVED_STATUSES,
   DependencyTaskSummary,
+  canCancelOrReopenDependencyTicket,
+  canReopenDependencyTicket,
   dependencyTaskStatusLabel,
 } from './dependency-tasks';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
@@ -202,12 +204,39 @@ export class TaskDependencyTicketsService {
         AuditActions.TASK_DEPENDENCY_TICKET_OWNER_CHANGED,
         AuditActions.TASK_DEPENDENCY_TICKET_RESOLVED,
         TASK_FLAG_AUDIT.DEPENDENCY_NEED_BY_CHANGED,
+        DEPENDENCY_TASK_AUDIT.TICKET_CANCELLED,
+        DEPENDENCY_TASK_AUDIT.TICKET_REOPENED,
       ],
+    );
+    // Stage 3: what happened to each ticket's dependency task outside the
+    // ticket's own buttons (a PM junking, restoring, closing or reopening
+    // it) also cancels/resolves/reopens the ticket, via the trigger - shown
+    // here against the ticket. Junk done by Cancel itself is left out (the
+    // ticket's own entry already says it).
+    const linkedTasks: Array<{ id: number; dependencyTicketId: number }> = tickets.length
+      ? await this.dataSource.query(
+          `SELECT id, "dependencyTicketId" FROM project_tasks WHERE "tenantId" = $1 AND "dependencyTicketId" = ANY($2::int[])`,
+          [tenantId, tickets.map((t) => t.id)],
+        )
+      : [];
+    const ticketIdByTaskId = new Map(linkedTasks.map((t) => [t.id, t.dependencyTicketId]));
+    const taskEntries = (
+      await this.auditLogService.findForEntities(tenantId, 'ProjectTask', [...ticketIdByTaskId.keys()], [
+        AuditActions.TASK_MARKED_JUNK,
+        AuditActions.TASK_RESTORED_FROM_JUNK,
+        AuditActions.TASK_CLOSED,
+        AuditActions.TASK_REOPENED,
+      ])
+    )
+      .filter((e) => (e.details as any)?.source !== 'dependency-cancel')
+      .map((e) => ({ ...e, entityId: ticketIdByTaskId.get(e.entityId)!, dependencyTaskId: e.entityId }));
+    const allEntries = [...entries.map((e) => ({ ...e, dependencyTaskId: null as number | null })), ...taskEntries].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id - b.id,
     );
     const users = await this.usersService.findAll(tenantId);
     const nameById = new Map(users.map((u) => [u.id, u.fullName || u.email]));
     const nameByEmail = new Map(users.map((u) => [u.email, u.fullName || u.email]));
-    return entries.map((e) => {
+    return allEntries.map((e) => {
       const d = (e.details || {}) as Record<string, any>;
       const ownerEmail = typeof d.ownerEmail === 'string' ? d.ownerEmail : null;
       return {
@@ -226,6 +255,9 @@ export class TaskDependencyTicketsService {
         previousNeedByDate: d.previousNeedByDate ?? null,
         needByDate: d.needByDate ?? null,
         reason: d.reason ?? null,
+        // Stage 3: set on entries about the ticket's dependency task.
+        dependencyTaskId: e.dependencyTaskId,
+        newStatus: d.newStatus ?? null,
       };
     });
   }
@@ -703,5 +735,124 @@ export class TaskDependencyTicketsService {
     });
 
     return saved;
+  }
+
+  // ---- Dependency tasks Stage 3 (2026-11-05): Cancel and Reopen ----
+
+  // Cancel an open ticket - the requester or any Program Manager, with a
+  // reason. Unblocks the parent. Its dependency task (if any) goes to Junk
+  // with the same reason, so it drops out of every list and count; a PM
+  // restoring that task from Junk reopens the ticket (trigger). The owner,
+  // and the requester when a PM cancelled, are told.
+  async cancel(
+    id: number,
+    reason: string,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskDependencyTicket> {
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) throw new NotFoundException(`Dependency ticket #${id} not found`);
+    if (!canCancelOrReopenDependencyTicket(ticket, currentUser)) {
+      throw new ForbiddenException('Only whoever raised this dependency ticket, or a Program Manager, can cancel it.');
+    }
+    if (ticket.status !== 'open') {
+      throw new BadRequestException(`Only an open dependency ticket can be cancelled - this one is ${ticket.status}.`);
+    }
+    const now = new Date();
+    const saved = await this.dataSource.transaction(async (em) => {
+      // Guarded so a Resolve landing at the same moment can't be overwritten.
+      const result = await em.update(
+        TaskDependencyTicket,
+        { id, tenantId, status: 'open' },
+        { status: 'cancelled', cancelledAt: now, cancelledByUserId: currentUser.id, cancelReason: reason, resolvedAt: now },
+      );
+      if (!result.affected) throw new BadRequestException('This dependency ticket is no longer open.');
+      const task = await em.findOne(ProjectTask, { where: { dependencyTicketId: id, tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (task && task.status !== JUNK_STATUS) {
+        await this.tasksService.junkWithin(em, [task], `Dependency ticket cancelled: ${reason}`, currentUser, tenantId, 'dependency-cancel');
+      }
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: DEPENDENCY_TASK_AUDIT.TICKET_CANCELLED,
+        tenantId,
+        entityType: 'TaskDependencyTicket',
+        entityId: id,
+        details: { parentTaskId: ticket.parentTaskId, reason, dependencyTaskId: task?.id ?? null },
+      });
+      return em.findOneOrFail(TaskDependencyTicket, { where: { id, tenantId } });
+    });
+    this.notifyStage3('dependencyTicket.cancelled', saved, reason, currentUser);
+    return saved;
+  }
+
+  // Reopen a resolved ticket - the requester, the owner or any Program
+  // Manager, with a reason (user decision 2026-11-05). Blocks the parent
+  // again and puts its dependency task back In progress (Development). The
+  // owner and the requester are told, except whoever did it.
+  async reopen(
+    id: number,
+    reason: string,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<TaskDependencyTicket> {
+    const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
+    if (!ticket) throw new NotFoundException(`Dependency ticket #${id} not found`);
+    if (!canReopenDependencyTicket(ticket, currentUser)) {
+      throw new ForbiddenException('Only whoever raised this dependency ticket, its owner, or a Program Manager can reopen it.');
+    }
+    if (ticket.status !== 'resolved') {
+      throw new BadRequestException(`Only a resolved dependency ticket can be reopened - this one is ${ticket.status}.`);
+    }
+    const saved = await this.dataSource.transaction(async (em) => {
+      const result = await em.update(TaskDependencyTicket, { id, tenantId, status: 'resolved' }, { status: 'open', resolvedAt: null });
+      if (!result.affected) throw new BadRequestException('This dependency ticket is no longer resolved.');
+      const task = await em.findOne(ProjectTask, { where: { dependencyTicketId: id, tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (task && DEPENDENCY_TASK_RESOLVED_STATUSES.includes(task.status)) {
+        await em.update(ProjectTask, { id: task.id, tenantId }, { status: 'Development', completedAt: null });
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_TASK_AUDIT.TASK_REOPENED,
+          tenantId,
+          entityType: 'ProjectTask',
+          entityId: task.id,
+          details: { dependencyTicketId: id, previousStatus: task.status, newStatus: 'Development', reason },
+        });
+      }
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: DEPENDENCY_TASK_AUDIT.TICKET_REOPENED,
+        tenantId,
+        entityType: 'TaskDependencyTicket',
+        entityId: id,
+        details: { parentTaskId: ticket.parentTaskId, reason, dependencyTaskId: task?.id ?? null },
+      });
+      return em.findOneOrFail(TaskDependencyTicket, { where: { id, tenantId } });
+    });
+    this.notifyStage3('dependencyTicket.reopened', saved, reason, currentUser);
+    return saved;
+  }
+
+  // Owner always (when it's a user and not the actor); the requester too
+  // when someone else (a PM) did it.
+  private notifyStage3(event: string, ticket: TaskDependencyTicket, reason: string, actor: { id: number; email: string }) {
+    const recipients = [...new Set([ticket.ownerUserId, ticket.createdByUserId])].filter((u): u is number => u != null && u !== actor.id);
+    for (const recipientUserId of recipients) {
+      this.eventEmitter.emit(event, {
+        tenantId: ticket.tenantId,
+        ticketId: ticket.id,
+        parentTaskId: ticket.parentTaskId,
+        title: ticket.title,
+        recipientUserId,
+        actorUserId: actor.id,
+        actorEmail: actor.email,
+        reason,
+      });
+    }
   }
 }

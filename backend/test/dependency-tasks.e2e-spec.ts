@@ -400,6 +400,114 @@ describe('Dependency tasks (e2e)', () => {
     });
   });
 
+  describe('Stage 3: cancel and reopen', () => {
+    const notesFor = (userId: number, type: string, ticketId: number) =>
+      ds.query(`SELECT * FROM user_notifications WHERE "userId" = $1 AND type = $2 AND link LIKE $3`, [userId, type, `%#dependency-${ticketId}`]);
+
+    it('the requester cancels with a reason: ticket cancelled, parent unblocked, task to Junk, owner told, history shows it', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/cancel`, { reason: '  ' }).expect(400);
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Found another way round it' }).expect(200);
+      const ticket = await ticketRow(ticketId);
+      expect(ticket).toMatchObject({ status: 'cancelled', cancelledByUserId: f.users.devA.id, cancelReason: 'Found another way round it' });
+      expect(ticket.cancelledAt).not.toBeNull();
+      const task = await taskRow(dependencyTaskId!);
+      expect(task).toMatchObject({ status: 'Junk', statusBeforeJunk: 'Development', junkReason: 'Dependency ticket cancelled: Found another way round it' });
+      const open = (await ds.query(`SELECT count(*)::int AS n FROM task_dependency_tickets WHERE "parentTaskId" = $1 AND status = 'open'`, [parentId]))[0].n;
+      expect(open).toBe(0);
+      expect((await waitFor(() => notesFor(devC.id, 'dependency.cancelled', ticketId))).length).toBe(1);
+      expect((await notesFor(f.users.devA.id, 'dependency.cancelled', ticketId)).length).toBe(0);
+      const history = (await get(f.users.devA, `/task-dependency-tickets/history?parentTaskId=${parentId}`).expect(200)).body;
+      const cancelled = history.filter((h: any) => h.action === 'task_dependency_ticket_cancelled');
+      expect(cancelled).toHaveLength(1);
+      expect(cancelled[0]).toMatchObject({ ticketId, reason: 'Found another way round it' });
+      expect(history.some((h: any) => h.action === 'task_marked_junk')).toBe(false);
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'again' }).expect(400);
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(400);
+    });
+
+    it('cancel: requester and PM only; reopen: requester, owner and PM - not Admin, QA or Executive (403); 404 other tenant', async () => {
+      await setSwitch(true);
+      const { ticketId } = await newTicket();
+      for (const u of [f.users.admin, devC, f.users.qaB, f.users.exec, f.users.devNone]) {
+        await patch(u, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Not needed' }).expect(403);
+      }
+      await patch(f.users.pmT2, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Not needed' }).expect(404);
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      for (const u of [f.users.admin, f.users.qaB, f.users.exec, f.users.devNone]) {
+        await patch(u, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'Still broken' }).expect(403);
+      }
+      await patch(f.users.pmT2, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'Still broken' }).expect(404);
+      await http().patch(`/task-dependency-tickets/${ticketId}/reopen`).send({ reason: 'x y z' }).expect(401);
+      expect((await ticketRow(ticketId)).status).toBe('resolved');
+    });
+
+    it('a PM cancels: both owner and requester are told', async () => {
+      await setSwitch(true);
+      const { ticketId } = await newTicket();
+      await patch(f.users.pm, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Scope dropped by client' }).expect(200);
+      expect((await waitFor(() => notesFor(devC.id, 'dependency.cancelled', ticketId))).length).toBe(1);
+      expect((await waitFor(() => notesFor(f.users.devA.id, 'dependency.cancelled', ticketId))).length).toBe(1);
+    });
+
+    it('a PM restoring the cancelled task from Junk reopens the ticket, and history shows it', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Not needed now' }).expect(200);
+      await patch(f.users.pm, `/tasks/${dependencyTaskId}/restore-junk`).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('open');
+      expect((await taskRow(dependencyTaskId!)).status).toBe('Development');
+      const history = (await get(f.users.devA, `/task-dependency-tickets/history?parentTaskId=${parentId}`).expect(200)).body;
+      expect(history.find((h: any) => h.action === 'task_restored_from_junk')).toMatchObject({ ticketId, dependencyTaskId, newStatus: 'Development' });
+    });
+
+    it('the requester reopens a resolved ticket: open again (blocks the parent), task back In progress, owner told; only when resolved', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'Not resolved yet' }).expect(400);
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'Endpoint still returns 500' }).expect(200);
+      const ticket = await ticketRow(ticketId);
+      expect(ticket.status).toBe('open');
+      expect(ticket.resolvedAt).toBeNull();
+      const task = await taskRow(dependencyTaskId!);
+      expect(task.status).toBe('Development');
+      expect(task.completedAt).toBeNull();
+      expect((await waitFor(() => notesFor(devC.id, 'dependency.reopened', ticketId))).length).toBe(1);
+      const forParent = (await get(f.users.devA, `/task-dependency-tickets?parentTaskId=${parentId}`).expect(200)).body;
+      expect(forParent.find((t: any) => t.id === ticketId).dependencyTask).toMatchObject({ statusLabel: 'In progress' });
+      const history = (await get(f.users.devA, `/task-dependency-tickets/history?parentTaskId=${parentId}`).expect(200)).body;
+      expect(history.map((h: any) => h.action)).toEqual(
+        expect.arrayContaining(['task_dependency_ticket_resolved', 'task_dependency_ticket_reopened']),
+      );
+      // Resolvable again afterwards.
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      expect((await taskRow(dependencyTaskId!)).status).toBe('Pass');
+    });
+
+    it('the owner can reopen their own resolved ticket: requester told, not the owner', async () => {
+      await setSwitch(true);
+      const { ticketId, dependencyTaskId } = await newTicket();
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      await patch(devC, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'Found a gap in my fix' }).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('open');
+      expect((await taskRow(dependencyTaskId!)).status).toBe('Development');
+      expect((await waitFor(() => notesFor(f.users.devA.id, 'dependency.reopened', ticketId))).length).toBe(1);
+      expect((await notesFor(devC.id, 'dependency.reopened', ticketId)).length).toBe(0);
+    });
+
+    it('a ticket without a task (switch off) can be cancelled and reopened too', async () => {
+      const { ticketId, dependencyTaskId } = await newTicket();
+      expect(dependencyTaskId).toBeNull();
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      await patch(f.users.pm, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'Came back in UAT' }).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('open');
+      await patch(f.users.pm, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Moved to next release' }).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('cancelled');
+    });
+  });
+
   describe('progress notes', () => {
     it('the owner can add notes on a dependency task even with tracking off; ordinary tasks still need tracking', async () => {
       await setSwitch(true);

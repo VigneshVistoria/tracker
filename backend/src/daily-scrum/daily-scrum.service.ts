@@ -362,7 +362,8 @@ export class DailyScrumService {
         raw.push({ userId: d.ownerUserId, at: d.createdAt, kind: 'dependency_received', taskId: d.parentTaskId, title: '', detail: d.title });
         raw.push({ userId: d.createdByUserId, at: d.createdAt, kind: 'dependency_raised', taskId: d.parentTaskId, title: '', detail: d.title });
       }
-      if (d.resolvedAt && d.resolvedAt >= since) {
+      // A cancelled ticket also has resolvedAt (Stage 3) - not a clearance.
+      if (d.resolvedAt && d.resolvedAt >= since && d.status === 'resolved') {
         raw.push({ userId: d.ownerUserId, at: d.resolvedAt, kind: 'dependency_resolved', taskId: d.parentTaskId, title: '', detail: d.title });
         raw.push({ userId: d.createdByUserId, at: d.resolvedAt, kind: 'dependency_cleared', taskId: d.parentTaskId, title: '', detail: d.title });
       }

@@ -37,6 +37,9 @@ const TYPE_ICON = {
   'defect.triageOverdue': Clock,
   'dependency.assigned': Link2,
   'dependency.resolved': CheckCircle2,
+  // Dependency tasks Stage 3 (2026-11-05).
+  'dependency.cancelled': XCircle,
+  'dependency.reopened': Link2,
   'issue.assigned': UserPlus,
   'issue.approved': CheckCircle2,
   'issue.qaApproved': CheckCircle2,
@@ -62,6 +65,7 @@ const TYPE_TONE = {
   'task.escalated': 'warning',
   'defect.disputed': 'warning',
   'defect.triageOverdue': 'warning',
+  'dependency.reopened': 'warning',
   'issue.slaDueSoon': 'warning',
   'task.reviewApproved': 'success',
   'issue.approved': 'success',

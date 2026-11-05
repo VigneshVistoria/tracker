@@ -55,7 +55,9 @@ function withDerived(ticket, today) {
     due,
     overdueDays,
     lastActivityAt,
-    lastActivityText: ticket.resolvedAt ? `Resolved ${agoText(ticket.resolvedAt)}` : `Raised ${agoText(ticket.createdAt)}`,
+    lastActivityText: ticket.resolvedAt
+      ? `${ticket.status === 'cancelled' ? 'Cancelled' : 'Resolved'} ${agoText(ticket.resolvedAt)}`
+      : `Raised ${agoText(ticket.createdAt)}`,
     fromName: nameOrEmail(ticket.createdByName, ticket.createdByEmail),
     toName: nameOrEmail(ticket.ownerName, ticket.ownerEmail),
   };
@@ -334,18 +336,19 @@ export default function DependencyTicketBoard({ tickets, direction, title, stora
   const rows = useMemo(() => {
     const filtered = all.filter((t) => {
       if (statusFilter === 'open' && !t.open) return false;
-      if (statusFilter === 'resolved' && t.open) return false;
+      if (statusFilter === 'resolved' && t.status !== 'resolved') return false;
+      if (statusFilter === 'cancelled' && t.status !== 'cancelled') return false;
       if (overdueOnly && t.overdueDays === 0) return false;
       if (personFilter !== 'All' && personOf(t) !== personFilter) return false;
       if (moduleFilter !== 'All' && t.parentTaskModuleName !== moduleFilter) return false;
       return true;
     });
-    const groupKey = (t) => (groupBy === 'status' ? (t.open ? '0' : '1') : groupBy === 'person' ? personOf(t) : '');
+    const groupKey = (t) => (groupBy === 'status' ? (t.open ? '0' : t.status === 'cancelled' ? '2' : '1') : groupBy === 'person' ? personOf(t) : '');
     const cmp = compareTickets(sortKey);
     return filtered.sort((a, b) => groupKey(a).localeCompare(groupKey(b)) || cmp(a, b));
   }, [all, statusFilter, overdueOnly, personFilter, moduleFilter, sortKey, groupBy]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const groupLabel = (t) => (groupBy === 'status' ? (t.open ? 'Open' : 'Resolved') : groupBy === 'person' ? `${personLabel} ${personOf(t)}` : null);
+  const groupLabel = (t) => (groupBy === 'status' ? (t.open ? 'Open' : t.status === 'cancelled' ? 'Cancelled' : 'Resolved') : groupBy === 'person' ? `${personLabel} ${personOf(t)}` : null);
   const groupCounts = useMemo(() => {
     const m = new Map();
     for (const t of rows) m.set(groupLabel(t), (m.get(groupLabel(t)) || 0) + 1);
@@ -384,6 +387,7 @@ export default function DependencyTicketBoard({ tickets, direction, title, stora
           <select id={`${id}-status`} className={styles.filterSelect} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="open">Open</option>
             <option value="resolved">Resolved</option>
+            <option value="cancelled">Cancelled</option>
             <option value="all">All</option>
           </select>
         </div>

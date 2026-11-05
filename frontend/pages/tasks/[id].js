@@ -45,6 +45,7 @@ import TaskFlagsPanel from '../../components/TaskFlagsPanel';
 import TaskActivityPanel from '../../components/TaskActivityPanel';
 import TaskRequestsPanel from '../../components/TaskRequestsPanel';
 import DependencyNeedByModal from '../../components/DependencyNeedByModal';
+import DependencyTicketReasonModal from '../../components/DependencyTicketReasonModal';
 import ReopenAfterPassModal, { REOPEN_FROM_STATUSES } from '../../components/ReopenAfterPassModal';
 import TaskFieldsCard from '../../components/TaskFieldsCard';
 import EscapedDefectCard from '../../components/EscapedDefectCard';
@@ -240,6 +241,19 @@ function dependencyHistoryText(h) {
       return `changed the owner of ${ticket} from ${h.previousOwnerName} to ${h.ownerName}`;
     case 'task_dependency_ticket_resolved':
       return `resolved ${ticket}`;
+    // Dependency tasks Stage 3 (2026-11-05).
+    case 'task_dependency_ticket_cancelled':
+      return `cancelled ${ticket}: "${h.reason}"`;
+    case 'task_dependency_ticket_reopened':
+      return `reopened ${ticket}: "${h.reason}"`;
+    case 'task_marked_junk':
+      return `moved task #${h.dependencyTaskId} to Junk, cancelling ${ticket}${h.reason ? `: "${h.reason}"` : ''}`;
+    case 'task_restored_from_junk':
+      return `restored task #${h.dependencyTaskId} from Junk (${statusLabel(h.newStatus, { dependencyTicketId: h.ticketId })}), reopening ${ticket}`;
+    case 'task_closed':
+      return `closed task #${h.dependencyTaskId}, resolving ${ticket}`;
+    case 'task_reopened':
+      return `reopened task #${h.dependencyTaskId} (${statusLabel(h.newStatus, { dependencyTicketId: h.ticketId })}), reopening ${ticket}`;
     case 'task_dependency_ticket_need_by_changed':
       return `${h.previousNeedByDate ? `moved the needed-by date of ${ticket} from ${formatDate(h.previousNeedByDate)}` : `set the needed-by date of ${ticket}`} to ${formatDate(h.needByDate)}: "${h.reason}"`;
     default:
@@ -372,6 +386,8 @@ export default function TaskDetailPage() {
   const [tickets, setTickets] = useState([]);
   // "Change owner" dialog (PM/Admin) - the ticket being moved, or null.
   const [ownerChangeTicket, setOwnerChangeTicket] = useState(null);
+  // Dependency tasks Stage 3: { mode: 'cancel' | 'reopen', ticket } for the reason dialog.
+  const [ticketReasonAction, setTicketReasonAction] = useState(null);
   // Audited changes to this task's dependency tickets, oldest first.
   const [dependencyHistory, setDependencyHistory] = useState([]);
   const [developers, setDevelopers] = useState([]);
@@ -708,6 +724,16 @@ export default function TaskDetailPage() {
     } catch (err) {
       setError(err.message);
     }
+  };
+
+  // Stage 3: Cancel (open) / Reopen (resolved) - requester or PM, with a reason.
+  const handleTicketReasonSubmit = async (reason) => {
+    const { mode, ticket } = ticketReasonAction;
+    await apiFetch(`/task-dependency-tickets/${ticket.id}/${mode}`, { method: 'PATCH', body: JSON.stringify({ reason }) });
+    setTicketReasonAction(null);
+    const toldWho = ticket.ownerUserId === user.id ? 'the requester has' : 'the owner has';
+    showToast(`Dependency ticket ${mode === 'cancel' ? 'cancelled' : 'reopened'} - ${toldWho} been told`, 'success');
+    loadTickets();
   };
 
   const handleResolveTicket = async (ticketId) => {
@@ -2212,8 +2238,9 @@ export default function TaskDetailPage() {
 
   // Task page layout v2 (lib/featureFlags.js): open dependency tickets
   // first, resolved ones collapsed with a count.
-  const openTicketsList = tickets.filter((t) => t.status !== 'resolved');
-  const resolvedTicketsList = tickets.filter((t) => t.status === 'resolved');
+  const openTicketsList = tickets.filter((t) => t.status === 'open');
+  // Resolved and (Stage 3) cancelled tickets, folded away together.
+  const resolvedTicketsList = tickets.filter((t) => t.status !== 'open');
   const renderTicket = (ticket) => (
     <div
       key={ticket.id}
@@ -2259,6 +2286,11 @@ export default function TaskDetailPage() {
         </p>
       )}
       <p style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>{ticket.description}</p>
+      {ticket.status === 'cancelled' && (
+        <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0', whiteSpace: 'pre-wrap' }}>
+          Cancelled{ticket.cancelledAt ? ` ${formatDate(ticket.cancelledAt)}` : ''}{ticket.cancelReason ? `: ${ticket.cancelReason}` : ''}
+        </p>
+      )}
       {/* Dependency tasks (Stage 2): the owner's task behind this ticket. */}
       {ticket.dependencyTask && (
         <div className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
@@ -2332,6 +2364,21 @@ export default function TaskDetailPage() {
           Mark Resolved
         </button>
       )}
+      {/* Dependency tasks Stage 3: Cancel = requester or any Program Manager;
+          Reopen = those or the owner (not Admin). */}
+      {editingTicketId !== ticket.id && !isJunk && ['open', 'resolved'].includes(ticket.status) &&
+        (ticket.createdByUserId === user.id || user.role === 'program_manager' ||
+          (ticket.status === 'resolved' && ticket.ownerUserId != null && ticket.ownerUserId === user.id)) && (
+        <button
+          className={styles.buttonSecondary}
+          type="button"
+          style={{ marginTop: 'var(--space-2)', marginLeft: ticket.status === 'open' ? 'var(--space-2)' : 0 }}
+          onClick={() => setTicketReasonAction({ mode: ticket.status === 'open' ? 'cancel' : 'reopen', ticket })}
+          aria-label={`${ticket.status === 'open' ? 'Cancel' : 'Reopen'} ${ticket.title || 'dependency ticket'}`}
+        >
+          {ticket.status === 'open' ? 'Cancel ticket' : 'Reopen'}
+        </button>
+      )}
     </div>
   );
 
@@ -2349,7 +2396,7 @@ export default function TaskDetailPage() {
         {TASK_PAGE_V2 && resolvedTicketsList.length > 0 && (
           <CollapsibleSection
             count={resolvedTicketsList.length}
-            label={resolvedTicketsList.length === 1 ? 'resolved dependency' : 'resolved dependencies'}
+            label={resolvedTicketsList.length === 1 ? 'resolved or cancelled dependency' : 'resolved or cancelled dependencies'}
             storageKey={`taskSection:resolvedDependencies:${user.id}`}
           >
             {resolvedTicketsList.map(renderTicket)}
@@ -2391,6 +2438,12 @@ export default function TaskDetailPage() {
           loadTickets();
           showToast(message, 'success');
         }}
+      />
+      <DependencyTicketReasonModal
+        mode={ticketReasonAction?.mode}
+        ticket={ticketReasonAction?.ticket}
+        onClose={() => setTicketReasonAction(null)}
+        submit={handleTicketReasonSubmit}
       />
       <ChangeDependencyOwnerModal
         open={!!ownerChangeTicket}

@@ -103,6 +103,8 @@ export interface DependencyTicketEvent {
   recipientUserId: number;
   actorUserId: number;
   actorEmail: string;
+  // Stage 3 cancel/reopen.
+  reason?: string;
 }
 
 // Opens the ticket itself - its card on the parent task, highlighted -
@@ -371,6 +373,40 @@ export class UserNotificationListenersService {
         title: `Dependency on task #${e.parentTaskId} was cleared`,
         body: e.title,
         link: `/tasks/${e.parentTaskId}`,
+        actorUserId: e.actorUserId,
+        actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
+      });
+    });
+  }
+
+  // Dependency tasks Stage 3 (2026-11-05): to the owner, and to the
+  // requester when a PM did it (recipients chosen by the service).
+  @OnEvent('dependencyTicket.cancelled')
+  onDependencyTicketCancelled(e: DependencyTicketEvent) {
+    return this.safely('dependencyTicket.cancelled', async () => {
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.recipientUserId,
+        type: 'dependency.cancelled',
+        title: `Dependency on task #${e.parentTaskId} was cancelled`,
+        body: e.reason ? `${e.title ?? ''} - ${e.reason}` : e.title,
+        link: dependencyTicketLink(e),
+        actorUserId: e.actorUserId,
+        actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
+      });
+    });
+  }
+
+  @OnEvent('dependencyTicket.reopened')
+  onDependencyTicketReopened(e: DependencyTicketEvent) {
+    return this.safely('dependencyTicket.reopened', async () => {
+      await this.notifications.create({
+        tenantId: e.tenantId,
+        userId: e.recipientUserId,
+        type: 'dependency.reopened',
+        title: `Dependency on task #${e.parentTaskId} was reopened`,
+        body: e.reason ? `${e.title ?? ''} - ${e.reason}` : e.title,
+        link: dependencyTicketLink(e),
         actorUserId: e.actorUserId,
         actorName: await this.actorName(e.actorUserId, e.actorEmail, e.tenantId),
       });

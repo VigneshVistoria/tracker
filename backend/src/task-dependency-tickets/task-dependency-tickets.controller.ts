@@ -5,6 +5,7 @@ import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency
 import { ChangeTaskDependencyTicketOwnerDto } from './dto/change-task-dependency-ticket-owner.dto';
 import { ChangeNeedByDateDto } from '../task-flags/dto/task-flags.dto';
 import { SetDependencyTasksSwitchDto } from './dto/set-dependency-tasks-switch.dto';
+import { DependencyTicketReasonDto } from './dto/dependency-ticket-reason.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { TasksService } from '../tasks/tasks.service';
@@ -129,5 +130,19 @@ export class TaskDependencyTicketsController {
   async resolve(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const currentUser = await this.usersService.findById(req.user.sub);
     return this.ticketsService.resolve(id, currentUser, req.user.tenantId);
+  }
+
+  // Dependency tasks Stage 3: requester or Program Manager, with a reason
+  // (checked in the service).
+  @Patch(':id/cancel')
+  async cancel(@Param('id', ParseIntPipe) id: number, @Body() dto: DependencyTicketReasonDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.ticketsService.cancel(id, dto.reason, currentUser, req.user.tenantId);
+  }
+
+  @Patch(':id/reopen')
+  async reopen(@Param('id', ParseIntPipe) id: number, @Body() dto: DependencyTicketReasonDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.ticketsService.reopen(id, dto.reason, currentUser, req.user.tenantId);
   }
 }

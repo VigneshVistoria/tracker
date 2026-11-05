@@ -246,7 +246,7 @@ function completedAtRange(from?: string, to?: string): FindOperator<any> {
 // task page for leadership. Nothing is deleted.
 export const JUNK_STATUS = 'Junk';
 // Where a Junk came from, for its audit entry.
-export type JunkSource = 'single' | 'bulk' | 'interventions' | 'qa-revert';
+export type JunkSource = 'single' | 'bulk' | 'interventions' | 'qa-revert' | 'dependency-cancel';
 
 // Full tenant-wide *view* access (findAllForUser/canView) - Admin and
 // Executive both get this, but it's read-only: neither is in

@@ -37,7 +37,30 @@ export const DEPENDENCY_TASK_AUDIT = {
   TASK_CREATED: 'dependency_task_created',
   TASK_RESOLVED: 'dependency_task_resolved',
   TASK_REASSIGNED: 'dependency_task_reassigned',
+  // Stage 3 (2026-11-05).
+  TASK_REOPENED: 'dependency_task_reopened',
+  TICKET_CANCELLED: 'task_dependency_ticket_cancelled',
+  TICKET_REOPENED: 'task_dependency_ticket_reopened',
 } as const;
+
+// Stage 3 (user decisions 2026-11-05): an open ticket can be cancelled,
+// and a resolved one reopened, only by whoever filed it (the requester) or
+// any Program Manager - not Admin, not the owner. Either needs a reason.
+export function canCancelOrReopenDependencyTicket(
+  ticket: { createdByUserId: number | null },
+  user: { id: number; role: UserRole },
+): boolean {
+  return ticket.createdByUserId === user.id || user.role === UserRole.PROGRAM_MANAGER;
+}
+
+// Reopen a resolved ticket: the requester, the owner or any Program Manager
+// - not Admin (user decision 2026-11-05, owner added later the same day).
+export function canReopenDependencyTicket(
+  ticket: { createdByUserId: number | null; ownerUserId: number | null },
+  user: { id: number; role: UserRole },
+): boolean {
+  return canCancelOrReopenDependencyTicket(ticket, user) || (ticket.ownerUserId != null && ticket.ownerUserId === user.id);
+}
 
 // Stage 2 (2026-11-05): a dependency task is worked in Development, shown
 // as "In progress" (no new status - user decision 7).
