@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { NON_VERDICT_ROUND_STATUSES, TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { UsersService } from '../users/users.service';
@@ -303,6 +303,8 @@ export class NonComplianceReportService {
             assigneeUserId: In(developerIds),
             ...(projectId ? { projectId } : {}),
             status: Not('Junk'),
+            // Dependency tasks: left out until the user decides (2026-11-05).
+            dependencyTicketId: IsNull(),
           },
         })
       : [];

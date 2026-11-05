@@ -15,6 +15,7 @@ import { TASK_ACTIVITY_AUDIT, TaskChasedEvent, chaseBlockedReason, noteBlockedRe
 import { AddProgressNoteDto, ChaseTaskDto } from './dto/task-activity.dto';
 
 // Performance Tracking B1 - see ./task-activity.ts for the rules.
+import { isDependencyTask } from '../task-dependency-tickets/dependency-tasks';
 @Injectable()
 export class TaskActivityService {
   constructor(
@@ -50,7 +51,11 @@ export class TaskActivityService {
   async state(taskId: number, user: User, tenantId: number, now = new Date()) {
     const task = await this.viewable(taskId, user, tenantId);
     const trackingOn = await this.trackingOn(task.projectId, tenantId);
-    if (!trackingOn) return { trackingOn: false };
+    // Dependency tasks keep progress notes even with tracking off (the
+    // owner's progress record - user decision 2026-11-05); Chase stays a
+    // tracking feature.
+    const dependencyTask = isDependencyTask(task);
+    if (!trackingOn && !dependencyTask) return { trackingOn: false };
     const settings = await this.tracking.thresholds(tenantId);
     const [chases, notes] = await Promise.all([
       this.chasesRepository.find({ where: { taskId, tenantId }, order: { createdAt: 'DESC', id: 'DESC' } }),
@@ -62,10 +67,13 @@ export class TaskActivityService {
     );
     const names = new Map(users.map((u) => [u.id, u.fullName || u.email]));
     const mine = chases.find((c) => c.chasedByUserId === user.id) ?? null;
-    const chaseBlocked = chaseBlockedReason(task, user, settings.chaseRoles, mine?.createdAt ?? null, settings.chaseCooldownHours, now);
+    const chaseBlocked = trackingOn
+      ? chaseBlockedReason(task, user, settings.chaseRoles, mine?.createdAt ?? null, settings.chaseCooldownHours, now)
+      : 'Performance Tracking is off for this project.';
     const noteBlocked = noteBlockedReason(task, user);
     return {
-      trackingOn: true,
+      trackingOn,
+      dependencyTask,
       canChase: chaseBlocked === null,
       chaseBlockedReason: chaseBlocked,
       canAddNote: noteBlocked === null,
@@ -141,7 +149,7 @@ export class TaskActivityService {
   async addNote(taskId: number, dto: AddProgressNoteDto, user: User, tenantId: number) {
     const task = await this.viewable(taskId, user, tenantId);
     this.tasksService.assertNotJunk(task);
-    if (!(await this.trackingOn(task.projectId, tenantId))) {
+    if (!isDependencyTask(task) && !(await this.trackingOn(task.projectId, tenantId))) {
       throw new BadRequestException('Performance Tracking is off for this project.');
     }
     const blocked = noteBlockedReason(task, user);

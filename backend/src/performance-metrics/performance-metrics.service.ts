@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TaskQaReview } from '../task-qa-reviews/task-qa-review.entity';
 import { UsersService } from '../users/users.service';
@@ -240,6 +240,8 @@ export class PerformanceMetricsService {
         tenantId,
         ...(options.projectId ? { projectId: options.projectId } : {}),
         ...(settings.excludedStatuses.length ? { status: Not(In(settings.excludedStatuses)) } : {}),
+        // Dependency tasks: left out until the user decides (2026-11-05).
+        dependencyTicketId: IsNull(),
       },
     });
     const taskIds = tasks.map((x) => x.id);

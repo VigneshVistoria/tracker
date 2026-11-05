@@ -46,6 +46,13 @@ export class Project {
   @Column({ type: 'timestamp', nullable: true })
   performanceTrackingSince: Date | null;
 
+  // Dependency tasks (2026-11-05, migrations/2026-11-dependency-tasks.sql):
+  // when on, a dependency ticket with an internal owner also gets a linked
+  // task (backend/src/task-dependency-tickets/dependency-tasks.ts). Admin or
+  // Program Manager switches it per project; default off.
+  @Column({ default: false })
+  dependencyTasksEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

@@ -53,8 +53,11 @@ export class TaskDependencyTicket {
   // 'open' | 'resolved'. Direction (Outbound/Inbound) stays implicit, as
   // before - it's still just whichever of ownerUserId/createdByUserId
   // matches the current user, never stored on the row itself.
+  // 'cancelled' added with dependency tasks (2026-11-05): the ticket was
+  // withdrawn or its dependency task went to Junk. Like 'resolved', it no
+  // longer blocks the parent task (every gate checks for 'open').
   @Column({ default: 'open' })
-  status: 'open' | 'resolved';
+  status: 'open' | 'resolved' | 'cancelled';
 
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date;
@@ -68,4 +71,15 @@ export class TaskDependencyTicket {
 
   @Column({ type: 'timestamp', nullable: true })
   overdueAt: Date | null;
+
+  // Dependency tasks (2026-11-05): when and why the ticket was cancelled.
+  // resolvedAt is set too, so ticket-based metrics stop counting it.
+  @Column({ type: 'timestamp', nullable: true })
+  cancelledAt: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  cancelledByUserId: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  cancelReason: string | null;
 }

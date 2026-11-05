@@ -177,7 +177,8 @@ export class KpiService {
     // and one force-closed was never really resolved either way, so
     // neither should count against (or for) completion/overdue/target-miss.
     const dueTasks = await this.tasksRepository.find({
-      where: { tenantId, projectId, assigneeUserId, dueDate: Between(startStr, endStr), status: Not(In(['Junk', 'Hold', 'Closed'])) },
+      // Dependency tasks are left out of KPI until the user decides (2026-11-05).
+      where: { tenantId, projectId, assigneeUserId, dueDate: Between(startStr, endStr), status: Not(In(['Junk', 'Hold', 'Closed'])), dependencyTicketId: IsNull() },
     });
     const ticketsDue = dueTasks.length;
 
@@ -239,7 +240,7 @@ export class KpiService {
     // rejection/retest history excluded entirely too, not just its
     // completion/overdue numbers.
     const allAssigneeTasks = await this.tasksRepository.find({
-      where: { tenantId, projectId, assigneeUserId, status: Not(In(['Junk', 'Hold', 'Closed'])) },
+      where: { tenantId, projectId, assigneeUserId, status: Not(In(['Junk', 'Hold', 'Closed'])), dependencyTicketId: IsNull() },
       select: ['id'],
     });
     const allTaskIds = allAssigneeTasks.map((t) => t.id);
@@ -334,7 +335,8 @@ export class KpiService {
 
     const dueTasks = await this.tasksRepository.find({
       // Junk is no one's work - it must not create a KPI row on its own.
-      where: { tenantId, dueDate: Between(startStr, endStr), assigneeUserId: Not(IsNull()), status: Not('Junk') },
+      // Dependency tasks never create a KPI row on their own either.
+      where: { tenantId, dueDate: Between(startStr, endStr), assigneeUserId: Not(IsNull()), status: Not('Junk'), dependencyTicketId: IsNull() },
     });
 
     const pairs = new Map<string, { projectId: number; projectName: string; assigneeUserId: number; assigneeEmail: string }>();

@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import { ProjectTask } from '../tasks/project-task.entity';
+import { sanitizeRichText } from '../common/sanitize-rich-text';
+import { DEPENDENCY_TASKS_SWITCH_ROLES, DEPENDENCY_TASK_AUDIT, DEPENDENCY_TASK_RESOLVED_STATUSES } from './dependency-tasks';
 import { TaskDependencyTicket } from './task-dependency-ticket.entity';
 import { CreateTaskDependencyTicketDto } from './dto/create-task-dependency-ticket.dto';
 import { UpdateTaskDependencyTicketTitleDto } from './dto/update-task-dependency-ticket-title.dto';
@@ -44,7 +47,61 @@ export class TaskDependencyTicketsService {
     private usersService: UsersService,
     private auditLogService: AuditLogService,
     private eventEmitter: EventEmitter2,
+    private dataSource: DataSource,
   ) {}
+
+  // ---- Dependency tasks (2026-11-05, see ./dependency-tasks.ts) ----
+
+  // Every project with its switch, for the Admin / PM settings list.
+  async listProjectSwitches(currentUser: { role: UserRole }, tenantId: number) {
+    if (!DEPENDENCY_TASKS_SWITCH_ROLES.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin or Program Manager can see the dependency task switches.');
+    }
+    const projects = await this.projectsRepository.find({ where: { tenantId }, order: { name: 'ASC' } });
+    return projects.map((p) => ({ id: p.id, name: p.name, dependencyTasksEnabled: !!p.dependencyTasksEnabled }));
+  }
+
+  // Switching on affects tickets raised from then on; switching off stops
+  // new tasks being made. Tasks already linked keep working either way.
+  async setProjectSwitch(
+    projectId: number,
+    enabled: boolean,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ) {
+    if (!DEPENDENCY_TASKS_SWITCH_ROLES.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin or Program Manager can switch dependency tasks on or off.');
+    }
+    if (typeof enabled !== 'boolean') {
+      throw new BadRequestException('enabled must be true or false.');
+    }
+    const project = await this.projectsRepository.findOne({ where: { id: projectId, tenantId } });
+    if (!project) {
+      throw new NotFoundException(`Project #${projectId} not found`);
+    }
+    const from = !!project.dependencyTasksEnabled;
+    if (from !== enabled) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(Project, { id: projectId, tenantId }, { dependencyTasksEnabled: enabled });
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_TASK_AUDIT.PROJECT_SWITCHED,
+          tenantId,
+          entityType: 'Project',
+          entityId: projectId,
+          details: { from, to: enabled },
+        });
+      });
+    }
+    return { projectId, name: project.name, dependencyTasksEnabled: enabled };
+  }
+
+  // The task linked to a ticket, if any.
+  private linkedTask(em: EntityManager, ticketId: number, tenantId: number): Promise<ProjectTask | null> {
+    return em.findOne(ProjectTask, { where: { dependencyTicketId: ticketId, tenantId } });
+  }
 
   // Combined task detail view - dependency tickets filed against a given
   // parent task, with owner/filer full names for display (2026-10-14).
@@ -200,29 +257,82 @@ export class TaskDependencyTicketsService {
       throw new BadRequestException('Performance Tracking is off for this project - a dependency has no needed-by date.');
     }
 
-    const ticket = this.ticketsRepository.create({
-      tenantId,
-      parentTaskId: task.id,
-      title,
-      description: dto.description,
-      ownerUserId: owner.id,
-      ownerEmail: owner.email,
-      createdByUserId: currentUser.id,
-      createdByEmail: currentUser.email,
-      needByDate: dto.needByDate ?? null,
-      overdueAt: dto.needByDate ? await this.overdueAtFor(dto.needByDate, tenantId) : null,
-    });
-    const saved = await this.ticketsRepository.save(ticket);
+    const overdueAt = dto.needByDate ? await this.overdueAtFor(dto.needByDate, tenantId) : null;
+    const project = await this.projectsRepository.findOne({ where: { id: task.projectId, tenantId } });
+    const withTask = !!project?.dependencyTasksEnabled;
 
-    await this.auditLogService.record({
-      userId: currentUser.id,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
-      action: AuditActions.TASK_DEPENDENCY_TICKET_CREATED,
-      tenantId,
-      entityType: 'TaskDependencyTicket',
-      entityId: saved.id,
-      details: { parentTaskId: saved.parentTaskId, ownerEmail: saved.ownerEmail, title: saved.title, needByDate: saved.needByDate },
+    // Ticket and (switch on) its task are made together or not at all.
+    let dependencyTaskId: number | null = null;
+    const saved = await this.dataSource.transaction(async (em) => {
+      const ticket = await em.save(
+        TaskDependencyTicket,
+        em.create(TaskDependencyTicket, {
+          tenantId,
+          parentTaskId: task.id,
+          title,
+          description: dto.description,
+          ownerUserId: owner.id,
+          ownerEmail: owner.email,
+          createdByUserId: currentUser.id,
+          createdByEmail: currentUser.email,
+          needByDate: dto.needByDate ?? null,
+          overdueAt,
+        }),
+      );
+      await this.auditLogService.recordWithin(em, {
+        userId: currentUser.id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: AuditActions.TASK_DEPENDENCY_TICKET_CREATED,
+        tenantId,
+        entityType: 'TaskDependencyTicket',
+        entityId: ticket.id,
+        details: { parentTaskId: ticket.parentTaskId, ownerEmail: ticket.ownerEmail, title: ticket.title, needByDate: ticket.needByDate, withTask },
+      });
+
+      if (withTask) {
+        // Same project / module / phase as the parent. The owner's due date
+        // starts as the needed-by date - theirs to confirm or replace (once)
+        // under the normal rules; no date at all when tracking is off.
+        const dependencyTask = await em.save(
+          ProjectTask,
+          em.create(ProjectTask, {
+            tenantId,
+            projectId: task.projectId,
+            projectName: task.projectName,
+            moduleId: task.moduleId,
+            moduleName: task.moduleName,
+            phaseId: task.phaseId,
+            phaseName: task.phaseName,
+            title,
+            description: sanitizeRichText(dto.description),
+            assigneeUserId: owner.id,
+            assigneeEmail: owner.email,
+            estimatedHours: null,
+            dueDate: ticket.needByDate ?? null,
+            dueDateCommittedByUserId: null,
+            dueDateCommittedAt: null,
+            status: 'Development',
+            peerReviewEnabled: false,
+            priority: task.priority ?? null,
+            dependencyTicketId: ticket.id,
+            createdByUserId: currentUser.id,
+            createdByEmail: currentUser.email,
+          }),
+        );
+        dependencyTaskId = dependencyTask.id;
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_TASK_AUDIT.TASK_CREATED,
+          tenantId,
+          entityType: 'ProjectTask',
+          entityId: dependencyTask.id,
+          details: { dependencyTicketId: ticket.id, parentTaskId: task.id, assigneeUserId: owner.id, dueDate: dependencyTask.dueDate },
+        });
+      }
+      return ticket;
     });
 
     this.eventEmitter.emit('dependencyTicket.created', {
@@ -235,7 +345,7 @@ export class TaskDependencyTicketsService {
       actorEmail: currentUser.email,
     });
 
-    return saved;
+    return Object.assign(saved, { dependencyTaskId });
   }
 
   // Title is the only field editable after creation. Allowed for whoever
@@ -327,7 +437,27 @@ export class TaskDependencyTicketsService {
     const previousOwner = await this.usersService.findByIdAndTenant(previousOwnerUserId, tenantId);
     ticket.ownerUserId = owner.id;
     ticket.ownerEmail = owner.email;
-    const saved = await this.ticketsRepository.save(ticket);
+    // A dependency task follows its ticket's owner (the only way it is
+    // reassigned). Pending due-date requests are cancelled by the existing
+    // trigger; the new owner gets their one free date set / confirm.
+    const saved = await this.dataSource.transaction(async (em) => {
+      const savedTicket = await em.save(TaskDependencyTicket, ticket);
+      const dependencyTask = await this.linkedTask(em, ticket.id, tenantId);
+      if (dependencyTask) {
+        await em.update(ProjectTask, { id: dependencyTask.id, tenantId }, { assigneeUserId: owner.id, assigneeEmail: owner.email });
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_TASK_AUDIT.TASK_REASSIGNED,
+          tenantId,
+          entityType: 'ProjectTask',
+          entityId: dependencyTask.id,
+          details: { dependencyTicketId: ticket.id, previousAssigneeUserId: dependencyTask.assigneeUserId, assigneeUserId: owner.id },
+        });
+      }
+      return savedTicket;
+    });
 
     await this.auditLogService.record({
       userId: currentUser.id,
@@ -454,10 +584,33 @@ export class TaskDependencyTicketsService {
     if (ticket.status === 'resolved') {
       throw new BadRequestException('This dependency ticket is already resolved.');
     }
+    if (ticket.status === 'cancelled') {
+      throw new BadRequestException('This dependency ticket was cancelled.');
+    }
 
+    // Light flow: the owner's Resolve moves a dependency task straight to
+    // Pass - no QA, Peer Review or PM review (user decision 2026-11-05).
+    const now = new Date();
     ticket.status = 'resolved';
-    ticket.resolvedAt = new Date();
-    const saved = await this.ticketsRepository.save(ticket);
+    ticket.resolvedAt = now;
+    const saved = await this.dataSource.transaction(async (em) => {
+      const savedTicket = await em.save(TaskDependencyTicket, ticket);
+      const dependencyTask = await this.linkedTask(em, ticket.id, tenantId);
+      if (dependencyTask && !DEPENDENCY_TASK_RESOLVED_STATUSES.includes(dependencyTask.status)) {
+        await em.update(ProjectTask, { id: dependencyTask.id, tenantId }, { status: 'Pass', completedAt: now });
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_TASK_AUDIT.TASK_RESOLVED,
+          tenantId,
+          entityType: 'ProjectTask',
+          entityId: dependencyTask.id,
+          details: { dependencyTicketId: ticket.id, previousStatus: dependencyTask.status, newStatus: 'Pass' },
+        });
+      }
+      return savedTicket;
+    });
 
     await this.auditLogService.record({
       userId: currentUser.id,

@@ -29,6 +29,7 @@ import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 import { isDeveloperOverdue } from './pm-review';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
 import { NOT_READY_STATUS } from './qa-not-ready';
+import { dependencyTaskBlock } from '../task-dependency-tickets/dependency-tasks';
 import {
   CLASSIFICATION_FIELDS,
   CLASSIFICATION_LABELS,
@@ -502,6 +503,9 @@ export class TasksService {
   // submit a Held, Closed or already-Passed task and pull it straight
   // back into review, around the PM.
   assertSubmittable(task: ProjectTask): void {
+    // Dependency tasks use the light flow: the owner's Resolve, no review.
+    const dependencyBlock = dependencyTaskBlock(task, 'review');
+    if (dependencyBlock) throw new BadRequestException(dependencyBlock);
     // Return to QA: the ticket is with QA until they send it back.
     if (task.status === RETURNED_TO_QA_STATUS) {
       throw new BadRequestException(`#${task.id} was sent back to QA by a PM - you can submit it once QA returns it to you.`);
@@ -661,6 +665,8 @@ export class TasksService {
     if (task.isDefect) {
       throw new BadRequestException(`Task #${task.id} is a Defect - Peer Review applies to tasks only. It goes back to the QA who raised it.`);
     }
+    const dependencyBlock = dependencyTaskBlock(task, 'review');
+    if (dependencyBlock) throw new BadRequestException(dependencyBlock);
   }
 
   // Validates the Project -> Module -> Phase chain against each other,
@@ -1811,6 +1817,7 @@ export class TasksService {
     if (!assignee) {
       throw new NotFoundException(`User #${assigneeUserId} not found`);
     }
+    this.assertReassignable(task);
     const previousAssigneeUserId = task.assigneeUserId;
 
     task.assigneeUserId = assignee.id;
@@ -1835,6 +1842,13 @@ export class TasksService {
     this.emitAssigned(saved, currentUser, tenantId);
 
     return saved;
+  }
+
+  // Dependency tasks follow their ticket's owner - reassigned only through
+  // the ticket's Change owner, never directly.
+  assertReassignable(task: ProjectTask): void {
+    const block = dependencyTaskBlock(task, 'reassign');
+    if (block) throw new BadRequestException(block);
   }
 
   async bulkAssignTasks(
@@ -1876,6 +1890,7 @@ export class TasksService {
   ): Promise<ProjectTask & { assigneeFullName?: string }> {
     const task = await this.findOne(id, tenantId);
     this.assertNotJunk(task);
+    this.assertReassignable(task);
     const previousAssigneeUserId = task.assigneeUserId;
     const previousAssigneeEmail = task.assigneeEmail;
     let assigneeFullName: string | undefined;
@@ -1947,6 +1962,7 @@ export class TasksService {
       throw new BadRequestException('An escalated task can only be reassigned to a Developer, Designer, or DevOps.');
     }
 
+    this.assertReassignable(task);
     const previousAssigneeUserId = task.assigneeUserId;
     task.assigneeUserId = assignee.id;
     task.assigneeEmail = assignee.email;

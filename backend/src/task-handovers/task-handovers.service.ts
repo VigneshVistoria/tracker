@@ -92,6 +92,7 @@ export class TaskHandoversService {
   async start(taskId: number, dto: StartHandoverDto, user: User, tenantId: number) {
     const task = await this.viewable(taskId, user, tenantId);
     this.tasksService.assertNotJunk(task);
+    this.tasksService.assertReassignable(task);
     if (!(await this.trackingOn(task.projectId, tenantId))) throw new BadRequestException('Performance Tracking is off for this project.');
     if (HANDOVER_CLOSED_STATUSES.includes(task.status)) throw new BadRequestException(`A ${task.status} task cannot be handed over.`);
     if (!task.assigneeUserId) throw new BadRequestException('The task has no assignee to hand it over.');

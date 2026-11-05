@@ -180,6 +180,15 @@ const RELEASE_PATH_COLUMNS = ['releasedByUserId', 'stagingSignedOffOn', 'staging
 // and re-added by the real migration).
 const GITHUB_DIR = path.join(SRC, 'github-releases');
 const GITHUB_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-releases.sql');
+// Dependency tasks Stage 1 (2026-11-05): switch, task link, ticket cancel
+// fields and the sync trigger - dropped from what synchronize made, re-added
+// by the real migration, then checked against the entities.
+const DEPENDENCY_TASKS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-dependency-tasks.sql');
+const DEPENDENCY_TASKS_COLUMNS: Record<string, string[]> = {
+  projects: ['dependencyTasksEnabled'],
+  project_tasks: ['dependencyTicketId'],
+  task_dependency_tickets: ['cancelledAt', 'cancelledByUserId', 'cancelReason'],
+};
 const GITHUB_TABLES = ['github_settings', 'github_repo_mappings', 'github_webhook_deliveries', 'github_staging_deployments'];
 const GITHUB_COLUMNS: Record<string, string[]> = {
   releases: ['source', 'githubRepo', 'githubSha', 'githubDeliveryId', 'githubReleasedByLogin', 'githubStagingDeployedOn', 'githubFilled', 'githubNotes'],
@@ -303,6 +312,10 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(GITHUB_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(DEPENDENCY_TASKS_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(DEPENDENCY_TASKS_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -412,7 +425,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS), ...Object.entries(TASK_FIELDS_COLUMNS), ...Object.entries(GITHUB_COLUMNS)]) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS), ...Object.entries(TASK_FIELDS_COLUMNS), ...Object.entries(GITHUB_COLUMNS), ...Object.entries(DEPENDENCY_TASKS_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,

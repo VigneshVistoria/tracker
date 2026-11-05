@@ -210,7 +210,7 @@ export class TrackingMetricsService {
       `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact", "clientPriorityTier",
               "improvementDecision", "improvementDecidedAt",
               "createdAt", "foundInProduction", "escapedFromTaskId", "productionReleaseDate"::text AS "productionReleaseDate"
-         FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2`,
+         FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2 AND "dependencyTicketId" IS NULL`,
       [tenantId, projectId],
     );
     const ids = tasks.map((t) => t.id);

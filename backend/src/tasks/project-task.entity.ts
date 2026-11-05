@@ -237,6 +237,14 @@ export class ProjectTask {
   @Column({ nullable: true })
   parentTaskId: number | null;
 
+  // Dependency tasks (2026-11-05, see ../task-dependency-tickets/
+  // dependency-tasks.ts): set when this task is the work behind a dependency
+  // ticket. A separate column, not parentTaskId - several reports read
+  // parentTaskId children as defects. Left out of KPI, Non-Compliance and
+  // Performance Tracking until the user decides (after 2026-11-30).
+  @Column({ type: 'int', nullable: true })
+  dependencyTicketId: number | null;
+
   // Defect classification (2026-10-27, see ./defect-triage.ts) - set by QA
   // when the defect is filed in a project with triage on, as the text
   // picked from the editable lists (build is free text). Null on tasks and
