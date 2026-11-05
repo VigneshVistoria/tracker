@@ -59,7 +59,7 @@ function withDerived(ticket, today) {
       ? `${ticket.status === 'cancelled' ? 'Cancelled' : 'Resolved'} ${agoText(ticket.resolvedAt)}`
       : `Raised ${agoText(ticket.createdAt)}`,
     fromName: nameOrEmail(ticket.createdByName, ticket.createdByEmail),
-    toName: nameOrEmail(ticket.ownerName, ticket.ownerEmail),
+    toName: ticket.ownerExternal ? `${ticket.ownerExternal} (external)` : nameOrEmail(ticket.ownerName, ticket.ownerEmail),
   };
 }
 

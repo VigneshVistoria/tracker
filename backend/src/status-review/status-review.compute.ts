@@ -59,7 +59,9 @@ export interface ComputeDependencyInput {
   id: number;
   title: string;
   parentTaskId: number;
-  ownerUserId: number;
+  ownerUserId: number | null;
+  // Stage 4: free-text owner outside the app (ownerUserId null).
+  ownerExternal?: string | null;
   createdByUserId: number | null;
   createdByEmail: string | null;
   createdAt: Date | string;
@@ -221,7 +223,7 @@ export function computeStatusReview(input: ComputeInput): StatusReviewSummary {
       parentBucket: parent.bucket,
       parentDueDate: parent.dueDate,
       assigneeUserId: d.ownerUserId,
-      assigneeName: nameOf(d.ownerUserId),
+      assigneeName: d.ownerExternal ? `${d.ownerExternal} (external)` : nameOf(d.ownerUserId),
       filedByName: nameOf(d.createdByUserId, d.createdByEmail),
       createdAt: d.createdAt,
     };

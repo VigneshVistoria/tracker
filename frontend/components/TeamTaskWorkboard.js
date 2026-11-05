@@ -642,7 +642,7 @@ export default function TeamTaskWorkboard({ storageKey, fullScreen = false, canM
   };
 
   const assigneeLabel = useMemo(
-    () => (t) => assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail,
+    () => (t) => assigneeLabelById.get(t.assigneeUserId) || t.assigneeEmail || (t.ownerExternal ? `${t.ownerExternal} (external)` : null),
     [assigneeLabelById],
   );
   const { displayRows, sort, handleSortChange } = useSectionSort(tasks, assigneeLabel);

@@ -159,6 +159,7 @@ export interface TeamDependencyRow {
   status: 'Open';
   assigneeUserId: number;
   assigneeEmail: string;
+  ownerExternal: string | null;
   createdByEmail: string;
   // Filer's Full Name (email if none) - the "Filed by" group label.
   createdByName: string;
@@ -1438,6 +1439,8 @@ export class TasksService {
         status: 'Open' as const,
         assigneeUserId: t.ownerUserId,
         assigneeEmail: t.ownerEmail,
+        // Stage 4: a free-text owner outside the app (assignee fields null).
+        ownerExternal: t.ownerExternal ?? null,
         createdByEmail: t.createdByEmail,
         createdByName: filerNameById.get(t.createdByUserId) || t.createdByEmail,
         createdAt: t.createdAt,

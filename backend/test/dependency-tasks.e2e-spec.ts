@@ -508,6 +508,78 @@ describe('Dependency tasks (e2e)', () => {
     });
   });
 
+  describe('Stage 4: external owner', () => {
+    const ext = { ownerUserId: undefined, ownerExternal: '  Client IT - Ahmed  ' };
+    const assignedTo = (ticketId: number) =>
+      ds.query(`SELECT * FROM user_notifications WHERE type = 'dependency.assigned' AND link LIKE $1`, [`%#dependency-${ticketId}`]);
+
+    it('is a simple ticket even with the switch on: no task, nobody notified, parent blocked, shown by name', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket(ext);
+      expect(dependencyTaskId).toBeNull();
+      expect(await depTaskFor(ticketId)).toBeUndefined();
+      const ticket = await ticketRow(ticketId);
+      expect(ticket).toMatchObject({ ownerUserId: null, ownerEmail: null, ownerExternal: 'Client IT - Ahmed', status: 'open' });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(await assignedTo(ticketId)).toHaveLength(0);
+      const qa = await post(f.users.devA, `/tasks/${parentId}/qa-submit`, SUBMIT).expect(400);
+      expect(qa.body.message).toContain('dependency');
+      const list = (await get(f.users.devA, `/task-dependency-tickets?parentTaskId=${parentId}`).expect(200)).body;
+      expect(list.find((t: any) => t.id === ticketId)).toMatchObject({ ownerExternal: 'Client IT - Ahmed', ownerName: 'Client IT - Ahmed', dependencyTask: null });
+      const history = (await get(f.users.devA, `/task-dependency-tickets/history?parentTaskId=${parentId}`).expect(200)).body;
+      expect(history.find((h: any) => h.action === 'task_dependency_ticket_created')).toMatchObject({ ticketId, ownerName: 'Client IT - Ahmed' });
+      const mine = (await get(f.users.devA, '/task-dependency-tickets/created-by-me').expect(200)).body;
+      expect(mine.find((t: any) => t.id === ticketId)).toMatchObject({ ownerName: 'Client IT - Ahmed' });
+    });
+
+    it('needs exactly one owner: neither, both, blank or too long is a 400', async () => {
+      const parentTaskId = await newTask();
+      const base = { parentTaskId, title: 'x', description: 'y' };
+      await post(f.users.devA, '/task-dependency-tickets', base).expect(400);
+      await post(f.users.devA, '/task-dependency-tickets', { ...base, ownerUserId: devC.id, ownerExternal: 'Vendor' }).expect(400);
+      await post(f.users.devA, '/task-dependency-tickets', { ...base, ownerExternal: '   ' }).expect(400);
+      await post(f.users.devA, '/task-dependency-tickets', { ...base, ownerExternal: 'v'.repeat(201) }).expect(400);
+      const n = (await ds.query(`SELECT count(*)::int AS n FROM task_dependency_tickets WHERE "parentTaskId" = $1`, [parentTaskId]))[0].n;
+      expect(n).toBe(0);
+    });
+
+    it('resolve: the requester, PM or Admin - not other developers, QA or Executive; requester not notified of their own resolve', async () => {
+      const { parentId, ticketId } = await newTicket(ext);
+      for (const u of [devC, f.users.devNone, f.users.qaB, f.users.exec]) {
+        await patch(u, `/task-dependency-tickets/${ticketId}/resolve`).expect(403);
+      }
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('resolved');
+      await new Promise((r) => setTimeout(r, 300));
+      const notes = await ds.query(`SELECT * FROM user_notifications WHERE type = 'dependency.resolved' AND link = $1`, [`/tasks/${parentId}`]);
+      expect(notes).toHaveLength(0);
+      for (const u of [f.users.pm, f.users.admin]) {
+        const t = await newTicket(ext);
+        await patch(u, `/task-dependency-tickets/${t.ticketId}/resolve`).expect(200);
+      }
+      // A PM resolving tells the requester, as for any ticket.
+      const t = await newTicket(ext);
+      await patch(f.users.pm, `/task-dependency-tickets/${t.ticketId}/resolve`).expect(200);
+      expect((await waitFor(() => ds.query(`SELECT * FROM user_notifications WHERE "userId" = $1 AND type = 'dependency.resolved' AND link = $2`, [f.users.devA.id, `/tasks/${t.parentId}`]))).length).toBe(1);
+    });
+
+    it('the owner is fixed: Change owner is a 400 and nothing changes', async () => {
+      const { ticketId } = await newTicket(ext);
+      const res = await patch(f.users.pm, `/task-dependency-tickets/${ticketId}/owner`, { ownerUserId: devC.id }).expect(400);
+      expect(res.body.message).toContain('external owner');
+      expect(await ticketRow(ticketId)).toMatchObject({ ownerUserId: null, ownerExternal: 'Client IT - Ahmed' });
+    });
+
+    it('cancel and reopen work as for any ticket (requester / PM)', async () => {
+      const { ticketId } = await newTicket(ext);
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      await patch(f.users.devA, `/task-dependency-tickets/${ticketId}/reopen`, { reason: 'They sent the wrong file' }).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('open');
+      await patch(f.users.pm, `/task-dependency-tickets/${ticketId}/cancel`, { reason: 'Client dropped it' }).expect(200);
+      expect((await ticketRow(ticketId)).status).toBe('cancelled');
+    });
+  });
+
   describe('progress notes', () => {
     it('the owner can add notes on a dependency task even with tracking off; ordinary tasks still need tracking', async () => {
       await setSwitch(true);

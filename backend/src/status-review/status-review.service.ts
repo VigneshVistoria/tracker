@@ -57,6 +57,7 @@ export class StatusReviewService {
         title: d.title,
         parentTaskId: d.parentTaskId,
         ownerUserId: d.ownerUserId,
+        ownerExternal: d.ownerExternal ?? null,
         createdByUserId: d.createdByUserId,
         createdByEmail: d.createdByEmail,
         createdAt: d.createdAt,

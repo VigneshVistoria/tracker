@@ -182,7 +182,7 @@ export class TaskDependencyTicketsService {
     const linked = await this.dependencyTaskSummaries(tickets.map((t) => t.id), tenantId);
     return tickets.map((t) => ({
       ...t,
-      ownerName: nameById.get(t.ownerUserId) ?? null,
+      ownerName: t.ownerExternal ?? nameById.get(t.ownerUserId) ?? null,
       createdByName: nameById.get(t.createdByUserId) ?? null,
       dependencyTask: linked.get(t.id) ?? null,
     }));
@@ -248,7 +248,7 @@ export class TaskDependencyTicketsService {
         createdAt: e.createdAt,
         // Owner names as recorded at the time for owner changes (so a later
         // rename/deletion doesn't rewrite history); current name otherwise.
-        ownerName: d.ownerName ?? (ownerEmail ? nameByEmail.get(ownerEmail) ?? ownerEmail : null),
+        ownerName: d.ownerName ?? d.ownerExternal ?? (ownerEmail ? nameByEmail.get(ownerEmail) ?? ownerEmail : null),
         previousOwnerName: d.previousOwnerName ?? null,
         previousTitle: d.previousTitle ?? null,
         title: d.title ?? null,
@@ -313,7 +313,7 @@ export class TaskDependencyTicketsService {
         parentTaskTitle: parent?.title ?? null,
         parentTaskDueDate: parent?.dueDate ?? null,
         createdByName: nameById.get(ticket.createdByUserId) ?? null,
-        ownerName: nameById.get(ticket.ownerUserId) ?? null,
+        ownerName: ticket.ownerExternal ?? nameById.get(ticket.ownerUserId) ?? null,
         parentTaskStatus: parent?.status ?? null,
         parentTaskPriority: parent?.priority ?? null,
         parentTaskProjectName: parent?.projectName ?? null,
@@ -335,12 +335,22 @@ export class TaskDependencyTicketsService {
       throw new ForbiddenException('Only the task Assignee can create a Dependency Ticket for this task.');
     }
 
-    const owner = await this.usersService.findByIdAndTenant(dto.ownerUserId, tenantId);
-    if (!owner) {
-      throw new NotFoundException(`User #${dto.ownerUserId} not found`);
+    // Stage 4 (2026-11-05): the owner is either someone in the app or a
+    // free-text name outside it - exactly one.
+    const ownerExternal = dto.ownerExternal?.trim() || null;
+    if ((dto.ownerUserId != null) === (ownerExternal != null)) {
+      throw new BadRequestException('Choose a Dependency Owner - either someone in the team or an external owner (not both).');
     }
-    if (!DEVELOPER_EQUIVALENT_ROLES.includes(owner.role)) {
-      throw new BadRequestException('Dependency Owner must be a Developer, Designer, or DevOps.');
+    let owner: { id: number; email: string } | null = null;
+    if (dto.ownerUserId != null) {
+      const user = await this.usersService.findByIdAndTenant(dto.ownerUserId, tenantId);
+      if (!user) {
+        throw new NotFoundException(`User #${dto.ownerUserId} not found`);
+      }
+      if (!DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) {
+        throw new BadRequestException('Dependency Owner must be a Developer, Designer, or DevOps.');
+      }
+      owner = user;
     }
     // MinLength(1) alone lets a whitespace-only title through.
     const title = dto.title.trim();
@@ -359,7 +369,8 @@ export class TaskDependencyTicketsService {
 
     const overdueAt = dto.needByDate ? await this.overdueAtFor(dto.needByDate, tenantId) : null;
     const project = await this.projectsRepository.findOne({ where: { id: task.projectId, tenantId } });
-    const withTask = !!project?.dependencyTasksEnabled;
+    // An external owner's ticket stays a simple ticket - no task.
+    const withTask = !!project?.dependencyTasksEnabled && owner != null;
 
     // Ticket and (switch on) its task are made together or not at all.
     let dependencyTaskId: number | null = null;
@@ -371,8 +382,9 @@ export class TaskDependencyTicketsService {
           parentTaskId: task.id,
           title,
           description: dto.description,
-          ownerUserId: owner.id,
-          ownerEmail: owner.email,
+          ownerUserId: owner?.id ?? null,
+          ownerEmail: owner?.email ?? null,
+          ownerExternal,
           createdByUserId: currentUser.id,
           createdByEmail: currentUser.email,
           needByDate: dto.needByDate ?? null,
@@ -387,10 +399,10 @@ export class TaskDependencyTicketsService {
         tenantId,
         entityType: 'TaskDependencyTicket',
         entityId: ticket.id,
-        details: { parentTaskId: ticket.parentTaskId, ownerEmail: ticket.ownerEmail, title: ticket.title, needByDate: ticket.needByDate, withTask },
+        details: { parentTaskId: ticket.parentTaskId, ownerEmail: ticket.ownerEmail, ownerExternal: ticket.ownerExternal, title: ticket.title, needByDate: ticket.needByDate, withTask },
       });
 
-      if (withTask) {
+      if (withTask && owner) {
         // Same project / module / phase as the parent. The owner's due date
         // starts as the needed-by date - theirs to confirm or replace (once)
         // under the normal rules; no date at all when tracking is off.
@@ -435,15 +447,18 @@ export class TaskDependencyTicketsService {
       return ticket;
     });
 
-    this.eventEmitter.emit('dependencyTicket.created', {
-      tenantId,
-      ticketId: saved.id,
-      parentTaskId: saved.parentTaskId,
-      title: saved.title,
-      recipientUserId: saved.ownerUserId,
-      actorUserId: currentUser.id,
-      actorEmail: currentUser.email,
-    });
+    // Nobody in the app to tell when the owner is external.
+    if (saved.ownerUserId != null) {
+      this.eventEmitter.emit('dependencyTicket.created', {
+        tenantId,
+        ticketId: saved.id,
+        parentTaskId: saved.parentTaskId,
+        title: saved.title,
+        recipientUserId: saved.ownerUserId,
+        actorUserId: currentUser.id,
+        actorEmail: currentUser.email,
+      });
+    }
 
     return Object.assign(saved, { dependencyTaskId });
   }
@@ -517,6 +532,11 @@ export class TaskDependencyTicketsService {
     this.tasksService.assertNotJunk(await this.tasksService.findOne(ticket.parentTaskId, tenantId));
     if (ticket.status !== 'open') {
       throw new BadRequestException('Only an open dependency ticket can change owner.');
+    }
+    // Stage 4 (user decision 2026-11-05): an external owner is fixed at
+    // creation - cancel it and raise a new one instead.
+    if (ticket.ownerExternal != null) {
+      throw new BadRequestException('This dependency has an external owner, which cannot be changed - cancel it and raise a new one.');
     }
     if (dto.ownerUserId === ticket.ownerUserId) {
       throw new BadRequestException('This person is already the owner.');
@@ -676,10 +696,17 @@ export class TaskDependencyTicketsService {
     if (!ticket) {
       throw new NotFoundException(`Dependency ticket #${id} not found`);
     }
-    const isOwner = ticket.ownerUserId === currentUser.id;
+    const isOwner = ticket.ownerUserId != null && ticket.ownerUserId === currentUser.id;
     const isLeadership = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.PROGRAM_MANAGER;
-    if (!isOwner && !isLeadership) {
-      throw new ForbiddenException('Only the ticket owner, Admin, or Program Manager can resolve a dependency ticket.');
+    // Stage 4 (user decision 2026-11-05): nobody in the app owns an external
+    // ticket, so whoever raised it resolves it (or PM/Admin, as before).
+    const isExternalRequester = ticket.ownerExternal != null && ticket.createdByUserId === currentUser.id;
+    if (!isOwner && !isLeadership && !isExternalRequester) {
+      throw new ForbiddenException(
+        ticket.ownerExternal != null
+          ? 'Only whoever raised this dependency, Admin, or Program Manager can resolve it.'
+          : 'Only the ticket owner, Admin, or Program Manager can resolve a dependency ticket.',
+      );
     }
     if (ticket.status === 'resolved') {
       throw new BadRequestException('This dependency ticket is already resolved.');
@@ -723,8 +750,9 @@ export class TaskDependencyTicketsService {
       details: { parentTaskId: saved.parentTaskId },
     });
 
-    // Tell whoever filed the ticket their blocker is cleared.
-    this.eventEmitter.emit('dependencyTicket.resolved', {
+    // Tell whoever filed the ticket their blocker is cleared (not when
+    // they resolved it themselves - Stage 4 external tickets).
+    if (saved.createdByUserId != null && saved.createdByUserId !== currentUser.id) this.eventEmitter.emit('dependencyTicket.resolved', {
       tenantId,
       ticketId: saved.id,
       parentTaskId: saved.parentTaskId,

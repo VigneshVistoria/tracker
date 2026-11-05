@@ -463,6 +463,10 @@ export default function TaskDetailPage() {
   const [highlightedTicketId, setHighlightedTicketId] = useState(null);
   const ticketHashHandled = useRef(false);
   const [ticketOwner, setTicketOwner] = useState(null);
+  // Dependency tasks Stage 4: an owner outside the team, as free text
+  // (no task is created for them).
+  const [ticketOwnerIsExternal, setTicketOwnerIsExternal] = useState(false);
+  const [ticketOwnerExternal, setTicketOwnerExternal] = useState('');
   // Performance Tracking S3: needed-by date (required while tracking is on).
   const [ticketNeedBy, setTicketNeedBy] = useState('');
   const [needByTicket, setNeedByTicket] = useState(null);
@@ -2203,7 +2207,8 @@ export default function TaskDetailPage() {
   const handleFileTicket = async (e) => {
     e.preventDefault();
     setError('');
-    if (!ticketTitle.trim() || !ticketDescription.trim() || !ticketOwner) {
+    const hasOwner = ticketOwnerIsExternal ? !!ticketOwnerExternal.trim() : !!ticketOwner;
+    if (!ticketTitle.trim() || !ticketDescription.trim() || !hasOwner) {
       setError('Dependency Title, Description, and Owner are all required.');
       return;
     }
@@ -2219,7 +2224,7 @@ export default function TaskDetailPage() {
           parentTaskId: task.id,
           title: ticketTitle.trim(),
           description: ticketDescription,
-          ownerUserId: ticketOwner.id,
+          ...(ticketOwnerIsExternal ? { ownerExternal: ticketOwnerExternal.trim() } : { ownerUserId: ticketOwner.id }),
           ...(dueDateTracked ? { needByDate: ticketNeedBy } : {}),
         }),
       });
@@ -2227,6 +2232,8 @@ export default function TaskDetailPage() {
       setTicketTitle('');
       setTicketDescription('');
       setTicketOwner(null);
+      setTicketOwnerExternal('');
+      setTicketOwnerIsExternal(false);
       setTicketNeedBy('');
       loadTickets();
     } catch (err) {
@@ -2309,7 +2316,7 @@ export default function TaskDetailPage() {
         </div>
       )}
       <p className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-        Owner: {ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
+        Owner: {ticket.ownerExternal ? `${ticket.ownerExternal} (external)` : ticket.ownerName || ticket.ownerEmail} &middot; Filed by {ticket.createdByName || ticket.createdByEmail} &middot;{' '}
         {formatDate(ticket.createdAt)}
         {ticket.needByDate && <> &middot; Needed by {formatDate(ticket.needByDate)}</>}
         {ticket.needByDate && isDependencyOverdue(ticket) && (
@@ -2332,7 +2339,7 @@ export default function TaskDetailPage() {
           Edit Title
         </button>
       )}
-      {editingTicketId !== ticket.id && canChangeDependencyOwner && ticket.status === 'open' && (
+      {editingTicketId !== ticket.id && canChangeDependencyOwner && ticket.status === 'open' && !ticket.ownerExternal && (
         <button
           className={styles.buttonSecondary}
           type="button"
@@ -2354,7 +2361,7 @@ export default function TaskDetailPage() {
           {ticket.needByDate ? 'Change needed-by' : 'Set needed-by'}
         </button>
       )}
-      {ticket.status === 'open' && (ticket.ownerEmail === user.email || canManage) && (
+      {ticket.status === 'open' && (ticket.ownerEmail === user.email || canManage || (ticket.ownerExternal && ticket.createdByUserId === user.id)) && (
         <button
           className={styles.buttonSecondary}
           type="button"
@@ -4291,16 +4298,45 @@ export default function TaskDetailPage() {
               onChange={(e) => setTicketDescription(e.target.value)}
             />
           </div>
-          <div className={styles.fieldNarrow}>
-            <SearchSelectField
-              label="Dependency Owner (Developer)"
-              id="tdTicketOwner"
-              required
-              value={ticketOwner}
-              onChange={setTicketOwner}
-              options={developers}
-            />
-          </div>
+          <fieldset className={styles.field} style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend className={styles.label}>Who owns it?</legend>
+            <label style={{ marginRight: 'var(--space-4)' }}>
+              <input type="radio" name="tdTicketOwnerKind" checked={!ticketOwnerIsExternal} onChange={() => setTicketOwnerIsExternal(false)} />{' '}
+              Someone in the team
+            </label>
+            <label>
+              <input type="radio" name="tdTicketOwnerKind" checked={ticketOwnerIsExternal} onChange={() => setTicketOwnerIsExternal(true)} />{' '}
+              Outside the team
+            </label>
+          </fieldset>
+          {ticketOwnerIsExternal ? (
+            <div className={styles.fieldNarrow}>
+              <label className={styles.label} htmlFor="tdTicketOwnerExternal">External owner</label>
+              <input
+                className={styles.input}
+                id="tdTicketOwnerExternal"
+                required
+                maxLength={200}
+                value={ticketOwnerExternal}
+                onChange={(e) => setTicketOwnerExternal(e.target.value)}
+                aria-describedby="tdTicketOwnerExternalHint"
+              />
+              <p id="tdTicketOwnerExternalHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
+                A name, team or company outside the app, e.g. &quot;Client IT - Ahmed&quot;. No task is created; you mark it resolved when they deliver. The owner can&apos;t be changed later.
+              </p>
+            </div>
+          ) : (
+            <div className={styles.fieldNarrow}>
+              <SearchSelectField
+                label="Dependency Owner (Developer)"
+                id="tdTicketOwner"
+                required
+                value={ticketOwner}
+                onChange={setTicketOwner}
+                options={developers}
+              />
+            </div>
+          )}
           {dueDateTracked && (
             <div className={styles.fieldNarrow}>
               <label className={styles.label} htmlFor="tdTicketNeedBy">Needed by</label>

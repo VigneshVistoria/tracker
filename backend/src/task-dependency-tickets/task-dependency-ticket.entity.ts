@@ -34,13 +34,12 @@ export class TaskDependencyTicket {
   // Restricted to DEVELOPER_EQUIVALENT_ROLES (Developer/Designer/DevOps),
   // enforced in TaskDependencyTicketsService.create().
   // Nullable in the DB since 2026-11-05 for external owners (ownerExternal
-  // below, Stage 4). Until Stage 4 ships, every ticket still has a user owner,
-  // so the types stay non-null here.
-  @Column({ nullable: true })
-  ownerUserId: number;
+  // below, Stage 4) - null exactly when ownerExternal is set.
+  @Column({ type: 'int', nullable: true })
+  ownerUserId: number | null;
 
-  @Column({ nullable: true })
-  ownerEmail: string;
+  @Column({ type: 'varchar', nullable: true })
+  ownerEmail: string | null;
 
   // Dependency tasks Stage 4 (column added 2026-11-05): a free-text owner
   // outside the app (no client-portal users). Exactly one of ownerUserId /

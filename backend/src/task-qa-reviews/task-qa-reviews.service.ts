@@ -719,7 +719,7 @@ export class TaskQaReviewsService {
     const tickets = await em.find(TaskDependencyTicket, { where: { tenantId, parentTaskId: task.id }, order: { createdAt: 'ASC' } });
     const blockers = await em.find(TaskFlag, { where: { tenantId, taskId: task.id, kind: 'blocker', clearedAt: IsNull() } });
     return [
-      ...tickets.map((t) => ({ kind: 'ticket' as const, id: t.id, title: t.title, status: t.status, ownerUserId: t.ownerUserId, ownerExternal: null, recordedAt: t.createdAt })),
+      ...tickets.map((t) => ({ kind: 'ticket' as const, id: t.id, title: t.title, status: t.status, ownerUserId: t.ownerUserId, ownerExternal: t.ownerExternal ?? null, recordedAt: t.createdAt })),
       ...blockers.map((b) => ({
         kind: 'blocker' as const,
         id: b.id,
