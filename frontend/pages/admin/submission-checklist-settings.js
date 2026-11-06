@@ -8,6 +8,7 @@ import { useToast } from '../../lib/toast';
 import { redirectToSignIn } from '../../lib/session';
 import { CHECKLIST_LABELS } from '../../components/SubmissionChecklist';
 import { ALL_ARTIFACT_TYPES as ARTIFACT_TYPES } from '../../lib/artifactTypes';
+import ArtifactTypesSettings from '../../components/ArtifactTypesSettings';
 
 // Submission checklist settings (defect triage Stage 2, 2026-10-27) - Admin
 // and Program Manager (backend: SubmissionChecklistController). Per project:
@@ -248,8 +249,10 @@ export default function SubmissionChecklistSettingsPage() {
         </form>
       </div>
 
+      <ArtifactTypesSettings />
+
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
-        <h2 className={styles.cardTitle}>Artifact types</h2>
+        <h2 className={styles.cardTitle}>Artifact types that count for the checklist</h2>
         {[
           ['linkArtifactTypes', 'Count as the "What changed" link'],
           ['evidenceArtifactTypes', 'Count as evidence of self-test (pasted screenshots always count)'],

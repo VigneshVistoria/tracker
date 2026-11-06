@@ -194,6 +194,12 @@ const GITHUB_COLUMNS: Record<string, string[]> = {
   releases: ['source', 'githubRepo', 'githubSha', 'githubDeliveryId', 'githubReleasedByLogin', 'githubStagingDeployedOn', 'githubFilled', 'githubNotes'],
   users: ['githubLogin'],
 };
+// Admin-configurable artifact types (2026-11-06): artifact_types and
+// artifact_type_rules from the real migration (folder left out of
+// synchronize), which also turns task_qa_review_artifacts.type into varchar.
+const ARTIFACT_TYPES_DIR = path.join(SRC, 'artifact-types');
+const ARTIFACT_TYPES_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-artifact-types-config.sql');
+const ARTIFACT_TYPES_TABLES = ['artifact_types', 'artifact_type_rules'];
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
 
@@ -218,7 +224,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(SECURITY_DIR) && !f.startsWith(CLIENT_MEASURES_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(HANDOVERS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR) && !f.startsWith(GITHUB_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(SECURITY_DIR) && !f.startsWith(CLIENT_MEASURES_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(HANDOVERS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR) && !f.startsWith(GITHUB_DIR) && !f.startsWith(ARTIFACT_TYPES_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -316,6 +322,9 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(DEPENDENCY_TASKS_MIGRATION, 'utf8'));
+  // Safe to run twice, as its header says.
+  await base.query(fs.readFileSync(ARTIFACT_TYPES_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(ARTIFACT_TYPES_MIGRATION, 'utf8'));
   await base.destroy();
 
   const check = dataSource(all);
@@ -366,7 +375,10 @@ export async function buildTestSchema() {
   if (clientMetas.length !== 3) problems.push('task_uat_results/release_satisfaction/task_priority_tier_events: entity missing');
   const githubMetas = check.entityMetadatas.filter((m) => GITHUB_TABLES.includes(m.tableName));
   if (githubMetas.length !== GITHUB_TABLES.length) problems.push(`${GITHUB_TABLES.join('/')}: entity missing`);
-  for (const meta of [...githubMetas, ...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas, ...calendarMetas, ...techReviewMetas, ...weeklyStatusMeta, ...securityMeta, ...clientMetas]) {
+  const artifactTypeMetas = check.entityMetadatas.filter((m) => ARTIFACT_TYPES_TABLES.includes(m.tableName));
+  if (artifactTypeMetas.length !== ARTIFACT_TYPES_TABLES.length) problems.push(`${ARTIFACT_TYPES_TABLES.join('/')}: entity missing`);
+  const reviewArtifactMeta = check.entityMetadatas.filter((m) => m.tableName === 'task_qa_review_artifacts');
+  for (const meta of [...artifactTypeMetas, ...reviewArtifactMeta, ...githubMetas, ...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas, ...calendarMetas, ...techReviewMetas, ...weeklyStatusMeta, ...securityMeta, ...clientMetas]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns

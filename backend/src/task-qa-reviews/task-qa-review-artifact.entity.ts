@@ -14,7 +14,9 @@ export class TaskQaReviewArtifact {
   @Column()
   taskQaReviewId: number;
 
-  @Column({ type: 'enum', enum: TaskArtifactType })
+  // varchar since 2026-11-06 (migrations/2026-11-artifact-types-config.sql)
+  // so Admin can add types without a migration - see artifact-types/.
+  @Column({ type: 'varchar', length: 60 })
   type: TaskArtifactType;
 
   @Column({ type: 'text' })

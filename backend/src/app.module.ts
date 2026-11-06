@@ -137,6 +137,8 @@ import { ProjectTimelineRow } from './project-timeline/project-timeline-row.enti
 import { ProjectTimelineTeam } from './project-timeline/project-timeline-team.entity';
 import { ProjectTimelineDependency } from './project-timeline/project-timeline-dependency.entity';
 import { ProjectTimelineTicketLink } from './project-timeline/project-timeline-ticket-link.entity';
+import { ArtifactType } from './artifact-types/artifact-type.entity';
+import { ArtifactTypeRule } from './artifact-types/artifact-type-rule.entity';
 import { ProjectTimelineModule } from './project-timeline/project-timeline.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { UserNotification } from './user-notifications/user-notification.entity';
@@ -249,6 +251,8 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           ProjectTimelineTeam,
           ProjectTimelineDependency,
           ProjectTimelineTicketLink,
+          ArtifactType,
+          ArtifactTypeRule,
         ],
         // synchronize auto-creates tables from entities. Great for
         // learning/dev, but turn this OFF and use migrations in production.
