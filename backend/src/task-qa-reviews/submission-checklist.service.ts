@@ -19,6 +19,7 @@ import {
   resolveSubmissionChecklistSettings,
 } from '../tasks/submission-checklist';
 import { SaveSubmissionChecklistSettingsDto } from './dto/submission-checklist-settings.dto';
+import { ArtifactTypesService } from '../artifact-types/artifact-types.service';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -36,6 +37,7 @@ export class SubmissionChecklistService {
     private teamSettingsRepository: Repository<TeamSettings>,
     private tasksService: TasksService,
     private auditLogService: AuditLogService,
+    private artifactTypesService: ArtifactTypesService,
   ) {}
 
   async settings(tenantId: number): Promise<SubmissionChecklistSettings> {
@@ -100,6 +102,7 @@ export class SubmissionChecklistService {
     };
     if (next.linkArtifactTypes.length === 0) throw new BadRequestException('Pick at least one artifact type that counts as the change link.');
     if (next.evidenceArtifactTypes.length === 0) throw new BadRequestException('Pick at least one artifact type that counts as self-test evidence.');
+    await this.artifactTypesService.assertKnownCodes(tenantId, [...next.linkArtifactTypes, ...next.evidenceArtifactTypes]);
     const before = await this.settings(tenantId);
     const existing = await this.teamSettingsRepository.findOne({ where: { tenantId } });
     if (existing) {

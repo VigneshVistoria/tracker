@@ -91,13 +91,16 @@ const ARTIFACT_LABELS = {
 };
 
 // "Pull request", or "Pull request 2" when a submission has more than one.
-export function labelArtifacts(artifacts = []) {
+// renamed: { [code]: name } for submission types an Admin/PM renamed
+// (renamedArtifactLabels() in lib/artifactTypes.js) - never passed for QA
+// evidence, whose types are a separate list.
+export function labelArtifacts(artifacts = [], renamed = {}) {
   const totals = {};
   for (const a of artifacts) totals[a.type] = (totals[a.type] || 0) + 1;
   const seen = {};
   return artifacts.map((a) => {
     seen[a.type] = (seen[a.type] || 0) + 1;
-    const name = ARTIFACT_LABELS[a.type] || a.type;
+    const name = renamed[a.type] || ARTIFACT_LABELS[a.type] || a.type;
     return { ...a, label: totals[a.type] > 1 ? `${name} ${seen[a.type]}` : name };
   });
 }

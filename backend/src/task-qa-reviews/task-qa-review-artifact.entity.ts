@@ -1,5 +1,4 @@
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
-import { TaskArtifactType } from './task-qa-review.entity';
 
 // One row per selected Artifact Type in a single "Ready for Feedback"
 // submission - a review round can have several, all sharing the same
@@ -17,7 +16,7 @@ export class TaskQaReviewArtifact {
   // varchar since 2026-11-06 (migrations/2026-11-artifact-types-config.sql)
   // so Admin can add types without a migration - see artifact-types/.
   @Column({ type: 'varchar', length: 60 })
-  type: TaskArtifactType;
+  type: string;
 
   @Column({ type: 'text' })
   url: string;

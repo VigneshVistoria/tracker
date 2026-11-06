@@ -20,6 +20,19 @@ export const ARTIFACT_ROLE_LABELS: Record<string, string> = { developer: 'Develo
 // stored on past submissions).
 export const DEFAULT_ARTIFACT_TYPE_CODES: string[] = Object.values(TaskArtifactType);
 
+// Stage 4 (2026-11-06, user's choice): a role with NO rules keeps the menu
+// it had before artifact types became configurable - Developer and DevOps
+// see every active type except the design ones; a Designer sees the design
+// types first (then Screenshot / Demo Video), and every other active type
+// in an "Other" group. Types added on the admin screen join every default
+// menu (at their place in the list). Matched by code, so renames don't
+// move a type between groups.
+export const DESIGN_ARTIFACT_CODES = ['Design file', 'Prototype', 'Design spec'];
+const DESIGNER_FIRST_EXTRA_CODES = ['Screenshot', 'Demo Video'];
+
+export type ArtifactMenuItem = { code: string; label: string; required: boolean };
+export type ArtifactMenu = { hasRules: boolean; groups: Array<{ label: string | null; types: ArtifactMenuItem[] }> };
+
 export const ARTIFACT_TYPES_AUDIT = {
   CREATED: 'artifact_type_created',
   UPDATED: 'artifact_type_updated',
@@ -90,6 +103,64 @@ export class ArtifactTypesService {
     throw new BadRequestException(
       `${list} ${missing.length === 1 ? 'is a required artifact type' : 'are required artifact types'} for your role - add ${missing.length === 1 ? 'it' : 'them'} and submit again.`,
     );
+  }
+
+  private defaultMenu(role: string, active: ArtifactType[]): ArtifactMenu {
+    const item = (t: ArtifactType): ArtifactMenuItem => ({ code: t.code, label: t.label, required: false });
+    if (role === 'designer') {
+      const first = [
+        ...active.filter((t) => DESIGN_ARTIFACT_CODES.includes(t.code)),
+        ...active.filter((t) => DESIGNER_FIRST_EXTRA_CODES.includes(t.code)),
+      ];
+      const rest = active.filter((t) => !first.includes(t));
+      return { hasRules: false, groups: [{ label: 'Design', types: first.map(item) }, { label: 'Other', types: rest.map(item) }] };
+    }
+    return { hasRules: false, groups: [{ label: null, types: active.filter((t) => !DESIGN_ARTIFACT_CODES.includes(t.code)).map(item) }] };
+  }
+
+  private roleMenu(role: string, active: ArtifactType[], rules: ArtifactTypeRule[]): ArtifactMenu {
+    const roleRules = rules.filter((r) => r.role === role);
+    if (roleRules.length === 0) return this.defaultMenu(role, active);
+    const requirement = new Map(roleRules.map((r) => [r.artifactTypeId, r.requirement]));
+    return {
+      hasRules: true,
+      groups: [{ label: null, types: active.filter((t) => requirement.has(t.id)).map((t) => ({ code: t.code, label: t.label, required: requirement.get(t.id) === 'required' })) }],
+    };
+  }
+
+  // What the submit forms need (any signed-in user): every type with its
+  // current name (inactive too, so past submissions show the right name),
+  // and the menu for each submitting role.
+  async menu(tenantId: number) {
+    const [types, rules] = [await this.types(tenantId), await this.rules(tenantId)];
+    const active = types.filter((t) => t.active);
+    const menus: Record<string, ArtifactMenu> = {};
+    for (const role of ARTIFACT_RULE_ROLES) menus[role] = this.roleMenu(role, active, rules);
+    return { types: types.map((t) => ({ code: t.code, label: t.label, active: t.active })), menus };
+  }
+
+  // Stage 4: what a submission may attach. With rules, only the types the
+  // role is offered; without, any active type (as before, when every type
+  // was accepted). Then the Stage 3 required check.
+  async assertSubmittable(tenantId: number, role: string, submittedCodes: string[]): Promise<void> {
+    const types = await this.types(tenantId);
+    const roleRules = (await this.rules(tenantId)).filter((r) => r.role === role);
+    for (const code of submittedCodes) {
+      const type = types.find((t) => t.code === code);
+      if (!type) throw new BadRequestException(`"${code}" is not an artifact type - pick one from the list.`);
+      if (!type.active) throw new BadRequestException(`"${type.label}" is no longer used - pick another artifact type.`);
+      if (roleRules.length > 0 && !roleRules.some((r) => r.artifactTypeId === type.id)) {
+        throw new BadRequestException(`"${type.label}" is not an artifact type for your role - pick one from the list.`);
+      }
+    }
+    await this.assertRequiredPresent(tenantId, role, submittedCodes);
+  }
+
+  // Checklist settings (link / evidence lists) may only name existing types.
+  async assertKnownCodes(tenantId: number, codes: string[]): Promise<void> {
+    const known = new Set((await this.types(tenantId)).map((t) => t.code));
+    const unknown = codes.filter((c) => !known.has(c));
+    if (unknown.length) throw new BadRequestException(`Unknown artifact type: ${unknown.map((c) => `"${c}"`).join(', ')}.`);
   }
 
   // Everything the settings section needs.

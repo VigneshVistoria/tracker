@@ -102,7 +102,7 @@ export class PeerReviewsService {
     await this.tasksService.assertNotAlreadyApproved(task, tenantId);
     // Required artifact types for the submitter's role - same rule as
     // Ready for Feedback (TaskQaReviewsService.submit).
-    await this.artifactTypesService.assertRequiredPresent(tenantId, currentUser.role, dto.artifacts.map((a) => a.type));
+    await this.artifactTypesService.assertSubmittable(tenantId, currentUser.role, dto.artifacts.map((a) => a.type));
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
 

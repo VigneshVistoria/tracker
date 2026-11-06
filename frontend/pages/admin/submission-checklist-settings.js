@@ -32,6 +32,9 @@ export default function SubmissionChecklistSettingsPage() {
   const [newCause, setNewCause] = useState('');
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
+  // Artifact types from the table (Stage 4) - refreshed whenever the
+  // Artifact types section changes. The built-in list until loaded.
+  const [artifactTypes, setArtifactTypes] = useState(null);
 
   const load = () =>
     apiFetch('/submission-checklist/settings')
@@ -52,6 +55,9 @@ export default function SubmissionChecklistSettingsPage() {
       return;
     }
     load();
+    apiFetch('/submission-checklist/artifact-types')
+      .then((d) => setArtifactTypes(d.types))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
@@ -249,7 +255,7 @@ export default function SubmissionChecklistSettingsPage() {
         </form>
       </div>
 
-      <ArtifactTypesSettings />
+      <ArtifactTypesSettings onChanged={(d) => setArtifactTypes(d.types)} />
 
       <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
         <h2 className={styles.cardTitle}>Artifact types that count for the checklist</h2>
@@ -261,17 +267,19 @@ export default function SubmissionChecklistSettingsPage() {
             <legend className={styles.label} style={{ padding: 0 }}>
               {title}
             </legend>
-            {ARTIFACT_TYPES.map((t) => (
-              <label key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', marginRight: 'var(--space-4)' }}>
-                <input
-                  type="checkbox"
-                  checked={s[key].includes(t)}
-                  onChange={() => toggleType(key, t)}
-                  disabled={busy !== null || (s[key].length === 1 && s[key].includes(t))}
-                />
-                {t}
-              </label>
-            ))}
+            {(artifactTypes || ARTIFACT_TYPES.map((code) => ({ code, label: code, active: true })))
+              .filter((t) => t.active || s[key].includes(t.code))
+              .map((t) => (
+                <label key={t.code} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', marginRight: 'var(--space-4)' }}>
+                  <input
+                    type="checkbox"
+                    checked={s[key].includes(t.code)}
+                    onChange={() => toggleType(key, t.code)}
+                    disabled={busy !== null || (s[key].length === 1 && s[key].includes(t.code))}
+                  />
+                  {t.active ? t.label : `${t.label} (inactive)`}
+                </label>
+              ))}
           </fieldset>
         ))}
       </div>

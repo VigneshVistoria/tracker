@@ -48,6 +48,12 @@ export class SubmissionChecklistController {
     return this.checklist.setProjectSwitch(id, dto.enabled, user, req.user.tenantId);
   }
 
+  // The submit forms' artifact menus (Stage 4) - any signed-in user.
+  @Get('artifact-menu')
+  async artifactMenu(@Req() req: any) {
+    return this.artifactTypes.menu(req.user.tenantId);
+  }
+
   // Artifact types section (2026-11-06): the configurable submission
   // artifact types and the per-role rules - see ArtifactTypesService.
   @Get('artifact-types')

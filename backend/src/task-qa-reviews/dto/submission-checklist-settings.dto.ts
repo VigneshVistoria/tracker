@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
-import { TaskArtifactType } from '../task-qa-review.entity';
+import { ARTIFACT_LABEL_MAX } from '../../artifact-types/artifact-types.service';
 import { CHECKLIST_ITEMS, MIN_TEXT_LENGTH_MAX } from '../../tasks/submission-checklist';
 import { LIST_ITEM_MAX, LIST_MAX_COUNT } from '../../tasks/defect-triage';
 
@@ -34,11 +34,13 @@ export class SaveSubmissionChecklistSettingsDto {
   rootCauses: RootCauseDto[];
 
   @IsArray()
-  @IsIn(Object.values(TaskArtifactType), { each: true })
+  @IsString({ each: true })
+  @MaxLength(ARTIFACT_LABEL_MAX, { each: true })
   linkArtifactTypes: string[];
 
   @IsArray()
-  @IsIn(Object.values(TaskArtifactType), { each: true })
+  @IsString({ each: true })
+  @MaxLength(ARTIFACT_LABEL_MAX, { each: true })
   evidenceArtifactTypes: string[];
 
   @ValidateNested()

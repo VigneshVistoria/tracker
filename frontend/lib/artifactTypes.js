@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { groupSubmissions } from './submissions.js';
+import { apiFetch } from './api';
 
 // Submission artifact types (task "Ready for Feedback" / Peer Review),
 // stored as TaskArtifactType on the backend. Design work (2026-11-05): when
@@ -19,7 +21,77 @@ export const DESIGN_ARTIFACT_TYPES = ['Design file', 'Prototype', 'Design spec']
 
 export const ALL_ARTIFACT_TYPES = [...DEV_ARTIFACT_TYPES, ...DESIGN_ARTIFACT_TYPES];
 
-// [{ label, types }] groups for the Artifact Type menu.
+// Stage 4 (2026-11-06): the menus come from Admin -> Submission Checklist
+// Settings -> Artifact types (GET /submission-checklist/artifact-menu). The
+// lists above stay as the fallback while it loads or if it fails, and are
+// exactly what a role with no rules gets from the server too.
+// One request shared by every component on the page; refreshed at most
+// every 30 seconds, so an Admin's change shows up on the next page visit.
+let menuCache = null;
+let menuFetchedAt = 0;
+let menuInflight = null;
+const MENU_MAX_AGE_MS = 30000;
+
+function loadArtifactMenu() {
+  if (menuCache && Date.now() - menuFetchedAt < MENU_MAX_AGE_MS) return Promise.resolve(menuCache);
+  if (!menuInflight) {
+    menuInflight = apiFetch('/submission-checklist/artifact-menu')
+      .then((m) => {
+        menuCache = m;
+        menuFetchedAt = Date.now();
+        return m;
+      })
+      .finally(() => {
+        menuInflight = null;
+      });
+  }
+  return menuInflight;
+}
+
+export function useArtifactMenu() {
+  const [menu, setMenu] = useState(menuCache);
+  useEffect(() => {
+    let live = true;
+    loadArtifactMenu()
+      .then((m) => {
+        if (live) setMenu(m);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return menu;
+}
+
+// The name people see for a stored artifact type (the code).
+export function artifactLabel(menu, code) {
+  return menu?.types?.find((t) => t.code === code)?.label ?? code;
+}
+
+// { [code]: label } for the types an Admin/PM renamed - only these replace
+// the built-in short names on the submission cards.
+export function renamedArtifactLabels(menu) {
+  const out = {};
+  for (const t of menu?.types || []) if (t.label !== t.code) out[t.code] = t.label;
+  return out;
+}
+
+// [{ label, types: [{ code, label, required }] }] groups for the Artifact
+// Type menu of the assignee's role.
+export function artifactMenuGroups(assigneeRole, menu) {
+  const fromServer = menu?.menus?.[assigneeRole] || menu?.menus?.developer;
+  if (fromServer) return fromServer.groups;
+  return artifactTypeGroups(assigneeRole).map((g) => ({ label: g.label, types: g.types.map((t) => ({ code: t, label: t, required: false })) }));
+}
+
+// Required types for the role, by name ([] when none).
+export function requiredArtifactLabels(assigneeRole, menu) {
+  return artifactMenuGroups(assigneeRole, menu).flatMap((g) => g.types.filter((t) => t.required).map((t) => t.label));
+}
+
+// [{ label, types }] groups for the Artifact Type menu - the built-in
+// fallback (before Stage 4 this was the only source).
 export function artifactTypeGroups(assigneeRole) {
   if (assigneeRole === 'designer') {
     return [

@@ -205,7 +205,7 @@ export class TaskQaReviewsService {
     // Checklist Settings -> Artifact types, 2026-11-06) - a 400 naming
     // what's missing, before anything is saved. Nothing is required until
     // a PM/Admin sets a rule.
-    await this.artifactTypesService.assertRequiredPresent(tenantId, currentUser.role, dto.artifacts.map((a) => a.type));
+    await this.artifactTypesService.assertSubmittable(tenantId, currentUser.role, dto.artifacts.map((a) => a.type));
     // Submission checklist (defect triage Stage 2, 2026-10-27): null when
     // the project has it off, otherwise complete or a 400 naming what's
     // missing - checked before anything is saved.

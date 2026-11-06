@@ -19,12 +19,17 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TaskArtifactType } from '../task-qa-review.entity';
+import { ARTIFACT_LABEL_MAX } from '../../artifact-types/artifact-types.service';
 import { CHECKLIST_SHORT_MAX, CHECKLIST_TEXT_MAX, MAX_SELF_TEST_SCREENSHOTS } from '../../tasks/submission-checklist';
 
 export class QaSubmitTaskArtifactDto {
-  @IsEnum(TaskArtifactType, { message: 'A valid Artifact Type is required.' })
-  type: TaskArtifactType;
+  // Any code from artifact_types (Admin -> Submission Checklist Settings);
+  // checked against the table and the role's rules in
+  // ArtifactTypesService.assertSubmittable().
+  @IsString({ message: 'A valid Artifact Type is required.' })
+  @MinLength(1, { message: 'A valid Artifact Type is required.' })
+  @MaxLength(ARTIFACT_LABEL_MAX, { message: 'A valid Artifact Type is required.' })
+  type: string;
 
   @IsUrl({}, { message: 'Each selected Artifact Type needs a valid URL.' })
   url: string;

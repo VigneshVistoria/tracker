@@ -1,7 +1,7 @@
 import {
   ArrayMinSize,
   IsArray,
-  IsEnum,
+  MaxLength,
   IsInt,
   IsNumber,
   IsString,
@@ -14,15 +14,18 @@ import {
   ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { TaskArtifactType } from '../../task-qa-reviews/task-qa-review.entity';
+import { ARTIFACT_LABEL_MAX } from '../../artifact-types/artifact-types.service';
 
 // Same shape as QaSubmitTaskArtifactDto (task-qa-reviews/dto/qa-submit-task.dto.ts)
 // - not imported directly since that file's uniqueness validator isn't
 // exported, and duplicating this small DTO keeps this module fully
 // independent of task-qa-reviews' internals.
 export class PeerReviewSubmitArtifactDto {
-  @IsEnum(TaskArtifactType, { message: 'A valid Artifact Type is required.' })
-  type: TaskArtifactType;
+  // Checked against artifact_types in ArtifactTypesService.assertSubmittable().
+  @IsString({ message: 'A valid Artifact Type is required.' })
+  @MinLength(1, { message: 'A valid Artifact Type is required.' })
+  @MaxLength(ARTIFACT_LABEL_MAX, { message: 'A valid Artifact Type is required.' })
+  type: string;
 
   @IsUrl({}, { message: 'Each selected Artifact Type needs a valid URL.' })
   url: string;

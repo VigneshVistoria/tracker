@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Image, GitPullRequest, Package, FileText, Workflow, FileBarChart, Video, PenTool, MousePointerClick, Ruler, Paperclip, Send, Undo2, ChevronDown } from 'lucide-react';
 import { formatDate } from '../lib/formatDate';
 import { groupSubmissions, roundOutcome, labelArtifacts } from '../lib/submissions';
+import { renamedArtifactLabels, useArtifactMenu } from '../lib/artifactTypes';
 import Avatar from './ui/Avatar';
 import Badge from './ui/Badge';
 import RichTextDisplay from './ui/RichTextDisplay';
@@ -49,13 +50,15 @@ export function LatestWork({ work, isDesign }) {
   );
 }
 
-function ArtifactLinks({ artifacts, label }) {
+// qa: QA's own evidence (a separate list of types) - never renamed here.
+function ArtifactLinks({ artifacts, label, qa = false }) {
+  const menu = useArtifactMenu();
   if (!artifacts || artifacts.length === 0) return null;
   return (
     <div className={styles.artifacts}>
       <span className={styles.label}>{label}</span>
       <ul className={styles.artifactList}>
-        {labelArtifacts(artifacts).map((a) => {
+        {labelArtifacts(artifacts, qa ? {} : renamedArtifactLabels(menu)).map((a) => {
           const Icon = ARTIFACT_ICONS[a.type] || Paperclip;
           return (
             <li key={a.id}>
@@ -95,7 +98,7 @@ function Decision({ round, screenshots }) {
           <RichTextDisplay value={round.qaComment} />
         </div>
       )}
-      <ArtifactLinks artifacts={round.qaArtifacts} label="QA evidence:" />
+      <ArtifactLinks artifacts={round.qaArtifacts} label="QA evidence:" qa />
       <ScreenshotGallery
         id={`roundScreenshots-${round.id}`}
         label="QA screenshots:"

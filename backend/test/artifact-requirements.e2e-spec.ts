@@ -107,7 +107,8 @@ describe('Required artifact types (e2e)', () => {
       ['Pull Request Link', 'optional'],
       ['Demo Video', 'optional'],
     ]);
-    await qaSubmit(f.users.devA, await newTask(f.users.devA), ['Screenshot']).expect(201);
+    // Only offered types may be attached (Stage 4); none is required.
+    await qaSubmit(f.users.devA, await newTask(f.users.devA), ['Demo Video']).expect(201);
   });
 
   it('Ready for Feedback is refused when a required type is missing, naming it; nothing is saved', async () => {
@@ -157,7 +158,10 @@ describe('Required artifact types (e2e)', () => {
     await qaSubmit(designer, await newTask(designer), ['Prototype']).expect(201);
     // ...and Designer rules bind the Designer, not the Developer.
     await setRules('developer', []);
-    await setRules('designer', [['Design file', 'required']]);
+    await setRules('designer', [
+      ['Design file', 'required'],
+      ['Prototype', 'optional'],
+    ]);
     const res = await qaSubmit(designer, await newTask(designer), ['Prototype']).expect(400);
     expect(res.body.message).toBe('"Design file" is a required artifact type for your role - add it and submit again.');
     await qaSubmit(f.users.devA, await newTask(f.users.devA), ['Screenshot']).expect(201);

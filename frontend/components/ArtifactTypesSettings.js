@@ -8,14 +8,14 @@ import { useToast } from '../lib/toast';
 // SubmissionChecklistController + ArtifactTypesService): add, rename,
 // deactivate and reorder the submission artifact types, and per role
 // (Developer / Designer / DevOps) choose which types are offered and which
-// are required. A role with no rules is offered every active type, all
-// optional. The code a type was created with never changes - renaming only
+// are required. A role with no rules keeps its default menu (see
+// ArtifactTypesService.defaultMenu), all optional. The code a type was created with never changes - renaming only
 // changes what people see. Every change is audited on the server.
 const LABEL_MAX = 60;
 const TYPES_MAX = 50;
 const NOT_OFFERED = '';
 
-export default function ArtifactTypesSettings() {
+export default function ArtifactTypesSettings({ onChanged }) {
   const { showToast } = useToast();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -37,6 +37,7 @@ export default function ArtifactTypesSettings() {
     try {
       const next = await fn();
       setData(next);
+      onChanged?.(next);
       showToast(message, 'success');
       return true;
     } catch (err) {
@@ -121,7 +122,7 @@ export default function ArtifactTypesSettings() {
             .filter(([, v]) => v !== NOT_OFFERED)
             .map(([id, requirement]) => ({ artifactTypeId: Number(id), requirement }));
     if (draft.mode === 'choose' && rules.length === 0) {
-      setError(`Pick at least one type for ${roleLabel}, or choose "Offer every active type".`);
+      setError(`Pick at least one type for ${roleLabel}, or choose "Use the default menu".`);
       return;
     }
     const ok = await run(
@@ -134,7 +135,11 @@ export default function ArtifactTypesSettings() {
 
   const ruleSummary = (role) => {
     const rules = rulesFor(role);
-    if (!rules.length) return 'Every active type, all optional';
+    if (!rules.length) {
+      return role === 'designer'
+        ? 'Default menu (design types first, then the rest), all optional'
+        : 'Default menu (every active type except the design types), all optional';
+    }
     const required = rules.filter((r) => r.requirement === 'required').map((r) => labelOf(r.artifactTypeId));
     const optional = rules.filter((r) => r.requirement === 'optional').map((r) => labelOf(r.artifactTypeId));
     return [required.length ? `Required: ${required.join(', ')}` : 'Nothing required', optional.length ? `Optional: ${optional.join(', ')}` : null]
@@ -150,8 +155,8 @@ export default function ArtifactTypesSettings() {
         the name people see - past submissions keep their type. Types can be made inactive but not deleted.
       </p>
       <p className={styles.helpText} role="note">
-        Required types are enforced now: a submission for feedback or peer review is refused, naming what is missing. The submit menus
-        don&apos;t follow these settings yet - new types, new names and which types a role is offered take effect in a later update.
+        The submit forms use this list and the rules below straight away. A submission for feedback or peer review that is missing a
+        required type is refused, naming what is missing.
       </p>
 
       {error && (
@@ -266,7 +271,8 @@ export default function ArtifactTypesSettings() {
       </h3>
       <p className={styles.helpText} style={{ marginTop: 0 }}>
         Which types each role is offered, and which they must attach. Required applies when submitting for feedback and for peer review.
-        A role with no rules is offered every active type, all optional.
+        A role with no rules keeps its default menu, all optional: Developer and DevOps get every active type except Design file,
+        Prototype and Design spec; Designer gets the design types first, then the rest. Types added here join every default menu.
       </p>
       {data.roles.map(({ value: role, label: roleLabel }) => {
         const draft = drafts[role];
@@ -287,7 +293,7 @@ export default function ArtifactTypesSettings() {
                 <div role="radiogroup" aria-label={`Artifact types offered to ${roleLabel}`} style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
                     <input type="radio" name={`atMode${role}`} checked={draft.mode === 'all'} onChange={() => setDraft(role, { mode: 'all' })} />
-                    Offer every active type, all optional
+                    Use the default menu, all optional
                   </label>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
                     <input type="radio" name={`atMode${role}`} checked={draft.mode === 'choose'} onChange={() => setDraft(role, { mode: 'choose' })} />

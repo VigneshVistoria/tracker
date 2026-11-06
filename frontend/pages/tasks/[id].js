@@ -34,7 +34,7 @@ import SubmissionCards, { LatestWork } from '../../components/SubmissionCards';
 import { groupSubmissions } from '../../lib/submissions';
 import { taskNextStep } from '../../lib/taskNextStep';
 import { peerReviewerOptions } from '../../lib/peerReviewers';
-import { artifactTypeGroups, latestWork } from '../../lib/artifactTypes';
+import { artifactLabel, artifactMenuGroups, latestWork, requiredArtifactLabels, useArtifactMenu } from '../../lib/artifactTypes';
 import LoadingState from '../../components/ui/LoadingState';
 import ReviewTimeline from '../../components/ReviewTimeline';
 import Breadcrumbs from '../../components/ui/Breadcrumbs';
@@ -130,10 +130,9 @@ function StatusBadge({ status, task }) {
 }
 
 
-// Artifact Type is a fixed enum today (see TaskArtifactType on the
-// backend), but this map still falls back to a generic icon for any
-// value it doesn't recognize, so a future enum addition can't break the
-// history table before its icon is added here.
+// Built-in types have their own icon; types added by an Admin/PM (Admin ->
+// Submission Checklist Settings) fall back to a generic one. Keyed by the
+// stored code, so a rename keeps the icon.
 const ARTIFACT_ICONS = {
   'Screenshot': Image,
   'Pull Request Link': GitPullRequest,
@@ -148,6 +147,7 @@ const ARTIFACT_ICONS = {
 };
 
 function ArtifactIcons({ artifacts }) {
+  const menu = useArtifactMenu();
   return (
     <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
       {artifacts.map((artifact) => {
@@ -158,8 +158,8 @@ function ArtifactIcons({ artifacts }) {
             href={artifact.url}
             target="_blank"
             rel="noreferrer"
-            title={artifact.type}
-            aria-label={artifact.type}
+            title={artifactLabel(menu, artifact.type)}
+            aria-label={artifactLabel(menu, artifact.type)}
             style={{ display: 'inline-flex', color: 'inherit' }}
           >
             <Icon size={16} aria-hidden="true" />
@@ -368,6 +368,9 @@ function recordArtifactUrlHistory(urls) {
 
 export default function TaskDetailPage() {
   const confirmAction = useConfirm();
+  // Artifact types (Stage 4): menus and names from Admin -> Submission
+  // Checklist Settings; built-in lists until it loads.
+  const artifactMenu = useArtifactMenu();
   const router = useRouter();
   const { id } = router.query;
   const { showToast } = useToast();
@@ -986,12 +989,18 @@ export default function TaskDetailPage() {
   // assignee's own, so their role is known even without the team list.
   const assigneeRole = developers.find((d) => d.id === task.assigneeUserId)?.role || (isAssignee ? user.role : null);
   const renderArtifactTypeOptions = (row) =>
-    artifactTypeGroups(assigneeRole).map((g) => {
+    artifactMenuGroups(assigneeRole, artifactMenu).map((g) => {
       const opts = g.types
-        .filter((t) => t === row.type || !artifacts.some((r) => r.type === t))
-        .map((t) => <option key={t} value={t}>{t}</option>);
+        .filter((t) => t.code === row.type || !artifacts.some((r) => r.type === t.code))
+        .map((t) => (
+          <option key={t.code} value={t.code}>
+            {t.required ? `${t.label} (required)` : t.label}
+          </option>
+        ));
       return g.label ? <optgroup key={g.label} label={g.label}>{opts}</optgroup> : opts;
     });
+  // Shown above the artifact rows only when the role has required types.
+  const requiredArtifactNames = requiredArtifactLabels(assigneeRole, artifactMenu);
   // Due Date: one-time entry for the Assignee, same lock pattern as
   // E.Hrs - Program Manager can always re-edit it, no lock applies to PM.
   // With Performance Tracking on, a set date is locked for everyone here -
@@ -2550,6 +2559,11 @@ export default function TaskDetailPage() {
             />
           </div>
           <label className={styles.label}>Artifacts</label>
+          {requiredArtifactNames.length > 0 && (
+            <p className={styles.helpText} style={{ marginTop: 0 }}>
+              Required for your role: {requiredArtifactNames.join(', ')}
+            </p>
+          )}
           {artifacts.map((row, index) => (
             <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
               <div className={styles.field}>
@@ -2653,6 +2667,11 @@ export default function TaskDetailPage() {
             />
           </div>
           <label className={styles.label}>Artifacts</label>
+          {requiredArtifactNames.length > 0 && (
+            <p className={styles.helpText} style={{ marginTop: 0 }}>
+              Required for your role: {requiredArtifactNames.join(', ')}
+            </p>
+          )}
           {artifacts.map((row, index) => (
             <div key={index} className={styles.fieldGrid3} style={{ alignItems: 'end', marginBottom: 'var(--space-2)' }}>
               <div className={styles.field}>
@@ -2748,7 +2767,7 @@ export default function TaskDetailPage() {
           <SubmissionChecklistSummary checklist={latestQaReview.submissionChecklist} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Evidence: {artifact.type} &middot;{' '}
+              Evidence: {artifactLabel(artifactMenu, artifact.type)} &middot;{' '}
               <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
             </p>
           ))}
@@ -2845,7 +2864,7 @@ export default function TaskDetailPage() {
           <SubmissionChecklistSummary checklist={latestQaReview.submissionChecklist} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Artifact: {artifact.type} &middot;{' '}
+              Artifact: {artifactLabel(artifactMenu, artifact.type)} &middot;{' '}
               <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
             </p>
           ))}
@@ -3308,7 +3327,7 @@ export default function TaskDetailPage() {
           <SubmissionChecklistSummary checklist={latestQaReview.submissionChecklist} />
           {latestQaReview.artifacts.map((artifact) => (
             <p key={artifact.id} className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
-              Artifact: {artifact.type} &middot;{' '}
+              Artifact: {artifactLabel(artifactMenu, artifact.type)} &middot;{' '}
               <a href={artifact.url} target="_blank" rel="noreferrer">{artifact.url}</a>
             </p>
           ))}
