@@ -11,6 +11,7 @@ import { UsersModule } from '../users/users.module';
 import { AuditModule } from '../audit/audit.module';
 import { GuardsModule } from '../common/guards.module';
 import { NoteQualityModule } from '../note-quality/note-quality.module';
+import { ArtifactTypesModule } from '../artifact-types/artifact-types.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { NoteQualityModule } from '../note-quality/note-quality.module';
     AuditModule,
     GuardsModule,
     NoteQualityModule,
+    ArtifactTypesModule,
   ],
   controllers: [PeerReviewsController],
   providers: [PeerReviewsService],

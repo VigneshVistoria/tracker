@@ -150,8 +150,8 @@ export default function ArtifactTypesSettings() {
         the name people see - past submissions keep their type. Types can be made inactive but not deleted.
       </p>
       <p className={styles.helpText} role="note">
-        Not used on the submit forms yet: new types, renames, role rules and required types are saved now and take effect in a later
-        update.
+        Required types are enforced now: a submission for feedback or peer review is refused, naming what is missing. The submit menus
+        don&apos;t follow these settings yet - new types, new names and which types a role is offered take effect in a later update.
       </p>
 
       {error && (

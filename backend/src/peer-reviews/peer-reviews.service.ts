@@ -10,6 +10,7 @@ import { ApprovePeerReviewDto } from './dto/approve-peer-review.dto';
 import { RejectPeerReviewDto } from './dto/reject-peer-review.dto';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { TasksService } from '../tasks/tasks.service';
+import { ArtifactTypesService } from '../artifact-types/artifact-types.service';
 import { UserRole, DEVELOPER_EQUIVALENT_ROLES } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
@@ -43,6 +44,7 @@ export class PeerReviewsService {
     private auditLogService: AuditLogService,
     private noteQualityService: NoteQualityService,
     private eventEmitter: EventEmitter2,
+    private artifactTypesService: ArtifactTypesService,
   ) {}
 
   private async findPendingPeerRound(taskId: number, tenantId: number): Promise<TaskQaReview> {
@@ -98,6 +100,9 @@ export class PeerReviewsService {
       throw new BadRequestException('This task already has a review round pending - it cannot be resubmitted until that round is decided.');
     }
     await this.tasksService.assertNotAlreadyApproved(task, tenantId);
+    // Required artifact types for the submitter's role - same rule as
+    // Ready for Feedback (TaskQaReviewsService.submit).
+    await this.artifactTypesService.assertRequiredPresent(tenantId, currentUser.role, dto.artifacts.map((a) => a.type));
 
     const priorRounds = await this.qaReviewsRepository.count({ where: { taskId, tenantId } });
 

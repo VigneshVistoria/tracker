@@ -68,6 +68,30 @@ export class ArtifactTypesService {
     return this.rulesRepository.find({ where: { tenantId }, order: { role: 'ASC', artifactTypeId: 'ASC' } });
   }
 
+  // Stage 3 (2026-11-06): the submitter's role's REQUIRED types that this
+  // submission doesn't include - [] when nothing is required (no rules,
+  // or only optional ones). Inactive types are never required. Used at
+  // Ready for Feedback (TaskQaReviewsService.submit) and Peer Review
+  // (PeerReviewsService.submit).
+  async missingRequired(tenantId: number, role: string, submittedCodes: string[]): Promise<ArtifactType[]> {
+    const required = await this.rulesRepository.find({ where: { tenantId, role, requirement: 'required' } });
+    if (required.length === 0) return [];
+    const types = await this.types(tenantId);
+    const submitted = new Set(submittedCodes);
+    return types.filter((t) => t.active && !submitted.has(t.code) && required.some((r) => r.artifactTypeId === t.id));
+  }
+
+  // 400 naming each missing required type by the name people see.
+  async assertRequiredPresent(tenantId: number, role: string, submittedCodes: string[]): Promise<void> {
+    const missing = await this.missingRequired(tenantId, role, submittedCodes);
+    if (missing.length === 0) return;
+    const names = missing.map((t) => `"${t.label}"`);
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    throw new BadRequestException(
+      `${list} ${missing.length === 1 ? 'is a required artifact type' : 'are required artifact types'} for your role - add ${missing.length === 1 ? 'it' : 'them'} and submit again.`,
+    );
+  }
+
   // Everything the settings section needs.
   async settingsPage(tenantId: number) {
     const [types, rules] = [await this.types(tenantId), await this.rules(tenantId)];

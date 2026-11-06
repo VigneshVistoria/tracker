@@ -18,6 +18,7 @@ import { Project } from '../projects/project.entity';
 import { PM_FEEDBACK_STATUS, PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { DEFAULT_QA_NOT_READY_REASONS, NOT_READY_STATUS, QA_NOT_READY_COMMENT_MIN, QA_NOT_READY_REASON_MAX } from '../tasks/qa-not-ready';
 import { SubmissionChecklistService } from './submission-checklist.service';
+import { ArtifactTypesService } from '../artifact-types/artifact-types.service';
 import {
   DEFAULT_QA_TEST_FAILED_REASONS,
   DependencyDeclaration,
@@ -88,6 +89,7 @@ export class TaskQaReviewsService {
     private eventEmitter: EventEmitter2,
     private noteQualityService: NoteQualityService,
     private submissionChecklistService: SubmissionChecklistService,
+    private artifactTypesService: ArtifactTypesService,
     private tracking: PerformanceTrackingService,
   ) {}
 
@@ -199,6 +201,11 @@ export class TaskQaReviewsService {
       );
     }
     await this.tasksService.assertNotAlreadyApproved(task, tenantId);
+    // Required artifact types for the submitter's role (Admin -> Submission
+    // Checklist Settings -> Artifact types, 2026-11-06) - a 400 naming
+    // what's missing, before anything is saved. Nothing is required until
+    // a PM/Admin sets a rule.
+    await this.artifactTypesService.assertRequiredPresent(tenantId, currentUser.role, dto.artifacts.map((a) => a.type));
     // Submission checklist (defect triage Stage 2, 2026-10-27): null when
     // the project has it off, otherwise complete or a 400 naming what's
     // missing - checked before anything is saved.
