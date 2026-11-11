@@ -20,6 +20,17 @@ export class GithubSettings {
   @Column({ type: 'varchar', length: 10, default: 'TRK' })
   taskKeyPrefix: string;
 
+  // PR helpers (migrations/2026-11-github-pr-helpers.sql): own switch,
+  // independent of "enabled" (releases).
+  @Column({ default: false })
+  prHelpersEnabled: boolean;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  prHelperProjectIds: number[];
+
+  @Column({ type: 'varchar', length: 30, default: 'feature/' })
+  branchPrefix: string;
+
   @Column({ type: 'int', nullable: true })
   updatedByUserId: number | null;
 

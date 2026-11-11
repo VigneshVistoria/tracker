@@ -10,6 +10,8 @@ import Badge from '../../components/ui/Badge';
 import styles from '../../styles/issues.module.css';
 import { apiFetch, apiUpload } from '../../lib/api';
 import { useToast } from '../../lib/toast';
+import { branchName, newPullRequestUrl, prTitle } from '../../lib/prHelpers';
+import { copyText } from '../../lib/dailyScrumText';
 import { DEVELOPER_EQUIVALENT_ROLES } from '../../lib/status';
 import { isOverdueTask, effectiveDueDate } from '../../lib/developerTaskStats';
 import { stripHtmlForPreview } from '../../lib/richText';
@@ -377,6 +379,8 @@ export default function TaskDetailPage() {
 
   const [user, setUser] = useState(null);
   const [task, setTask] = useState(null);
+  // GitHub PR helpers (2026-11-11): null until loaded; { enabled: false } when off.
+  const [prHelper, setPrHelper] = useState(null);
   // Performance Tracking S2: GET /tasks/:id/due-date, reported by
   // DueDateCommitmentPanel (null while the project's tracking is off).
   const [dueDateTracking, setDueDateTracking] = useState(null);
@@ -803,6 +807,18 @@ export default function TaskDetailPage() {
     apiFetch(`/modules?projectId=${task.projectId}`).then(setModuleOptions).catch(() => setModuleOptions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingModulePhase, task?.projectId]);
+
+  // GitHub PR helpers - only while switched on for this task's project.
+  useEffect(() => {
+    if (!task?.projectId) return;
+    let live = true;
+    apiFetch(`/github-releases/pr-helper?projectId=${task.projectId}`)
+      .then((h) => live && setPrHelper(h))
+      .catch(() => live && setPrHelper({ enabled: false }));
+    return () => {
+      live = false;
+    };
+  }, [task?.projectId]);
 
   useEffect(() => {
     if (!editingModulePhase || !moduleDraftId) {
@@ -3470,6 +3486,7 @@ export default function TaskDetailPage() {
               </span>
             </div>
           )}
+          {!editingTitle && prHelper?.enabled && !isJunk && <PullRequestHelpers task={task} helper={prHelper} showToast={showToast} />}
           {!editingTitle && isDependencyTask && dependencyTicket && (
             <div role="note" aria-label="Dependency task" className={styles.card} style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
               <p style={{ margin: 0 }}>
@@ -4531,5 +4548,55 @@ export default function TaskDetailPage() {
       )}
       </div>
     </AppShell>
+  );
+}
+
+// GitHub PR helpers (2026-11-11): branch name and PR title with the task ID
+// built in, and a link to GitHub's own new-PR page. Tracker never writes to
+// GitHub - the developer still presses Create there.
+function PullRequestHelpers({ task, helper, showToast }) {
+  const [repo, setRepo] = useState(helper.repos[0]?.repoFullName || '');
+  const branch = branchName(helper.branchPrefix, helper.taskKeyPrefix, task.id, task.title);
+  const title = prTitle(helper.taskKeyPrefix, task.id, task.title);
+  const copy = async (text, what) => {
+    try {
+      await copyText(text);
+      showToast(`${what} copied`, 'success');
+    } catch {
+      showToast(`Could not copy - select it and copy by hand: ${text}`, 'error');
+    }
+  };
+  return (
+    <div className={styles.card} aria-label="Pull request" style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+      <p style={{ margin: 0 }}>
+        <strong>Pull request</strong> <span className={styles.helpText}>- the task ID is filled in for you.</span>
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-2)' }}>
+        <button type="button" className={styles.buttonSecondary} onClick={() => copy(branch, 'Branch name')} title={branch}>
+          Copy branch name
+        </button>
+        <button type="button" className={styles.buttonSecondary} onClick={() => copy(title, 'PR title')} title={title}>
+          Copy PR title
+        </button>
+        {helper.repos.length > 1 && (
+          <select className={styles.input} style={{ width: 'auto' }} aria-label="Repository" value={repo} onChange={(e) => setRepo(e.target.value)}>
+            {helper.repos.map((r) => (
+              <option key={r.repoFullName} value={r.repoFullName}>
+                {r.appName} ({r.repoFullName})
+              </option>
+            ))}
+          </select>
+        )}
+        {repo && (
+          <a className={styles.button} href={newPullRequestUrl(repo, branch, title)} target="_blank" rel="noopener noreferrer">
+            Open pull request
+          </a>
+        )}
+      </div>
+      <p className={styles.helpText} style={{ margin: 'var(--space-1) 0 0' }}>
+        <code>{branch}</code>
+        {repo ? ' - push this branch first, then Open pull request.' : ' - no GitHub repository is set up for this project yet, so only copying works.'}
+      </p>
+    </div>
   );
 }

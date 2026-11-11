@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { AuditActions, AuditLogService } from '../audit/audit-log.service';
 import { Project } from '../projects/project.entity';
 import { Release } from '../release-logs/release.entity';
@@ -20,6 +20,8 @@ import {
   RELEASE_KINDS,
   REPO_FULL_NAME,
   TASK_KEY_PREFIX,
+  BRANCH_PREFIX,
+  DEFAULT_BRANCH_PREFIX,
   baseVersion,
   classify,
   cleanList,
@@ -60,9 +62,38 @@ export class GithubReleasesService {
     return [this.config.get<string>('GITHUB_WEBHOOK_SECRET'), this.config.get<string>('GITHUB_WEBHOOK_SECRET_NEXT')].filter((s): s is string => !!s && s.length > 0);
   }
 
-  async settings(tenantId: number): Promise<{ enabled: boolean; taskKeyPrefix: string; updatedAt: Date | null }> {
+  async settings(tenantId: number): Promise<{
+    enabled: boolean;
+    taskKeyPrefix: string;
+    prHelpersEnabled: boolean;
+    prHelperProjectIds: number[];
+    branchPrefix: string;
+    updatedAt: Date | null;
+  }> {
     const row = await this.settingsRepo.findOne({ where: { tenantId } });
-    return { enabled: !!row?.enabled, taskKeyPrefix: row?.taskKeyPrefix || GITHUB_DEFAULT_TASK_KEY_PREFIX, updatedAt: row?.updatedAt ?? null };
+    return {
+      enabled: !!row?.enabled,
+      taskKeyPrefix: row?.taskKeyPrefix || GITHUB_DEFAULT_TASK_KEY_PREFIX,
+      prHelpersEnabled: !!row?.prHelpersEnabled,
+      prHelperProjectIds: row?.prHelperProjectIds ?? [],
+      branchPrefix: row?.branchPrefix || DEFAULT_BRANCH_PREFIX,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }
+
+  // PR helpers on a task page (any internal user): only while the PR
+  // helper switch is on and the project is listed. Tracker builds text and
+  // a link to GitHub's own new-PR page - it never writes to GitHub.
+  async prHelper(tenantId: number, projectId: number) {
+    const s = await this.settings(tenantId);
+    if (!s.prHelpersEnabled || !s.prHelperProjectIds.includes(projectId)) return { enabled: false as const };
+    const repos = await this.mappingsRepo.find({ where: { tenantId, projectId, active: true }, order: { repoFullName: 'ASC' } });
+    return {
+      enabled: true as const,
+      taskKeyPrefix: s.taskKeyPrefix,
+      branchPrefix: s.branchPrefix,
+      repos: repos.map((r) => ({ repoFullName: r.repoFullName, appName: r.appName })),
+    };
   }
 
   // Resolves once every delivery received so far has been processed (tests).
@@ -374,8 +405,20 @@ export class GithubReleasesService {
 
   async saveSettings(dto: UpdateGithubSettingsDto, actor: Actor, tenantId: number) {
     const before = await this.settings(tenantId);
-    const after = { enabled: dto.enabled ?? before.enabled, taskKeyPrefix: (dto.taskKeyPrefix ?? before.taskKeyPrefix).trim().toUpperCase() };
+    const after = {
+      enabled: dto.enabled ?? before.enabled,
+      taskKeyPrefix: (dto.taskKeyPrefix ?? before.taskKeyPrefix).trim().toUpperCase(),
+      prHelpersEnabled: dto.prHelpersEnabled ?? before.prHelpersEnabled,
+      prHelperProjectIds: [...new Set(dto.prHelperProjectIds ?? before.prHelperProjectIds)],
+      branchPrefix: (dto.branchPrefix ?? before.branchPrefix).trim().toLowerCase(),
+    };
     if (!TASK_KEY_PREFIX.test(after.taskKeyPrefix)) throw new BadRequestException('The task key prefix must be 2-10 letters or digits, starting with a letter (e.g. TRK).');
+    if (!BRANCH_PREFIX.test(after.branchPrefix)) throw new BadRequestException('The branch prefix must be lower-case letters, digits, dots, dashes or underscores ending in "/" (e.g. feature/).');
+    if (after.prHelperProjectIds.length) {
+      const found = await this.projectsRepo.count({ where: { tenantId, id: In(after.prHelperProjectIds) } });
+      if (found !== after.prHelperProjectIds.length) throw new BadRequestException('One of the projects does not exist.');
+    }
+    if (after.prHelpersEnabled && after.prHelperProjectIds.length === 0) throw new BadRequestException('Pick at least one project before switching the PR helpers on.');
     const row = (await this.settingsRepo.findOne({ where: { tenantId } })) ?? this.settingsRepo.create({ tenantId });
     Object.assign(row, after, { updatedByUserId: actor.id });
     await this.settingsRepo.save(row);
@@ -387,7 +430,10 @@ export class GithubReleasesService {
       tenantId,
       entityType: 'GithubSettings',
       entityId: tenantId,
-      details: { before: { enabled: before.enabled, taskKeyPrefix: before.taskKeyPrefix }, after },
+      details: {
+        before: { enabled: before.enabled, taskKeyPrefix: before.taskKeyPrefix, prHelpersEnabled: before.prHelpersEnabled, prHelperProjectIds: before.prHelperProjectIds, branchPrefix: before.branchPrefix },
+        after,
+      },
     });
     return this.settingsPage(tenantId);
   }

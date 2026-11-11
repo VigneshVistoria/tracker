@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { RELEASE_KINDS } from '../github-releases';
 
 // P1/P2 from GitHub - the switch and task key prefix. Values are checked
@@ -12,6 +12,21 @@ export class UpdateGithubSettingsDto {
   @IsString()
   @MaxLength(10)
   taskKeyPrefix?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  prHelpersEnabled?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsInt({ each: true })
+  prHelperProjectIds?: number[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  branchPrefix?: string;
 }
 
 // A repository mapping (create: repoFullName, projectId and appName

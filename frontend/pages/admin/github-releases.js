@@ -45,6 +45,8 @@ export default function GithubReleasesPage() {
   const [projects, setProjects] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
   const [prefix, setPrefix] = useState('TRK');
+  // PR helpers (2026-11-11): own switch, project list, branch prefix.
+  const [helpers, setHelpers] = useState(null);
   const [mapping, setMapping] = useState(EMPTY_MAPPING);
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -61,6 +63,7 @@ export default function GithubReleasesPage() {
       .then(([p, allProjects]) => {
         setPage(p);
         setPrefix(p.settings.taskKeyPrefix);
+        setHelpers({ prHelpersEnabled: p.settings.prHelpersEnabled, prHelperProjectIds: p.settings.prHelperProjectIds, branchPrefix: p.settings.branchPrefix });
         setProjects(allProjects);
         loadDeliveries();
       })
@@ -84,7 +87,9 @@ export default function GithubReleasesPage() {
     setBusy('settings');
     setSettingsError('');
     try {
-      setPage(await apiFetch('/github-releases/settings', { method: 'PATCH', body: JSON.stringify(body) }));
+      const next = await apiFetch('/github-releases/settings', { method: 'PATCH', body: JSON.stringify(body) });
+      setPage(next);
+      setHelpers({ prHelpersEnabled: next.settings.prHelpersEnabled, prHelperProjectIds: next.settings.prHelperProjectIds, branchPrefix: next.settings.branchPrefix });
       showToast(message, 'success');
     } catch (err) {
       setSettingsError(err.message);
@@ -241,6 +246,67 @@ export default function GithubReleasesPage() {
               </div>
             </form>
           </div>
+
+          {helpers && (
+            <form
+              className={styles.card}
+              style={{ marginBottom: 'var(--space-4)' }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveSettings(helpers, 'Pull request helpers saved');
+              }}
+            >
+              <h2 className={styles.cardTitle}>Pull request helpers</h2>
+              <p className={styles.helpText} style={{ marginTop: 0 }}>
+                On each task of the projects below: &quot;Copy branch name&quot;, &quot;Copy PR title&quot; and &quot;Open pull request&quot; (GitHub&apos;s own new
+                pull request page, title filled in - the developer still presses Create). Tracker never writes to GitHub. Separate from the releases switch
+                above. {helpers.prHelpersEnabled ? 'Currently ON.' : 'Currently OFF.'}
+              </p>
+              <label style={{ display: 'flex', gap: 'var(--ds-space-2)', alignItems: 'center' }}>
+                <input type="checkbox" checked={helpers.prHelpersEnabled} onChange={(e) => setHelpers({ ...helpers, prHelpersEnabled: e.target.checked })} />
+                Show the pull request helpers (default: off)
+              </label>
+              <fieldset style={{ border: 0, padding: 0, margin: 'var(--ds-space-3) 0' }}>
+                <legend className={styles.label}>Projects</legend>
+                {projects.map((p) => (
+                  <label key={p.id} style={{ display: 'flex', gap: 'var(--ds-space-2)', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={helpers.prHelperProjectIds.includes(p.id)}
+                      onChange={() =>
+                        setHelpers({
+                          ...helpers,
+                          prHelperProjectIds: helpers.prHelperProjectIds.includes(p.id) ? helpers.prHelperProjectIds.filter((x) => x !== p.id) : [...helpers.prHelperProjectIds, p.id],
+                        })
+                      }
+                    />
+                    {p.name}
+                    {!page.mappings.some((m) => m.projectId === p.id && m.active) && <span className={styles.helpText}>(no repository yet - copy buttons only)</span>}
+                  </label>
+                ))}
+              </fieldset>
+              <div className={styles.field} style={{ maxWidth: 560 }}>
+                <label className={styles.label} htmlFor="ghBranchPrefix">Branch name starts with</label>
+                <input
+                  id="ghBranchPrefix"
+                  className={styles.input}
+                  style={{ width: '12rem' }}
+                  maxLength={30}
+                  value={helpers.branchPrefix}
+                  onChange={(e) => setHelpers({ ...helpers, branchPrefix: e.target.value })}
+                  aria-describedby="ghBranchPrefixHelp"
+                />
+                <p id="ghBranchPrefixHelp" className={styles.helpText}>
+                  e.g. &quot;{helpers.branchPrefix}{page.settings.taskKeyPrefix}-255-fix-login-timeout&quot;. Lower case, ending in &quot;/&quot;.
+                </p>
+              </div>
+              <div className={styles.actions}>
+                <button className={styles.button} type="submit" disabled={busy !== null}>
+                  {busy === 'settings' ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
             <h2 className={styles.cardTitle}>Repositories</h2>

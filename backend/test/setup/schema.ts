@@ -180,6 +180,8 @@ const RELEASE_PATH_COLUMNS = ['releasedByUserId', 'stagingSignedOffOn', 'staging
 // and re-added by the real migration).
 const GITHUB_DIR = path.join(SRC, 'github-releases');
 const GITHUB_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-releases.sql');
+// PR helpers (2026-11-11): 3 more github_settings columns, from the real migration.
+const GITHUB_PR_HELPERS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-pr-helpers.sql');
 // Dependency tasks Stage 1 (2026-11-05): switch, task link, ticket cancel
 // fields and the sync trigger - dropped from what synchronize made, re-added
 // by the real migration, then checked against the entities.
@@ -325,6 +327,7 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(GITHUB_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(GITHUB_PR_HELPERS_MIGRATION, 'utf8'));
   for (const [table, cols] of Object.entries(DEPENDENCY_TASKS_COLUMNS)) {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }

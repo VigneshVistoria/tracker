@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpException, Param, ParseIntPipe, Patch, Post, Query, RawBodyRequest, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpException, Param, ParseIntPipe, Patch, Post, Query, RawBodyRequest, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PERFORMANCE_TRACKING_SETTINGS_ROLES } from '../performance-tracking/performance-tracking';
@@ -64,6 +64,16 @@ export class GithubReleasesController {
   async updateMapping(@Param('id', ParseIntPipe) id: number, @Body() dto: RepoMappingDto, @Req() req: any) {
     const user = await this.editor(req);
     return this.github.updateMapping(id, dto, user, req.user.tenantId);
+  }
+
+  // PR helpers for one project's task page - any internal user.
+  @Get('pr-helper')
+  async prHelper(@Query('projectId') projectId: string | undefined, @Req() req: any) {
+    const user = await this.usersService.findById(req.user.sub);
+    if (!user || user.tenantId !== req.user.tenantId || user.role === UserRole.CLIENT) throw new ForbiddenException('Not available.');
+    const id = Number(projectId);
+    if (!Number.isInteger(id) || id <= 0) throw new BadRequestException('projectId is required.');
+    return this.github.prHelper(req.user.tenantId, id);
   }
 
   // Deliveries that matched no mapped repository are shown to Admins only.

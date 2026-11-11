@@ -54,6 +54,9 @@ export const GITHUB_AUDIT = {
 export const REPO_FULL_NAME = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
 export const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 export const TASK_KEY_PREFIX = /^[A-Z][A-Z0-9]{1,9}$/;
+// PR helpers: the start of copied branch names, e.g. feature/ or fix/.
+export const BRANCH_PREFIX = /^[a-z0-9][a-z0-9._-]{0,28}\/$/;
+export const DEFAULT_BRANCH_PREFIX = 'feature/';
 
 // The signature GitHub sends: "sha256=" + hex HMAC of the raw body. Any of
 // the configured secrets may match (rotation). Constant-time comparison.
