@@ -71,6 +71,9 @@ import { SecurityFindingsModule } from './security-findings/security-findings.mo
 import { TaskUatResult } from './client-measures/task-uat-result.entity';
 import { ReleaseSatisfaction } from './client-measures/release-satisfaction.entity';
 import { TaskPriorityTierEvent } from './client-measures/task-priority-tier-event.entity';
+import { MeetingOccurrence } from './meeting-attendance/meeting-occurrence.entity';
+import { MeetingAttendance } from './meeting-attendance/meeting-attendance.entity';
+import { MeetingAttendanceImport } from './meeting-attendance/meeting-attendance-import.entity';
 import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubWebhookDelivery } from './github-releases/github-releases.entity';
 import { GithubReleasesModule } from './github-releases/github-releases.module';
 import { ClientMeasuresModule } from './client-measures/client-measures.module';
@@ -121,6 +124,7 @@ import { TaskCommitmentEvent } from './performance-metrics/task-commitment-event
 import { PerformanceMetricSettings } from './performance-metrics/performance-metric-settings.entity';
 import { PerformanceHoliday } from './performance-metrics/performance-holiday.entity';
 import { PerformanceTrackingModule } from './performance-tracking/performance-tracking.module';
+import { MeetingAttendanceModule } from './meeting-attendance/meeting-attendance.module';
 import { TaskFlagsModule } from './task-flags/task-flags.module';
 import { TaskActivityModule } from './task-activity/task-activity.module';
 import { PerformanceTrackingSettings } from './performance-tracking/performance-tracking-settings.entity';
@@ -217,6 +221,9 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           TechReviewEvidence,
           SecurityFinding,
           TaskUatResult,
+          MeetingOccurrence,
+          MeetingAttendance,
+          MeetingAttendanceImport,
           ReleaseSatisfaction,
           TaskPriorityTierEvent,
           GithubSettings,
@@ -302,6 +309,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     NonComplianceReportModule,
     PerformanceMetricsModule,
     PerformanceTrackingModule,
+    MeetingAttendanceModule,
     TaskFlagsModule,
     TaskActivityModule,
     TaskRequestsModule,

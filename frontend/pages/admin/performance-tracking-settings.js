@@ -208,7 +208,8 @@ export default function PerformanceTrackingSettingsPage() {
           <h1 className={styles.pageTitle}>Performance Tracking Settings</h1>
           <p className={styles.pageSubtitle}>
             Switch tracking on per project, and set the rules the scorecard uses. Rules marked &quot;default&quot; are waiting for the
-            Technical Director&apos;s review - change them here at any time; every save is recorded.
+            Technical Director&apos;s review - change them here at any time; every save is recorded. C6 meeting attendance has its own page:{' '}
+            <Link href="/admin/meeting-attendance">Meeting Attendance</Link>.
           </p>
         </div>
       </div>

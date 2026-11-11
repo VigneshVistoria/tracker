@@ -1,0 +1,129 @@
+// Performance Tracking C6 - meeting attendance (2026-11-11, approved by the
+// user). Read from Microsoft Teams through Graph: the tracked recurring
+// meetings of the listed organisers, each held meeting's attendance report,
+// matched to tracker users by email. Pure - no Nest/TypeORM imports.
+//
+// User's decisions (2026-11-11), every value an Admin setting, audited:
+//  1. Only the tracked series count (default: the daily scrum).
+//  2. Late = joined MORE than meetingLateMinutes (5) after the start.
+//  3. Expected = only people on the invite.
+//  4. Shown only - not scored unless meetingCountInScores (OFF) is on.
+//  5. Attended = stayed at least meetingMinStayPercent (50%) of the meeting.
+//  6. A PM can mark an absence or late as Excused with a reason; excused
+//     meetings never count either way. Audited.
+// Everything is behind meetingAttendanceEnabled (OFF) and only for the
+// projects in meetingAttendanceProjectIds.
+import { UserRole } from '../users/user.entity';
+
+export const MEETING_ATTENDANCE_AUDIT = {
+  SETTINGS_UPDATED: 'meeting_attendance_settings_updated',
+  IMPORT_RUN: 'meeting_attendance_import_run',
+  EXCUSED: 'meeting_attendance_excused',
+  EXCUSE_REMOVED: 'meeting_attendance_excuse_removed',
+} as const;
+
+// Only an Admin edits the C6 settings; Admin and PM see the page.
+export const MEETING_SETTINGS_EDIT_ROLES: UserRole[] = [UserRole.ADMIN];
+export const MEETING_PAGE_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
+// Who may be allowed to mark Excused (the setting picks from these).
+export const MEETING_EXCUSE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE];
+
+export interface TrackedSeries {
+  organiserUserId: number;
+  seriesId: string;
+  subject: string;
+}
+
+export interface MeetingAttendanceSettings {
+  meetingAttendanceEnabled: boolean;
+  meetingAttendanceProjectIds: number[];
+  meetingOrganiserUserIds: number[];
+  meetingTrackedSeries: TrackedSeries[];
+  meetingLateMinutes: number;
+  meetingMinStayPercent: number;
+  meetingMinSample: number;
+  meetingImportDays: number;
+  meetingCountInScores: boolean;
+  meetingExcuseReasons: string[];
+  meetingExcuseRoles: UserRole[];
+}
+
+export const MEETING_ATTENDANCE_DEFAULTS: MeetingAttendanceSettings = {
+  meetingAttendanceEnabled: false,
+  meetingAttendanceProjectIds: [],
+  meetingOrganiserUserIds: [],
+  meetingTrackedSeries: [],
+  meetingLateMinutes: 5,
+  meetingMinStayPercent: 50,
+  meetingMinSample: 4,
+  meetingImportDays: 7,
+  meetingCountInScores: false,
+  meetingExcuseReasons: ['Leave', 'Sick', 'Client call'],
+  meetingExcuseRoles: [UserRole.PROGRAM_MANAGER],
+};
+
+export const MEETING_SETTING_KEYS = Object.keys(MEETING_ATTENDANCE_DEFAULTS) as (keyof MeetingAttendanceSettings)[];
+
+export type MeetingNumericSetting = 'meetingLateMinutes' | 'meetingMinStayPercent' | 'meetingMinSample' | 'meetingImportDays';
+export const MEETING_LIMITS: Record<MeetingNumericSetting, [number, number]> = {
+  meetingLateMinutes: [0, 60],
+  meetingMinStayPercent: [1, 100],
+  meetingMinSample: [1, 50],
+  meetingImportDays: [1, 30],
+};
+
+export const MAX_TRACKED_SERIES = 20;
+export const MAX_EXCUSE_REASONS = 10;
+export const EXCUSE_REASON_MAX = 80;
+
+// The excuse reasons: 1-10 distinct, non-empty labels of up to 80 characters.
+export function excuseReasonsProblem(reasons: unknown): string | null {
+  if (!Array.isArray(reasons) || reasons.length === 0 || reasons.length > MAX_EXCUSE_REASONS) return `Give 1 to ${MAX_EXCUSE_REASONS} excuse reasons.`;
+  const clean = reasons.map((r) => (typeof r === 'string' ? r.trim() : ''));
+  if (clean.some((r) => !r || r.length > EXCUSE_REASON_MAX)) return `Each excuse reason must be 1 to ${EXCUSE_REASON_MAX} characters.`;
+  if (new Set(clean.map((r) => r.toLowerCase())).size !== clean.length) return 'Excuse reasons must be different from each other.';
+  return null;
+}
+
+// The tracked series: up to 20, each from a listed organiser, no repeats.
+export function trackedSeriesProblem(series: unknown, organiserUserIds: number[]): string | null {
+  if (!Array.isArray(series) || series.length > MAX_TRACKED_SERIES) return `Track at most ${MAX_TRACKED_SERIES} meeting series.`;
+  for (const s of series as TrackedSeries[]) {
+    if (!s || !Number.isInteger(s.organiserUserId) || typeof s.seriesId !== 'string' || !s.seriesId || s.seriesId.length > 512 || typeof s.subject !== 'string' || s.subject.length > 255) {
+      return 'Each tracked series needs an organiser, a series id and a subject.';
+    }
+    if (!organiserUserIds.includes(s.organiserUserId)) return `"${s.subject}" is organised by someone who is not in the organiser list.`;
+  }
+  if (new Set((series as TrackedSeries[]).map((s) => s.seriesId)).size !== series.length) return 'A meeting series is listed twice.';
+  return null;
+}
+
+// C6 can only be switched on with something to read.
+export function switchOnProblem(s: MeetingAttendanceSettings): string | null {
+  if (!s.meetingAttendanceEnabled) return null;
+  if (s.meetingAttendanceProjectIds.length === 0) return 'Pick at least one project before switching C6 on.';
+  if (s.meetingOrganiserUserIds.length === 0) return 'Pick at least one organiser before switching C6 on.';
+  if (s.meetingTrackedSeries.length === 0) return 'Pick at least one meeting series before switching C6 on.';
+  return null;
+}
+
+export type AttendanceOutcome = 'on_time' | 'late' | 'short' | 'absent';
+
+// One invited person at one meeting. Absent = never joined; short = stayed
+// less than minStayPercent of the scheduled length; late = joined more than
+// lateMinutes after the start (and stayed long enough); otherwise on time.
+// Only on_time counts as attended on time for C6.
+export function classifyAttendance(input: {
+  startAt: Date;
+  endAt: Date;
+  firstJoinAt: Date | null;
+  attendedSeconds: number;
+  lateMinutes: number;
+  minStayPercent: number;
+}): AttendanceOutcome {
+  if (!input.firstJoinAt || input.attendedSeconds <= 0) return 'absent';
+  const scheduledSeconds = Math.max(1, (input.endAt.getTime() - input.startAt.getTime()) / 1000);
+  if (input.attendedSeconds * 100 < scheduledSeconds * input.minStayPercent) return 'short';
+  if (input.firstJoinAt.getTime() - input.startAt.getTime() > input.lateMinutes * 60_000) return 'late';
+  return 'on_time';
+}

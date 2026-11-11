@@ -3,6 +3,7 @@ import { UserRole } from '../users/user.entity';
 import { BlockerLagClockStart, NonComplianceDisplay, RequestSource } from './performance-tracking';
 import { EscalationReason } from '../task-qa-reviews/escalation-reasons';
 import { SlaDays } from '../security-findings/security-findings';
+import { TrackedSeries } from '../meeting-attendance/meeting-attendance';
 
 // Performance Tracking thresholds (2026-10-28) - one row per tenant, edited
 // by Admin and Program Manager. A tenant with no row uses
@@ -170,6 +171,42 @@ export class PerformanceTrackingSettings {
 
   @Column({ type: 'int', default: 3 })
   clientMinSample: number;
+
+  // C6 meeting attendance (migrations/2026-11-performance-tracking-meeting-
+  // attendance.sql). Read and saved ONLY by MeetingAttendanceService (Admin,
+  // own audit entry) - not part of PerformanceTrackingThresholds.
+  @Column({ default: false })
+  meetingAttendanceEnabled: boolean;
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  meetingAttendanceProjectIds: number[];
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  meetingOrganiserUserIds: number[];
+
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  meetingTrackedSeries: TrackedSeries[];
+
+  @Column({ type: 'int', default: 5 })
+  meetingLateMinutes: number;
+
+  @Column({ type: 'int', default: 50 })
+  meetingMinStayPercent: number;
+
+  @Column({ type: 'int', default: 4 })
+  meetingMinSample: number;
+
+  @Column({ type: 'int', default: 7 })
+  meetingImportDays: number;
+
+  @Column({ default: false })
+  meetingCountInScores: boolean;
+
+  @Column({ type: 'jsonb', default: () => `'["Leave", "Sick", "Client call"]'` })
+  meetingExcuseReasons: string[];
+
+  @Column({ type: 'jsonb', default: () => `'["program_manager"]'` })
+  meetingExcuseRoles: UserRole[];
 
   @UpdateDateColumn()
   updatedAt: Date;
