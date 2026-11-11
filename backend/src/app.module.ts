@@ -74,7 +74,7 @@ import { TaskPriorityTierEvent } from './client-measures/task-priority-tier-even
 import { MeetingOccurrence } from './meeting-attendance/meeting-occurrence.entity';
 import { MeetingAttendance } from './meeting-attendance/meeting-attendance.entity';
 import { MeetingAttendanceImport } from './meeting-attendance/meeting-attendance-import.entity';
-import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubWebhookDelivery } from './github-releases/github-releases.entity';
+import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubStageDeployment, GithubWebhookDelivery, TaskStageProgress } from './github-releases/github-releases.entity';
 import { GithubReleasesModule } from './github-releases/github-releases.module';
 import { ClientMeasuresModule } from './client-measures/client-measures.module';
 import { WeeklyStatusReport } from './weekly-status/weekly-status-report.entity';
@@ -230,6 +230,8 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           GithubRepoMapping,
           GithubWebhookDelivery,
           GithubStagingDeployment,
+          GithubStageDeployment,
+          TaskStageProgress,
           WeeklyStatusReport,
           TaskHandover,
           KpiConfig,

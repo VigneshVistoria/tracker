@@ -24,12 +24,17 @@ import {
   DEFAULT_BRANCH_PREFIX,
   baseVersion,
   classify,
+  classifyStage,
+  cleanStages,
+  p1StageProblem,
+  resolveP1Stage,
+  ReleaseStage,
   cleanList,
   overlapProblem,
   signatureValid,
   taskRefs,
 } from './github-releases';
-import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubWebhookDelivery } from './github-releases.entity';
+import { GithubRepoMapping, GithubSettings, GithubStageDeployment, GithubStagingDeployment, GithubWebhookDelivery, TaskStageProgress } from './github-releases.entity';
 import { RepoMappingDto, UpdateGithubSettingsDto } from './dto/github-releases.dto';
 
 type Actor = { id: number; email: string; role: UserRole };
@@ -49,6 +54,8 @@ export class GithubReleasesService {
     @InjectRepository(GithubRepoMapping) private readonly mappingsRepo: Repository<GithubRepoMapping>,
     @InjectRepository(GithubWebhookDelivery) private readonly deliveriesRepo: Repository<GithubWebhookDelivery>,
     @InjectRepository(GithubStagingDeployment) private readonly stagingRepo: Repository<GithubStagingDeployment>,
+    @InjectRepository(GithubStageDeployment) private readonly stageDeploysRepo: Repository<GithubStageDeployment>,
+    @InjectRepository(TaskStageProgress) private readonly progressRepo: Repository<TaskStageProgress>,
     @InjectRepository(Release) private readonly releasesRepo: Repository<Release>,
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
     @InjectRepository(Project) private readonly projectsRepo: Repository<Project>,
@@ -68,6 +75,7 @@ export class GithubReleasesService {
     prHelpersEnabled: boolean;
     prHelperProjectIds: number[];
     branchPrefix: string;
+    releaseStagesEnabled: boolean;
     updatedAt: Date | null;
   }> {
     const row = await this.settingsRepo.findOne({ where: { tenantId } });
@@ -77,6 +85,7 @@ export class GithubReleasesService {
       prHelpersEnabled: !!row?.prHelpersEnabled,
       prHelperProjectIds: row?.prHelperProjectIds ?? [],
       branchPrefix: row?.branchPrefix || DEFAULT_BRANCH_PREFIX,
+      releaseStagesEnabled: !!row?.releaseStagesEnabled,
       updatedAt: row?.updatedAt ?? null,
     };
   }
@@ -157,10 +166,27 @@ export class GithubReleasesService {
       await log({ tenantId, signatureValid: true, outcome: 'ignored', reason });
       return { status: 202, outcome: 'ignored', message: reason };
     }
-    if (!(await this.settings(mapping.tenantId)).enabled) {
+    const tenantSettings = await this.settings(mapping.tenantId);
+    if (!tenantSettings.enabled) {
       const reason = `GitHub releases are switched off - nothing recorded${event === 'ping' ? ' (ping: the connection works)' : ''}.`;
       await log({ tenantId, signatureValid: true, outcome: 'ignored', reason });
       return { status: 202, outcome: 'ignored', message: reason };
+    }
+    const installationId = Number(payload?.installation?.id) || null;
+    // Multi-stage path: only while its switch is on AND this repository has
+    // stages. Otherwise Staging/Production exactly as before.
+    const stages: ReleaseStage[] = mapping.stages ?? [];
+    if (tenantSettings.releaseStagesEnabled && stages.length > 0) {
+      const staged = classifyStage(event, payload, stages);
+      if ('reason' in staged) {
+        await log({ tenantId, signatureValid: true, outcome: 'ignored', reason: staged.reason });
+        return { status: 202, outcome: 'ignored', message: staged.reason };
+      }
+      const row = await log({ tenantId, signatureValid: true, outcome: 'received', environment: staged.event.environment, stageName: staged.stage.name });
+      this.queue = this.queue
+        .then(() => this.processStage(row, mapping, staged.stage, staged.event, installationId))
+        .catch((err) => this.logger.error(`GitHub delivery ${row.deliveryId}: ${err.message}`));
+      return { status: 202, outcome: 'received', message: `${staged.stage.name} ${staged.event.version ?? ''}`.trim() };
     }
     const result = classify(event, payload, mapping);
     if ('reason' in result) {
@@ -168,7 +194,6 @@ export class GithubReleasesService {
       return { status: 202, outcome: 'ignored', message: result.reason };
     }
     const row = await log({ tenantId, signatureValid: true, outcome: 'received', environment: result.event.environment });
-    const installationId = Number(payload?.installation?.id) || null;
     this.queue = this.queue
       .then(() => this.process(row, mapping, result.event, installationId))
       .catch((err) => this.logger.error(`GitHub delivery ${row.deliveryId}: ${err.message}`));
@@ -218,6 +243,105 @@ export class GithubReleasesService {
     await this.deliveriesRepo.update(row.id, { outcome, reason, releaseId, processedAt: new Date() });
   }
 
+  // One deploy to one stage: record it, then every task it names reaches
+  // the stage (with or without a Resolution). Production also does what a
+  // production deploy always did (Release Log), with the P1 sign-off
+  // stage's deploy date as the staging date.
+  private async processStage(row: GithubWebhookDelivery, mapping: GithubRepoMapping, stage: ReleaseStage, event: ClassifiedEvent, installationId: number | null): Promise<void> {
+    let outcome: DeliveryOutcome = 'processed';
+    let reason: string;
+    let releaseId: number | null = null;
+    try {
+      const notes: string[] = [];
+      if (!event.sha && event.ref && installationId && this.api.configured()) {
+        try {
+          event.sha = await this.api.commitSha(installationId, mapping.repoFullName, event.ref);
+        } catch (err: any) {
+          notes.push(`Could not look up the commit for ${event.ref}: ${err.message}`);
+        }
+      }
+      const previous = await this.previousStageSha(mapping, stage, event);
+      const deploy = await this.stageDeploysRepo.save(
+        this.stageDeploysRepo.create({
+          tenantId: mapping.tenantId,
+          mappingId: mapping.id,
+          stageKey: stage.key,
+          stageName: stage.name,
+          isProduction: stage.production,
+          sha: event.sha,
+          version: event.version,
+          deployedAt: event.at,
+          deliveryId: row.deliveryId,
+        }),
+      );
+      let texts: string[];
+      let head: string;
+      if (stage.production) {
+        const r = await this.recordProduction(row, mapping, event, installationId, notes, resolveP1Stage(mapping.stages, mapping.p1StageKey));
+        releaseId = r.releaseId;
+        texts = r.texts;
+        head = r.summary;
+      } else {
+        texts = [...event.texts];
+        if (this.api.configured() && installationId && event.sha) {
+          try {
+            const more = await this.api.releaseTexts(installationId, mapping.repoFullName, event.sha, previous);
+            texts.push(...more.texts);
+          } catch (err: any) {
+            notes.push(`Could not read the commits from GitHub (${err.message}).`);
+          }
+        }
+        head = `${stage.name} deploy recorded${event.version ? ` (${event.version})` : ''}`;
+      }
+      const progress = await this.recordProgress(mapping, stage, deploy, texts);
+      reason = `${head}; ${progress.reached} task(s) reached ${stage.name}${progress.unknown.length ? `; not in this project or Junk: ${progress.unknown.join(', ')}` : ''}${notes.length && !stage.production ? `. ${notes.join(' ')}` : ''}`;
+    } catch (err: any) {
+      outcome = 'error';
+      reason = `Could not process: ${err.message}`;
+      this.logger.error(`GitHub delivery ${row.deliveryId}: ${err.stack || err.message}`);
+    }
+    await this.deliveriesRepo.update(row.id, { outcome, reason: reason.slice(0, 2000), releaseId, processedAt: new Date() });
+  }
+
+  // The commit of the previous deploy to the same stage (commit range).
+  private async previousStageSha(mapping: GithubRepoMapping, stage: ReleaseStage, event: ClassifiedEvent): Promise<string | null> {
+    const prev = await this.stageDeploysRepo
+      .createQueryBuilder('d')
+      .where('d.tenantId = :tenantId AND d.mappingId = :mappingId AND d.stageKey = :key AND d.sha IS NOT NULL', { tenantId: mapping.tenantId, mappingId: mapping.id, key: stage.key })
+      .andWhere('d.deployedAt <= :at', { at: event.at })
+      .orderBy('d.deployedAt', 'DESC')
+      .addOrderBy('d.id', 'DESC')
+      .getOne();
+    return prev && prev.sha !== event.sha ? prev.sha : null;
+  }
+
+  // Tasks of this repository's project named in the deploy reach the stage:
+  // first and last date kept (an earlier deploy seen late moves "first").
+  private async recordProgress(mapping: GithubRepoMapping, stage: ReleaseStage, deploy: GithubStageDeployment, texts: string[]) {
+    const { taskKeyPrefix } = await this.settings(mapping.tenantId);
+    const ids = taskRefs(texts, taskKeyPrefix);
+    if (!ids.length) return { reached: 0, unknown: [] as string[] };
+    const rows: Array<{ id: number }> = await this.progressRepo.query(
+      `SELECT id FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2 AND id = ANY($3) AND status <> 'Junk'`,
+      [mapping.tenantId, mapping.projectId, ids],
+    );
+    const ok = new Set(rows.map((r) => r.id));
+    for (const taskId of ok) {
+      await this.progressRepo.query(
+        `INSERT INTO task_stage_progress ("tenantId", "taskId", "mappingId", "stageKey", "stageName", "firstReachedAt", "lastReachedAt", "firstVersion", "firstDeploymentId")
+         VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)
+         ON CONFLICT ("taskId", "mappingId", "stageKey") DO UPDATE SET
+           "stageName" = EXCLUDED."stageName",
+           "firstVersion" = CASE WHEN EXCLUDED."firstReachedAt" < task_stage_progress."firstReachedAt" THEN EXCLUDED."firstVersion" ELSE task_stage_progress."firstVersion" END,
+           "firstDeploymentId" = CASE WHEN EXCLUDED."firstReachedAt" < task_stage_progress."firstReachedAt" THEN EXCLUDED."firstDeploymentId" ELSE task_stage_progress."firstDeploymentId" END,
+           "firstReachedAt" = LEAST(task_stage_progress."firstReachedAt", EXCLUDED."firstReachedAt"),
+           "lastReachedAt" = GREATEST(task_stage_progress."lastReachedAt", EXCLUDED."lastReachedAt")`,
+        [mapping.tenantId, taskId, mapping.id, stage.key, stage.name, deploy.deployedAt, deploy.version, deploy.id],
+      );
+    }
+    return { reached: ok.size, unknown: ids.filter((id) => !ok.has(id)).map((id) => `${taskKeyPrefix}-${id}`) };
+  }
+
   private async timeZone(tenantId: number): Promise<string> {
     const rows = await this.releasesRepo.query(`SELECT "calendarTimeZone" FROM performance_tracking_settings WHERE "tenantId" = $1`, [tenantId]);
     return rows[0]?.calendarTimeZone || PERFORMANCE_TRACKING_DEFAULTS.calendarTimeZone;
@@ -237,7 +361,8 @@ export class GithubReleasesService {
     event: ClassifiedEvent,
     installationId: number | null,
     notes: string[],
-  ): Promise<{ releaseId: number; summary: string }> {
+    p1Stage?: ReleaseStage | null,
+  ): Promise<{ releaseId: number; summary: string; texts: string[] }> {
     if (!event.version) throw new Error('No version - the event has neither a tag nor a commit.');
     const tenantId = mapping.tenantId;
     const project = await this.projectsRepo.findOne({ where: { id: mapping.projectId, tenantId } });
@@ -303,12 +428,12 @@ export class GithubReleasesService {
       }
     }
     if (!release.githubStagingDeployedOn) {
-      const staged = await this.stagingFor(mapping, event);
+      const staged = p1Stage ? await this.stageFor(mapping, p1Stage, event) : await this.stagingFor(mapping, event);
       if (staged) {
         release.githubStagingDeployedOn = dateInZone(staged.deployedAt, zone);
         filled.push('githubStagingDeployedOn');
       } else if (release.stagingSignedOffOn == null) {
-        notes.push('No staging deployment of this commit or version was seen before this release.');
+        notes.push(`No ${p1Stage ? `${p1Stage.name} (P1 sign-off stage)` : 'staging'} deployment of this commit or version was seen before this release.`);
       }
     }
 
@@ -354,7 +479,27 @@ export class GithubReleasesService {
     }
     const skipped = notes.filter((n) => n.startsWith(`${taskKeyPrefix}-`)).length;
     const summary = `Production ${release.version}: ${created ? 'Release created' : 'existing Release filled in'}${filled.length ? ` (${filled.join(', ')})` : ''}; ${added} task(s) added${skipped ? `, ${skipped} skipped` : ''}.`;
-    return { releaseId: release.id, summary };
+    return { releaseId: release.id, summary, texts };
+  }
+
+  // Multi-stage: the latest deploy to the P1 sign-off stage, before this
+  // release, of the same commit or version (1.2.0-rc.1 counts for 1.2.0).
+  private async stageFor(mapping: GithubRepoMapping, stage: ReleaseStage, event: ClassifiedEvent): Promise<GithubStageDeployment | null> {
+    const candidates = await this.stageDeploysRepo
+      .createQueryBuilder('s')
+      .where('s.tenantId = :tenantId AND s.mappingId = :mappingId AND s.stageKey = :key AND s.deployedAt <= :at', {
+        tenantId: mapping.tenantId,
+        mappingId: mapping.id,
+        key: stage.key,
+        at: event.at,
+      })
+      .orderBy('s.deployedAt', 'DESC')
+      .limit(200)
+      .getMany();
+    const base = baseVersion(event.version);
+    return (
+      candidates.find((s) => (event.sha && s.sha === event.sha) || (event.version && s.version === event.version) || (base && baseVersion(s.version) === base)) ?? null
+    );
   }
 
   // The latest staging deployment, before this release, of the same commit
@@ -411,6 +556,7 @@ export class GithubReleasesService {
       prHelpersEnabled: dto.prHelpersEnabled ?? before.prHelpersEnabled,
       prHelperProjectIds: [...new Set(dto.prHelperProjectIds ?? before.prHelperProjectIds)],
       branchPrefix: (dto.branchPrefix ?? before.branchPrefix).trim().toLowerCase(),
+      releaseStagesEnabled: dto.releaseStagesEnabled ?? before.releaseStagesEnabled,
     };
     if (!TASK_KEY_PREFIX.test(after.taskKeyPrefix)) throw new BadRequestException('The task key prefix must be 2-10 letters or digits, starting with a letter (e.g. TRK).');
     if (!BRANCH_PREFIX.test(after.branchPrefix)) throw new BadRequestException('The branch prefix must be lower-case letters, digits, dots, dashes or underscores ending in "/" (e.g. feature/).');
@@ -431,7 +577,7 @@ export class GithubReleasesService {
       entityType: 'GithubSettings',
       entityId: tenantId,
       details: {
-        before: { enabled: before.enabled, taskKeyPrefix: before.taskKeyPrefix, prHelpersEnabled: before.prHelpersEnabled, prHelperProjectIds: before.prHelperProjectIds, branchPrefix: before.branchPrefix },
+        before: { enabled: before.enabled, taskKeyPrefix: before.taskKeyPrefix, prHelpersEnabled: before.prHelpersEnabled, prHelperProjectIds: before.prHelperProjectIds, branchPrefix: before.branchPrefix, releaseStagesEnabled: before.releaseStagesEnabled },
         after,
       },
     });
@@ -474,7 +620,20 @@ export class GithubReleasesService {
       if (!RELEASE_KINDS.includes(dto[key] as any)) throw new BadRequestException(`${key} must be production, staging or ignore.`);
       out[key] = dto[key] as any;
     }
+    if ((dto as any).stages !== undefined) {
+      const r = cleanStages((dto as any).stages);
+      if ('problem' in r) throw new BadRequestException(r.problem);
+      out.stages = r.value;
+    }
+    if ((dto as any).p1StageKey !== undefined) out.p1StageKey = (dto as any).p1StageKey || null;
     const merged = { ...current, ...out } as GithubRepoMapping;
+    const stagesNow = merged.stages ?? [];
+    // A P1 stage that no longer exists falls back to the default.
+    if (merged.p1StageKey && !stagesNow.some((x) => x.key === merged.p1StageKey) && (dto as any).p1StageKey === undefined) out.p1StageKey = null;
+    else {
+      const p1 = p1StageProblem(stagesNow, merged.p1StageKey ?? null);
+      if (p1) throw new BadRequestException(p1);
+    }
     const problem =
       overlapProblem(merged.stagingEnvironments ?? ['staging'], merged.productionEnvironments ?? ['production'], 'Environments') ||
       overlapProblem(merged.stagingBranches ?? [], merged.productionBranches ?? [], 'Branches');

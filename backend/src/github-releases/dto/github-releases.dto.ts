@@ -27,6 +27,10 @@ export class UpdateGithubSettingsDto {
   @IsString()
   @MaxLength(30)
   branchPrefix?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  releaseStagesEnabled?: boolean;
 }
 
 // A repository mapping (create: repoFullName, projectId and appName
@@ -82,4 +86,16 @@ export class RepoMappingDto {
   @IsOptional()
   @IsIn(RELEASE_KINDS as unknown as string[])
   preReleaseIs?: string;
+
+  // Multi-stage release path - checked in full by cleanStages().
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  stages?: Array<{ name: string; production?: boolean; environments?: string[]; workflows?: string[]; branches?: string[]; tagPatterns?: string[] }>;
+
+  // null = default (Test, else the stage before Production).
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  p1StageKey?: string | null;
 }

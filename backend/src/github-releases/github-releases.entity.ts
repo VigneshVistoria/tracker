@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import type { DeliveryOutcome, Environment, ReleaseKind } from './github-releases';
+import type { DeliveryOutcome, Environment, ReleaseKind, ReleaseStage } from './github-releases';
 
 // Performance Tracking P1/P2 from GitHub (migrations/2026-11-github-
 // releases.sql) - see ./github-releases.ts.
@@ -30,6 +30,10 @@ export class GithubSettings {
 
   @Column({ type: 'varchar', length: 30, default: 'feature/' })
   branchPrefix: string;
+
+  // Multi-stage release path (migrations/2026-11-github-release-stages.sql).
+  @Column({ default: false })
+  releaseStagesEnabled: boolean;
 
   @Column({ type: 'int', nullable: true })
   updatedByUserId: number | null;
@@ -81,6 +85,14 @@ export class GithubRepoMapping {
   @Column({ type: 'varchar', length: 10, default: 'staging' })
   preReleaseIs: ReleaseKind;
 
+  // Ordered stages (empty = Staging/Production as above) and the P1
+  // sign-off stage (NULL = default: Test, else the stage before Production).
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  stages: ReleaseStage[];
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  p1StageKey: string | null;
+
   @Column()
   createdByUserId: number;
 
@@ -125,6 +137,9 @@ export class GithubWebhookDelivery {
   @Column({ type: 'varchar', length: 12, nullable: true })
   environment: Environment | null;
 
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  stageName: string | null;
+
   @Column({ type: 'int', nullable: true })
   releaseId: number | null;
 
@@ -162,4 +177,76 @@ export class GithubStagingDeployment {
 
   @CreateDateColumn()
   createdAt: Date;
+}
+
+// One deploy to one stage of a repository with stages.
+@Entity('github_stage_deployments')
+export class GithubStageDeployment {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  tenantId: number;
+
+  @Column()
+  mappingId: number;
+
+  @Column({ type: 'varchar', length: 40 })
+  stageKey: string;
+
+  @Column({ type: 'varchar', length: 60 })
+  stageName: string;
+
+  @Column({ default: false })
+  isProduction: boolean;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  sha: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  version: string | null;
+
+  @Column({ type: 'timestamp' })
+  deployedAt: Date;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  deliveryId: string | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+}
+
+// When a task first (and last) reached a stage - any task named in a
+// deploy, with or without a Resolution.
+@Entity('task_stage_progress')
+export class TaskStageProgress {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Column()
+  tenantId: number;
+
+  @Column()
+  taskId: number;
+
+  @Column()
+  mappingId: number;
+
+  @Column({ type: 'varchar', length: 40 })
+  stageKey: string;
+
+  @Column({ type: 'varchar', length: 60 })
+  stageName: string;
+
+  @Column({ type: 'timestamp' })
+  firstReachedAt: Date;
+
+  @Column({ type: 'timestamp' })
+  lastReachedAt: Date;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  firstVersion: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  firstDeploymentId: number | null;
 }

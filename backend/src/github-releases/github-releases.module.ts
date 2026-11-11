@@ -9,13 +9,13 @@ import { User } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
 import { GithubApiService } from './github-api.service';
 import { GithubReleasesController, GithubWebhookController } from './github-releases.controller';
-import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubWebhookDelivery } from './github-releases.entity';
+import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubStageDeployment, GithubWebhookDelivery, TaskStageProgress } from './github-releases.entity';
 import { GithubReleasesService } from './github-releases.service';
 
 // Performance Tracking P1/P2 from GitHub - see ./github-releases.ts.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GithubSettings, GithubRepoMapping, GithubWebhookDelivery, GithubStagingDeployment, Release, User, Project]),
+    TypeOrmModule.forFeature([GithubSettings, GithubRepoMapping, GithubWebhookDelivery, GithubStagingDeployment, GithubStageDeployment, TaskStageProgress, Release, User, Project]),
     GuardsModule,
     AuditModule,
     UsersModule,
