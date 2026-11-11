@@ -271,6 +271,12 @@ function PersonCard({ person, showBack, onOverride, onRemove }) {
                             .join(' · ')}
                         </div>
                       )}
+                      {m.metric === 'C6' && m.breakdown && (
+                        <div className={styles.issueMeta}>
+                          Teams meetings: {m.breakdown.onTime} on time · {m.breakdown.late} late · {m.breakdown.short} left early · {m.breakdown.absent} absent
+                          {m.breakdown.excused ? ` · ${m.breakdown.excused} excused (not counted)` : ''}
+                        </div>
+                      )}
                       {m.override && (
                         <div className={styles.issueMeta}>
                           Override: &quot;{m.override.reason}&quot; ({formatDateTime(m.override.createdAt)})
@@ -284,7 +290,7 @@ function PersonCard({ person, showBack, onOverride, onRemove }) {
                     </td>
                     {person.canOverride && (
                       <td>
-                        {card.state !== 'baseline' && m.state !== 'not_scored' && (
+                        {card.state !== 'baseline' && m.state !== 'not_scored' && m.metric !== 'C6' && (
                           <Button variant="secondary" onClick={() => (m.override ? onRemove(m) : onOverride(m))} aria-label={`${m.override ? 'Remove the override on' : 'Override'} ${m.label}`}>
                             {m.override ? 'Remove override' : 'Override'}
                           </Button>

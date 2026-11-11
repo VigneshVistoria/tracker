@@ -233,3 +233,67 @@ export function c6Summary(rows: Array<{ outcome: AttendanceOutcome; excused: boo
     details: { onTime, late: n('late'), short: n('short'), absent: n('absent'), excused: rows.length - counted.length },
   };
 }
+
+export const C6_INFO = { metric: 'C6' as const, label: 'Meeting attendance', unit: 'percent' as const, higherIsBetter: true };
+export type C6Breakdown = ReturnType<typeof c6Summary>['details'];
+
+// Adds the C6 row to one scorecard (decision 4): shown only, unless
+// meetingCountInScores is on - then it is banded like any percent metric
+// and joins the Collaboration average (and so the overall). The card's
+// other numbers are never changed while it is off.
+//  phase 'baseline' = the person's C6 projects are all still in Baseline.
+export function applyC6<
+  Card extends {
+    state: 'baseline' | 'scored' | 'not_enough_data';
+    overall: number | null;
+    competencies: Array<{ key: string; label: string; score: number | null }>;
+    metrics: Array<{ metric: string; score: number | null }>;
+  },
+>(
+  card: Card,
+  c6: ReturnType<typeof c6Summary>,
+  options: { phase: 'baseline' | 'scoring'; minSample: number; countInScores: boolean; percentBands: number[]; projects: number[] },
+): Card {
+  const baseline = options.phase === 'baseline' || card.state === 'baseline';
+  let state: 'baseline' | 'not_enough_data' | 'not_scored' | 'scored';
+  let score: number | null = null;
+  if (baseline) state = 'baseline';
+  else if (c6.value === null || c6.sample < options.minSample) state = 'not_enough_data';
+  else if (!options.countInScores) state = 'not_scored';
+  else {
+    state = 'scored';
+    const i = options.percentBands.findIndex((b) => c6.value! >= b);
+    score = i === -1 ? 1 : 5 - i;
+  }
+  const row = {
+    ...C6_INFO,
+    state,
+    value: baseline ? null : c6.value,
+    sample: c6.sample,
+    numerator: baseline ? null : c6.numerator,
+    denominator: baseline ? null : c6.denominator,
+    computedScore: score,
+    score,
+    override: null,
+    projects: options.projects,
+    breakdown: baseline ? null : c6.details,
+  };
+  const at = card.metrics.findIndex((m) => m.metric === 'C5');
+  const metrics = [...card.metrics];
+  metrics.splice(at === -1 ? metrics.length : at + 1, 0, row as any);
+  if (score === null) return { ...card, metrics };
+  // Counted: Collaboration = average of its scored metrics including C6.
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const cScores = metrics.filter((m) => /^C\d$/.test(m.metric) && m.score !== null).map((m) => m.score!);
+  const competencies = card.competencies.map((c) => (c.key === 'C' ? { ...c, score: r1(cScores.reduce((s, x) => s + x, 0) / cScores.length) } : c));
+  const scored = competencies.filter((c) => c.score !== null).map((c) => c.score!);
+  return { ...card, metrics, competencies, overall: r1(scored.reduce((s, x) => s + x, 0) / scored.length), state: 'scored' };
+}
+
+// Who may open the C6 page: Admin and PM always; an Executive only when
+// the setting lets Executives mark Excused.
+export function canOpenMeetingPage(role: UserRole, settings: Pick<MeetingAttendanceSettings, 'meetingExcuseRoles'>): boolean {
+  return MEETING_PAGE_ROLES.includes(role) || settings.meetingExcuseRoles.includes(role);
+}
+
+export const EXCUSE_NOTE_MAX = 500;

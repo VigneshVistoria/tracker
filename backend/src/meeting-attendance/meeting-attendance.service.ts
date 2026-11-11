@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 import { AuditLogService } from '../audit/audit-log.service';
 import { Project } from '../projects/project.entity';
 import { User, UserRole } from '../users/user.entity';
@@ -12,11 +12,15 @@ import {
   MEETING_LIMITS,
   MEETING_SETTING_KEYS,
   MeetingAttendanceSettings,
+  EXCUSE_NOTE_MAX,
+  c6Summary,
+  canOpenMeetingPage,
   excuseReasonsProblem,
   switchOnProblem,
   trackedSeriesProblem,
 } from './meeting-attendance';
-import { UpdateMeetingAttendanceSettingsDto } from './dto/meeting-attendance.dto';
+import { ExcuseAttendanceDto, UpdateMeetingAttendanceSettingsDto } from './dto/meeting-attendance.dto';
+import { MeetingAttendance } from './meeting-attendance.entity';
 
 type Actor = { id: number; email: string; role: UserRole };
 
@@ -29,7 +33,9 @@ export class MeetingAttendanceService {
     @InjectRepository(PerformanceTrackingSettings) private readonly settingsRepository: Repository<PerformanceTrackingSettings>,
     @InjectRepository(Project) private readonly projectsRepository: Repository<Project>,
     @InjectRepository(User) private readonly usersRepository: Repository<User>,
+    @InjectRepository(MeetingAttendance) private readonly attendanceRepository: Repository<MeetingAttendance>,
     private readonly auditLogService: AuditLogService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async settings(tenantId: number): Promise<MeetingAttendanceSettings> {
@@ -104,5 +110,112 @@ export class MeetingAttendanceService {
       details: { before, after },
     });
     return this.page(tenantId);
+  }
+
+  // ---- Stage 3 ----
+
+  async assertCanOpen(tenantId: number, role: UserRole) {
+    if (!canOpenMeetingPage(role, await this.settings(tenantId))) throw new ForbiddenException('Only an Admin or Program Manager can see meeting attendance.');
+  }
+
+  // The imported meetings of the last `days` days, newest first, with
+  // every invitee's outcome and any Excused mark.
+  async meetings(tenantId: number, viewer: Actor, days: number) {
+    const settings = await this.settings(tenantId);
+    const since = new Date(Date.now() - days * 86_400_000);
+    const occ: any[] = await this.dataSource.query(
+      `SELECT id, "organiserUserId", subject, "startAt", "endAt", status, "invitedCount" FROM meeting_occurrences
+        WHERE "tenantId" = $1 AND "startAt" >= $2 ORDER BY "startAt" DESC, id DESC`,
+      [tenantId, since],
+    );
+    const rows: any[] = occ.length
+      ? await this.dataSource.query(
+          `SELECT a.id, a."occurrenceId", a."userId", a."firstJoinAt", a."lastLeaveAt", a."attendedSeconds", a.outcome, a.excused, a."excuseReason", a."excuseNote", a."excusedByUserId", a."excusedAt"
+             FROM meeting_attendance a WHERE a."tenantId" = $1 AND a."occurrenceId" = ANY($2) ORDER BY a.id`,
+          [tenantId, occ.map((o) => o.id)],
+        )
+      : [];
+    const people = await this.usersRepository.find({ where: { tenantId } });
+    const name = (id: number | null) => (id ? people.find((u) => u.id === id)?.fullName || people.find((u) => u.id === id)?.email || `#${id}` : null);
+    return {
+      days,
+      canExcuse: settings.meetingExcuseRoles.includes(viewer.role),
+      excuseReasons: settings.meetingExcuseReasons,
+      meetings: occ.map((o) => ({
+        ...o,
+        organiserName: name(o.organiserUserId),
+        attendance: rows
+          .filter((r) => r.occurrenceId === o.id)
+          .map((r) => ({ ...r, name: name(r.userId), excusedByName: name(r.excusedByUserId) }))
+          .sort((a, b) => String(a.name).localeCompare(String(b.name))),
+      })),
+    };
+  }
+
+  // Decision 6: mark a late / short / absent meeting Excused (reason from
+  // the list, optional note). Not your own. Audited.
+  async excuse(tenantId: number, attendanceId: number, dto: ExcuseAttendanceDto, actor: Actor) {
+    const settings = await this.settings(tenantId);
+    if (!settings.meetingExcuseRoles.includes(actor.role)) throw new ForbiddenException('Your role cannot mark meetings Excused.');
+    const row = await this.attendanceRepository.findOne({ where: { id: attendanceId, tenantId } });
+    if (!row) throw new NotFoundException(`Attendance #${attendanceId} not found`);
+    if (row.userId === actor.id) throw new ForbiddenException('You cannot excuse your own attendance.');
+    if (row.outcome === 'on_time') throw new BadRequestException('This person attended on time - there is nothing to excuse.');
+    if (row.excused) throw new BadRequestException('Already excused - reload to see it.');
+    const reason = settings.meetingExcuseReasons.find((r) => r.toLowerCase() === String(dto.reason ?? '').trim().toLowerCase());
+    if (!reason) throw new BadRequestException(`Pick one of the reasons: ${settings.meetingExcuseReasons.join(', ')}.`);
+    const note = (dto.note ?? '').trim().slice(0, EXCUSE_NOTE_MAX) || null;
+    await this.dataSource.transaction(async (em) => {
+      const res = await em.update(MeetingAttendance, { id: row.id, excused: false }, { excused: true, excuseReason: reason, excuseNote: note, excusedByUserId: actor.id, excusedAt: new Date() });
+      if (!res.affected) throw new BadRequestException('Already excused - reload to see it.');
+      await this.auditLogService.recordWithin(em, {
+        userId: actor.id,
+        userEmail: actor.email,
+        userRole: actor.role,
+        action: MEETING_ATTENDANCE_AUDIT.EXCUSED,
+        tenantId,
+        entityType: 'MeetingAttendance',
+        entityId: row.id,
+        details: { attendanceId: row.id, occurrenceId: row.occurrenceId, userId: row.userId, outcome: row.outcome, reason, note },
+      });
+    });
+    return { ok: true };
+  }
+
+  async removeExcuse(tenantId: number, attendanceId: number, actor: Actor) {
+    const settings = await this.settings(tenantId);
+    if (!settings.meetingExcuseRoles.includes(actor.role)) throw new ForbiddenException('Your role cannot change Excused marks.');
+    const row = await this.attendanceRepository.findOne({ where: { id: attendanceId, tenantId } });
+    if (!row) throw new NotFoundException(`Attendance #${attendanceId} not found`);
+    if (row.userId === actor.id) throw new ForbiddenException('You cannot change an Excused mark on your own attendance.');
+    if (!row.excused) throw new BadRequestException('Not excused - reload to see it.');
+    await this.dataSource.transaction(async (em) => {
+      const res = await em.update(MeetingAttendance, { id: row.id, excused: true }, { excused: false, excuseReason: null, excuseNote: null, excusedByUserId: null, excusedAt: null });
+      if (!res.affected) throw new BadRequestException('Not excused - reload to see it.');
+      await this.auditLogService.recordWithin(em, {
+        userId: actor.id,
+        userEmail: actor.email,
+        userRole: actor.role,
+        action: MEETING_ATTENDANCE_AUDIT.EXCUSE_REMOVED,
+        tenantId,
+        entityType: 'MeetingAttendance',
+        entityId: row.id,
+        details: { attendanceId: row.id, occurrenceId: row.occurrenceId, userId: row.userId, was: { reason: row.excuseReason, note: row.excuseNote, by: row.excusedByUserId, at: row.excusedAt } },
+      });
+    });
+    return { ok: true };
+  }
+
+  // C6 per person for the scorecard: meetings that started in [from, to).
+  async c6ByUser(tenantId: number, userIds: number[], from: Date, to: Date): Promise<Map<number, ReturnType<typeof c6Summary>>> {
+    const out = new Map<number, ReturnType<typeof c6Summary>>();
+    if (!userIds.length) return out;
+    const rows: Array<{ userId: number; outcome: any; excused: boolean }> = await this.dataSource.query(
+      `SELECT a."userId", a.outcome, a.excused FROM meeting_attendance a JOIN meeting_occurrences o ON o.id = a."occurrenceId"
+        WHERE a."tenantId" = $1 AND a."userId" = ANY($2) AND o.status = 'imported' AND o."startAt" >= $3 AND o."startAt" < $4`,
+      [tenantId, userIds, from, to],
+    );
+    for (const id of userIds) out.set(id, c6Summary(rows.filter((r) => r.userId === id)));
+    return out;
   }
 }

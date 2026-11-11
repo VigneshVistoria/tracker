@@ -11,9 +11,14 @@ import { formatDate, formatDateTime } from '../../lib/formatDate';
 
 // Matches MEETING_PAGE_ROLES / MEETING_SETTINGS_EDIT_ROLES (backend/src/
 // meeting-attendance/meeting-attendance.ts).
-const PAGE_ROLES = ['admin', 'program_manager'];
+// An Executive may open it only when Executives can mark Excused - the
+// backend decides (403 otherwise).
+const PAGE_ROLES = ['admin', 'program_manager', 'executive'];
 const ROLE_LABEL = { admin: 'Admin', program_manager: 'Program Manager', executive: 'Executive', qa: 'QA', developer: 'Developer', designer: 'Designer', devops: 'DevOps' };
 
+const OUTCOME = { on_time: 'On time', late: 'Late', short: 'Left early', absent: 'Absent' };
+const MEETING_STATUS = { imported: '', no_report: 'No attendance report from Teams (yet)', cancelled: 'Cancelled' };
+const mins = (sec) => `${Math.round(sec / 60)} min`;
 const IMPORT_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped' };
 const DAY = { sunday: 'Sun', monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat' };
 
@@ -43,16 +48,52 @@ export default function MeetingAttendancePage() {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [myId, setMyId] = useState(null);
   // Series picker: the organiser being looked up, and what Teams returned.
   const [picker, setPicker] = useState(null);
+  const [meetings, setMeetings] = useState(null);
+  // Excuse form: { id, reason, note } for the row being excused.
+  const [excuse, setExcuse] = useState(null);
 
   const load = () =>
-    apiFetch('/meeting-attendance/settings')
-      .then((p) => {
+    Promise.all([apiFetch('/meeting-attendance/settings'), apiFetch('/meeting-attendance/meetings?days=28')])
+      .then(([p, m]) => {
         setPage(p);
         setForm(JSON.parse(JSON.stringify(p.settings)));
+        setMeetings(m);
       })
       .catch((err) => setError(err.message));
+
+  const saveExcuse = async (e) => {
+    e.preventDefault();
+    setBusy('excuse');
+    setError('');
+    try {
+      await apiFetch(`/meeting-attendance/attendance/${excuse.id}/excuse`, { method: 'POST', body: JSON.stringify({ reason: excuse.reason, note: excuse.note }) });
+      showToast('Marked Excused', 'success');
+      setExcuse(null);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeExcuse = async (row) => {
+    if (!window.confirm(`Remove the Excused mark for ${row.name}? The meeting will count again.`)) return;
+    setBusy('excuse');
+    setError('');
+    try {
+      await apiFetch(`/meeting-attendance/attendance/${row.id}/excuse`, { method: 'DELETE' });
+      showToast('Excused mark removed', 'success');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -66,6 +107,7 @@ export default function MeetingAttendancePage() {
       return;
     }
     setIsAdmin(role === 'admin');
+    setMyId(JSON.parse(stored).id);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -308,6 +350,98 @@ export default function MeetingAttendancePage() {
             </div>
           )}
         </form>
+      )}
+
+      {meetings && (
+        <div className={styles.card} style={{ marginTop: 'var(--ds-space-4)' }}>
+          <h2 className={styles.cardTitle}>Meetings (last {meetings.days} days)</h2>
+          <p className={styles.helpText} style={{ marginTop: 0 }}>
+            Only people on the invite are listed. Late = joined more than {page?.settings.meetingLateMinutes} minutes after the start; left early = stayed
+            less than {page?.settings.meetingMinStayPercent}% of the meeting. Excused meetings never count either way.
+            {!meetings.canExcuse && ' Your role cannot mark meetings Excused.'}
+          </p>
+          {meetings.meetings.length === 0 && <p className={styles.helpText}>No meetings imported yet.</p>}
+          {meetings.meetings.map((m) => (
+            <details key={m.id} style={{ marginBottom: 'var(--ds-space-2)' }}>
+              <summary>
+                <strong>{m.subject || '(no subject)'}</strong> - {formatDateTime(m.startAt)}
+                {m.status === 'imported'
+                  ? ` - ${m.attendance.filter((a) => a.outcome === 'on_time').length} of ${m.attendance.length} on time`
+                  : ` - ${MEETING_STATUS[m.status]}`}
+              </summary>
+              {m.attendance.length > 0 && (
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Person</th>
+                        <th>Result</th>
+                        <th>Joined</th>
+                        <th>Time in meeting</th>
+                        <th>Excused</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {m.attendance.map((a) => (
+                        <tr key={a.id}>
+                          <td>{a.name}</td>
+                          <td>{OUTCOME[a.outcome] || a.outcome}</td>
+                          <td>{a.firstJoinAt ? formatDateTime(a.firstJoinAt) : '-'}</td>
+                          <td>{a.attendedSeconds ? mins(a.attendedSeconds) : '-'}</td>
+                          <td>
+                            {a.excused ? (
+                              <>
+                                {a.excuseReason}
+                                {a.excuseNote && <div className={styles.issueMeta}>{a.excuseNote}</div>}
+                                <div className={styles.issueMeta}>
+                                  by {a.excusedByName}, {formatDateTime(a.excusedAt)}
+                                </div>
+                                {meetings.canExcuse && a.userId !== myId && (
+                                  <button className={styles.buttonSecondary} type="button" disabled={busy !== null} onClick={() => removeExcuse(a)}>
+                                    Remove
+                                  </button>
+                                )}
+                              </>
+                            ) : excuse?.id === a.id ? (
+                              <form onSubmit={saveExcuse} style={{ display: 'grid', gap: 'var(--ds-space-1)' }}>
+                                <label className={styles.label} htmlFor={`ex-r-${a.id}`}>Reason</label>
+                                <select id={`ex-r-${a.id}`} className={styles.input} value={excuse.reason} onChange={(e) => setExcuse({ ...excuse, reason: e.target.value })} required>
+                                  {meetings.excuseReasons.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                  ))}
+                                </select>
+                                <label className={styles.label} htmlFor={`ex-n-${a.id}`}>Note (optional)</label>
+                                <input id={`ex-n-${a.id}`} className={styles.input} maxLength={500} value={excuse.note} onChange={(e) => setExcuse({ ...excuse, note: e.target.value })} />
+                                <div style={inline}>
+                                  <button className={styles.button} type="submit" disabled={busy !== null}>{busy === 'excuse' ? 'Saving...' : 'Mark Excused'}</button>
+                                  <button className={styles.buttonSecondary} type="button" onClick={() => setExcuse(null)}>Cancel</button>
+                                </div>
+                              </form>
+                            ) : (
+                              meetings.canExcuse &&
+                              a.outcome !== 'on_time' &&
+                              a.userId !== myId && (
+                                <button
+                                  className={styles.buttonSecondary}
+                                  type="button"
+                                  disabled={busy !== null}
+                                  onClick={() => setExcuse({ id: a.id, reason: meetings.excuseReasons[0], note: '' })}
+                                  aria-label={`Excuse ${a.name}`}
+                                >
+                                  Excuse
+                                </button>
+                              )
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </details>
+          ))}
+        </div>
       )}
 
       {page && (

@@ -14,6 +14,10 @@ import { METRIC_INFO, TRACKING_METRICS } from '../metrics/tracking-metrics';
 import { PerformanceScoreOverride } from './performance-score-override.entity';
 import { ActiveOverride, COMPETENCIES, PersonScorecard, SnapshotRowLike, UNSCORED_METRICS, scorePerson } from './scoring';
 import { CreateScoreOverrideDto, RemoveScoreOverrideDto } from '../dto/scorecard.dto';
+import { MeetingAttendanceService } from '../../meeting-attendance/meeting-attendance.service';
+import { C6_INFO, applyC6 } from '../../meeting-attendance/meeting-attendance';
+import { startOfDayInZone } from '../../team-settings/time-zone';
+import { addCalendarDays } from '../../performance-metrics/working-days';
 
 // See everyone's scorecard (2026-10-30, the user's rule). A developer,
 // designer or DevOps sees only their own; every other role nothing.
@@ -42,6 +46,7 @@ export class ScorecardService {
     private usersService: UsersService,
     private auditLogService: AuditLogService,
     private dataSource: DataSource,
+    private meetingAttendance: MeetingAttendanceService,
   ) {}
 
   private seesAll(viewer: Viewer) {
@@ -104,7 +109,7 @@ export class ScorecardService {
       : [];
     const overrides = date ? await this.activeOverrides(tenantId, date, onlyUserId) : [];
     const userIds = [...new Set(rows.map((r) => r.userId))].filter((id) => onlyUserId === undefined || id === onlyUserId);
-    const cards: Array<PersonScorecard & { name: string; email: string; role: string }> = userIds
+    let cards: Array<PersonScorecard & { name: string; email: string; role: string }> = userIds
       .map((userId) => ({
         ...scorePerson(userId, rows, {
           bands: thresholds,
@@ -119,6 +124,33 @@ export class ScorecardService {
         role: names.get(userId)?.role ?? '',
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+    // C6 meeting attendance (2026-11-11): only while the C6 switch is on,
+    // only for people with rows in a C6 project, read live from the
+    // imported meetings over the same rolling window. Shown only unless
+    // "count C6 in scores" is on - see applyC6.
+    const c6 = await this.meetingAttendance.settings(tenantId);
+    const c6On = c6.meetingAttendanceEnabled && !!date;
+    if (c6On) {
+      const c6Projects = new Set(c6.meetingAttendanceProjectIds);
+      const mineIn = (userId: number) => rows.filter((r) => r.userId === userId && c6Projects.has(r.projectId));
+      const eligible = cards.filter((c) => mineIn(c.userId).length > 0).map((c) => c.userId);
+      const from = startOfDayInZone(addCalendarDays(date!, -(metricSettings.windowDays - 1)), metricSettings.timeZone);
+      const to = startOfDayInZone(addCalendarDays(date!, 1), metricSettings.timeZone);
+      const byUser = await this.meetingAttendance.c6ByUser(tenantId, eligible, from, to);
+      cards = cards.map((c) => {
+        const summary = byUser.get(c.userId);
+        if (!summary) return c;
+        const mine = mineIn(c.userId);
+        const scoring = mine.filter((r) => r.phase === 'scoring');
+        return applyC6(c, summary, {
+          phase: scoring.length ? 'scoring' : 'baseline',
+          minSample: c6.meetingMinSample,
+          countInScores: c6.meetingCountInScores,
+          percentBands: thresholds.percentBands,
+          projects: [...new Set(scoring.map((r) => r.projectId))],
+        });
+      });
+    }
     return {
       snapshotDate: date,
       projects: tracked,
@@ -129,8 +161,12 @@ export class ScorecardService {
       bands: { percentBands: thresholds.percentBands, breachBands: thresholds.breachBands },
       nonComplianceDisplay: thresholds.nonComplianceDisplay,
       overrideUserIds: thresholds.overrideUserIds,
-      competencies: Object.entries(COMPETENCIES).map(([key, c]) => ({ key, label: c.label, metrics: c.metrics })),
-      metricInfo: TRACKING_METRICS.map((m) => ({ metric: m, ...METRIC_INFO[m], scored: !UNSCORED_METRICS.includes(m) })),
+      competencies: Object.entries(COMPETENCIES).map(([key, c]) => ({ key, label: c.label, metrics: key === 'C' && c6On ? [...c.metrics, 'C6'] : c.metrics })),
+      metricInfo: [
+        ...TRACKING_METRICS.map((m) => ({ metric: m as string, ...METRIC_INFO[m], scored: !UNSCORED_METRICS.includes(m) })),
+        ...(c6On ? [{ ...C6_INFO, scored: c6.meetingCountInScores }] : []),
+      ],
+      c6: c6On ? { minSample: c6.meetingMinSample, countInScores: c6.meetingCountInScores, projectIds: c6.meetingAttendanceProjectIds } : null,
       cards,
       rows,
       names,

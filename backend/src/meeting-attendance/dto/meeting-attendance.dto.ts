@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { UserRole } from '../../users/user.entity';
-import { EXCUSE_REASON_MAX, MAX_EXCUSE_REASONS, MAX_TRACKED_SERIES, MEETING_EXCUSE_ROLE_CHOICES, MEETING_LIMITS } from '../meeting-attendance';
+import { EXCUSE_NOTE_MAX, EXCUSE_REASON_MAX, MAX_EXCUSE_REASONS, MAX_TRACKED_SERIES, MEETING_EXCUSE_ROLE_CHOICES, MEETING_LIMITS } from '../meeting-attendance';
 
 export class TrackedSeriesDto {
   @IsInt()
@@ -81,4 +81,16 @@ export class UpdateMeetingAttendanceSettingsDto {
   @IsArray()
   @IsIn(MEETING_EXCUSE_ROLE_CHOICES, { each: true })
   meetingExcuseRoles?: UserRole[];
+}
+
+// Decision 6 - the reason must be one of meetingExcuseReasons.
+export class ExcuseAttendanceDto {
+  @IsString()
+  @MaxLength(EXCUSE_REASON_MAX)
+  reason: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(EXCUSE_NOTE_MAX)
+  note?: string;
 }

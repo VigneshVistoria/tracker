@@ -17,6 +17,7 @@ import { ScorecardController } from './scorecard/scorecard.controller';
 import { ScorecardFeedController } from './scorecard/scorecard-feed.controller';
 import { PerformanceMetricsModule } from '../performance-metrics/performance-metrics.module';
 import { TenantsModule } from '../tenants/tenants.module';
+import { MeetingAttendanceModule } from '../meeting-attendance/meeting-attendance.module';
 
 // Performance Tracking, Wave 1 (2026-10-28). task_status_events is written
 // by database triggers, not here - see ./task-status-event.entity.ts.
@@ -32,6 +33,7 @@ import { TenantsModule } from '../tenants/tenants.module';
     AuditModule,
     PerformanceMetricsModule,
     TenantsModule,
+    MeetingAttendanceModule,
   ],
   controllers: [PerformanceTrackingController, ScorecardController, ScorecardFeedController],
   providers: [TrackingMetricsService, ScorecardService],
