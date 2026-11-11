@@ -48,7 +48,6 @@ export default function MeetingAttendancePage() {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [myId, setMyId] = useState(null);
   // Series picker: the organiser being looked up, and what Teams returned.
   const [picker, setPicker] = useState(null);
   const [meetings, setMeetings] = useState(null);
@@ -107,7 +106,6 @@ export default function MeetingAttendancePage() {
       return;
     }
     setIsAdmin(role === 'admin');
-    setMyId(JSON.parse(stored).id);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -303,7 +301,7 @@ export default function MeetingAttendancePage() {
             </fieldset>
 
             <fieldset style={fieldset}>
-              <legend className={styles.label}>Who can mark a missed or late meeting as Excused (default: Program Manager)</legend>
+              <legend className={styles.label}>Who else can mark a missed or late meeting as Excused (default: Program Manager, only for people on their own projects). An Admin can always excuse anyone.</legend>
               {page.choices.excuseRoles.map((r) => (
                 <label key={r} style={inline}>
                   <input type="checkbox" checked={form.meetingExcuseRoles.includes(r)} onChange={() => toggleIn('meetingExcuseRoles', r)} />
@@ -358,7 +356,7 @@ export default function MeetingAttendancePage() {
           <p className={styles.helpText} style={{ marginTop: 0 }}>
             Only people on the invite are listed. Late = joined more than {page?.settings.meetingLateMinutes} minutes after the start; left early = stayed
             less than {page?.settings.meetingMinStayPercent}% of the meeting. Excused meetings never count either way.
-            {!meetings.canExcuse && ' Your role cannot mark meetings Excused.'}
+            {meetings.canExcuse ? (isAdmin ? ' An Admin can excuse anyone.' : ' A Program Manager can excuse only people on their own projects.') : ' Your role cannot mark meetings Excused.'}
           </p>
           {meetings.meetings.length === 0 && <p className={styles.helpText}>No meetings imported yet.</p>}
           {meetings.meetings.map((m) => (
@@ -396,7 +394,7 @@ export default function MeetingAttendancePage() {
                                 <div className={styles.issueMeta}>
                                   by {a.excusedByName}, {formatDateTime(a.excusedAt)}
                                 </div>
-                                {meetings.canExcuse && a.userId !== myId && (
+                                {a.canExcuse && (
                                   <button className={styles.buttonSecondary} type="button" disabled={busy !== null} onClick={() => removeExcuse(a)}>
                                     Remove
                                   </button>
@@ -418,9 +416,8 @@ export default function MeetingAttendancePage() {
                                 </div>
                               </form>
                             ) : (
-                              meetings.canExcuse &&
-                              a.outcome !== 'on_time' &&
-                              a.userId !== myId && (
+                              a.canExcuse &&
+                              a.outcome !== 'on_time' && (
                                 <button
                                   className={styles.buttonSecondary}
                                   type="button"

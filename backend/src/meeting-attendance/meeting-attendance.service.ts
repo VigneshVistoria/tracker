@@ -136,17 +136,18 @@ export class MeetingAttendanceService {
         )
       : [];
     const people = await this.usersRepository.find({ where: { tenantId } });
+    const scope = await this.excuseScope(tenantId, viewer, settings);
     const name = (id: number | null) => (id ? people.find((u) => u.id === id)?.fullName || people.find((u) => u.id === id)?.email || `#${id}` : null);
     return {
       days,
-      canExcuse: settings.meetingExcuseRoles.includes(viewer.role),
+      canExcuse: scope !== null,
       excuseReasons: settings.meetingExcuseReasons,
       meetings: occ.map((o) => ({
         ...o,
         organiserName: name(o.organiserUserId),
         attendance: rows
           .filter((r) => r.occurrenceId === o.id)
-          .map((r) => ({ ...r, name: name(r.userId), excusedByName: name(r.excusedByUserId) }))
+          .map((r) => ({ ...r, name: name(r.userId), excusedByName: name(r.excusedByUserId), canExcuse: r.userId !== viewer.id && mayExcuse(scope, r.userId) }))
           .sort((a, b) => String(a.name).localeCompare(String(b.name))),
       })),
     };
@@ -156,10 +157,12 @@ export class MeetingAttendanceService {
   // the list, optional note). Not your own. Audited.
   async excuse(tenantId: number, attendanceId: number, dto: ExcuseAttendanceDto, actor: Actor) {
     const settings = await this.settings(tenantId);
-    if (!settings.meetingExcuseRoles.includes(actor.role)) throw new ForbiddenException('Your role cannot mark meetings Excused.');
+    const scope = await this.excuseScope(tenantId, actor, settings);
+    if (scope === null) throw new ForbiddenException('Your role cannot mark meetings Excused.');
     const row = await this.attendanceRepository.findOne({ where: { id: attendanceId, tenantId } });
     if (!row) throw new NotFoundException(`Attendance #${attendanceId} not found`);
     if (row.userId === actor.id) throw new ForbiddenException('You cannot excuse your own attendance.');
+    if (!mayExcuse(scope, row.userId)) throw new ForbiddenException('A Program Manager can only excuse people on their own projects.');
     if (row.outcome === 'on_time') throw new BadRequestException('This person attended on time - there is nothing to excuse.');
     if (row.excused) throw new BadRequestException('Already excused - reload to see it.');
     const reason = settings.meetingExcuseReasons.find((r) => r.toLowerCase() === String(dto.reason ?? '').trim().toLowerCase());
@@ -184,10 +187,12 @@ export class MeetingAttendanceService {
 
   async removeExcuse(tenantId: number, attendanceId: number, actor: Actor) {
     const settings = await this.settings(tenantId);
-    if (!settings.meetingExcuseRoles.includes(actor.role)) throw new ForbiddenException('Your role cannot change Excused marks.');
+    const scope = await this.excuseScope(tenantId, actor, settings);
+    if (scope === null) throw new ForbiddenException('Your role cannot change Excused marks.');
     const row = await this.attendanceRepository.findOne({ where: { id: attendanceId, tenantId } });
     if (!row) throw new NotFoundException(`Attendance #${attendanceId} not found`);
     if (row.userId === actor.id) throw new ForbiddenException('You cannot change an Excused mark on your own attendance.');
+    if (!mayExcuse(scope, row.userId)) throw new ForbiddenException('A Program Manager can only change Excused marks for people on their own projects.');
     if (!row.excused) throw new BadRequestException('Not excused - reload to see it.');
     await this.dataSource.transaction(async (em) => {
       const res = await em.update(MeetingAttendance, { id: row.id, excused: true }, { excused: false, excuseReason: null, excuseNote: null, excusedByUserId: null, excusedAt: null });
@@ -206,6 +211,23 @@ export class MeetingAttendanceService {
     return { ok: true };
   }
 
+  // Whom the actor may excuse: 'all' (Admin always; an Executive when
+  // allowed), the people sharing a project with them (a Program Manager
+  // when allowed), or null (nobody).
+  private async excuseScope(tenantId: number, actor: Actor, settings: MeetingAttendanceSettings): Promise<'all' | Set<number> | null> {
+    if (actor.role === UserRole.ADMIN) return 'all';
+    if (!settings.meetingExcuseRoles.includes(actor.role)) return null;
+    if (actor.role !== UserRole.PROGRAM_MANAGER) return 'all';
+    const rows: Array<{ userId: number }> = await this.dataSource.query(
+      `SELECT DISTINCT b."usersId" AS "userId" FROM user_projects a
+         JOIN user_projects b ON b."projectsId" = a."projectsId"
+         JOIN projects p ON p.id = a."projectsId" AND p."tenantId" = $2
+        WHERE a."usersId" = $1`,
+      [actor.id, tenantId],
+    );
+    return new Set(rows.map((r) => r.userId));
+  }
+
   // C6 per person for the scorecard: meetings that started in [from, to).
   async c6ByUser(tenantId: number, userIds: number[], from: Date, to: Date): Promise<Map<number, ReturnType<typeof c6Summary>>> {
     const out = new Map<number, ReturnType<typeof c6Summary>>();
@@ -218,4 +240,8 @@ export class MeetingAttendanceService {
     for (const id of userIds) out.set(id, c6Summary(rows.filter((r) => r.userId === id)));
     return out;
   }
+}
+
+function mayExcuse(scope: 'all' | Set<number> | null, userId: number): boolean {
+  return scope === 'all' || (scope !== null && scope.has(userId));
 }

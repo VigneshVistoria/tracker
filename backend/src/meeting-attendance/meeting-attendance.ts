@@ -25,8 +25,10 @@ export const MEETING_ATTENDANCE_AUDIT = {
 // Only an Admin edits the C6 settings; Admin and PM see the page.
 export const MEETING_SETTINGS_EDIT_ROLES: UserRole[] = [UserRole.ADMIN];
 export const MEETING_PAGE_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
-// Who may be allowed to mark Excused (the setting picks from these).
-export const MEETING_EXCUSE_ROLE_CHOICES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE];
+// Who may be allowed to mark Excused (the setting picks from these). An
+// Admin can always excuse anyone, so is not a choice; a Program Manager
+// only people who share a project with them (user's rule, 2026-11-11).
+export const MEETING_EXCUSE_ROLE_CHOICES: UserRole[] = [UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE];
 
 export interface TrackedSeries {
   organiserUserId: number;

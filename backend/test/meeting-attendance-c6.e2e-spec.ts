@@ -70,6 +70,8 @@ describe('C6 meeting attendance - Excused and scorecard row (e2e)', () => {
     await person('aOld', 'old', f.users.devA, 'absent');
     await person('q1', 'm1', f.users.qaB, 'absent');
     await person('pm1', 'm1', f.users.pm, 'absent');
+    await person('ex1', 'm1', f.users.exec, 'absent'); // shares no project with the PM
+    await person('ad1', 'm2', f.users.admin, 'late');
     await snapshot(f.users.devA, f.projects.pLms, 'scoring');
     await snapshot(f.users.qaB, f.projects.pLms, 'baseline');
     await snapshot(f.users.devNone, f.projects.pA, 'scoring'); // not a C6 project
@@ -121,7 +123,8 @@ describe('C6 meeting attendance - Excused and scorecard row (e2e)', () => {
     const ex = (u: FixtureUser, id: number, body: any = { reason: 'Sick' }) => http().post(`/meeting-attendance/attendance/${id}/excuse`).set(auth(u)).send(body);
     await ex(f.users.devA, att.a5).expect(403);
     await ex(f.users.exec, att.a5).expect(403);
-    await ex(f.users.admin, att.a5).expect(403); // Admin not in the default roles
+    await ex(f.users.pm, att.ex1).expect(403); // not on any of the PM's projects
+    await ex(f.users.admin, att.ad1).expect(403); // Admin: not their own either
     await ex(f.users.pm, att.pm1).expect(403); // own
     expect((await ex(f.users.pm, att.a1).expect(400)).body.message).toMatch(/on time/);
     expect((await ex(f.users.pm, att.a5, { reason: 'Holiday' }).expect(400)).body.message).toMatch(/Leave, Sick, Client call/);
@@ -142,11 +145,25 @@ describe('C6 meeting attendance - Excused and scorecard row (e2e)', () => {
     expect(list.body.meetings.some((m: any) => m.id === occ.old)).toBe(false); // older than 28 days
   });
 
+  it('an Admin can excuse anyone (whatever the roles setting); a PM sees which rows they can excuse', async () => {
+    await http().post(`/meeting-attendance/attendance/${att.ex1}/excuse`).set(auth(f.users.admin)).send({ reason: 'Client call' }).expect(201);
+    await http().delete(`/meeting-attendance/attendance/${att.ex1}/excuse`).set(auth(f.users.pm)).expect(403);
+    const list = await http().get('/meeting-attendance/meetings').set(auth(f.users.pm)).expect(200);
+    const m1 = list.body.meetings.find((m: any) => m.id === occ.m1).attendance;
+    const can = (u: FixtureUser) => m1.find((a: any) => a.userId === u.id).canExcuse;
+    expect([can(f.users.devA), can(f.users.qaB), can(f.users.exec), can(f.users.pm)]).toEqual([true, true, false, false]);
+    const adminList = await http().get('/meeting-attendance/meetings').set(auth(f.users.admin)).expect(200);
+    expect(adminList.body.canExcuse).toBe(true);
+    await http().delete(`/meeting-attendance/attendance/${att.ex1}/excuse`).set(auth(f.users.admin)).expect(200);
+    // Admin is no longer a choice in the setting.
+    await http().patch('/meeting-attendance/settings').set(auth(f.users.admin)).send({ meetingExcuseRoles: ['admin'] }).expect(400);
+  });
+
   it('removing an Excused mark: same roles, audited; the meeting counts again', async () => {
     await http().delete(`/meeting-attendance/attendance/${att.a5}/excuse`).set(auth(f.users.devA)).expect(403);
     await http().delete(`/meeting-attendance/attendance/${att.a5}/excuse`).set(auth(f.users.pm)).expect(200);
     await http().delete(`/meeting-attendance/attendance/${att.a5}/excuse`).set(auth(f.users.pm)).expect(400);
-    const audit = await ds.query(`SELECT details FROM audit_logs WHERE action = $1`, [MEETING_ATTENDANCE_AUDIT.EXCUSE_REMOVED]);
+    const audit = await ds.query(`SELECT details FROM audit_logs WHERE action = $1 AND "entityId" = $2`, [MEETING_ATTENDANCE_AUDIT.EXCUSE_REMOVED, att.a5]);
     expect(JSON.parse(audit[0].details).was).toMatchObject({ reason: 'Sick', by: f.users.pm.id });
     expect(c6Of(await card(f.users.devA))).toMatchObject({ value: 60, sample: 5 });
   });
