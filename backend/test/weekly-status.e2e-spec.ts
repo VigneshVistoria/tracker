@@ -37,6 +37,9 @@ describe('Weekly status report (Performance Tracking C3, e2e)', () => {
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
     await ds.query(`TRUNCATE weekly_status_reports, weekly_reports, performance_metric_snapshots, performance_metric_runs, performance_tracking_settings, audit_logs RESTART IDENTITY CASCADE`);
+    // Hidden from these roles by default since 2026-11-11 - this file tests the
+    // workflow itself, so an Admin allows it here.
+    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: ['developer'] }).expect(200);
   });
 
   afterAll(async () => {

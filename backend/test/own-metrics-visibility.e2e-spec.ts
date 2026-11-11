@@ -53,6 +53,19 @@ describe('Own performance figures - visibility (e2e)', () => {
     expect((await get(f.users.clientA, '/own-metrics-visibility/me').expect(200)).body).toEqual({ canSeeOwn: false });
   });
 
+  it('default: weekly report and security findings (page and actions) refused for Developer and QA; PM/Admin/Executive keep them', async () => {
+    await get(f.users.devA, '/weekly-status').expect(403);
+    await http().put('/weekly-status').set(auth(f.users.devA)).send({ week: '2026-11-09', done: 'Finished the refund API and its tests', plan: 'Start the export screen next week' }).expect(403);
+    await get(f.users.devA, '/security-findings').expect(403);
+    await http().post('/security-findings/1/fix').set(auth(f.users.devA)).send({ note: 'Fixed the header' }).expect(403);
+    await get(f.users.qaB, '/security-findings').expect(403);
+    await http().post('/security-findings/1/verify').set(auth(f.users.qaB)).send({ passed: true }).expect(403);
+    // No project is tracked in this file (these then answer 400) - the point is: not blocked.
+    for (const u of [f.users.admin, f.users.pm, f.users.exec]) {
+      for (const url of ['/weekly-status', '/security-findings']) expect((await get(u, url)).status).not.toBe(403);
+    }
+  });
+
   it('Admin, Program Manager and Executive are unchanged', async () => {
     for (const u of [f.users.admin, f.users.pm, f.users.exec]) {
       expect((await get(u, '/own-metrics-visibility/me').expect(200)).body).toEqual({ canSeeOwn: true });
@@ -79,6 +92,8 @@ describe('Own performance figures - visibility (e2e)', () => {
   it('allowed for Developer: own figures only (someone else\'s card is still refused); QA still refused', async () => {
     expect((await get(f.users.devA, '/own-metrics-visibility/me').expect(200)).body).toEqual({ canSeeOwn: true });
     for (const url of [...OWN_APIS(f.users.devA), '/tech-reviews']) await get(f.users.devA, url).expect(200);
+    // No project is tracked in this file, so these answer 400 ("not tracked") - the point is: not blocked.
+    for (const url of ['/weekly-status', '/security-findings']) expect((await get(f.users.devA, url)).status).not.toBe(403);
     await get(f.users.devA, `/performance-tracking/scorecard/people/${f.users.devNone.id}`).expect(403);
     const own = await get(f.users.devA, '/performance-dashboard').expect(200);
     expect(own.body).not.toHaveProperty('leaderboard');

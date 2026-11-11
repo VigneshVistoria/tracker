@@ -445,7 +445,7 @@ export default function AppShell({ children, fullScreen = false }) {
               </Link>
             )}
             {/* Weekly status report (Performance Tracking C3) - once a project is tracked. */}
-            {hideSidebar && showScorecard && (
+            {hideSidebar && showScorecard && canSeeOwnMetrics && (
               <Link
                 href="/weekly-status"
                 className={styles.iconButton}
@@ -457,7 +457,7 @@ export default function AppShell({ children, fullScreen = false }) {
               </Link>
             )}
             {/* Security findings they own (Performance Tracking P3/P4). */}
-            {hideSidebar && showScorecard && (
+            {hideSidebar && showScorecard && canSeeOwnMetrics && (
               <Link
                 href="/performance-tracking/security-findings"
                 className={styles.iconButton}
