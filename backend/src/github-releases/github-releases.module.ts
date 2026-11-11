@@ -7,6 +7,7 @@ import { Release } from '../release-logs/release.entity';
 import { ReleaseLogsModule } from '../release-logs/release-logs.module';
 import { User } from '../users/user.entity';
 import { UsersModule } from '../users/users.module';
+import { TasksModule } from '../tasks/tasks.module';
 import { GithubApiService } from './github-api.service';
 import { GithubReleasesController, GithubWebhookController } from './github-releases.controller';
 import { GithubRepoMapping, GithubSettings, GithubStagingDeployment, GithubStageDeployment, GithubWebhookDelivery, TaskStageProgress } from './github-releases.entity';
@@ -20,6 +21,7 @@ import { GithubReleasesService } from './github-releases.service';
     AuditModule,
     UsersModule,
     ReleaseLogsModule,
+    TasksModule,
   ],
   controllers: [GithubWebhookController, GithubReleasesController],
   providers: [GithubReleasesService, GithubApiService],

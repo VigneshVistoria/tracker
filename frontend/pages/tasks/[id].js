@@ -381,6 +381,8 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState(null);
   // GitHub PR helpers (2026-11-11): null until loaded; { enabled: false } when off.
   const [prHelper, setPrHelper] = useState(null);
+  // GitHub multi-stage release path (2026-11-11): stage progress per repo.
+  const [stageProgress, setStageProgress] = useState(null);
   // Performance Tracking S2: GET /tasks/:id/due-date, reported by
   // DueDateCommitmentPanel (null while the project's tracking is off).
   const [dueDateTracking, setDueDateTracking] = useState(null);
@@ -819,6 +821,19 @@ export default function TaskDetailPage() {
       live = false;
     };
   }, [task?.projectId]);
+
+  // Which release stages (Dev, Test, ...) this task has reached - only while
+  // the multi-stage switch is on and the project's repository has stages.
+  useEffect(() => {
+    if (!task?.id) return;
+    let live = true;
+    apiFetch(`/github-releases/task-progress?taskId=${task.id}`)
+      .then((p) => live && setStageProgress(p))
+      .catch(() => live && setStageProgress(null));
+    return () => {
+      live = false;
+    };
+  }, [task?.id]);
 
   useEffect(() => {
     if (!editingModulePhase || !moduleDraftId) {
@@ -3487,6 +3502,7 @@ export default function TaskDetailPage() {
             </div>
           )}
           {!editingTitle && prHelper?.enabled && !isJunk && <PullRequestHelpers task={task} helper={prHelper} showToast={showToast} />}
+          {!editingTitle && stageProgress?.enabled && <ReleaseProgress progress={stageProgress} />}
           {!editingTitle && isDependencyTask && dependencyTicket && (
             <div role="note" aria-label="Dependency task" className={styles.card} style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
               <p style={{ margin: 0 }}>
@@ -4597,6 +4613,29 @@ function PullRequestHelpers({ task, helper, showToast }) {
         <code>{branch}</code>
         {repo ? ' - push this branch first, then Open pull request.' : ' - no GitHub repository is set up for this project yet, so only copying works.'}
       </p>
+    </div>
+  );
+}
+
+// GitHub multi-stage release path (2026-11-11): the date this task first
+// reached each stage, per repository. "-" = not reached yet.
+function ReleaseProgress({ progress }) {
+  return (
+    <div className={styles.card} aria-label="Release progress" style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+      <p style={{ margin: 0 }}>
+        <strong>Release progress</strong> <span className={styles.helpText}>- from GitHub deploys that name this task.</span>
+      </p>
+      {progress.repos.map((r) => (
+        <p key={r.repoFullName} style={{ margin: 'var(--space-1) 0 0' }}>
+          {progress.repos.length > 1 && <span className={styles.helpText}>{r.appName}: </span>}
+          {r.stages.map((st, i) => (
+            <span key={st.key} title={st.firstReachedAt ? `First reached ${formatDateTime(st.firstReachedAt)}${st.firstVersion ? ` (${st.firstVersion})` : ''}` : 'Not reached yet'}>
+              {i > 0 && ' · '}
+              {st.name} {st.firstReachedAt ? <>✓ {formatDate(st.firstReachedAt)}</> : <span className={styles.helpText}>–</span>}
+            </span>
+          ))}
+        </p>
+      ))}
     </div>
   );
 }

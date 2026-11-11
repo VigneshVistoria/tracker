@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PERFORMANCE_TRACKING_SETTINGS_ROLES } from '../performance-tracking/performance-tracking';
 import { UserRole } from '../users/user.entity';
+import { TasksService } from '../tasks/tasks.service';
 import { UsersService } from '../users/users.service';
 import { GithubReleasesService } from './github-releases.service';
 import { RepoMappingDto, UpdateGithubSettingsDto } from './dto/github-releases.dto';
@@ -32,6 +33,7 @@ export class GithubReleasesController {
   constructor(
     private readonly github: GithubReleasesService,
     private readonly usersService: UsersService,
+    private readonly tasksService: TasksService,
   ) {}
 
   private async editor(req: any) {
@@ -74,6 +76,25 @@ export class GithubReleasesController {
     const id = Number(projectId);
     if (!Number.isInteger(id) || id <= 0) throw new BadRequestException('projectId is required.');
     return this.github.prHelper(req.user.tenantId, id);
+  }
+
+  // Stage progress on the task page - whoever may see the task.
+  @Get('task-progress')
+  async taskProgress(@Query('taskId') taskId: string | undefined, @Req() req: any) {
+    const id = Number(taskId);
+    if (!Number.isInteger(id) || id <= 0) throw new BadRequestException('taskId is required.');
+    const user = await this.usersService.findById(req.user.sub);
+    const task = await this.tasksService.findOne(id, req.user.tenantId);
+    if (!user || !(await this.tasksService.canView(task, user))) throw new ForbiddenException('You do not have access to this task.');
+    return this.github.taskProgress(req.user.tenantId, task);
+  }
+
+  // A release's path through the stages - the Release Log is PM only.
+  @Get('release-path/:releaseId')
+  async releasePath(@Param('releaseId', ParseIntPipe) releaseId: number, @Req() req: any) {
+    const user = await this.usersService.findById(req.user.sub);
+    if (!user || user.tenantId !== req.user.tenantId || user.role !== UserRole.PROGRAM_MANAGER) throw new ForbiddenException('Only Program Manager can access the Release Log.');
+    return this.github.releasePath(req.user.tenantId, releaseId);
   }
 
   // Deliveries that matched no mapped repository are shown to Admins only.

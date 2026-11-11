@@ -105,6 +105,58 @@ export class GithubReleasesService {
     };
   }
 
+  // ---------- Stage progress (read) ----------
+
+  // A task's stage progress per repository with stages (task page). Only
+  // while the multi-stage switch is on.
+  async taskProgress(tenantId: number, task: { id: number; projectId: number }) {
+    if (!(await this.settings(tenantId)).releaseStagesEnabled) return { enabled: false as const, repos: [] };
+    const mappings = (await this.mappingsRepo.find({ where: { tenantId, projectId: task.projectId, active: true }, order: { repoFullName: 'ASC' } })).filter(
+      (m) => (m.stages ?? []).length > 0,
+    );
+    if (!mappings.length) return { enabled: false as const, repos: [] };
+    const rows = await this.progressRepo.find({ where: { tenantId, taskId: task.id } });
+    return {
+      enabled: true as const,
+      repos: mappings.map((m) => ({
+        repoFullName: m.repoFullName,
+        appName: m.appName,
+        stages: m.stages.map((st) => {
+          const r = rows.find((x) => x.mappingId === m.id && x.stageKey === st.key);
+          return { key: st.key, name: st.name, production: st.production, firstReachedAt: r?.firstReachedAt ?? null, lastReachedAt: r?.lastReachedAt ?? null, firstVersion: r?.firstVersion ?? null };
+        }),
+      })),
+    };
+  }
+
+  // When this release's commit / version reached each stage (Release Log).
+  // Matched by commit, else version, else base version (1.2.0-test.1 is
+  // 1.2.0). The first deploy to each stage counts.
+  async releasePath(tenantId: number, releaseId: number) {
+    if (!(await this.settings(tenantId)).releaseStagesEnabled) return { enabled: false as const };
+    const release = await this.releasesRepo.findOne({ where: { id: releaseId, tenantId } });
+    if (!release) throw new NotFoundException(`Release #${releaseId} not found`);
+    const mapping = await this.mappingsRepo
+      .createQueryBuilder('m')
+      .where('m.tenantId = :tenantId AND m.projectId = :projectId', { tenantId, projectId: release.projectId })
+      .andWhere(release.githubRepo ? 'lower(m.repoFullName) = lower(:repo)' : 'lower(m.appName) = lower(:app)', { repo: release.githubRepo, app: release.appName })
+      .getOne();
+    if (!mapping || !(mapping.stages ?? []).length) return { enabled: false as const };
+    const deploys = await this.stageDeploysRepo.find({ where: { tenantId, mappingId: mapping.id }, order: { deployedAt: 'ASC', id: 'ASC' } });
+    const base = baseVersion(release.version) ?? release.version;
+    const matches = (d: GithubStageDeployment) =>
+      (release.githubSha && d.sha === release.githubSha) || d.version === release.version || (base && (baseVersion(d.version) ?? d.version) === base);
+    return {
+      enabled: true as const,
+      repoFullName: mapping.repoFullName,
+      p1StageKey: resolveP1Stage(mapping.stages, mapping.p1StageKey)?.key ?? null,
+      stages: mapping.stages.map((st) => {
+        const d = deploys.find((x) => x.stageKey === st.key && matches(x));
+        return { key: st.key, name: st.name, production: st.production, deployedAt: d?.deployedAt ?? null, version: d?.version ?? null };
+      }),
+    };
+  }
+
   // Resolves once every delivery received so far has been processed (tests).
   settled(): Promise<void> {
     return this.queue;

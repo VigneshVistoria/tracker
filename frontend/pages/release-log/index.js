@@ -46,6 +46,19 @@ export default function ReleaseLogPage() {
   const [saving, setSaving] = useState(false);
 
   const [selected, setSelected] = useState(null);
+  // GitHub multi-stage release path (2026-11-11): when this release reached
+  // each stage; { enabled: false } while the switch is off.
+  const [releasePath, setReleasePath] = useState(null);
+  useEffect(() => {
+    if (!selected?.id) return;
+    let live = true;
+    apiFetch(`/github-releases/release-path/${selected.id}`)
+      .then((p) => live && setReleasePath({ ...p, releaseId: selected.id }))
+      .catch(() => live && setReleasePath(null));
+    return () => {
+      live = false;
+    };
+  }, [selected?.id]);
   const [detailError, setDetailError] = useState('');
   const [ticketOptions, setTicketOptions] = useState([]);
   const [ticket, setTicket] = useState(null);
@@ -478,6 +491,19 @@ export default function ReleaseLogPage() {
                 {selected.source === 'github' && ' · Recorded from GitHub'}
                 {selected.githubRepo && <> · <code>{selected.githubRepo}</code>{selected.githubSha && <> @ <code>{selected.githubSha.slice(0, 7)}</code></>}</>}
               </p>
+              {releasePath?.enabled && releasePath.releaseId === selected.id && (
+                <p style={{ marginTop: 0 }} aria-label="Release path">
+                  <span className={styles.label}>Release path: </span>
+                  {releasePath.stages.map((st, i) => (
+                    <span key={st.key}>
+                      {i > 0 && ' → '}
+                      {st.name}
+                      {st.key === releasePath.p1StageKey && <span className={styles.helpText}> (P1 sign-off)</span>}{' '}
+                      {st.deployedAt ? formatDate(st.deployedAt) : <span className={styles.helpText}>not deployed</span>}
+                    </span>
+                  ))}
+                </p>
+              )}
               {selected.githubNotes?.length > 0 && (
                 <div className={styles.card} role="note" style={{ marginBottom: 'var(--space-4)' }}>
                   <h3 className={styles.label} style={{ marginTop: 0 }}>From GitHub - for the PM to check</h3>

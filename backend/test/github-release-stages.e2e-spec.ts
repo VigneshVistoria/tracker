@@ -254,6 +254,46 @@ describe('GitHub multi-stage release path (e2e)', () => {
     expect((await ds.query(`SELECT count(*)::int AS n FROM github_stage_deployments`))[0].n).toBe(before);
   });
 
+  it('task page: stage progress per repository, for whoever may see the task; nothing for a project without stages', async () => {
+    const res = await http().get(`/github-releases/task-progress?taskId=${t.res}`).set(auth(f.users.devA)).expect(200);
+    expect(res.body.enabled).toBe(true);
+    const [repo] = res.body.repos;
+    expect(repo).toMatchObject({ repoFullName: LMS, appName: 'LMS Web' });
+    const at = (k: string) => repo.stages.find((x: any) => x.key === k);
+    expect(repo.stages.map((x: any) => x.name)).toEqual(['Dev', 'Test', 'Training', 'Production']);
+    expect(new Date(at('dev').firstReachedAt).toISOString()).toBe('2026-11-01T08:00:00.000Z');
+    expect(new Date(at('test').firstReachedAt).toISOString()).toBe('2026-11-05T08:00:00.000Z');
+    expect(at('test').firstVersion).toBe('1.0.0-test.1');
+    expect(new Date(at('production').firstReachedAt).toISOString()).toBe('2026-11-10T08:00:00.000Z');
+    const wf = await http().get(`/github-releases/task-progress?taskId=${t.wf}`).set(auth(f.users.pm)).expect(200);
+    expect(wf.body.repos[0].stages.filter((x: any) => x.firstReachedAt).map((x: any) => x.name)).toEqual(['Dev']);
+    await http().get(`/github-releases/task-progress?taskId=${t.res}`).set(auth(f.users.clientA)).expect(403);
+    await http().get('/github-releases/task-progress').set(auth(f.users.pm)).expect(400);
+    expect((await http().get(`/github-releases/task-progress?taskId=${t.other}`).set(auth(f.users.pm)).expect(200)).body).toEqual({ enabled: false, repos: [] });
+  });
+
+  it('Release Log: when the release reached each stage (PM only); stages it never went through show nothing', async () => {
+    const [rel] = await ds.query(`SELECT id FROM releases WHERE "appName" = 'LMS Web' AND version = '1.0.0'`);
+    await http().get(`/github-releases/release-path/${rel.id}`).set(auth(f.users.devA)).expect(403);
+    const res = await http().get(`/github-releases/release-path/${rel.id}`).set(auth(f.users.pm)).expect(200);
+    expect(res.body).toMatchObject({ enabled: true, repoFullName: LMS, p1StageKey: 'training' });
+    const when = (k: string) => {
+      const st = res.body.stages.find((x: any) => x.key === k);
+      return st.deployedAt ? new Date(st.deployedAt).toISOString().slice(0, 10) : null;
+    };
+    expect(['dev', 'test', 'training', 'production'].map(when)).toEqual([null, '2026-11-05', null, '2026-11-10']);
+    await http().get('/github-releases/release-path/999999').set(auth(f.users.pm)).expect(404);
+  });
+
+  it('switch OFF: the task page and Release Log show no stages (data kept)', async () => {
+    await http().patch('/github-releases/settings').set(auth(f.users.admin)).send({ releaseStagesEnabled: false }).expect(200);
+    expect((await http().get(`/github-releases/task-progress?taskId=${t.res}`).set(auth(f.users.pm)).expect(200)).body).toEqual({ enabled: false, repos: [] });
+    const [rel] = await ds.query(`SELECT id FROM releases WHERE "appName" = 'LMS Web' AND version = '1.0.0'`);
+    expect((await http().get(`/github-releases/release-path/${rel.id}`).set(auth(f.users.pm)).expect(200)).body).toEqual({ enabled: false });
+    expect((await ds.query(`SELECT count(*)::int AS n FROM task_stage_progress`))[0].n).toBeGreaterThan(0);
+    await http().patch('/github-releases/settings').set(auth(f.users.admin)).send({ releaseStagesEnabled: true }).expect(200);
+  });
+
   it('removing the stages takes a repository back to Staging/Production', async () => {
     await http().patch(`/github-releases/mappings/${lmsId}`).set(auth(f.users.admin)).send({ stages: [], p1StageKey: null }).expect(200);
     const { row } = await deliver(LMS, 'deployment_status', deployed('staging', SHA_B, '2026-11-15T08:00:00Z'));
