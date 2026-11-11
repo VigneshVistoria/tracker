@@ -35,7 +35,7 @@ describe('Design artifact types (e2e)', () => {
     ds = t.dataSource;
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
-    await ds.query(`TRUNCATE project_tasks, task_qa_reviews, task_qa_review_artifacts, audit_logs RESTART IDENTITY CASCADE`);
+    await ds.query(`TRUNCATE project_tasks, task_qa_reviews, task_qa_review_artifacts, task_dependency_tickets, audit_logs RESTART IDENTITY CASCADE`);
     phaseId = (
       await ds.query(
         `INSERT INTO phases ("tenantId", "projectId", "projectName", "moduleId", "moduleName", "name") VALUES ($1, $2, 'Project A', $3, 'Medical Claim', 'Build') RETURNING id`,
