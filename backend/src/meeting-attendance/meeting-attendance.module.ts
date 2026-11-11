@@ -11,6 +11,10 @@ import { MeetingAttendance } from './meeting-attendance.entity';
 import { MeetingAttendanceImport } from './meeting-attendance-import.entity';
 import { MeetingAttendanceService } from './meeting-attendance.service';
 import { MeetingAttendanceController } from './meeting-attendance.controller';
+import { MeetingImportService } from './meeting-import.service';
+import { MeetingGraphClient } from './meeting-graph.client';
+import { GraphAuthService } from '../teams-integration/graph-auth.service';
+import { TenantsModule } from '../tenants/tenants.module';
 
 // Performance Tracking C6 - meeting attendance from Teams (2026-11-11).
 @Module({
@@ -19,9 +23,12 @@ import { MeetingAttendanceController } from './meeting-attendance.controller';
     AuditModule,
     UsersModule,
     GuardsModule,
+    TenantsModule,
   ],
   controllers: [MeetingAttendanceController],
-  providers: [MeetingAttendanceService],
+  // GraphAuthService: its own instance (own token cache) - the Teams
+  // module does not export it.
+  providers: [MeetingAttendanceService, MeetingImportService, MeetingGraphClient, GraphAuthService],
   exports: [MeetingAttendanceService],
 })
 export class MeetingAttendanceModule {}

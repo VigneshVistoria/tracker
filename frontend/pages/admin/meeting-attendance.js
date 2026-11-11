@@ -7,11 +7,24 @@ import styles from '../../styles/issues.module.css';
 import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { redirectToSignIn } from '../../lib/session';
+import { formatDate, formatDateTime } from '../../lib/formatDate';
 
 // Matches MEETING_PAGE_ROLES / MEETING_SETTINGS_EDIT_ROLES (backend/src/
 // meeting-attendance/meeting-attendance.ts).
 const PAGE_ROLES = ['admin', 'program_manager'];
 const ROLE_LABEL = { admin: 'Admin', program_manager: 'Program Manager', executive: 'Executive', qa: 'QA', developer: 'Developer', designer: 'Designer', devops: 'DevOps' };
+
+const IMPORT_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', skipped: 'Skipped' };
+const DAY = { sunday: 'Sun', monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat' };
+
+// "Mon-Fri 09:00 (UTC)" style summary of a Teams recurrence.
+function seriesWhen(s) {
+  const p = s.pattern || {};
+  const days = (p.daysOfWeek || []).map((d) => DAY[d] || d).join(', ');
+  const kind = p.type === 'daily' ? 'Every day' : days || p.type || '';
+  const time = s.startTime ? new Date(s.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  return `${kind}${time ? ` at ${time}` : ''}${s.rangeEnd ? `, until ${formatDate(s.rangeEnd)}` : ''}`;
+}
 
 const NUMBER_FIELDS = [
   ['meetingLateMinutes', 'Late: joined more than (minutes) after the start', 'Joining exactly at this many minutes is still on time.'],
@@ -30,6 +43,8 @@ export default function MeetingAttendancePage() {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  // Series picker: the organiser being looked up, and what Teams returned.
+  const [picker, setPicker] = useState(null);
 
   const load = () =>
     apiFetch('/meeting-attendance/settings')
@@ -79,6 +94,41 @@ export default function MeetingAttendancePage() {
     try {
       await apiFetch('/meeting-attendance/settings', { method: 'PATCH', body: JSON.stringify(body) });
       showToast('Meeting attendance settings saved', 'success');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const findSeries = async (organiserUserId) => {
+    setBusy('series');
+    setError('');
+    try {
+      const list = await apiFetch(`/meeting-attendance/series?organiserUserId=${organiserUserId}`);
+      setPicker({ organiserUserId, list });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addSeries = (s) =>
+    setForm((f) =>
+      f.meetingTrackedSeries.some((x) => x.seriesId === s.seriesId)
+        ? f
+        : { ...f, meetingTrackedSeries: [...f.meetingTrackedSeries, { organiserUserId: s.organiserUserId, seriesId: s.seriesId, subject: s.subject }] },
+    );
+
+  const importNow = async () => {
+    setBusy('import');
+    setError('');
+    try {
+      const r = await apiFetch('/meeting-attendance/import', { method: 'POST' });
+      if (r.status === 'done') showToast(`Imported: ${r.meetingsFound} meetings, ${r.rowsWritten} attendance rows`, 'success');
+      else setError(r.status === 'skipped' ? 'Another import is still going - try again in a minute.' : `Import failed: ${r.error}`);
       await load();
     } catch (err) {
       setError(err.message);
@@ -156,6 +206,15 @@ export default function MeetingAttendancePage() {
               {form.meetingOrganiserUserIds.map((id) => (
                 <div key={id} style={{ ...inline, marginBottom: 'var(--ds-space-1)' }}>
                   <span>{personName(id)}</span>
+                  <button
+                    className={styles.buttonSecondary}
+                    type="button"
+                    onClick={() => findSeries(id)}
+                    disabled={!page.settings.meetingOrganiserUserIds.includes(id)}
+                    title={page.settings.meetingOrganiserUserIds.includes(id) ? undefined : 'Save first'}
+                  >
+                    {busy === 'series' ? 'Reading Teams...' : 'Find their meetings'}
+                  </button>
                   <button className={styles.buttonSecondary} type="button" onClick={() => set('meetingOrganiserUserIds', form.meetingOrganiserUserIds.filter((x) => x !== id))}>
                     Remove
                   </button>
@@ -163,8 +222,31 @@ export default function MeetingAttendancePage() {
               ))}
             </div>
 
+            {picker && (
+              <div className={styles.field} style={{ maxWidth: 720 }} aria-live="polite">
+                <p className={styles.label}>Recurring Teams meetings organised by {personName(picker.organiserUserId)}</p>
+                {picker.list.length === 0 && <p className={styles.helpText}>Teams has no recurring online meetings organised by this person.</p>}
+                {picker.list.map((s) => {
+                  const added = form.meetingTrackedSeries.some((x) => x.seriesId === s.seriesId);
+                  return (
+                    <div key={s.seriesId} style={{ ...inline, marginBottom: 'var(--ds-space-1)' }}>
+                      <span>
+                        {s.subject || '(no subject)'} <span className={styles.helpText}>{seriesWhen(s)}</span>
+                      </span>
+                      <button className={styles.buttonSecondary} type="button" disabled={added} onClick={() => addSeries(s)}>
+                        {added ? 'Tracked' : 'Track this'}
+                      </button>
+                    </div>
+                  );
+                })}
+                <button className={styles.buttonSecondary} type="button" onClick={() => setPicker(null)}>
+                  Close list
+                </button>
+              </div>
+            )}
+
             <fieldset style={fieldset}>
-              <legend className={styles.label}>Tracked meeting series (only these meetings count)</legend>
+              <legend className={styles.label}>Tracked meeting series (only these meetings count; save after adding)</legend>
               {form.meetingTrackedSeries.length === 0 && <p className={styles.helpText}>No meeting series yet.</p>}
               {form.meetingTrackedSeries.map((s) => (
                 <div key={s.seriesId} style={{ ...inline, marginBottom: 'var(--ds-space-1)' }}>
@@ -226,6 +308,54 @@ export default function MeetingAttendancePage() {
             </div>
           )}
         </form>
+      )}
+
+      {page && (
+        <div className={styles.card} style={{ marginTop: 'var(--ds-space-4)' }}>
+          <h2 className={styles.cardTitle}>Imports from Teams</h2>
+          <p className={styles.helpText} style={{ marginTop: 0 }}>
+            Runs every night at 01:30 (East Africa Time) while C6 is on, looking back {page.settings.meetingImportDays} days. Read-only - nothing is changed in Teams.
+          </p>
+          <div className={styles.actions} style={{ justifyContent: 'flex-start' }}>
+            <button className={styles.button} type="button" onClick={importNow} disabled={busy !== null || !page.settings.meetingAttendanceEnabled}>
+              {busy === 'import' ? 'Importing...' : 'Import now'}
+            </button>
+            {!page.settings.meetingAttendanceEnabled && <span className={styles.helpText}>C6 is off - switch it on (and save) to import.</span>}
+          </div>
+          {(page.imports || []).length === 0 ? (
+            <p className={styles.helpText}>No imports yet.</p>
+          ) : (
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Started</th>
+                    <th>Trigger</th>
+                    <th>Result</th>
+                    <th>Meetings</th>
+                    <th>Reports</th>
+                    <th>Rows</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {page.imports.map((r) => (
+                    <tr key={r.id}>
+                      <td>{formatDateTime(r.startedAt)}</td>
+                      <td>{r.trigger === 'nightly' ? 'Nightly' : `Import now${r.userId ? ` (${personName(r.userId)})` : ''}`}</td>
+                      <td>
+                        {IMPORT_STATUS[r.status] || r.status}
+                        {r.error && <div className={styles.issueMeta}>{r.error}</div>}
+                      </td>
+                      <td>{r.meetingsFound}</td>
+                      <td>{r.reportsRead}</td>
+                      <td>{r.rowsWritten}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
     </AppShell>
   );

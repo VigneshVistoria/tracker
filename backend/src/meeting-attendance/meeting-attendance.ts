@@ -127,3 +127,109 @@ export function classifyAttendance(input: {
   if (input.firstJoinAt.getTime() - input.startAt.getTime() > input.lateMinutes * 60_000) return 'late';
   return 'on_time';
 }
+
+// ---- Stage 2: reading Teams (shapes from ./meeting-graph.client.ts) ----
+
+export interface GraphSeries {
+  seriesId: string;
+  subject: string;
+  pattern: any;
+  rangeEnd: string | null;
+  startTime: Date | null;
+  endTime: Date | null;
+  joinUrl: string | null;
+}
+
+export interface GraphInstance {
+  eventId: string;
+  subject: string;
+  startAt: Date;
+  endAt: Date;
+  cancelled: boolean;
+  joinUrl: string | null;
+  invitees: string[]; // lower-case emails, rooms left out
+}
+
+export interface GraphReport {
+  reportId: string;
+  startAt: Date;
+  endAt: Date;
+}
+
+export interface GraphAttendanceRecord {
+  email: string | null;
+  totalSeconds: number;
+  intervals: Array<{ joinAt: Date | null; leaveAt: Date | null }>;
+}
+
+// How far before the scheduled start a Teams report may begin and still
+// belong to that meeting (people join early).
+export const REPORT_EARLY_MINUTES = 30;
+
+// The reports of one held instance: Teams started the meeting between 30
+// minutes before its scheduled start and its scheduled end. A meeting
+// restarted twice has two reports - both belong to it.
+export function reportsForInstance(instance: { startAt: Date; endAt: Date }, reports: GraphReport[]): GraphReport[] {
+  const from = instance.startAt.getTime() - REPORT_EARLY_MINUTES * 60_000;
+  const to = instance.endAt.getTime();
+  return reports.filter((r) => r.startAt.getTime() >= from && r.startAt.getTime() < to);
+}
+
+export interface AttendanceRowInput {
+  userId: number;
+  firstJoinAt: Date | null;
+  lastLeaveAt: Date | null;
+  attendedSeconds: number;
+  outcome: AttendanceOutcome;
+}
+
+// One row per invited tracker user (decision 3: only invitees are
+// expected; guests and people not on the invite are ignored). Time from
+// several reports or several join/leave intervals is added up.
+export function attendanceRows(
+  instance: { startAt: Date; endAt: Date; invitees: string[] },
+  records: GraphAttendanceRecord[],
+  userIdByEmail: Map<string, number>,
+  rules: { lateMinutes: number; minStayPercent: number },
+): AttendanceRowInput[] {
+  const out: AttendanceRowInput[] = [];
+  const seen = new Set<number>();
+  for (const raw of instance.invitees) {
+    const email = raw.toLowerCase();
+    const userId = userIdByEmail.get(email);
+    if (userId === undefined || seen.has(userId)) continue;
+    seen.add(userId);
+    const mine = records.filter((r) => (r.email ?? '').toLowerCase() === email);
+    const joins = mine.flatMap((r) => r.intervals.map((i) => i.joinAt)).filter((d): d is Date => !!d);
+    const leaves = mine.flatMap((r) => r.intervals.map((i) => i.leaveAt)).filter((d): d is Date => !!d);
+    const firstJoinAt = joins.length ? new Date(Math.min(...joins.map((d) => d.getTime()))) : null;
+    const lastLeaveAt = leaves.length ? new Date(Math.max(...leaves.map((d) => d.getTime()))) : null;
+    const attendedSeconds = Math.max(0, Math.round(mine.reduce((s, r) => s + (Number.isFinite(r.totalSeconds) ? r.totalSeconds : 0), 0)));
+    out.push({
+      userId,
+      firstJoinAt,
+      lastLeaveAt,
+      attendedSeconds,
+      outcome: classifyAttendance({ startAt: instance.startAt, endAt: instance.endAt, firstJoinAt, attendedSeconds, lateMinutes: rules.lateMinutes, minStayPercent: rules.minStayPercent }),
+    });
+  }
+  return out;
+}
+
+// ---- Stage 3: the C6 measure ----
+
+// C6 = meetings attended on time / meetings expected, in percent, over the
+// scorecard window. Excused meetings never count either way (decision 6).
+// Late, short and absent all count as not on time.
+export function c6Summary(rows: Array<{ outcome: AttendanceOutcome; excused: boolean }>) {
+  const counted = rows.filter((r) => !r.excused);
+  const n = (o: AttendanceOutcome) => counted.filter((r) => r.outcome === o).length;
+  const onTime = n('on_time');
+  return {
+    value: counted.length ? Math.round((onTime / counted.length) * 10000) / 100 : null,
+    numerator: onTime,
+    denominator: counted.length,
+    sample: counted.length,
+    details: { onTime, late: n('late'), short: n('short'), absent: n('absent'), excused: rows.length - counted.length },
+  };
+}
