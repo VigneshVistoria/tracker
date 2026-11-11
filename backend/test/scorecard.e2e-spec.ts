@@ -47,6 +47,9 @@ describe('Performance Tracking scorecard (B3, e2e)', () => {
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
     await ds.query(`TRUNCATE performance_metric_snapshots, performance_score_overrides, performance_tracking_settings, audit_logs RESTART IDENTITY CASCADE`);
+    // Own figures for developers are OFF by default since 2026-11-11 - this file
+    // checks the "only their own" rule, so an Admin allows it here.
+    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: ['developer'] }).expect(200);
     await seedNight(f.users.devA.id, 'scoring');
     await seedNight(f.users.devNone.id, 'baseline');
     // B4: overrides by named user - Admin here, for the override tests.

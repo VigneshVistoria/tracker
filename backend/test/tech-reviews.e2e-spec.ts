@@ -36,6 +36,9 @@ describe('Technical review (Performance Tracking Q5, e2e)', () => {
     await ds.query(
       `TRUNCATE project_tasks, tech_reviews, tech_review_evidence, performance_metric_snapshots, performance_metric_runs, performance_tracking_settings, audit_logs RESTART IDENTITY CASCADE`,
     );
+    // Own figures for developers are OFF by default since 2026-11-11 - this file
+    // checks the "only their own" rule, so an Admin allows it here.
+    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: ['developer'] }).expect(200);
   });
 
   afterAll(async () => {
@@ -112,5 +115,15 @@ describe('Technical review (Performance Tracking Q5, e2e)', () => {
     // 5 (edited), 3.4 and 4 (last month's, written today) - all written in the window.
     expect(row).toMatchObject({ sample: 3, enoughData: true });
     expect(Number(row.value)).toBeCloseTo(4.13, 2);
+  });
+
+  it('own figures hidden (default since 2026-11-11): the person reviewed cannot list reviews but can still add evidence', async () => {
+    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: [] }).expect(200);
+    await get(f.users.devA, '/tech-reviews').expect(403);
+    const [r] = await ds.query(`SELECT id FROM tech_reviews WHERE "revieweeUserId" = $1 ORDER BY id LIMIT 1`, [f.users.devA.id]);
+    const res = await post(f.users.devA, `/tech-reviews/${r.id}/evidence`, { note: 'Late evidence while figures are hidden', link: 'https://git/pr/77' }).expect(201);
+    expect(res.body).toEqual({ saved: true });
+    const ev = await ds.query(`SELECT count(*)::int AS n FROM tech_review_evidence WHERE note = 'Late evidence while figures are hidden'`);
+    expect(ev[0].n).toBe(1);
   });
 });

@@ -208,6 +208,12 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'jsonb', default: () => `'["program_manager"]'` })
   meetingExcuseRoles: UserRole[];
 
+  // Roles that may see their OWN performance figures (scorecard, metrics,
+  // KPI, performance dashboard, technical reviews). [] = nobody (default).
+  // Read and saved ONLY by OwnMetricsVisibilityService (Admin, audited).
+  @Column({ type: 'jsonb', default: () => "'[]'" })
+  ownMetricsRoles: UserRole[];
+
   @UpdateDateColumn()
   updatedAt: Date;
 

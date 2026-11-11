@@ -68,6 +68,21 @@ function loadScorecardVisible() {
   return scorecardVisible;
 }
 
+// Own performance figures (2026-11-11): shown to Developer/Designer/DevOps/QA
+// only when an Admin allows it for their role. Asked once per tab.
+let ownMetricsVisible = null;
+function loadOwnMetricsVisible() {
+  if (!ownMetricsVisible) {
+    ownMetricsVisible = apiFetch('/own-metrics-visibility/me')
+      .then((r) => !!r.canSeeOwn)
+      .catch((err) => {
+        ownMetricsVisible = null;
+        throw err;
+      });
+  }
+  return ownMetricsVisible;
+}
+
 export default function AppShell({ children, fullScreen = false }) {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
@@ -89,6 +104,8 @@ export default function AppShell({ children, fullScreen = false }) {
   // Performance Tracking scorecard link for developers - only once some
   // project has tracking on (GET /performance-tracking/scorecard/visible).
   const [showScorecard, setShowScorecard] = useState(false);
+  // May this user see their own performance figures? (false until known)
+  const [canSeeOwnMetrics, setCanSeeOwnMetrics] = useState(false);
   // Developer/Designer/DevOps header badge - peer reviews waiting on me.
   const [peerReviewCount, setPeerReviewCount] = useState(null);
   const pendingGo = useRef(null);
@@ -114,6 +131,9 @@ export default function AppShell({ children, fullScreen = false }) {
         if (me.portalClient) router.replace('/portal');
         else setCanSeeClientTickets(me.canSeeClientTickets);
       })
+      .catch(() => {});
+    loadOwnMetricsVisible()
+      .then(setCanSeeOwnMetrics)
       .catch(() => {});
     if (DEVELOPER_EQUIVALENT_ROLES.includes(JSON.parse(storedUser).role)) {
       loadScorecardVisible()
@@ -182,8 +202,8 @@ export default function AppShell({ children, fullScreen = false }) {
 
   const hideSidebar = !!user && DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
   const sections = useMemo(
-    () => (hideSidebar ? [] : navSectionsFor(user, { clientTickets: canSeeClientTickets })),
-    [user, hideSidebar, canSeeClientTickets],
+    () => (hideSidebar ? [] : navSectionsFor(user, { clientTickets: canSeeClientTickets, ownMetrics: canSeeOwnMetrics })),
+    [user, hideSidebar, canSeeClientTickets, canSeeOwnMetrics],
   );
   const visibleItems = useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const availableHrefs = useMemo(() => new Set(visibleItems.map((i) => i.href)), [visibleItems]);
@@ -401,7 +421,7 @@ export default function AppShell({ children, fullScreen = false }) {
             )}
             {/* Own performance metrics (PerformanceMetricsController.ROLES_ALLOWED_TO_VIEW_OWN_METRICS) -
                 the Non-Compliance Report page shows a developer only their own figures. */}
-            {hideSidebar && (
+            {hideSidebar && canSeeOwnMetrics && (
               <Link
                 href="/reports/non-compliance"
                 className={styles.iconButton}
@@ -413,7 +433,7 @@ export default function AppShell({ children, fullScreen = false }) {
               </Link>
             )}
             {/* Own Performance Tracking scorecard (ScorecardService: a developer sees only their own). */}
-            {hideSidebar && showScorecard && (
+            {hideSidebar && showScorecard && canSeeOwnMetrics && (
               <Link
                 href="/performance-tracking/scorecard"
                 className={styles.iconButton}

@@ -1,3 +1,4 @@
+import { PerformanceTrackingCoreModule } from '../performance-tracking/performance-tracking-core.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Issue } from '../issues/issue.entity';
@@ -9,7 +10,7 @@ import { SlaModule } from '../sla/sla.module';
 import { PerformanceScoringModule } from '../performance-scoring/performance-scoring.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Issue]), GuardsModule, UsersModule, SlaModule, PerformanceScoringModule],
+  imports: [TypeOrmModule.forFeature([Issue]), GuardsModule, UsersModule, SlaModule, PerformanceScoringModule, PerformanceTrackingCoreModule],
   controllers: [PerformanceDashboardController],
   providers: [PerformanceDashboardService],
 })

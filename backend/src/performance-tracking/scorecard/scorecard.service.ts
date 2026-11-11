@@ -17,6 +17,7 @@ import { CreateScoreOverrideDto, RemoveScoreOverrideDto } from '../dto/scorecard
 import { MeetingAttendanceService } from '../../meeting-attendance/meeting-attendance.service';
 import { C6_INFO, applyC6 } from '../../meeting-attendance/meeting-attendance';
 import { startOfDayInZone } from '../../team-settings/time-zone';
+import { OWN_METRICS_REFUSAL, OwnMetricsVisibilityService } from '../own-metrics-visibility.service';
 import { addCalendarDays } from '../../performance-metrics/working-days';
 
 // See everyone's scorecard (2026-10-30, the user's rule). A developer,
@@ -47,7 +48,15 @@ export class ScorecardService {
     private auditLogService: AuditLogService,
     private dataSource: DataSource,
     private meetingAttendance: MeetingAttendanceService,
+    private ownMetrics: OwnMetricsVisibilityService,
   ) {}
+
+  // 2026-11-11 (the user): a developer, designer or DevOps sees their own
+  // card only when an Admin allows it for their role (default nobody).
+  private async assertOwnAllowed(viewer: Viewer) {
+    if (this.seesAll(viewer)) return;
+    if (!(await this.ownMetrics.canSeeOwn(viewer, viewer.tenantId))) throw new ForbiddenException(OWN_METRICS_REFUSAL);
+  }
 
   private seesAll(viewer: Viewer) {
     return SCORECARD_ALL_ROLES.includes(viewer.role);
@@ -177,6 +186,7 @@ export class ScorecardService {
     if (!this.seesAll(viewer) && !DEVELOPER_EQUIVALENT_ROLES.includes(viewer.role)) {
       throw new ForbiddenException('The scorecard is not available for your role.');
     }
+    await this.assertOwnAllowed(viewer);
     const tenantId = viewer.tenantId;
     const night = date ?? (await this.latestDate(tenantId));
     const built = await this.build(tenantId, night, this.seesAll(viewer) ? undefined : viewer.id);
@@ -194,6 +204,7 @@ export class ScorecardService {
   // One card with the raw details behind each metric, per project.
   async person(viewer: Viewer, userId: number, date?: string) {
     this.assertCanSee(viewer, userId);
+    await this.assertOwnAllowed(viewer);
     const tenantId = viewer.tenantId;
     const target = await this.usersService.findByIdAndTenant(userId, tenantId);
     if (!target) throw new NotFoundException(`User #${userId} not found`);

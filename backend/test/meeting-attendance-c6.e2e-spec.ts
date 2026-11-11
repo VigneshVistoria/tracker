@@ -60,6 +60,9 @@ describe('C6 meeting attendance - Excused and scorecard row (e2e)', () => {
     await ds.query(
       `TRUNCATE audit_logs, performance_tracking_settings, meeting_attendance_imports, meeting_attendance, meeting_occurrences, performance_metric_snapshots, performance_score_overrides RESTART IDENTITY CASCADE`,
     );
+    // Own figures for developers are OFF by default since 2026-11-11 - this file
+    // checks the "only their own" rule, so an Admin allows it here.
+    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: ['developer'] }).expect(200);
     for (const [k, o] of [['m1', -2], ['m2', -3], ['m3', -4], ['m4', -5], ['m5', -6], ['old', -40]] as const) await meeting(k, o);
     await meeting('noreport', -7, 'no_report');
     await person('a1', 'm1', f.users.devA, 'on_time');

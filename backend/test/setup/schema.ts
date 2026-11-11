@@ -209,6 +209,8 @@ const ARTIFACT_TYPES_TABLES = ['artifact_types', 'artifact_type_rules'];
 // migration; every column checked against the entities below.
 const MEETING_DIR = path.join(SRC, 'meeting-attendance');
 const MEETING_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-meeting-attendance.sql');
+// Own performance figures for team members (2026-11-11): one settings column.
+const OWN_METRICS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-own-metrics-visibility.sql');
 const MEETING_TABLES = ['meeting_occurrences', 'meeting_attendance', 'meeting_attendance_imports'];
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
@@ -325,6 +327,7 @@ export async function buildTestSchema() {
   await base.query(`ALTER TABLE "project_tasks" DROP COLUMN "clientPriorityTier"`);
   await base.query(fs.readFileSync(CLIENT_MEASURES_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(MEETING_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(OWN_METRICS_MIGRATION, 'utf8'));
   for (const [table, cols] of Object.entries(GITHUB_COLUMNS)) {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }

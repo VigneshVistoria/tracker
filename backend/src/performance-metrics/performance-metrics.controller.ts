@@ -19,11 +19,14 @@ import { UsersService } from '../users/users.service';
 import { PerformanceMetricsService } from './performance-metrics.service';
 import { UpdatePerformanceSettingsDto } from './dto/update-performance-settings.dto';
 import { CreatePerformanceHolidayDto } from './dto/create-performance-holiday.dto';
+import { OWN_METRICS_REFUSAL, OwnMetricsVisibilityService } from '../performance-tracking/own-metrics-visibility.service';
 
 // Role rules confirmed with the user 2026-10-27. Same inline
 // look-up-the-role check as NonComplianceReportController (the JWT
 // carries no role). PM, Executive and Admin see everyone; a Developer,
 // Designer or DevOps sees only their own figures; everyone else gets 403.
+// 2026-11-11 (the user): their own figures only when an Admin allows it
+// for their role (OwnMetricsVisibilityService), default nobody.
 export const ROLES_ALLOWED_TO_VIEW_ALL_METRICS: UserRole[] = [UserRole.ADMIN, UserRole.EXECUTIVE, UserRole.PROGRAM_MANAGER];
 export const ROLES_ALLOWED_TO_VIEW_OWN_METRICS: UserRole[] = DEVELOPER_EQUIVALENT_ROLES;
 export const ROLES_ALLOWED_TO_EDIT_METRIC_SETTINGS: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
@@ -36,6 +39,7 @@ export class PerformanceMetricsController {
   constructor(
     private readonly metricsService: PerformanceMetricsService,
     private readonly usersService: UsersService,
+    private readonly ownMetrics: OwnMetricsVisibilityService,
   ) {}
 
   private async requireRole(req: any, roles: UserRole[], message: string): Promise<User> {
@@ -53,6 +57,7 @@ export class PerformanceMetricsController {
       [...ROLES_ALLOWED_TO_VIEW_ALL_METRICS, ...ROLES_ALLOWED_TO_VIEW_OWN_METRICS],
       'Performance metrics are not available for your role.',
     );
+    if (!(await this.ownMetrics.canSeeOwn(user, req.user.tenantId))) throw new ForbiddenException(OWN_METRICS_REFUSAL);
     if (to !== undefined && !DATE.test(to)) throw new BadRequestException('to must be a date like 2026-10-27.');
     return this.metricsService.computeReport(req.user.tenantId, {
       projectId: projectId ? Number(projectId) : undefined,

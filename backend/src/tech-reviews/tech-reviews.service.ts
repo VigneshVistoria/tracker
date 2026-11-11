@@ -8,6 +8,7 @@ import { ProjectTask } from '../tasks/project-task.entity';
 import { DEVELOPER_EQUIVALENT_ROLES, User } from '../users/user.entity';
 import { AuditLogService } from '../audit/audit-log.service';
 import { PerformanceTrackingService } from '../performance-tracking/performance-tracking.service';
+import { OWN_METRICS_REFUSAL, OwnMetricsVisibilityService } from '../performance-tracking/own-metrics-visibility.service';
 import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TEAM_SETTINGS_DEFAULTS, dateInZone, isValidTimeZone } from '../team-settings/time-zone';
 import {
@@ -33,6 +34,7 @@ export class TechReviewsService {
     @InjectRepository(User) private users: Repository<User>,
     private tracking: PerformanceTrackingService,
     private auditLogService: AuditLogService,
+    private ownMetrics: OwnMetricsVisibilityService,
     private dataSource: DataSource,
   ) {}
 
@@ -57,6 +59,9 @@ export class TechReviewsService {
 
   async list(month: string | undefined, user: User, tenantId: number) {
     const { th, isReviewer, seesAll } = await this.access(user, tenantId);
+    // 2026-11-11 (the user): the person reviewed sees their own reviews only
+    // when an Admin allows own figures for their role (default nobody).
+    if (!seesAll && !(await this.ownMetrics.canSeeOwn(user, tenantId))) throw new ForbiddenException(OWN_METRICS_REFUSAL);
     const m = month ?? (await this.thisMonth(tenantId));
     if (!MONTH.test(m)) throw new BadRequestException('Month must be YYYY-MM.');
     const rows = await this.reviews.find({ where: { tenantId, month: m, ...(seesAll ? {} : { revieweeUserId: user.id }) }, order: { reviewedAt: 'ASC', id: 'ASC' } });
@@ -221,6 +226,9 @@ export class TechReviewsService {
         details: { evidenceId: row.id, note: row.note, link: row.link },
       });
     });
+    // The person reviewed may add evidence even when their own figures are
+    // hidden (2026-11-11) - then they get a plain confirmation, not the list.
+    if (!TECH_REVIEW_SEE_ALL_ROLES.includes(user.role) && !(await this.ownMetrics.canSeeOwn(user, tenantId)) && !(await this.access(user, tenantId)).isReviewer) return { saved: true };
     return this.list(review.month, user, tenantId);
   }
 }

@@ -72,6 +72,8 @@ export default function PerformanceTrackingSettingsPage() {
   const [error, setError] = useState('');
   const [runs, setRuns] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  // "Show own performance metrics to team members" (2026-11-11) - Admin only.
+  const [ownMetrics, setOwnMetrics] = useState(null);
 
   const loadRuns = () =>
     apiFetch('/performance-tracking/runs')
@@ -99,6 +101,11 @@ export default function PerformanceTrackingSettingsPage() {
     }
     setIsAdmin(role === 'admin');
     load();
+    if (role === 'admin') {
+      apiFetch('/own-metrics-visibility')
+        .then(setOwnMetrics)
+        .catch(() => setOwnMetrics(null));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
@@ -309,6 +316,53 @@ export default function PerformanceTrackingSettingsPage() {
               <p className={styles.helpText}>No runs yet.</p>
             )}
           </div>
+
+          {isAdmin && ownMetrics && (
+            <form
+              className={styles.card}
+              style={{ marginBottom: 'var(--ds-space-4)' }}
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setBusy('ownMetrics');
+                setError('');
+                try {
+                  setOwnMetrics(await apiFetch('/own-metrics-visibility', { method: 'PATCH', body: JSON.stringify({ roles: ownMetrics.roles }) }));
+                  showToast('Saved - team members may need to reload to see the change', 'success');
+                } catch (err) {
+                  setError(err.message);
+                } finally {
+                  setBusy(null);
+                }
+              }}
+            >
+              <h2 className={styles.cardTitle}>Show own performance metrics to team members</h2>
+              <p className={styles.helpText} style={{ marginTop: 0 }}>
+                Ticked roles see their <strong>own</strong> figures only (scorecard, performance metrics, KPI, performance dashboard, technical
+                reviews). Unticked roles see none. Admin, Program Manager and Executive are not affected. Figures are recorded either way. Every
+                save is recorded. Default: no role.
+              </p>
+              <fieldset style={{ border: 0, padding: 0, margin: '0 0 var(--ds-space-3)' }}>
+                <legend className={styles.label}>Roles that see their own figures</legend>
+                {ownMetrics.choices.map((r) => (
+                  <label key={r} style={{ display: 'flex', gap: 'var(--ds-space-2)', alignItems: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={ownMetrics.roles.includes(r)}
+                      onChange={() =>
+                        setOwnMetrics((o) => ({ ...o, roles: o.roles.includes(r) ? o.roles.filter((x) => x !== r) : [...o.roles, r] }))
+                      }
+                    />
+                    {{ developer: 'Developer', designer: 'Designer', devops: 'DevOps', qa: 'QA' }[r] || r}
+                  </label>
+                ))}
+              </fieldset>
+              <div className={styles.actions}>
+                <button className={styles.button} type="submit" disabled={busy !== null}>
+                  {busy === 'ownMetrics' ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          )}
 
           <form className={styles.card} onSubmit={save}>
             <h2 className={styles.cardTitle}>Rules</h2>

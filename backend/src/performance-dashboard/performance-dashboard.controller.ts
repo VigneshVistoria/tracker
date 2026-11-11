@@ -1,3 +1,4 @@
+import { OWN_METRICS_REFUSAL, OwnMetricsVisibilityService } from '../performance-tracking/own-metrics-visibility.service';
 import { Controller, Get, Query, UseGuards, Req, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PerformanceDashboardService, PeriodType } from './performance-dashboard.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -20,6 +21,7 @@ export class PerformanceDashboardController {
   constructor(
     private performanceDashboardService: PerformanceDashboardService,
     private usersService: UsersService,
+    private ownMetrics: OwnMetricsVisibilityService,
   ) {}
 
   @Get()
@@ -48,6 +50,10 @@ export class PerformanceDashboardController {
       currentUser.role === UserRole.ADMIN ||
       currentUser.role === UserRole.PROGRAM_MANAGER ||
       currentUser.role === UserRole.EXECUTIVE;
+
+    // 2026-11-11 (the user): Developer/QA see even their own row only when an
+    // Admin allows own figures for their role (default nobody).
+    if (!isWideView && !(await this.ownMetrics.canSeeOwn(currentUser, req.user.tenantId))) throw new ForbiddenException(OWN_METRICS_REFUSAL);
 
     const result = await this.performanceDashboardService.getDashboard({
       period: resolvedPeriod,

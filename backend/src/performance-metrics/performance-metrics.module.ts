@@ -1,3 +1,4 @@
+import { PerformanceTrackingCoreModule } from '../performance-tracking/performance-tracking-core.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProjectTask } from '../tasks/project-task.entity';
@@ -19,6 +20,7 @@ import { PerformanceMetricsController } from './performance-metrics.controller';
     UsersModule,
     GuardsModule,
     AuditModule,
+    PerformanceTrackingCoreModule,
   ],
   controllers: [PerformanceMetricsController],
   providers: [PerformanceMetricsService],

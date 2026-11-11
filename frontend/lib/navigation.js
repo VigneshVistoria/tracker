@@ -141,9 +141,11 @@ export const NAV_SECTIONS = [
     id: 'insights',
     title: 'Insights',
     items: [
-      { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp, roles: [ADMIN, PM, EXEC, QA] },
+      // ownMetrics: QA (and other non-PM/Admin/Exec roles) see these only when an
+      // Admin allows own figures for their role (GET /own-metrics-visibility/me).
+      { href: '/performance-dashboard', label: 'Performance', icon: TrendingUp, roles: [ADMIN, PM, EXEC, QA], ownMetrics: true },
       // /kpi/me vs /kpi/report decides what each role sees behind this.
-      { href: '/kpi', label: 'KPI Dashboard', icon: Gauge, roles: [ADMIN, PM, EXEC, QA] },
+      { href: '/kpi', label: 'KPI Dashboard', icon: Gauge, roles: [ADMIN, PM, EXEC, QA], ownMetrics: true },
       { href: '/kpi/matrix', label: 'KPI Matrix', icon: LayoutGrid, roles: [ADMIN, PM, EXEC] },
       { href: '/reports/non-compliance', label: 'Non-Compliance Report', icon: AlertOctagon, roles: [ADMIN, PM, EXEC] },
       // Performance Tracking (B3, 2026-10-30) - matches SCORECARD_ALL_ROLES.
@@ -223,12 +225,14 @@ export const CLIENT_TICKETS_ITEM = { href: '/client-tickets', label: 'Client tic
 
 // Sections (with their items filtered) visible to this user, empty
 // sections dropped. `clientTickets` adds the Client tickets entry to My Work.
-export function navSectionsFor(user, { clientTickets = false } = {}) {
+// `ownMetrics` = may this user see their own performance figures (2026-11-11).
+export function navSectionsFor(user, { clientTickets = false, ownMetrics = false } = {}) {
   if (!user) return [];
+  const wide = [ADMIN, PM, EXEC].includes(user.role);
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
     items: [
-      ...section.items.filter((item) => item.roles.includes(user.role)),
+      ...section.items.filter((item) => item.roles.includes(user.role) && (!item.ownMetrics || wide || ownMetrics)),
       ...(clientTickets && section.id === 'work' ? [CLIENT_TICKETS_ITEM] : []),
     ],
   })).filter((section) => section.items.length > 0);

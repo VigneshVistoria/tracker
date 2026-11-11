@@ -40,6 +40,9 @@ describe('Performance metrics (e2e)', () => {
     await ds.query(
       `TRUNCATE project_tasks, task_qa_reviews, audit_logs, task_commitment_events, performance_metric_settings, performance_holidays RESTART IDENTITY CASCADE`,
     );
+    // Own figures for developers are OFF by default since 2026-11-11 - this file
+    // checks the "only their own" rule, so an Admin allows it here.
+    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: ['developer'] }).expect(200);
     const phaseId = (
       await ds.query(
         `INSERT INTO phases ("tenantId", "projectId", "projectName", "moduleId", "moduleName", "name") VALUES ($1, $2, 'Project A', $3, 'Medical Claim', 'Build') RETURNING id`,

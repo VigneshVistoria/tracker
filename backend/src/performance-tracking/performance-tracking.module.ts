@@ -15,6 +15,7 @@ import { PerformanceScoreOverride } from './scorecard/performance-score-override
 import { ScorecardService } from './scorecard/scorecard.service';
 import { ScorecardController } from './scorecard/scorecard.controller';
 import { ScorecardFeedController } from './scorecard/scorecard-feed.controller';
+import { OwnMetricsVisibilityController } from './own-metrics-visibility.controller';
 import { PerformanceMetricsModule } from '../performance-metrics/performance-metrics.module';
 import { TenantsModule } from '../tenants/tenants.module';
 import { MeetingAttendanceModule } from '../meeting-attendance/meeting-attendance.module';
@@ -35,7 +36,7 @@ import { MeetingAttendanceModule } from '../meeting-attendance/meeting-attendanc
     TenantsModule,
     MeetingAttendanceModule,
   ],
-  controllers: [PerformanceTrackingController, ScorecardController, ScorecardFeedController],
+  controllers: [PerformanceTrackingController, ScorecardController, ScorecardFeedController, OwnMetricsVisibilityController],
   providers: [TrackingMetricsService, ScorecardService],
   // Settings service for TaskActivityModule and the rest.
   exports: [PerformanceTrackingCoreModule],

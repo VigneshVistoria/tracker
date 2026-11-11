@@ -1,3 +1,4 @@
+import { PerformanceTrackingCoreModule } from '../performance-tracking/performance-tracking-core.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { KpiConfig } from './kpi-config.entity';
@@ -21,6 +22,7 @@ import { TenantsModule } from '../tenants/tenants.module';
     AuditModule,
     UsersModule,
     TenantsModule,
+    PerformanceTrackingCoreModule,
   ],
   controllers: [KpiController, KpiConfigController],
   providers: [KpiService, KpiSchedulerService],

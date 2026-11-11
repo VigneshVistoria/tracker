@@ -1,3 +1,4 @@
+import { OWN_METRICS_REFUSAL, OwnMetricsVisibilityService } from '../performance-tracking/own-metrics-visibility.service';
 import { Controller, Get, Post, Body, Query, UseGuards, Req, ForbiddenException } from '@nestjs/common';
 import { KpiService } from './kpi.service';
 import { GenerateKpiPeriodDto } from './dto/generate-kpi-period.dto';
@@ -12,6 +13,7 @@ export class KpiController {
   constructor(
     private kpiService: KpiService,
     private usersService: UsersService,
+    private ownMetrics: OwnMetricsVisibilityService,
   ) {}
 
   // Own-score view. assigneeUserId is ALWAYS req.user.sub - never accepted
@@ -19,12 +21,16 @@ export class KpiController {
   // cross-assignee aggregate (no team average, no rank). This is the
   // actual access-control boundary, not a hidden UI element - see
   // KpiService.findMine()'s own comment.
+  // 2026-11-11 (the user): own KPI only for Admin/PM/Executive, or a role an
+  // Admin allows (default nobody) - see OwnMetricsVisibilityService.
   @Get('me')
-  findMine(
+  async findMine(
     @Query('periodType') periodType: KpiPeriodType | undefined,
     @Query('projectId') projectId: string | undefined,
     @Req() req: any,
   ) {
+    const user = await this.usersService.findById(req.user.sub);
+    if (!user || !(await this.ownMetrics.canSeeOwn(user, req.user.tenantId))) throw new ForbiddenException(OWN_METRICS_REFUSAL);
     return this.kpiService.findMine(req.user.tenantId, req.user.sub, periodType, projectId ? Number(projectId) : undefined);
   }
 
