@@ -245,6 +245,13 @@ export class ProjectTask {
   @Column({ type: 'int', nullable: true })
   dependencyTicketId: number | null;
 
+  // Design handover (2026-11-12, ../task-handovers/design-handovers.ts): the
+  // accepted design handover that closed this design task (status Pass, no
+  // review). Left out of KPI, Non-Compliance and Performance Tracking until
+  // the user decides (after 2026-11-30), like dependency tasks.
+  @Column({ type: 'int', nullable: true })
+  designHandoverId: number | null;
+
   // Defect classification (2026-10-27, see ./defect-triage.ts) - set by QA
   // when the defect is filed in a project with triage on, as the text
   // picked from the editable lists (build is free text). Null on tasks and

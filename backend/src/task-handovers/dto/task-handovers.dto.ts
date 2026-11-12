@@ -1,4 +1,4 @@
-import { IsInt, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 // C4 - see ../task-handovers.ts. Minimum lengths are a setting, checked in
 // the service.
@@ -31,4 +31,30 @@ export class RejectHandoverDto {
   @IsString()
   @MaxLength(2000)
   reason: string;
+}
+
+// Design handover - see ../design-handovers.ts. Links are checked in the
+// service (types, URLs, count); notes length uses handoverFieldMin.
+export class StartDesignHandoverDto {
+  @IsInt()
+  toUserId: number;
+
+  @IsString()
+  @MaxLength(4000)
+  notes: string;
+
+  @IsArray()
+  artifacts: { type: string; url: string }[];
+}
+
+// Exactly one of: link an existing task, or create a new one with a title.
+export class AcceptDesignHandoverDto {
+  @IsOptional()
+  @IsInt()
+  linkTaskId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  newTaskTitle?: string;
 }

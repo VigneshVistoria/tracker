@@ -405,7 +405,9 @@ export class TasksService {
   async isPendingHandoverReceiver(task: ProjectTask, user: { id: number; role: UserRole }): Promise<boolean> {
     if (user.role === UserRole.CLIENT) return false;
     const rows = await this.tasksRepository.manager.query(
-      `SELECT 1 FROM task_handovers WHERE "tenantId" = $1 AND "taskId" = $2 AND "toUserId" = $3 AND status = 'pending' LIMIT 1`,
+      // Design handover (2026-11-12): the developer who accepted it keeps
+      // read access to the design task.
+      `SELECT 1 FROM task_handovers WHERE "tenantId" = $1 AND "taskId" = $2 AND "toUserId" = $3 AND (status = 'pending' OR (kind = 'design' AND status = 'accepted')) LIMIT 1`,
       [task.tenantId, task.id, user.id],
     );
     return rows.length > 0;

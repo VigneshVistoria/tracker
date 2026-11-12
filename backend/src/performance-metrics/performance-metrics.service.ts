@@ -241,7 +241,7 @@ export class PerformanceMetricsService {
         ...(options.projectId ? { projectId: options.projectId } : {}),
         ...(settings.excludedStatuses.length ? { status: Not(In(settings.excludedStatuses)) } : {}),
         // Dependency tasks: left out until the user decides (2026-11-05).
-        dependencyTicketId: IsNull(),
+        dependencyTicketId: IsNull(), designHandoverId: IsNull(),
       },
     });
     const taskIds = tasks.map((x) => x.id);

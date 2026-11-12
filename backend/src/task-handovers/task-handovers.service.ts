@@ -60,7 +60,7 @@ export class TaskHandoversService {
     const task = await this.viewable(taskId, user, tenantId);
     if (!(await this.trackingOn(task.projectId, tenantId))) return { trackingOn: false };
     const th = await this.tracking.thresholds(tenantId);
-    const rows = await this.handovers.find({ where: { tenantId, taskId }, order: { createdAt: 'DESC', id: 'DESC' } });
+    const rows = await this.handovers.find({ where: { tenantId, taskId, kind: 'owner' }, order: { createdAt: 'DESC', id: 'DESC' } });
     const ids = new Set<number>(rows.flatMap((r) => [r.fromUserId, r.toUserId, r.startedByUserId, ...(r.decidedByUserId ? [r.decidedByUserId] : [])]));
     const names = new Map((ids.size ? await this.users.find({ where: { tenantId, id: In([...ids]) } }) : []).map((u) => [u.id, u]));
     const pending = rows.find((r) => r.status === 'pending') ?? null;
@@ -134,6 +134,8 @@ export class TaskHandoversService {
   private async pending(handoverId: number, tenantId: number) {
     const h = await this.handovers.findOne({ where: { id: handoverId, tenantId } });
     if (!h) throw new NotFoundException(`Handover #${handoverId} not found.`);
+    // Design handovers have their own endpoints (/design-handovers/:id/...).
+    if (h.kind === 'design') throw new BadRequestException('This is a design handover - use Hand over to development on the task.');
     if (h.status !== 'pending') throw new BadRequestException(`This handover was already ${h.status}.`);
     return h;
   }

@@ -304,7 +304,7 @@ export class NonComplianceReportService {
             ...(projectId ? { projectId } : {}),
             status: Not('Junk'),
             // Dependency tasks: left out until the user decides (2026-11-05).
-            dependencyTicketId: IsNull(),
+            dependencyTicketId: IsNull(), designHandoverId: IsNull(),
           },
         })
       : [];

@@ -1,5 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
-import { HandoverStatus } from './task-handovers';
+import { HandoverKind, HandoverStatus } from './task-handovers';
+import { DesignHandoverArtifact } from './design-handovers';
 
 // C4 (migrations/2026-11-performance-tracking-handovers.sql) - a task
 // handed from one person to the next owner, with the template. See
@@ -57,4 +58,17 @@ export class TaskHandover {
 
   @Column({ type: 'text', nullable: true })
   rejectReason: string | null;
+
+  // Design handover (2026-11-12, migrations/2026-11-design-handover.sql):
+  // 'owner' = the C4 handover above; 'design' = a designer hands a design
+  // task to development (./design-handovers.ts). For 'design' the notes
+  // are in whatDone, the other template fields are empty.
+  @Column({ type: 'varchar', length: 10, default: 'owner' })
+  kind: HandoverKind;
+
+  @Column({ type: 'jsonb', nullable: true })
+  artifacts: DesignHandoverArtifact[] | null;
+
+  @Column({ type: 'int', nullable: true })
+  linkedTaskId: number | null;
 }

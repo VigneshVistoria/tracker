@@ -154,7 +154,13 @@ export class TaskFlagsNotificationsListener {
     try {
       const actor = await this.usersService.findByIdAndTenant(e.actorUserId, e.tenantId);
       const actorName = actor?.fullName || actor?.email || e.actorEmail;
-      const title = {
+      // Design handover (2026-11-12): "Hand over to development".
+      const title = e.design ? {
+        started: `${actorName} is handing design #${e.taskId} over to you for development`,
+        accepted: `${actorName} accepted your design handover of #${e.taskId}`,
+        rejected: `${actorName} rejected your design handover of #${e.taskId}`,
+        cancelled: `${actorName} cancelled the design handover of #${e.taskId}`,
+      }[e.kind] : {
         started: `${actorName} is handing #${e.taskId} over to you`,
         accepted: `${actorName} accepted your handover of #${e.taskId}`,
         rejected: `${actorName} rejected your handover of #${e.taskId}`,
@@ -163,10 +169,10 @@ export class TaskFlagsNotificationsListener {
       await this.notifications.create({
         tenantId: e.tenantId,
         userId: e.recipientUserId,
-        type: `task.handover${e.kind[0].toUpperCase()}${e.kind.slice(1)}`,
+        type: `task.${e.design ? 'designHandover' : 'handover'}${e.kind[0].toUpperCase()}${e.kind.slice(1)}`,
         title,
         body: e.kind === 'rejected' && e.reason ? `${e.title} - ${e.reason.length > 200 ? `${e.reason.slice(0, 197)}...` : e.reason}` : e.title,
-        link: `/tasks/${e.taskId}#handover`,
+        link: e.design ? `/tasks/${e.kind === 'accepted' && e.linkedTaskId ? e.linkedTaskId : e.taskId}#design-handover` : `/tasks/${e.taskId}#handover`,
         actorUserId: e.actorUserId,
         actorName,
       });

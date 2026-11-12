@@ -40,6 +40,7 @@ export const HANDOVER_AUDIT = {
 } as const;
 
 export type HandoverStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type HandoverKind = 'owner' | 'design';
 
 export interface TaskHandoverEvent {
   tenantId: number;
@@ -50,6 +51,9 @@ export interface TaskHandoverEvent {
   actorUserId: number;
   actorEmail: string;
   reason?: string | null;
+  // Design handover (./design-handovers.ts): different wording/link.
+  design?: boolean;
+  linkedTaskId?: number | null;
 }
 
 // Every template field filled to the minimum: the problem, or null.

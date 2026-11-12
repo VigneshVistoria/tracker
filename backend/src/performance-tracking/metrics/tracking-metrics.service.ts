@@ -210,7 +210,7 @@ export class TrackingMetricsService {
       `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact", "clientPriorityTier",
               "improvementDecision", "improvementDecidedAt",
               "createdAt", "foundInProduction", "escapedFromTaskId", "productionReleaseDate"::text AS "productionReleaseDate"
-         FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2 AND "dependencyTicketId" IS NULL`,
+         FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2 AND "dependencyTicketId" IS NULL AND "designHandoverId" IS NULL`,
       [tenantId, projectId],
     );
     const ids = tasks.map((t) => t.id);
@@ -233,7 +233,7 @@ export class TrackingMetricsService {
     ).map((r: any) => ({ userId: r.userId, weekStart: r.weekStart, submittedAt: new Date(r.submittedAt), deadlineAt: new Date(r.deadlineAt) }));
     // C4 handovers of this project's tasks.
     const handovers = (
-      await q(`SELECT id, "taskId", "fromUserId", status, "decidedAt" FROM task_handovers WHERE "tenantId" = $1 AND "projectId" = $2 AND status IN ('accepted', 'rejected')`, [tenantId, projectId])
+      await q(`SELECT id, "taskId", "fromUserId", status, "decidedAt" FROM task_handovers WHERE "tenantId" = $1 AND "projectId" = $2 AND kind = 'owner' AND status IN ('accepted', 'rejected')`, [tenantId, projectId])
     ).map((r: any) => ({ ...r, decidedAt: r.decidedAt ? new Date(r.decidedAt) : null }));
     // Q5 reviews belong to the project, not to a task.
     const techReviews = (
