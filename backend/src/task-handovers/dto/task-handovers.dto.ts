@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 
 // C4 - see ../task-handovers.ts. Minimum lengths are a setting, checked in
 // the service.
@@ -57,4 +57,9 @@ export class AcceptDesignHandoverDto {
   @IsString()
   @MaxLength(255)
   newTaskTitle?: string;
+}
+
+export class SetDesignHandoverSwitchDto {
+  @IsBoolean()
+  enabled: boolean;
 }

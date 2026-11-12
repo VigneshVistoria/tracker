@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
 import { DesignHandoversService } from './design-handovers.service';
-import { AcceptDesignHandoverDto, RejectHandoverDto, StartDesignHandoverDto } from './dto/task-handovers.dto';
+import { AcceptDesignHandoverDto, RejectHandoverDto, SetDesignHandoverSwitchDto, StartDesignHandoverDto } from './dto/task-handovers.dto';
 
 // "Hand over to development" - see ./design-handovers.ts.
 @Controller()
@@ -15,6 +15,17 @@ export class DesignHandoversController {
 
   private async me(req: any) {
     return (await this.usersService.findByIdAndTenant(req.user.sub, req.user.tenantId))!;
+  }
+
+  // Per-project switch (default OFF) - Admin or Program Manager, audited.
+  @Get('design-handovers/projects')
+  async listSwitches(@Req() req: any) {
+    return this.designHandovers.listProjectSwitches(await this.me(req), req.user.tenantId);
+  }
+
+  @Patch('design-handovers/projects/:projectId')
+  async setSwitch(@Param('projectId', ParseIntPipe) projectId: number, @Body() dto: SetDesignHandoverSwitchDto, @Req() req: any) {
+    return this.designHandovers.setProjectSwitch(projectId, dto.enabled, await this.me(req), req.user.tenantId);
   }
 
   @Get('tasks/:id/design-handover')

@@ -53,6 +53,12 @@ export class Project {
   @Column({ default: false })
   dependencyTasksEnabled: boolean;
 
+  // Hand over to development (2026-11-12, migrations/2026-11-design-handover.sql,
+  // ../task-handovers/design-handovers.ts): Admin or Program Manager switches
+  // it per project; default off. Handovers already started keep working.
+  @Column({ default: false })
+  designHandoverEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

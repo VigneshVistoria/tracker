@@ -15,7 +15,10 @@
 //    the design task.
 //  * Reject (with a reason) leaves the design task with the designer;
 //    cancel = the designer, whoever started it, or a PM.
-//  * Every project, whatever the Performance Tracking switch. Design
+//  * Per-project switch "Hand over to development" (default OFF; Admin or
+//    Program Manager, audited - added 2026-11-12 at the user's request).
+//    Off = no new handovers; pending ones can still be decided/cancelled.
+//    Independent of the Performance Tracking switch. Design
 //    handovers are not C4 handovers, and design tasks closed this way are
 //    left out of KPI, Non-Compliance and Performance Tracking until the
 //    user decides (after 2026-11-30).
@@ -47,7 +50,10 @@ export const DESIGN_HANDOVER_BLOCKED_STATUSES = [
   'Released - With Showstoppers',
 ];
 
+export const DESIGN_HANDOVER_SWITCH_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
+
 export const DESIGN_HANDOVER_AUDIT = {
+  PROJECT_SWITCHED: 'design_handover_project_switched',
   STARTED: 'design_handover_started',
   ACCEPTED: 'design_handover_accepted',
   REJECTED: 'design_handover_rejected',

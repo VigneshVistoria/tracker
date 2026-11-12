@@ -17,6 +17,7 @@ import {
   DESIGN_HANDOVER_BLOCKED_STATUSES,
   DESIGN_HANDOVER_ON_BEHALF_ROLES,
   DESIGN_HANDOVER_RECEIVER_ROLES,
+  DESIGN_HANDOVER_SWITCH_ROLES,
   artifactsProblem,
 } from './design-handovers';
 import { AcceptDesignHandoverDto, RejectHandoverDto, StartDesignHandoverDto } from './dto/task-handovers.dto';
@@ -40,6 +41,42 @@ export class DesignHandoversService {
 
   private emit(e: TaskHandoverEvent) {
     this.eventEmitter.emit('task.handover', { ...e, design: true });
+  }
+
+  private async switchOn(projectId: number, tenantId: number) {
+    return !!(await this.dataSource.getRepository(Project).findOne({ where: { id: projectId, tenantId } }))?.designHandoverEnabled;
+  }
+
+  // ---- Per-project switch (default OFF; Admin / Program Manager) ----
+
+  async listProjectSwitches(user: User, tenantId: number) {
+    if (!DESIGN_HANDOVER_SWITCH_ROLES.includes(user.role)) throw new ForbiddenException('Only Admin or Program Manager can see the Hand over to development switches.');
+    const projects = await this.dataSource.getRepository(Project).find({ where: { tenantId }, order: { name: 'ASC' } });
+    return projects.map((p) => ({ id: p.id, name: p.name, designHandoverEnabled: !!p.designHandoverEnabled }));
+  }
+
+  async setProjectSwitch(projectId: number, enabled: unknown, user: User, tenantId: number) {
+    if (!DESIGN_HANDOVER_SWITCH_ROLES.includes(user.role)) throw new ForbiddenException('Only Admin or Program Manager can switch Hand over to development on or off.');
+    if (typeof enabled !== 'boolean') throw new BadRequestException('enabled must be true or false.');
+    const project = await this.dataSource.getRepository(Project).findOne({ where: { id: projectId, tenantId } });
+    if (!project) throw new NotFoundException(`Project #${projectId} not found`);
+    const from = !!project.designHandoverEnabled;
+    if (from !== enabled) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(Project, { id: projectId, tenantId }, { designHandoverEnabled: enabled });
+        await this.auditLogService.recordWithin(em, {
+          userId: user.id,
+          userEmail: user.email,
+          userRole: user.role,
+          action: DESIGN_HANDOVER_AUDIT.PROJECT_SWITCHED,
+          tenantId,
+          entityType: 'Project',
+          entityId: projectId,
+          details: { from, to: enabled },
+        });
+      });
+    }
+    return { projectId, name: project.name, designHandoverEnabled: enabled };
   }
 
   private async viewable(taskId: number, user: User, tenantId: number): Promise<ProjectTask> {
@@ -126,10 +163,13 @@ export class DesignHandoversService {
     const isDesignTask = (await this.assigneeRole(task, tenantId)) === UserRole.DESIGNER || own.some((r) => r.status === 'accepted');
     const anyPending = await this.handovers.count({ where: { tenantId, taskId, status: 'pending' } });
     const mayStart = task.assigneeUserId === user.id || DESIGN_HANDOVER_ON_BEHALF_ROLES.includes(user.role);
-    const blocker = await this.blocker(task, tenantId);
+    const switchOn = await this.switchOn(task.projectId, tenantId);
+    const blocker = switchOn ? await this.blocker(task, tenantId) : 'it is off for this project.';
     const pendingForMe = own.find((r) => r.status === 'pending' && r.toUserId === user.id);
     return {
-      isDesignTask,
+      // Off: nothing to show unless handovers already exist on/for this task.
+      switchOn,
+      isDesignTask: isDesignTask && (switchOn || own.length > 0),
       fieldMin,
       canStart: mayStart && !anyPending && !blocker,
       // Shown to whoever could start one, so the button can say why not.
@@ -147,6 +187,7 @@ export class DesignHandoversService {
     if (task.assigneeUserId !== user.id && !DESIGN_HANDOVER_ON_BEHALF_ROLES.includes(user.role)) {
       throw new ForbiddenException('Only the designer on the task or a Program Manager can hand it over to development.');
     }
+    if (!(await this.switchOn(task.projectId, tenantId))) throw new BadRequestException('Hand over to development is off for this project.');
     const blocker = await this.blocker(task, tenantId);
     if (blocker) throw new BadRequestException(blocker);
     if (dto.toUserId === task.assigneeUserId) throw new BadRequestException('Pick someone else to hand it over to.');

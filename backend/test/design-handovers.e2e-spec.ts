@@ -70,6 +70,28 @@ describe('Design handover - Hand over to development (e2e)', () => {
     await app?.close();
   });
 
+  it('per-project switch: OFF by default (nothing offered, start refused); Admin or PM turns it on, audited', async () => {
+    const off = (await get(f.users.devA, `/tasks/${designTask}/design-handover`).expect(200)).body;
+    expect(off).toMatchObject({ switchOn: false, isDesignTask: false, canStart: false });
+    await post(f.users.devA, `/tasks/${designTask}/design-handover`, { toUserId: f.users.devNone.id, notes, artifacts: links }).expect(400);
+    await get(f.users.devA, `/design-handovers/projects`).expect(403);
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.devA)).send({ enabled: true }).expect(403);
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.exec)).send({ enabled: true }).expect(403);
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.pm)).send({ enabled: 'yes' }).expect(400);
+    const list = (await get(f.users.pm, `/design-handovers/projects`).expect(200)).body;
+    expect(list.find((p: any) => p.id === f.projects.pA)).toMatchObject({ designHandoverEnabled: false });
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.admin)).send({ enabled: true }).expect(200);
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.pm)).send({ enabled: false }).expect(200);
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.pm)).send({ enabled: true }).expect(200);
+    const switched = await audits(DESIGN_HANDOVER_AUDIT.PROJECT_SWITCHED);
+    const d = (a: any) => (typeof a.details === 'string' ? JSON.parse(a.details) : a.details);
+    expect(switched.map((a: any) => [a.userEmail, d(a).from, d(a).to])).toEqual([
+      [f.users.admin.email, false, true],
+      [f.users.pm.email, true, false],
+      [f.users.pm.email, false, true],
+    ]);
+  });
+
   it('a Designer task offers it; a developer task does not', async () => {
     const { body } = await get(f.users.devA, `/tasks/${designTask}/design-handover`).expect(200);
     expect(body).toMatchObject({ isDesignTask: true, canStart: true, handovers: [], fieldMin: 10 });
@@ -168,6 +190,20 @@ describe('Design handover - Hand over to development (e2e)', () => {
     expect((await taskRow(second)).status).toBe('Pass');
     const [h] = await ds.query(`SELECT "linkedTaskId" FROM task_handovers WHERE id = $1`, [id]);
     expect(h.linkedTaskId).toBe(body.linkedTaskId);
+  });
+
+  it('switched off: no new handovers, but a pending one can still be decided', async () => {
+    const third = await insertTask('Profile screen design', f.users.devA);
+    await post(f.users.devA, `/tasks/${third}/design-handover`, { toUserId: f.users.devNone.id, notes, artifacts: links }).expect(201);
+    const id = await pendingId();
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.pm)).send({ enabled: false }).expect(200);
+    const fourth = await insertTask('Help screen design', f.users.devA);
+    await post(f.users.devA, `/tasks/${fourth}/design-handover`, { toUserId: f.users.devNone.id, notes, artifacts: links }).expect(400);
+    expect((await get(f.users.devA, `/tasks/${fourth}/design-handover`).expect(200)).body).toMatchObject({ isDesignTask: false, canStart: false });
+    // The pending one still shows and can be decided.
+    expect((await get(f.users.devA, `/tasks/${third}/design-handover`).expect(200)).body.isDesignTask).toBe(true);
+    await post(f.users.devNone, `/design-handovers/${id}/accept`, { linkTaskId: devOwnTask }).expect(201);
+    await http().patch(`/design-handovers/projects/${f.projects.pA}`).set(auth(f.users.pm)).send({ enabled: true }).expect(200);
   });
 
   it('design handovers never show up as C4 handovers', async () => {

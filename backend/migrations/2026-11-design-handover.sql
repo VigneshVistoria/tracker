@@ -5,6 +5,7 @@
 --   task_handovers.artifacts     design links handed over [{type, url}]
 --   task_handovers."linkedTaskId" the development task the developer linked or created on accept
 --   project_tasks."designHandoverId" set on a design task closed by an accepted design handover
+--   projects."designHandoverEnabled" per-project switch, default OFF (Admin / PM, audited)
 -- Safe to run again (IF NOT EXISTS). Rollback: 2026-11-design-handover.down.sql.
 BEGIN;
 ALTER TABLE "task_handovers" ADD COLUMN IF NOT EXISTS "kind" character varying(10) NOT NULL DEFAULT 'owner';
@@ -17,4 +18,5 @@ DO $$ BEGIN
 END $$;
 CREATE INDEX IF NOT EXISTS "IDX_task_handovers_linked_task" ON "task_handovers" ("tenantId", "linkedTaskId") WHERE "linkedTaskId" IS NOT NULL;
 ALTER TABLE "project_tasks" ADD COLUMN IF NOT EXISTS "designHandoverId" integer NULL;
+ALTER TABLE "projects" ADD COLUMN IF NOT EXISTS "designHandoverEnabled" boolean NOT NULL DEFAULT false;
 COMMIT;
