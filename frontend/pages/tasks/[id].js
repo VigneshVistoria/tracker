@@ -54,6 +54,7 @@ import TaskFieldsCard from '../../components/TaskFieldsCard';
 import EscapedDefectCard from '../../components/EscapedDefectCard';
 import ClientMeasuresCard from '../../components/ClientMeasuresCard';
 import TaskHandoverPanel from '../../components/TaskHandoverPanel';
+import TaskDesignHandoverPanel from '../../components/TaskDesignHandoverPanel';
 import {
   EMPTY_CHECKLIST,
   SubmissionChecklistFields,
@@ -2554,6 +2555,10 @@ export default function TaskDetailPage() {
       {TASK_PAGE_V2 && !isDependencyTask && (
         <LatestWork work={latestWork(qaReviews, assigneeRole)} isDesign={assigneeRole === 'designer'} />
       )}
+
+      {/* Hand over to development (2026-11-12): on a Designer's task, or the
+          design handed over on the developer's linked task. */}
+      {!isJunk && !isDependencyTask && !task.isDefect && <TaskDesignHandoverPanel task={task} onChanged={refreshAfterReturnToQa} />}
 
       {isAssignee && !hasPendingQaReview && !isEscalated && canSubmitForReview && !usesPeerReview && (openDependencyTickets.length > 0 || openLinkedDefects.length > 0) && (
         <div id="task-action-submit" tabIndex={-1} className={styles.card} style={{ marginBottom: 'var(--space-4)' }}>
