@@ -115,6 +115,18 @@ describe('Performance Tracking B3 scoring', () => {
     expect(card.state).toBe('not_enough_data');
   });
 
+  it('L1 / L2 are shown but never scored: blank Requirement ID / Client impact cannot lower a score (2026-11-12)', () => {
+    const rows = [
+      row('L1', { numerator: 0, denominator: 10, sample: 10, value: 0 }),
+      row('L2', { numerator: 0, denominator: 10, sample: 10, value: 0 }),
+      row('L4', { numerator: 10, denominator: 10, sample: 10, value: 100 }),
+    ];
+    const card = scorePerson(10, rows, { bands, minSample: 5, overrides: [] });
+    expect(card.metrics.find((m) => m.metric === 'L1')).toMatchObject({ state: 'not_scored', score: null, value: 0 });
+    expect(card.metrics.find((m) => m.metric === 'L2')).toMatchObject({ state: 'not_scored', score: null, value: 0 });
+    expect(card.competencies.find((c) => c.key === 'L')!.score).toBe(5);
+  });
+
   it('competency = average of its scores, overall = average of competencies; an override replaces one score and keeps the computed one', () => {
     const rows = [
       row('D1', { numerator: 10, denominator: 10, sample: 10 }), // 100% -> 5

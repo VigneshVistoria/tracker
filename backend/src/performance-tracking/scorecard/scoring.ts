@@ -34,7 +34,10 @@ export const COMPETENCIES: Record<string, { label: string; metrics: TrackingMetr
   L: { label: 'Client focus', metrics: ['L1', 'L2', 'L3', 'L4', 'L5'] },
 };
 
-export const UNSCORED_METRICS: TrackingMetric[] = ['O5'];
+// L1 / L2 (Requirement ID / Client impact) are optional since 2026-11-12
+// (the user's decision): still recorded and shown, never scored, so a blank
+// field can't lower anyone's Client focus or overall score.
+export const UNSCORED_METRICS: TrackingMetric[] = ['O5', 'L1', 'L2'];
 
 export type MetricState = 'scored' | 'baseline' | 'not_enough_data' | 'not_scored';
 
