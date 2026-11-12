@@ -56,7 +56,6 @@ const PAGES = [
   ['My Tasks', '/tasks/mine', 'See all your tasks in one list'],
   ['Peer Review queue', '/tasks/peer-review', 'See peer reviews assigned to you'],
   ['Dependency Clearance', '/dependency-clearance', 'Resolve dependency tickets routed to you'],
-  ['KPI Dashboard', '/kpi', 'See your own KPI scores'],
 ];
 
 const STATUSES = [
@@ -462,8 +461,8 @@ export default function TrackerSopPage() {
           <Section id="measured" number={11} title="How you are measured">
             <h3 className={g.subTitle}>KPI score</h3>
             <p>
-              Your KPI score (visible to you at <Path>/kpi</Path>) is calculated per project for daily, weekly and
-              monthly periods. It starts at 100:
+              Your KPI score is calculated per project for daily, weekly and monthly periods. Your Program Manager
+              shares your figures with you in your check-ins. It starts at 100:
             </p>
             <Table headers={['Factor', 'Effect', 'How to protect your score']} rows={KPI_FACTORS} />
             <p>

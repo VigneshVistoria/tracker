@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { TaskFlag } from '../task-flags/task-flag.entity';
 import { TaskReopen } from './task-reopen.entity';
 import { DueDateProposedEvent } from './due-date-change';
-import { TaskType, fieldProblems, missingBeforeSubmission, parseTaskType } from './task-fields';
+import { TaskType, fieldProblems, parseTaskType } from './task-fields';
 import { And, Between, EntityManager, FindOperator, In, IsNull, LessThan, LessThanOrEqual, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { ProjectTask } from './project-task.entity';
 import { TaskDefectArtifact } from './task-defect-artifact.entity';
@@ -1647,17 +1647,6 @@ export class TasksService {
     }
 
     return saved;
-  }
-
-  // Performance Tracking S4b (./task-fields.ts): on a tracked project a
-  // Feature going to Peer Review needs the same requirement ID and client
-  // impact as before QA submission (the user's decision: Feature only).
-  async assertFeatureFieldsForPeerReview(task: ProjectTask, tenantId: number): Promise<void> {
-    if (task.isDefect || task.taskType !== 'feature') return;
-    const project = await this.projectsService.findOne(task.projectId, tenantId);
-    if (!project.performanceTrackingEnabled) return;
-    const missing = missingBeforeSubmission(task);
-    if (missing.length) throw new BadRequestException(`Before submitting for Peer Review, add ${missing.join(' and ')}.`);
   }
 
   // Performance Tracking S4b (./task-fields.ts): on a tracked project the

@@ -89,19 +89,16 @@ describe('Task type, requirement ID, client impact (Performance Tracking S4b, e2
       expect(await taskRow(own)).toMatchObject({ taskType: 'improvement', createdByUserId: f.users.devA.id });
     });
 
-    it('before QA submission: Feature needs a requirement ID and client impact; Improvement client impact; Other nothing', async () => {
+    it('QA submission: Requirement ID and client impact are optional (2026-11-10) - empty never blocks', async () => {
       const feature = (await create(f.users.pm, { taskType: 'feature', assigneeUserId: f.users.devA.id }).expect(201)).body.id;
       await ready(feature);
-      const res = await submit(feature).expect(400);
-      expect(res.body.message).toContain('Requirement ID');
-      expect(res.body.message).toContain('client impact');
-      // The assignee fills them in.
-      await patch(f.users.devA, `/tasks/${feature}/tracking-fields`, { requirementId: 'REQ-7', clientImpact: IMPACT }).expect(200);
+      // The card still hints, but submission goes through with both empty.
+      expect((await get(f.users.devA, `/tasks/${feature}/tracking-fields`).expect(200)).body.missingBeforeSubmission.length).toBe(2);
       await submit(feature).expect(201);
 
       const improvement = (await create(f.users.pm, { taskType: 'improvement', assigneeUserId: f.users.devA.id }).expect(201)).body.id;
       await ready(improvement);
-      expect((await submit(improvement).expect(400)).body.message).toContain('client impact');
+      await submit(improvement).expect(201);
 
       const other = (await create(f.users.pm, { taskType: 'other', assigneeUserId: f.users.devA.id }).expect(201)).body.id;
       await ready(other);
@@ -149,17 +146,12 @@ describe('Task type, requirement ID, client impact (Performance Tracking S4b, e2
       await patch(f.users.pm, `/tasks/${planned}/improvement-decision`, { decision: 'accepted' }).expect(400);
     });
 
-    it('before Peer Review submission a Feature needs the same requirement ID and client impact', async () => {
+    it('Peer Review submission: Requirement ID and client impact are optional (2026-11-10)', async () => {
       const peer = (s: number) =>
         post(f.users.devA, `/tasks/${s}/peer-review-submit`, { resolution: 'Done', actualHours: 1, artifacts: [PR], reviewerUserId: f.users.devNone.id });
       const feature = (await create(f.users.pm, { taskType: 'feature', assigneeUserId: f.users.devA.id, peerReviewEnabled: true }).expect(201)).body.id;
       await ready(feature);
-      const res = await peer(feature).expect(400);
-      expect(res.body.message).toContain('Peer Review');
-      expect(res.body.message).toContain('Requirement ID');
-      await patch(f.users.pm, `/tasks/${feature}/tracking-fields`, { requirementId: 'REQ-5', clientImpact: IMPACT }).expect(200);
       await peer(feature).expect(201);
-      // Feature only (the user's decision) - an Improvement isn't checked here.
       const improvement = (await create(f.users.pm, { taskType: 'improvement', assigneeUserId: f.users.devA.id, peerReviewEnabled: true }).expect(201)).body.id;
       await ready(improvement);
       await peer(improvement).expect(201);

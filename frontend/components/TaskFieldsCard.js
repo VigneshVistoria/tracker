@@ -96,7 +96,7 @@ export default function TaskFieldsCard({ task, onChanged }) {
             <strong>Client impact (internal):</strong> {state.clientImpact || '—'}
           </p>
           {state.missingBeforeSubmission.length > 0 && (
-            <p className={styles.helpText}>Before QA submission this needs {state.missingBeforeSubmission.join(' and ')}.</p>
+            <p className={styles.helpText}>Optional, not required to submit. Still empty: {state.missingBeforeSubmission.join(' and ')}.</p>
           )}
           {(state.canEditType || state.canEditTexts) && (
             <button className={styles.buttonSecondary} type="button" style={{ marginTop: 'var(--space-2)' }} onClick={startEdit}>

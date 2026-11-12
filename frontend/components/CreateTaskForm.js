@@ -232,7 +232,7 @@ export default function CreateTaskForm({
             </select>
           </div>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${idPrefix}RequirementId`}>Requirement ID (needed before QA on a Feature)</label>
+            <label className={styles.label} htmlFor={`${idPrefix}RequirementId`}>Requirement ID (optional)</label>
             <input
               className={styles.input}
               id={`${idPrefix}RequirementId`}
@@ -243,7 +243,7 @@ export default function CreateTaskForm({
           </div>
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${idPrefix}ClientImpact`}>
-              Client impact (internal; needed before QA on a Feature or Improvement, at least {CLIENT_IMPACT_MIN} characters)
+              Client impact (internal, optional; if filled, at least {CLIENT_IMPACT_MIN} characters)
             </label>
             <textarea
               className={styles.textarea}

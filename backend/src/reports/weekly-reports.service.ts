@@ -21,6 +21,7 @@ import { PdfPerformanceReportService, AssigneePerformanceStat } from './pdf-perf
 import { UsersService } from '../users/users.service';
 import { AWAITING_REVIEW_STATUSES, PM_REVIEW_STATUS } from '../tasks/pm-review';
 import { RETURNED_TO_QA_STATUS } from '../tasks/return-to-qa';
+import { OwnMetricsVisibilityService } from '../performance-tracking/own-metrics-visibility.service';
 
 // Reads project_tasks (tasks and defects, isDefect) - the old issues table
 // this used to read is empty since the move to project tasks (fixed
@@ -52,6 +53,7 @@ export class WeeklyReportsService {
     private mailService: MailService,
     private pdfPerformanceReportService: PdfPerformanceReportService,
     private usersService: UsersService,
+    private ownMetricsVisibility: OwnMetricsVisibilityService,
   ) {}
 
   // Business week = Monday 00:00 through Friday 23:59:59.999 in the team's
@@ -412,10 +414,22 @@ export class WeeklyReportsService {
 
     const sent: string[] = [];
     const skipped: string[] = [];
+    // 2026-11-12 (the user's instruction): the email carries the assignee's
+    // own figures, so it follows "Show own performance metrics to team
+    // members" - a Developer/Designer/DevOps/QA whose role isn't ticked
+    // gets no email. Unknown addresses are skipped too (fail closed).
+    const usersByEmail = new Map(
+      (await this.usersService.findAll(report.tenantId)).map((u) => [u.email.toLowerCase(), u] as const),
+    );
 
     for (const stat of data.assigneeStats as AssigneePerformanceStat[]) {
       if (!stat.assigneeEmail) {
         skipped.push('(no email on file)');
+        continue;
+      }
+      const recipient = usersByEmail.get(stat.assigneeEmail.toLowerCase());
+      if (!recipient || !(await this.ownMetricsVisibility.canSeeOwn(recipient, report.tenantId))) {
+        skipped.push(stat.assigneeEmail);
         continue;
       }
       try {

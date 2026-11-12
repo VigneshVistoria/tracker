@@ -13,9 +13,10 @@ import { GuardsModule } from '../common/guards.module';
 import { MailModule } from '../mail/mail.module';
 import { UsersModule } from '../users/users.module';
 import { TenantsModule } from '../tenants/tenants.module';
+import { PerformanceTrackingCoreModule } from '../performance-tracking/performance-tracking-core.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WeeklyReport, ProjectTask, TeamSettings, TaskStatusPercent]), GuardsModule, MailModule, UsersModule, TenantsModule],
+  imports: [TypeOrmModule.forFeature([WeeklyReport, ProjectTask, TeamSettings, TaskStatusPercent]), GuardsModule, MailModule, UsersModule, TenantsModule, PerformanceTrackingCoreModule],
   controllers: [WeeklyReportsController],
   providers: [
     WeeklyReportsService,

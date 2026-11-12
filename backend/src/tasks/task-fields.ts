@@ -9,10 +9,11 @@
 //    default - set by whoever creates the task (a PM, or a developer for
 //    their own task). Afterwards a PM or Admin changes it.
 //  * Requirement ID and client impact: the PM fills them at creation;
-//    afterwards the PM or the assignee edits them. Before QA submission a
-//    Feature needs a requirement ID, and a Feature or Improvement needs a
-//    client impact of at least 20 characters (optional for Other); before
-//    Peer Review, a Feature needs the same. Client
+//    afterwards the PM or the assignee edits them. Both are OPTIONAL
+//    (2026-11-10, the user's decision): they never block QA or Peer Review
+//    submission. If a client impact is entered it must be 20+ characters.
+//    missingBeforeSubmission() is only a non-blocking hint now (and L1/L2
+//    still count tasks without them as untraced). Client
 //    impact is internal - never shown on the client portal.
 //  * O5: a PM or Admin accepts or declines an Improvement a developer created
 //    (declining keeps the type; a reason is required). Only accepted ones
@@ -65,7 +66,7 @@ export function fieldProblems(fields: { requirementId?: string | null; clientImp
   return problems;
 }
 
-// What a task still needs before QA submission (tracked project).
+// What a task is still missing (tracked project) - a hint only, never a gate.
 export function missingBeforeSubmission(task: { isDefect: boolean; taskType: TaskType | null; requirementId: string | null; clientImpact: string | null }): string[] {
   if (task.isDefect || !task.taskType) return [];
   const missing: string[] = [];
