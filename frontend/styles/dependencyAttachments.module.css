@@ -1,0 +1,137 @@
+/* Dependency attachments (2026-11-14) - same look as the client portal's
+   ticket files (styles/portal.module.css). */
+.section {
+  margin-top: var(--ds-space-2);
+}
+.sideTitle {
+  margin: var(--ds-space-2) 0 0;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+.filePicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  margin-top: var(--ds-space-2);
+}
+.filePicker input:focus-visible + .attachButton {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+  border-color: var(--ds-border-focus);
+}
+.attachButton {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-height: 36px;
+  padding: 0 var(--ds-space-3);
+  border: 1px dashed var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  cursor: pointer;
+}
+.attachButton:hover {
+  border-color: var(--ds-border-focus);
+}
+.muted {
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-text-sm);
+  margin: 0;
+}
+.fieldError {
+  color: var(--ds-color-error-dark);
+  font-size: var(--ds-text-sm);
+  margin: 0;
+}
+.chosenFiles,
+.fileList {
+  list-style: none;
+  margin: var(--ds-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+}
+.fileChip {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-sm);
+  padding: var(--ds-space-1) var(--ds-space-2);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface-sunken);
+}
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+}
+.fileIcon {
+  flex: none;
+  color: var(--ds-text-secondary);
+}
+.fileInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.fileName {
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  overflow-wrap: anywhere;
+}
+.fileSize {
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.thumb {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--ds-radius-sm);
+  object-fit: cover;
+  background: var(--ds-bg-surface-sunken);
+}
+.chipRemove,
+.iconAction {
+  display: inline-grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--ds-radius-md);
+  background: transparent;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  margin-left: auto;
+}
+.chipRemove:hover,
+.iconAction:hover {
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-primary);
+}
+.chipRemove:focus-visible,
+.iconAction:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-shadow-focus);
+}
+.note {
+  margin: var(--ds-space-1) 0 0;
+  white-space: pre-wrap;
+  font-size: var(--ds-text-sm);
+}
+.addRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--ds-space-2);
+}

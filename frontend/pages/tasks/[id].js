@@ -49,6 +49,8 @@ import TaskActivityPanel from '../../components/TaskActivityPanel';
 import TaskRequestsPanel from '../../components/TaskRequestsPanel';
 import DependencyNeedByModal from '../../components/DependencyNeedByModal';
 import DependencyTicketReasonModal from '../../components/DependencyTicketReasonModal';
+import { DependencyFilePicker, DependencyResolveModal, DependencyTicketFiles } from '../../components/DependencyAttachments';
+import { loadAttachmentsEnabled, uploadDependencyFiles } from '../../lib/dependencyAttachments';
 import ReopenAfterPassModal, { REOPEN_FROM_STATUSES } from '../../components/ReopenAfterPassModal';
 import TaskFieldsCard from '../../components/TaskFieldsCard';
 import EscapedDefectCard from '../../components/EscapedDefectCard';
@@ -439,6 +441,15 @@ export default function TaskDetailPage() {
   // The dependency ticket this task clears (task.dependencyTicketId), with
   // its parent task - for the banner and the Resolve button.
   const [dependencyTicket, setDependencyTicket] = useState(null);
+  // Dependency attachments (2026-11-14): the project's switch, for tickets
+  // raised on this task and for the ticket this dependency task clears;
+  // the Resolve dialog's ticket ({ ticket, from: 'parent' | 'dependencyTask' });
+  // files chosen on the Create form; bumped to reload file lists.
+  const [ticketAttachmentsOn, setTicketAttachmentsOn] = useState(false);
+  const [dependencyTicketAttachmentsOn, setDependencyTicketAttachmentsOn] = useState(false);
+  const [resolveTarget, setResolveTarget] = useState(null);
+  const [ticketFiles, setTicketFiles] = useState([]);
+  const [ticketFilesRefresh, setTicketFilesRefresh] = useState(0);
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState('');
 
@@ -731,10 +742,42 @@ export default function TaskDetailPage() {
     apiFetch(`/task-dependency-tickets/${task.dependencyTicketId}`).then(setDependencyTicket).catch(() => setDependencyTicket(null));
   }, [user, task?.dependencyTicketId, task?.status, task?.assigneeUserId]);
 
+  useEffect(() => {
+    if (!user || !id) return;
+    loadAttachmentsEnabled(id).then(setTicketAttachmentsOn);
+  }, [user, id]);
+
+  useEffect(() => {
+    if (!user || !dependencyTicket?.parentTaskId) {
+      setDependencyTicketAttachmentsOn(false);
+      return;
+    }
+    loadAttachmentsEnabled(dependencyTicket.parentTaskId).then(setDependencyTicketAttachmentsOn);
+  }, [user, dependencyTicket?.parentTaskId]);
+
+  // Resolve with the note/files dialog (attachments on) - after it.
+  const handleResolvedWithDialog = async (_result, fileCount) => {
+    const from = resolveTarget?.from;
+    setResolveTarget(null);
+    setTicketFilesRefresh((n) => n + 1);
+    const withFiles = fileCount ? ` with ${fileCount === 1 ? '1 file' : `${fileCount} files`}` : '';
+    if (from === 'dependencyTask') {
+      showToast(`Resolved${withFiles} - the requester has been notified`, 'success');
+      setTask(await apiFetch(`/tasks/${task.id}`));
+    } else {
+      showToast(`Dependency ticket resolved${withFiles}`, 'success');
+      loadTickets();
+    }
+  };
+
   // Resolve from the dependency task's own page: resolves its ticket, which
   // moves this task straight to Pass (no review) and unblocks the parent.
   const handleResolveDependencyTask = async () => {
     if (!dependencyTicket) return;
+    if (dependencyTicketAttachmentsOn) {
+      setResolveTarget({ ticket: dependencyTicket, from: 'dependencyTask' });
+      return;
+    }
     setError('');
     try {
       await apiFetch(`/task-dependency-tickets/${dependencyTicket.id}/resolve`, { method: 'PATCH' });
@@ -756,6 +799,13 @@ export default function TaskDetailPage() {
   };
 
   const handleResolveTicket = async (ticketId) => {
+    if (ticketAttachmentsOn) {
+      const ticket = tickets.find((t) => t.id === ticketId);
+      if (ticket) {
+        setResolveTarget({ ticket, from: 'parent' });
+        return;
+      }
+    }
     setError('');
     try {
       await apiFetch(`/task-dependency-tickets/${ticketId}/resolve`, { method: 'PATCH' });
@@ -2275,7 +2325,7 @@ export default function TaskDetailPage() {
     }
     setFilingTicket(true);
     try {
-      await apiFetch('/task-dependency-tickets', {
+      const created = await apiFetch('/task-dependency-tickets', {
         method: 'POST',
         body: JSON.stringify({
           parentTaskId: task.id,
@@ -2285,7 +2335,23 @@ export default function TaskDetailPage() {
           ...(dueDateTracked ? { needByDate: ticketNeedBy } : {}),
         }),
       });
-      showToast('Dependency Ticket created', 'success');
+      // Request files go up right after the ticket is raised. If only they
+      // fail, the ticket stays raised and the error says so.
+      let filesError = '';
+      if (ticketAttachmentsOn && ticketFiles.length && created?.id) {
+        try {
+          await uploadDependencyFiles(created.id, 'request', ticketFiles);
+        } catch (err) {
+          filesError = err.message;
+        }
+      }
+      if (filesError) {
+        setError(`The dependency ticket was created, but its files were not attached: ${filesError} You can add them on the ticket below.`);
+      } else {
+        showToast(ticketFiles.length && ticketAttachmentsOn ? `Dependency Ticket created with ${ticketFiles.length === 1 ? '1 file' : `${ticketFiles.length} files`}` : 'Dependency Ticket created', 'success');
+      }
+      setTicketFiles([]);
+      setTicketFilesRefresh((n) => n + 1);
       setTicketTitle('');
       setTicketDescription('');
       setTicketOwner(null);
@@ -2383,6 +2449,7 @@ export default function TaskDetailPage() {
           </>
         )}
       </p>
+      <DependencyTicketFiles ticket={ticket} user={user} attachmentsEnabled={ticketAttachmentsOn} refreshKey={ticketFilesRefresh} />
       {editingTicketId !== ticket.id && (ticket.createdByUserId === user.id || canManage || user.role === 'admin') && (
         <button
           className={styles.buttonSecondary}
@@ -2503,6 +2570,12 @@ export default function TaskDetailPage() {
           loadTickets();
           showToast(message, 'success');
         }}
+      />
+      <DependencyResolveModal
+        ticket={resolveTarget?.from === 'parent' ? resolveTarget.ticket : null}
+        onClose={() => setResolveTarget(null)}
+        onResolved={handleResolvedWithDialog}
+        consequence="The parent task stops being blocked by it."
       />
       <DependencyTicketReasonModal
         mode={ticketReasonAction?.mode}
@@ -3529,6 +3602,18 @@ export default function TaskDetailPage() {
                   Resolve
                 </button>
               )}
+              <DependencyTicketFiles
+                ticket={dependencyTicket}
+                user={user}
+                attachmentsEnabled={dependencyTicketAttachmentsOn}
+                refreshKey={ticketFilesRefresh}
+              />
+              <DependencyResolveModal
+                ticket={resolveTarget?.from === 'dependencyTask' ? resolveTarget.ticket : null}
+                onClose={() => setResolveTarget(null)}
+                onResolved={handleResolvedWithDialog}
+                consequence="This task moves to Pass (no review) and the parent task stops being blocked by it."
+              />
             </div>
           )}
           {!editingTitle && nextStep && (
@@ -4430,6 +4515,12 @@ export default function TaskDetailPage() {
               <p id="tdTicketNeedByHint" className={styles.issueMeta} style={{ margin: 'var(--space-1) 0 0' }}>
                 The owner is overdue from the next day. Only you or a PM/Admin can change it later, with a reason.
               </p>
+            </div>
+          )}
+          {ticketAttachmentsOn && (
+            <div className={styles.field}>
+              <span className={styles.label}>Files (optional)</span>
+              <DependencyFilePicker files={ticketFiles} onChange={setTicketFiles} disabled={filingTicket} />
             </div>
           )}
           <div className={styles.actions}>

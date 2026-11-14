@@ -89,9 +89,10 @@ export async function apiDownload(path, filename, body) {
 }
 
 // Multipart upload (FormData). The browser sets the multipart Content-Type
-// itself, so unlike apiFetch no JSON header is sent.
-export async function apiUpload(path, formData) {
-  const res = await authedFetch(path, { method: 'POST', body: formData });
+// itself, so unlike apiFetch no JSON header is sent. `method` is POST
+// unless given (e.g. PATCH for a dependency Resolve with files).
+export async function apiUpload(path, formData, method = 'POST') {
+  const res = await authedFetch(path, { method, body: formData });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 413) throw new Error('A file is too large. Each file can be at most 10 MB.');
