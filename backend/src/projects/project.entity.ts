@@ -59,6 +59,13 @@ export class Project {
   @Column({ default: false })
   designHandoverEnabled: boolean;
 
+  // Dependency attachments (2026-11-13, migrations/2026-11-dependency-
+  // attachments.sql): files on dependency tickets (raise + resolve) and the
+  // resolution note. Admin or Program Manager; default off. Separate from
+  // dependencyTasksEnabled - also covers simple and external-owner tickets.
+  @Column({ default: false })
+  dependencyAttachmentsEnabled: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

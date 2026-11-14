@@ -44,6 +44,7 @@ import { TaskStatusPercent } from './task-status-config/task-status-percent.enti
 import { KpiConfig } from './kpi/kpi-config.entity';
 import { KpiPeriodScore } from './kpi/kpi-period-score.entity';
 import { TaskDependencyTicket } from './task-dependency-tickets/task-dependency-ticket.entity';
+import { TaskDependencyTicketAttachment } from './task-dependency-tickets/task-dependency-ticket-attachment.entity';
 import { TaskQaReview } from './task-qa-reviews/task-qa-review.entity';
 import { TaskQaReviewArtifact } from './task-qa-reviews/task-qa-review-artifact.entity';
 import { TaskQaReviewQaArtifact } from './task-qa-reviews/task-qa-review-qa-artifact.entity';
@@ -249,6 +250,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           ClientTicketEvent,
           ClientTicketAttachment,
           TaskAttachment,
+          TaskDependencyTicketAttachment,
           TeamSettings,
           TaskCommitmentEvent,
           PerformanceMetricSettings,

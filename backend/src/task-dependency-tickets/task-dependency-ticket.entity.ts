@@ -71,6 +71,21 @@ export class TaskDependencyTicket {
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date;
 
+  // Dependency attachments (2026-11-13): who pressed Resolve (always
+  // recorded from then on; NULL on older tickets and when the trigger
+  // resolved it), how it was resolved ('ticket' = Resolve, 'linked_task' =
+  // its dependency task was passed/closed/released elsewhere - the person
+  // for that note comes from task_status_events), and the optional note.
+  // All three are cleared on reopen.
+  @Column({ type: 'int', nullable: true })
+  resolvedByUserId: number | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  resolvedVia: 'ticket' | 'linked_task' | null;
+
+  @Column({ type: 'text', nullable: true })
+  resolutionNote: string | null;
+
   // Performance Tracking S3 (2026-10-28): the date the creator needs it by
   // (required while the project's tracking is ON; older tickets stay
   // undated) and when it becomes overdue - 00:00 the next day in the

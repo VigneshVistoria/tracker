@@ -26,6 +26,16 @@ import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TEAM_SETTINGS_DEFAULTS, dateInZone, isValidTimeZone } from '../team-settings/time-zone';
 import { FLAG_REASON_MIN, TASK_FLAG_AUDIT, canChangeNeedBy, needByOverdueAt } from '../task-flags/task-flags';
 import { ChangeNeedByDateDto } from '../task-flags/dto/task-flags.dto';
+import { StorageService } from '../storage/storage.service';
+import { storeImageUploads, UploadedTaskFile } from '../tasks/task-attachments.service';
+import {
+  DEPENDENCY_ATTACHMENTS_SWITCH_ROLES,
+  DEPENDENCY_ATTACHMENT_AUDIT,
+  DEPENDENCY_ATTACHMENTS_PER_SIDE,
+  DEPENDENCY_RESOLUTION_NOTE_MAX_LENGTH,
+  autoResolvedNote,
+} from './dependency-attachments';
+import { prepareDependencyUploads, dependencyAttachmentRows } from './dependency-attachment-uploads';
 
 export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
   parentTaskTitle: string | null;
@@ -43,6 +53,15 @@ export interface TaskDependencyTicketWithParent extends TaskDependencyTicket {
   // Dependency tasks Stage 2: the linked task, or null (switch off, older
   // ticket, or external owner).
   dependencyTask: DependencyTaskSummary | null;
+  resolvedByName: string | null;
+  systemNote: string | null;
+}
+
+// Dependency attachments (2026-11-13): who resolved it (by name) and, for a
+// ticket its dependency task resolved, the "Auto-resolved: ..." note.
+export interface DependencyResolutionInfo {
+  resolvedByName: string | null;
+  systemNote: string | null;
 }
 
 @Injectable()
@@ -59,7 +78,102 @@ export class TaskDependencyTicketsService {
     private auditLogService: AuditLogService,
     private eventEmitter: EventEmitter2,
     private dataSource: DataSource,
+    private storage: StorageService,
   ) {}
+
+  // ---- Dependency attachments (2026-11-13, see ./dependency-attachments.ts) ----
+
+  async listAttachmentSwitches(currentUser: { role: UserRole }, tenantId: number) {
+    if (!DEPENDENCY_ATTACHMENTS_SWITCH_ROLES.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin or Program Manager can see the dependency attachment switches.');
+    }
+    const projects = await this.projectsRepository.find({ where: { tenantId }, order: { name: 'ASC' } });
+    return projects.map((p) => ({ id: p.id, name: p.name, dependencyAttachmentsEnabled: !!p.dependencyAttachmentsEnabled }));
+  }
+
+  async setAttachmentSwitch(
+    projectId: number,
+    enabled: boolean,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ) {
+    if (!DEPENDENCY_ATTACHMENTS_SWITCH_ROLES.includes(currentUser.role)) {
+      throw new ForbiddenException('Only Admin or Program Manager can switch dependency attachments on or off.');
+    }
+    if (typeof enabled !== 'boolean') {
+      throw new BadRequestException('enabled must be true or false.');
+    }
+    const project = await this.projectsRepository.findOne({ where: { id: projectId, tenantId } });
+    if (!project) {
+      throw new NotFoundException(`Project #${projectId} not found`);
+    }
+    const from = !!project.dependencyAttachmentsEnabled;
+    if (from !== enabled) {
+      await this.dataSource.transaction(async (em) => {
+        await em.update(Project, { id: projectId, tenantId }, { dependencyAttachmentsEnabled: enabled });
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_ATTACHMENT_AUDIT.PROJECT_SWITCHED,
+          tenantId,
+          entityType: 'Project',
+          entityId: projectId,
+          details: { from, to: enabled },
+        });
+      });
+    }
+    return { projectId, name: project.name, dependencyAttachmentsEnabled: enabled };
+  }
+
+  // Whether the switch is on for the project of this (parent) task.
+  async attachmentsEnabledForTask(taskId: number, tenantId: number): Promise<boolean> {
+    const task = await this.tasksService.findOne(taskId, tenantId);
+    const project = await this.projectsRepository.findOne({ where: { id: task.projectId, tenantId } });
+    return !!project?.dependencyAttachmentsEnabled;
+  }
+
+  // Resolver name and the auto-resolved note, keyed by ticket id. The
+  // person behind an auto-resolve is whoever made the dependency task's
+  // last move to a resolved status (task_status_events, written by
+  // trigger with the actor from the audit log).
+  async resolutionInfo(tickets: TaskDependencyTicket[], tenantId: number): Promise<Map<number, DependencyResolutionInfo>> {
+    const out = new Map<number, DependencyResolutionInfo>();
+    const resolved = tickets.filter((t) => t.status === 'resolved');
+    if (!resolved.length) return out;
+    const auto = resolved.filter((t) => t.resolvedVia === 'linked_task').map((t) => t.id);
+    const events: Array<{ ticketId: number; actorUserId: number | null; occurredAt: Date }> = auto.length
+      ? await this.dataSource.query(
+          `SELECT DISTINCT ON (k.id) k.id AS "ticketId", e."actorUserId", e."occurredAt"
+             FROM task_dependency_tickets k
+             JOIN project_tasks t ON t."dependencyTicketId" = k.id AND t."tenantId" = k."tenantId"
+             JOIN task_status_events e ON e."taskId" = t.id AND e."tenantId" = t."tenantId"
+            WHERE k."tenantId" = $1 AND k.id = ANY($2::int[])
+              AND e."toStatus" = ANY($3::text[])
+              AND e."occurredAt" <= k."resolvedAt" + interval '1 minute'
+            ORDER BY k.id, e."occurredAt" DESC, e.id DESC`,
+          [tenantId, auto, DEPENDENCY_TASK_RESOLVED_STATUSES],
+        )
+      : [];
+    const eventByTicket = new Map(events.map((e) => [e.ticketId, e]));
+    const userIds = [
+      ...new Set([...resolved.map((t) => t.resolvedByUserId), ...events.map((e) => e.actorUserId)].filter((id): id is number => id != null)),
+    ];
+    const users = userIds.length ? await this.usersService.findByIds(userIds, tenantId) : [];
+    const nameById = new Map(users.map((u) => [u.id, u.fullName || u.email]));
+    const tz = auto.length ? await this.timeZone(tenantId) : TEAM_SETTINGS_DEFAULTS.timeZone;
+    for (const t of resolved) {
+      if (t.resolvedVia === 'linked_task') {
+        const e = eventByTicket.get(t.id);
+        const actorName = e?.actorUserId != null ? nameById.get(e.actorUserId) ?? null : null;
+        const when = new Date(e?.occurredAt ?? t.resolvedAt);
+        out.set(t.id, { resolvedByName: actorName, systemNote: autoResolvedNote(actorName, dateInZone(when, tz)) });
+      } else {
+        out.set(t.id, { resolvedByName: t.resolvedByUserId != null ? nameById.get(t.resolvedByUserId) ?? null : null, systemNote: null });
+      }
+    }
+    return out;
+  }
 
   // ---- Dependency tasks (2026-11-05, see ./dependency-tasks.ts) ----
 
@@ -171,7 +285,9 @@ export class TaskDependencyTicketsService {
   async findForTask(
     parentTaskId: number,
     tenantId: number,
-  ): Promise<Array<TaskDependencyTicket & { ownerName: string | null; createdByName: string | null; dependencyTask: DependencyTaskSummary | null }>> {
+  ): Promise<
+    Array<TaskDependencyTicket & DependencyResolutionInfo & { ownerName: string | null; createdByName: string | null; dependencyTask: DependencyTaskSummary | null }>
+  > {
     const tickets = await this.ticketsRepository.find({
       where: { parentTaskId, tenantId },
       order: { createdAt: 'DESC' },
@@ -180,11 +296,14 @@ export class TaskDependencyTicketsService {
     const users = await this.usersService.findByIds(userIds, tenantId);
     const nameById = new Map(users.map((u) => [u.id, u.fullName || null]));
     const linked = await this.dependencyTaskSummaries(tickets.map((t) => t.id), tenantId);
+    const resolution = await this.resolutionInfo(tickets, tenantId);
     return tickets.map((t) => ({
       ...t,
       ownerName: t.ownerExternal ?? nameById.get(t.ownerUserId) ?? null,
       createdByName: nameById.get(t.createdByUserId) ?? null,
       dependencyTask: linked.get(t.id) ?? null,
+      resolvedByName: resolution.get(t.id)?.resolvedByName ?? null,
+      systemNote: resolution.get(t.id)?.systemNote ?? null,
     }));
   }
 
@@ -206,6 +325,7 @@ export class TaskDependencyTicketsService {
         TASK_FLAG_AUDIT.DEPENDENCY_NEED_BY_CHANGED,
         DEPENDENCY_TASK_AUDIT.TICKET_CANCELLED,
         DEPENDENCY_TASK_AUDIT.TICKET_REOPENED,
+        DEPENDENCY_ATTACHMENT_AUDIT.FILES_ATTACHED,
       ],
     );
     // Stage 3: what happened to each ticket's dependency task outside the
@@ -258,6 +378,11 @@ export class TaskDependencyTicketsService {
         // Stage 3: set on entries about the ticket's dependency task.
         dependencyTaskId: e.dependencyTaskId,
         newStatus: d.newStatus ?? null,
+        // Dependency attachments: files added (request or resolution side)
+        // and the note given with Resolve.
+        side: d.side ?? null,
+        fileNames: Array.isArray(d.files) ? d.files.map((x: any) => x.fileName) : null,
+        resolutionNote: d.resolutionNote ?? null,
       };
     });
   }
@@ -301,6 +426,7 @@ export class TaskDependencyTicketsService {
       tickets = tickets.filter((t) => parentTaskById.get(t.parentTaskId)?.status !== JUNK_STATUS);
     }
     const linked = await this.dependencyTaskSummaries(tickets.map((t) => t.id), tenantId);
+    const resolution = await this.resolutionInfo(tickets, tenantId);
     // One batch lookup for every filer/owner on the list - only their
     // full names leave this method, never the rest of the user row.
     const userIds = [...new Set(tickets.flatMap((t) => [t.createdByUserId, t.ownerUserId]).filter((id) => id != null))];
@@ -320,6 +446,8 @@ export class TaskDependencyTicketsService {
         parentTaskModuleName: parent?.moduleName ?? null,
         parentTaskPhaseName: parent?.phaseName ?? null,
         dependencyTask: linked.get(ticket.id) ?? null,
+        resolvedByName: resolution.get(ticket.id)?.resolvedByName ?? null,
+        systemNote: resolution.get(ticket.id)?.systemNote ?? null,
       };
     });
   }
@@ -687,10 +815,14 @@ export class TaskDependencyTicketsService {
   // before the KPI module needed one (see the gap analysis). Callable by
   // the ticket's own owner (the person who was blocking it - matches who
   // is expected to actually clear it) or Admin/Program Manager.
+  // Dependency attachments (2026-11-13): who resolved it is always
+  // recorded; with the project's attachments switch on it also takes an
+  // optional note and files, stored with the Resolve (all-or-nothing).
   async resolve(
     id: number,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
+    opts: { note?: string | null; files?: UploadedTaskFile[] } = {},
   ): Promise<TaskDependencyTicket> {
     const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
     if (!ticket) {
@@ -715,13 +847,55 @@ export class TaskDependencyTicketsService {
       throw new BadRequestException('This dependency ticket was cancelled.');
     }
 
+    const note = typeof opts.note === 'string' && opts.note.trim() ? opts.note.trim() : null;
+    const files = opts.files ?? [];
+    if (note && note.length > DEPENDENCY_RESOLUTION_NOTE_MAX_LENGTH) {
+      throw new BadRequestException(`The resolution note must be ${DEPENDENCY_RESOLUTION_NOTE_MAX_LENGTH} characters or fewer.`);
+    }
+    let prepared: ReturnType<typeof prepareDependencyUploads> = [];
+    if (note || files.length) {
+      if (!(await this.attachmentsEnabledForTask(ticket.parentTaskId, tenantId))) {
+        throw new BadRequestException('Dependency attachments are off for this project - Resolve takes no note or files.');
+      }
+      if (files.length > DEPENDENCY_ATTACHMENTS_PER_SIDE) {
+        throw new BadRequestException(`A dependency can have at most ${DEPENDENCY_ATTACHMENTS_PER_SIDE} resolution files.`);
+      }
+      // Checked before anything is stored.
+      prepared = prepareDependencyUploads(files, tenantId, ticket.id);
+    }
+
     // Light flow: the owner's Resolve moves a dependency task straight to
     // Pass - no QA, Peer Review or PM review (user decision 2026-11-05).
     const now = new Date();
     ticket.status = 'resolved';
     ticket.resolvedAt = now;
-    const saved = await this.dataSource.transaction(async (em) => {
-      const savedTicket = await em.save(TaskDependencyTicket, ticket);
+    ticket.resolvedByUserId = currentUser.id;
+    ticket.resolvedVia = 'ticket';
+    ticket.resolutionNote = note;
+    let saved!: TaskDependencyTicket;
+    const body = async (em: EntityManager) => {
+      // Guarded so a Cancel or a second Resolve landing at the same moment
+      // can't be overwritten.
+      const result = await em.update(
+        TaskDependencyTicket,
+        { id, tenantId, status: 'open' },
+        { status: 'resolved', resolvedAt: now, resolvedByUserId: currentUser.id, resolvedVia: 'ticket', resolutionNote: note },
+      );
+      if (!result.affected) throw new BadRequestException('This dependency ticket is no longer open.');
+      const savedTicket = ticket;
+      if (prepared.length) {
+        const rows = await dependencyAttachmentRows(em, prepared, { tenantId, ticketId: ticket.id, side: 'resolution', uploadedByUserId: currentUser.id });
+        await this.auditLogService.recordWithin(em, {
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: DEPENDENCY_ATTACHMENT_AUDIT.FILES_ATTACHED,
+          tenantId,
+          entityType: 'TaskDependencyTicket',
+          entityId: ticket.id,
+          details: { parentTaskId: ticket.parentTaskId, side: 'resolution', files: rows.map((r) => ({ id: r.id, fileName: r.fileName, sizeBytes: r.sizeBytes })) },
+        });
+      }
       const dependencyTask = await this.linkedTask(em, ticket.id, tenantId);
       if (dependencyTask && !DEPENDENCY_TASK_RESOLVED_STATUSES.includes(dependencyTask.status)) {
         await em.update(ProjectTask, { id: dependencyTask.id, tenantId }, { status: 'Pass', completedAt: now });
@@ -736,8 +910,10 @@ export class TaskDependencyTicketsService {
           details: { dependencyTicketId: ticket.id, previousStatus: dependencyTask.status, newStatus: 'Pass' },
         });
       }
-      return savedTicket;
-    });
+      saved = savedTicket;
+    };
+    if (prepared.length) await storeImageUploads(this.storage, prepared, body, this.dataSource);
+    else await this.dataSource.transaction(body);
 
     await this.auditLogService.record({
       userId: currentUser.id,
@@ -747,7 +923,7 @@ export class TaskDependencyTicketsService {
       tenantId,
       entityType: 'TaskDependencyTicket',
       entityId: saved.id,
-      details: { parentTaskId: saved.parentTaskId },
+      details: { parentTaskId: saved.parentTaskId, resolutionNote: note, fileCount: prepared.length },
     });
 
     // Tell whoever filed the ticket their blocker is cleared (not when
@@ -834,7 +1010,7 @@ export class TaskDependencyTicketsService {
       throw new BadRequestException(`Only a resolved dependency ticket can be reopened - this one is ${ticket.status}.`);
     }
     const saved = await this.dataSource.transaction(async (em) => {
-      const result = await em.update(TaskDependencyTicket, { id, tenantId, status: 'resolved' }, { status: 'open', resolvedAt: null });
+      const result = await em.update(TaskDependencyTicket, { id, tenantId, status: 'resolved' }, { status: 'open', resolvedAt: null, resolvedByUserId: null, resolvedVia: null, resolutionNote: null });
       if (!result.affected) throw new BadRequestException('This dependency ticket is no longer resolved.');
       const task = await em.findOne(ProjectTask, { where: { dependencyTicketId: id, tenantId }, lock: { mode: 'pessimistic_write' } });
       if (task && DEPENDENCY_TASK_RESOLVED_STATUSES.includes(task.status)) {

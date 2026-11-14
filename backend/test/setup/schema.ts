@@ -197,6 +197,16 @@ const DEPENDENCY_TASKS_COLUMNS: Record<string, string[]> = {
   project_tasks: ['dependencyTicketId'],
   task_dependency_tickets: ['cancelledAt', 'cancelledByUserId', 'cancelReason', 'ownerExternal'],
 };
+// Dependency attachments (2026-11-13): the switch and the resolver/note
+// columns (dropped from what synchronize made and re-added by the real
+// migration), and task_dependency_ticket_attachments (entity left out of
+// synchronize) - all checked against the entities.
+const DEPENDENCY_ATTACHMENTS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-dependency-attachments.sql');
+const DEPENDENCY_ATTACHMENT_ENTITY = path.join(SRC, 'task-dependency-tickets', 'task-dependency-ticket-attachment.entity.ts');
+const DEPENDENCY_ATTACHMENTS_COLUMNS: Record<string, string[]> = {
+  projects: ['dependencyAttachmentsEnabled'],
+  task_dependency_tickets: ['resolvedByUserId', 'resolvedVia', 'resolutionNote'],
+};
 const GITHUB_TABLES = ['github_settings', 'github_repo_mappings', 'github_webhook_deliveries', 'github_staging_deployments', 'github_stage_deployments', 'task_stage_progress'];
 const GITHUB_COLUMNS: Record<string, string[]> = {
   releases: ['source', 'githubRepo', 'githubSha', 'githubDeliveryId', 'githubReleasedByLogin', 'githubStagingDeployedOn', 'githubFilled', 'githubNotes'],
@@ -240,7 +250,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(SECURITY_DIR) && !f.startsWith(CLIENT_MEASURES_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(HANDOVERS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR) && !f.startsWith(GITHUB_DIR) && !f.startsWith(ARTIFACT_TYPES_DIR) && !f.startsWith(MEETING_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== DEPENDENCY_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(SECURITY_DIR) && !f.startsWith(CLIENT_MEASURES_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(HANDOVERS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR) && !f.startsWith(GITHUB_DIR) && !f.startsWith(ARTIFACT_TYPES_DIR) && !f.startsWith(MEETING_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -345,6 +355,10 @@ export async function buildTestSchema() {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
   await base.query(fs.readFileSync(DEPENDENCY_TASKS_MIGRATION, 'utf8'));
+  for (const [table, cols] of Object.entries(DEPENDENCY_ATTACHMENTS_COLUMNS)) {
+    await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
+  }
+  await base.query(fs.readFileSync(DEPENDENCY_ATTACHMENTS_MIGRATION, 'utf8'));
   // Safe to run twice, as its header says.
   await base.query(fs.readFileSync(ARTIFACT_TYPES_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(ARTIFACT_TYPES_MIGRATION, 'utf8'));
@@ -362,6 +376,8 @@ export async function buildTestSchema() {
   if (!scrumMeta) problems.push('team_settings: entity missing');
   const taskAttachmentMeta = check.entityMetadatas.find((m) => m.tableName === 'task_attachments');
   if (!taskAttachmentMeta) problems.push('task_attachments: entity missing');
+  const dependencyAttachmentMeta = check.entityMetadatas.filter((m) => m.tableName === 'task_dependency_ticket_attachments');
+  if (dependencyAttachmentMeta.length !== 1) problems.push('task_dependency_ticket_attachments: entity missing');
   const timelineMetas = check.entityMetadatas.filter((m) => ['project_timeline_rows', 'project_timeline_teams', 'project_timeline_dependencies', 'project_timeline_ticket_links'].includes(m.tableName));
   if (timelineMetas.length !== 4) problems.push('project_timeline_rows/_teams/_dependencies/_ticket_links: entity missing');
   const externalWaitMeta = check.entityMetadatas.find((m) => m.tableName === 'scrum_external_waits');
@@ -401,7 +417,7 @@ export async function buildTestSchema() {
   const artifactTypeMetas = check.entityMetadatas.filter((m) => ARTIFACT_TYPES_TABLES.includes(m.tableName));
   if (artifactTypeMetas.length !== ARTIFACT_TYPES_TABLES.length) problems.push(`${ARTIFACT_TYPES_TABLES.join('/')}: entity missing`);
   const reviewArtifactMeta = check.entityMetadatas.filter((m) => m.tableName === 'task_qa_review_artifacts');
-  for (const meta of [...artifactTypeMetas, ...reviewArtifactMeta, ...githubMetas, ...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas, ...calendarMetas, ...techReviewMetas, ...weeklyStatusMeta, ...securityMeta, ...clientMetas]) {
+  for (const meta of [...dependencyAttachmentMeta, ...artifactTypeMetas, ...reviewArtifactMeta, ...githubMetas, ...portalMetas, ...(scrumMeta ? [scrumMeta] : []), ...(taskAttachmentMeta ? [taskAttachmentMeta] : []), ...timelineMetas, ...(externalWaitMeta ? [externalWaitMeta] : []), ...(refreshSessionMeta ? [refreshSessionMeta] : []), ...(qaReviewAttachmentMeta ? [qaReviewAttachmentMeta] : []), ...(defectTriageMeta ? [defectTriageMeta] : []), ...performanceMetas, ...trackingMetas, ...(dueDateMeta ? [dueDateMeta] : []), ...(flagsMeta ? [flagsMeta] : []), ...(reopenMeta ? [reopenMeta] : []), ...activityMetas, ...metricsMetas, ...calendarMetas, ...techReviewMetas, ...weeklyStatusMeta, ...securityMeta, ...clientMetas]) {
     const cols: Array<{ column_name: string; is_nullable: string; data_type: string; character_maximum_length: number | null }> =
       await check.query(
         `select column_name, is_nullable, data_type, character_maximum_length from information_schema.columns
@@ -460,7 +476,7 @@ export async function buildTestSchema() {
       problems.push('task_qa_reviews.notReadyReason: entity and migration differ');
     }
   }
-  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS), ...Object.entries(TASK_FIELDS_COLUMNS), ...Object.entries(GITHUB_COLUMNS), ...Object.entries(DEPENDENCY_TASKS_COLUMNS)]) {
+  for (const [table, cols] of [...Object.entries(PM_REVIEW_COLUMNS), ...Object.entries(DEFECT_TRIAGE_COLUMNS), ...Object.entries(SUBMISSION_CHECKLIST_COLUMNS), ...Object.entries(TRACKING_COLUMNS), ...Object.entries(DUE_DATE_COLUMNS), ...Object.entries(FLAGS_COLUMNS), ...Object.entries(QA_INTAKE_COLUMNS), ...Object.entries(TASK_FIELDS_COLUMNS), ...Object.entries(GITHUB_COLUMNS), ...Object.entries(DEPENDENCY_TASKS_COLUMNS), ...Object.entries(DEPENDENCY_ATTACHMENTS_COLUMNS)]) {
     const meta = check.entityMetadatas.find((m) => m.tableName === table)!;
     const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
       `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,
