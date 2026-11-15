@@ -53,9 +53,9 @@ describe('Own performance figures - visibility (e2e)', () => {
     expect((await get(f.users.clientA, '/own-metrics-visibility/me').expect(200)).body).toEqual({ canSeeOwn: false });
   });
 
-  it('default: weekly report and security findings (page and actions) refused for Developer and QA; PM/Admin/Executive keep them', async () => {
-    await get(f.users.devA, '/weekly-status').expect(403);
-    await http().put('/weekly-status').set(auth(f.users.devA)).send({ week: '2026-11-09', done: 'Finished the refund API and its tests', plan: 'Start the export screen next week' }).expect(403);
+  it('default: security findings (page and actions) refused for Developer and QA; PM/Admin/Executive keep them; weekly report not gated (2026-11-15)', async () => {
+    // No project is tracked in this file, so the weekly report answers 400 - the point is: not blocked.
+    for (const u of [f.users.devA, f.users.qaB]) expect((await get(u, '/weekly-status')).status).not.toBe(403);
     await get(f.users.devA, '/security-findings').expect(403);
     await http().post('/security-findings/1/fix').set(auth(f.users.devA)).send({ note: 'Fixed the header' }).expect(403);
     await get(f.users.qaB, '/security-findings').expect(403);

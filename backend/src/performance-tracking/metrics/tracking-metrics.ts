@@ -130,7 +130,7 @@ import { OnTimeItem, DueChangeItem } from '../../performance-metrics/performance
 import { PerformanceTrackingThresholds } from '../performance-tracking';
 import { PersonCalendar, workingMinutesBetween } from '../../work-calendar/work-calendar';
 import { commitmentDeadline } from '../../performance-metrics/working-days';
-import { mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
+import { C3_SKIPPED_WEEKS, mondayOf, weeklyDeadline } from '../../weekly-status/weekly-status';
 import { hasChangeTicket, onReleasePath } from '../../release-logs/release-path';
 import { FindingForMetrics, slaBreached } from '../../security-findings/security-findings';
 import { WAITING_STATUSES } from '../../client-measures/client-measures';
@@ -296,6 +296,8 @@ export interface TrackingMetricsInput {
   handovers?: Array<{ id: number; taskId: number; fromUserId: number; status: string; decidedAt: Date | null }>;
   // C3: the tenant's weekly status reports (person-level, not per project).
   weeklyStatus?: Array<{ userId: number; weekStart: string; submittedAt: Date; deadlineAt: Date }>;
+  // Weeks (Mondays) C3 leaves out; defaults to C3_SKIPPED_WEEKS (tests override).
+  c3SkippedWeeks?: readonly string[];
   thresholds: PerformanceTrackingThresholds;
   people: number[];
   tasks: TmTask[];
@@ -855,6 +857,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     // C3
     const weeks: Array<{ week: string; deadline: string; onTime: boolean; submitted: boolean }> = [];
     for (let monday = mondayOf(windowFrom); monday <= snapshotDate; monday = addCalendarDays(monday, 7)) {
+      if ((input.c3SkippedWeeks ?? C3_SKIPPED_WEEKS).includes(monday)) continue;
       const report = (input.weeklyStatus ?? []).find((r) => r.userId === userId && r.weekStart === monday);
       const deadline = report ? report.deadlineAt : weeklyDeadline(monday, th.weeklyReportDeadlineDay, th.weeklyReportDeadlineTime, zone);
       if (deadline.getTime() < fromAt.getTime() || deadline.getTime() > endAt.getTime()) continue;

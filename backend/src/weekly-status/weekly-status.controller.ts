@@ -1,4 +1,3 @@
-import { OWN_METRICS_REFUSAL, OwnMetricsVisibilityService } from '../performance-tracking/own-metrics-visibility.service';
 import { Body, Controller, ForbiddenException, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UsersService } from '../users/users.service';
@@ -12,15 +11,15 @@ export class WeeklyStatusController {
   constructor(
     private weekly: WeeklyStatusService,
     private usersService: UsersService,
-    private ownMetrics: OwnMetricsVisibilityService,
   ) {}
 
-  // 2026-11-11 (the user): hidden from Developer/Designer/DevOps/QA - page
-  // and every action - unless an Admin allows their role ("Show own
-  // performance metrics to team members"). Admin/PM/Executive unchanged.
+  // 2026-11-11 this was behind the "own performance metrics" setting; 2026-11-15
+  // (the user) the report is a work item, not a figure, so filing is open
+  // again - the service decides who files (Developer/Designer/DevOps/QA) and
+  // who sees the team (Admin/PM/Executive).
   private async me(req: any) {
-    const user = (await this.usersService.findByIdAndTenant(req.user.sub, req.user.tenantId))!;
-    if (!user || !(await this.ownMetrics.canSeeOwn(user, req.user.tenantId))) throw new ForbiddenException(OWN_METRICS_REFUSAL);
+    const user = await this.usersService.findByIdAndTenant(req.user.sub, req.user.tenantId);
+    if (!user) throw new ForbiddenException('You cannot see weekly status reports.');
     return user;
   }
 

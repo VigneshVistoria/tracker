@@ -3,7 +3,7 @@ import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { createTestApp } from './setup/test-app';
 import { seedFixtures, Fixtures, FixtureUser } from './setup/fixtures';
-import { WEEKLY_STATUS_AUDIT, mondayOf } from '../src/weekly-status/weekly-status';
+import { C3_SKIPPED_WEEKS, WEEKLY_STATUS_AUDIT, mondayOf } from '../src/weekly-status/weekly-status';
 import { WeeklyReportsService } from '../src/reports/weekly-reports.service';
 import { TrackingMetricsService } from '../src/performance-tracking/metrics/tracking-metrics.service';
 import { dateInZone } from '../src/team-settings/time-zone';
@@ -37,19 +37,20 @@ describe('Weekly status report (Performance Tracking C3, e2e)', () => {
     tokenFor = t.tokenFor;
     f = await seedFixtures(ds);
     await ds.query(`TRUNCATE weekly_status_reports, weekly_reports, performance_metric_snapshots, performance_metric_runs, performance_tracking_settings, audit_logs RESTART IDENTITY CASCADE`);
-    // Hidden from these roles by default since 2026-11-11 - this file tests the
-    // workflow itself, so an Admin allows it here.
-    await http().patch('/own-metrics-visibility').set(auth(f.users.admin)).send({ roles: ['developer'] }).expect(200);
+    // 2026-11-15: filing no longer depends on the own-metrics setting, so this
+    // file runs with the default (nobody allowed own figures).
   });
 
   afterAll(async () => {
     await app?.close();
   });
 
-  it('starts only once a project is tracked; QA cannot see it', async () => {
+  it('starts only once a project is tracked; QA files their own too; clients cannot see it', async () => {
     await get(f.users.devA, '/weekly-status').expect(400);
     await patch(f.users.pm, `/performance-tracking/projects/${f.projects.pA}`, { enabled: true }).expect(200);
-    await get(f.users.qaB, '/weekly-status').expect(403);
+    await get(f.users.clientA, '/weekly-status').expect(403);
+    const qa = (await get(f.users.qaB, '/weekly-status').expect(200)).body;
+    expect(qa).toMatchObject({ canSubmit: true, editable: true, team: null });
     const { body } = await get(f.users.devA, '/weekly-status').expect(200);
     expect(body).toMatchObject({ week: thisWeek, currentWeek: thisWeek, canSubmit: true, editable: true, mine: null, team: null, minLength: 20 });
     expect(new Date(body.deadlineAt).toISOString()).toBe(new Date(new Date(`${addCalendarDays(thisWeek, 3)}T17:00:00+03:00`)).toISOString());
@@ -86,12 +87,18 @@ describe('Weekly status report (Performance Tracking C3, e2e)', () => {
     expect(last).toMatchObject({ week: addCalendarDays(thisWeek, -7), mine: { status: 'late' } });
   });
 
+  it('QA submits their own report (no own-metrics setting needed)', async () => {
+    const { body } = await put(f.users.qaB, { week: thisWeek, ...report }).expect(200);
+    expect(body.mine).toMatchObject({ done: report.done });
+  });
+
   it('PM, Executive and Admin see the team; a developer only their own', async () => {
     const { body } = await get(f.users.exec, `/weekly-status?week=${thisWeek}`).expect(200);
     expect(body.canSubmit).toBe(false);
     const byId = Object.fromEntries(body.team.map((t: any) => [t.userId, t]));
     expect(byId[f.users.devA.id]).toMatchObject({ status: 'on_time', report: { done: report.done } });
     expect(byId[f.users.devNone.id]).toMatchObject({ status: 'late' });
+    expect(byId[f.users.qaB.id]).toMatchObject({ report: { done: report.done } });
     const dev = (await get(f.users.devA, `/weekly-status?week=${thisWeek}`).expect(200)).body;
     expect(dev.team).toBeNull();
   });
@@ -100,9 +107,23 @@ describe('Weekly status report (Performance Tracking C3, e2e)', () => {
     await ds.query(`UPDATE projects SET "performanceTrackingSince" = now() - interval '20 days' WHERE id = $1`, [f.projects.pA]);
     expect((await app.get(TrackingMetricsService).runTenant(f.tenants.t1, { trigger: 'manual' })).status).toBe('done');
     const [row] = await ds.query(`SELECT sample, denominator, details FROM performance_metric_snapshots WHERE metric = 'C3' AND "userId" = $1`, [f.users.devNone.id]);
-    // This week's (Monday 00:01) and last week's deadlines have passed.
-    expect(row.sample).toBeGreaterThanOrEqual(2);
-    expect(row.details.late).toEqual(expect.arrayContaining([thisWeek]));
+    // This week's (Monday 00:01) and last week's deadlines have passed -
+    // unless C3 skips them (C3_SKIPPED_WEEKS, the 2026-11 weeks).
+    const counted = [thisWeek, addCalendarDays(thisWeek, -7)].filter((w) => !C3_SKIPPED_WEEKS.includes(w));
+    // A person with nothing to measure gets no rows at all (both weeks skipped).
+    if (!counted.length) return expect(row).toBeUndefined();
+    expect(row.sample).toBeGreaterThanOrEqual(counted.length);
+    if (!C3_SKIPPED_WEEKS.includes(thisWeek)) expect(row.details.late).toEqual(expect.arrayContaining([thisWeek]));
+    for (const w of C3_SKIPPED_WEEKS) expect([...row.details.late, ...row.details.missing]).not.toContain(w);
+  });
+
+  it('C3 skips the weeks of 2 and 9 Nov 2026 (filing blocked / never announced)', async () => {
+    await ds.query(`UPDATE projects SET "performanceTrackingSince" = '2026-10-20' WHERE id = $1`, [f.projects.pA]);
+    expect((await app.get(TrackingMetricsService).runTenant(f.tenants.t1, { trigger: 'manual', snapshotDate: '2026-11-15' })).status).toBe('done');
+    const [row] = await ds.query(`SELECT details FROM performance_metric_snapshots WHERE metric = 'C3' AND "userId" = $1 AND "snapshotDate" = '2026-11-15'`, [f.users.devNone.id]);
+    // Window 18 Oct - 15 Nov, deadline Monday 00:01: 26 Oct counts (not filed); 2 and 9 Nov are skipped.
+    expect(row.details.missing).toEqual(['2026-10-26']);
+    expect(row.details.late).toEqual([]);
   });
 
   describe('Weekly Reports page', () => {

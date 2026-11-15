@@ -154,8 +154,9 @@ export const NAV_SECTIONS = [
       { href: '/performance-tracking/tech-reviews', label: 'Technical Review', icon: ClipboardCheck, roles: [ADMIN, PM, EXEC] },
       // Performance Tracking P3/P4 (2026-10-30) - SECURITY_SEE_ALL_ROLES + the default securityRoles (QA); developers use the header link.
       { href: '/performance-tracking/security-findings', label: 'Security Findings', icon: ShieldAlert, roles: [ADMIN, PM, EXEC, QA], ownMetrics: true },
-      // Performance Tracking C3 (2026-10-30) - matches WEEKLY_STATUS_TEAM_ROLES.
-      { href: '/weekly-status', label: 'Weekly Status Reports', icon: ClipboardList, roles: [ADMIN, PM, EXEC] },
+      // Performance Tracking C3 (2026-10-30) - WEEKLY_STATUS_TEAM_ROLES see the team;
+      // QA files their own (WEEKLY_STATUS_SUBMIT_ROLES, 2026-11-15).
+      { href: '/weekly-status', label: 'Weekly Status Reports', icon: ClipboardList, roles: [ADMIN, PM, EXEC, QA] },
       { href: '/admin/reports', label: 'Weekly Reports', icon: FileBarChart, roles: [ADMIN, EXEC] },
     ],
   },

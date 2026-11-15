@@ -280,6 +280,7 @@ describe('Performance Tracking B2 metrics (compute)', () => {
           { userId: 10, weekStart: '2026-11-02', submittedAt: at('2026-11-05T10:00:00Z'), deadlineAt: at('2026-11-05T14:00:00Z') },
           { userId: 10, weekStart: '2026-11-09', submittedAt: at('2026-11-12T15:00:00Z'), deadlineAt: at('2026-11-12T14:00:00Z') },
         ],
+        c3SkippedWeeks: [],
       }),
     );
     expect(get(c3, 10, 'C3')).toMatchObject({ value: 33.33, numerator: 1, denominator: 3, sample: 3, enoughData: true });
@@ -287,11 +288,15 @@ describe('Performance Tracking B2 metrics (compute)', () => {
     expect(get(c3, 20, 'C3')).toMatchObject({ value: 0, denominator: 3 });
     // A Friday 12:00 deadline: the week of 16 Nov's is on the 20th (12:00
     // EAT, before the 23:30Z run), so still 3 weeks.
-    const friday = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, weeklyReportDeadlineDay: 5, weeklyReportDeadlineTime: '12:00' } }));
+    const friday = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, weeklyReportDeadlineDay: 5, weeklyReportDeadlineTime: '12:00' }, c3SkippedWeeks: [] }));
     expect(get(friday, 10, 'C3')).toMatchObject({ denominator: 3 });
     // A Saturday deadline (team weekend still counts): 7 and 14 Nov passed, 21 Nov not yet.
-    const saturday = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, weeklyReportDeadlineDay: 6 } }));
+    const saturday = computeTrackingMetrics(input({ thresholds: { ...PERFORMANCE_TRACKING_DEFAULTS, weeklyReportDeadlineDay: 6 }, c3SkippedWeeks: [] }));
     expect(get(saturday, 10, 'C3')).toMatchObject({ denominator: 2 });
+    // The real skip list (2 and 9 Nov 2026, filing blocked / never announced): only 16 Nov counts.
+    const skipped = computeTrackingMetrics(input({}));
+    expect(get(skipped, 10, 'C3')).toMatchObject({ value: 0, numerator: 0, denominator: 1 });
+    expect(get(skipped, 10, 'C3').details).toEqual({ late: [], missing: ['2026-11-16'] });
   });
 
   it('C4: accepted share of the handovers the person gave, decided in the window', () => {

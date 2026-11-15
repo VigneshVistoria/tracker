@@ -444,8 +444,9 @@ export default function AppShell({ children, fullScreen = false }) {
                 <Award size={18} aria-hidden="true" />
               </Link>
             )}
-            {/* Weekly status report (Performance Tracking C3) - once a project is tracked. */}
-            {hideSidebar && showScorecard && canSeeOwnMetrics && (
+            {/* Weekly status report (Performance Tracking C3) - once a project is tracked.
+                A work item, not a figure: shown whatever the own-metrics setting (2026-11-15). */}
+            {hideSidebar && showScorecard && (
               <Link
                 href="/weekly-status"
                 className={styles.iconButton}

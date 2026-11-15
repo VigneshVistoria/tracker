@@ -3,13 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { WeeklyStatusReport } from './weekly-status-report.entity';
 import { Project } from '../projects/project.entity';
-import { DEVELOPER_EQUIVALENT_ROLES, User } from '../users/user.entity';
+import { User } from '../users/user.entity';
 import { AuditLogService } from '../audit/audit-log.service';
 import { PerformanceTrackingService } from '../performance-tracking/performance-tracking.service';
 import { TeamSettings } from '../team-settings/team-settings.entity';
 import { TEAM_SETTINGS_DEFAULTS, dateInZone, isValidTimeZone } from '../team-settings/time-zone';
 import { addCalendarDays } from '../performance-metrics/working-days';
-import { WEEKLY_STATUS_AUDIT, WEEKLY_STATUS_TEAM_ROLES, mondayOf, weekStatus, weeklyDeadline } from './weekly-status';
+import { WEEKLY_STATUS_AUDIT, WEEKLY_STATUS_SUBMIT_ROLES, WEEKLY_STATUS_TEAM_ROLES, mondayOf, weekStatus, weeklyDeadline } from './weekly-status';
 import { SubmitWeeklyStatusDto } from './dto/weekly-status.dto';
 
 const nameOf = (u: User) => u.fullName || u.email;
@@ -28,7 +28,7 @@ export class WeeklyStatusService {
   ) {}
 
   private async context(user: User, tenantId: number) {
-    const canSubmit = DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
+    const canSubmit = WEEKLY_STATUS_SUBMIT_ROLES.includes(user.role);
     const seesTeam = WEEKLY_STATUS_TEAM_ROLES.includes(user.role);
     if (!canSubmit && !seesTeam) throw new ForbiddenException('You cannot see weekly status reports.');
     if (!(await this.projects.count({ where: { tenantId, performanceTrackingEnabled: true } }))) {
@@ -48,7 +48,7 @@ export class WeeklyStatusService {
     if (monday > currentWeek) throw new BadRequestException('That week has not started yet.');
     const deadline = weeklyDeadline(monday, th.weeklyReportDeadlineDay, th.weeklyReportDeadlineTime, zone);
     const people = seesTeam
-      ? (await this.users.find({ where: { tenantId, role: In(DEVELOPER_EQUIVALENT_ROLES) }, order: { fullName: 'ASC' } })).filter((u) => u.email !== process.env.SMOKE_TEST_EMAIL)
+      ? (await this.users.find({ where: { tenantId, role: In(WEEKLY_STATUS_SUBMIT_ROLES) }, order: { fullName: 'ASC' } })).filter((u) => u.email !== process.env.SMOKE_TEST_EMAIL)
       : [];
     const rows = await this.reports.find({ where: { tenantId, weekStart: monday, ...(seesTeam ? {} : { userId: user.id }) } });
     const mine = canSubmit ? rows.find((r) => r.userId === user.id) ?? null : null;
@@ -81,7 +81,7 @@ export class WeeklyStatusService {
 
   async submit(dto: SubmitWeeklyStatusDto, user: User, tenantId: number) {
     const { th, zone, now, currentWeek, canSubmit } = await this.context(user, tenantId);
-    if (!canSubmit) throw new ForbiddenException('Only Developers, Designers and DevOps submit a weekly status report.');
+    if (!canSubmit) throw new ForbiddenException('Only Developers, Designers, DevOps and QA submit a weekly status report.');
     const monday = mondayOf(dto.week);
     if (monday !== currentWeek && monday !== addCalendarDays(currentWeek, -7)) throw new BadRequestException('Only this week or last week can be submitted.');
     const done = dto.done.trim();

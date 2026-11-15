@@ -10,16 +10,27 @@
 //    weeklyReportDeadlineTime (17:00) in the team's time zone.
 //  * The FIRST submission time is kept and judged against the deadline;
 //    the text can be edited afterwards (this week and last week only).
-//  * PM, Executive and Admin see everyone's; QA and clients nothing.
+//  * PM, Executive and Admin see everyone's; clients nothing.
+//  * 2026-11-15 (the user): QA files a report too (WEEKLY_STATUS_SUBMIT_ROLES),
+//    and filing is no longer behind the "own performance metrics" setting -
+//    it is a work item, not a figure. QA is not measured on C3.
 //  * Everything only while some project has Performance Tracking ON.
 //  * C3 (metrics/tracking-metrics.ts) = weeks whose deadline passed in the
 //    window (not on the person's leave/holiday/weekend) submitted on time,
 //    as a %. One week is enough data (4 deadlines fit a 28-day window).
-import { UserRole } from '../users/user.entity';
+import { DEVELOPER_EQUIVALENT_ROLES, UserRole } from '../users/user.entity';
 import { addCalendarDays } from '../performance-metrics/working-days';
 import { startOfDayInZone } from '../team-settings/time-zone';
 
 export const WEEKLY_STATUS_TEAM_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER, UserRole.EXECUTIVE];
+export const WEEKLY_STATUS_SUBMIT_ROLES: UserRole[] = [...DEVELOPER_EQUIVALENT_ROLES, UserRole.QA];
+
+// C3 skips these weeks (Mondays) for everyone (2026-11-15, the user): filing
+// was blocked for Developer/Designer/DevOps from 2026-11-11 19:14 UTC (5d1b4ff)
+// until the fix that added this, and the week of 2 Nov is skipped too (filing
+// was open but never announced - nobody in the company filed). If the fix
+// goes live after a week's deadline, add that week here as well.
+export const C3_SKIPPED_WEEKS: readonly string[] = ['2026-11-02', '2026-11-09'];
 
 export const WEEKLY_STATUS_AUDIT = {
   SUBMITTED: 'weekly_status_submitted',

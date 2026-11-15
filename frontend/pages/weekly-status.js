@@ -23,7 +23,7 @@ const addDays = (iso, n) => {
 };
 
 // Weekly status report (Performance Tracking C3, 2026-10-30). Developers,
-// Designers and DevOps submit their own report each week (done, plan,
+// Designers, DevOps and QA (2026-11-15) submit their own report each week (done, plan,
 // blockers) before the deadline (default Thursday 17:00 East Africa Time,
 // Performance Tracking Settings); the first submission time is kept and
 // judged against it. PM, Executive and Admin see everyone's for the week.
