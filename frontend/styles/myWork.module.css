@@ -195,7 +195,14 @@
 }
 
 .blocked {
-  color: var(--ds-text-secondary);
+  color: var(--ds-color-error-dark);
+}
+
+.waiting {
+  margin: var(--ds-space-2) 0 0;
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
 }
 
 .date {

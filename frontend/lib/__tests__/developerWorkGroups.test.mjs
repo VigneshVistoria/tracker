@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMyWork, statusInfo, fixReason, formatDmy, daysLate } from '../developerWorkGroups.js';
+import { buildMyWork, statusInfo, fixReason, formatDmy, daysLate, waitingLabel } from '../developerWorkGroups.js';
 
 const today = '2026-11-17';
 const ME = 7;
@@ -68,7 +68,7 @@ test('action rows: dependency, peer review, handover, due date to confirm (track
   const elsewhere = task('Development', { dueDate: '2026-11-25', dueDateCommittedByUserId: 99, projectId: 3 });
   const { working } = buildMyWork({
     tasks: [unconfirmed, elsewhere],
-    ownedTickets: [{ id: 5, status: 'open', title: 'API key', parentTaskId: 40, needByDate: '2026-11-16', parentTaskProjectName: 'LMS' }, { id: 6, status: 'resolved', title: 'x', parentTaskId: 40 }],
+    ownedTickets: [{ id: 5, status: 'open', title: 'API key', parentTaskId: 40, needByDate: '2026-11-16', parentTaskProjectName: 'LMS', createdByName: 'Nadia' }, { id: 6, status: 'resolved', title: 'x', parentTaskId: 40 }],
     peerReviews: [{ id: 50, title: 'Review me', projectId: 1, projectName: 'LMS', qaReviewDueDate: '2026-11-19' }],
     handovers: [{ id: 9, taskId: 60, taskTitle: 'Login design', projectId: 1, projectName: 'LMS' }],
     trackingProjects: new Set([2]),
@@ -77,14 +77,14 @@ test('action rows: dependency, peer review, handover, due date to confirm (track
   });
   const labels = working.map((r) => r.status).sort();
   // The Working task needing confirmation stays one row, tagged.
-  assert.deepEqual(labels, ['Accept handover', 'Review needed', 'Someone is waiting on you', 'Working on it', 'Working on it']);
+  assert.deepEqual(labels, ['Accept handover', 'Nadia is waiting on you', 'Review needed', 'Working on it', 'Working on it']);
   assert.equal(working.find((r) => r.key === `task-${unconfirmed.id}`).confirmDueDate, true);
   assert.equal(working.find((r) => r.key === `task-${elsewhere.id}`).confirmDueDate, undefined);
   // A Submitted task needing confirmation gets its own Working row.
   const sub = task('Feedback', { dueDate: '2026-11-25', dueDateCommittedByUserId: null, projectId: 2 });
   const both = buildMyWork({ tasks: [sub], trackingProjects: new Set([2]), userId: ME, today });
   assert.deepEqual([both.working.map((r) => r.status), both.submitted.length], [['Confirm due date'], 1]);
-  assert.equal(working[0].status, 'Someone is waiting on you'); // late first
+  assert.equal(working[0].status, 'Nadia is waiting on you'); // late first
 });
 
 test('blocked line and multi-project flag', () => {
@@ -114,4 +114,45 @@ test('dates', () => {
   assert.equal(formatDmy('2026-11-07'), '07-11-2026');
   assert.equal(daysLate('2026-11-16', today), 1);
   assert.equal(daysLate('2026-11-17', today), 0);
+});
+
+test('a dependency ticket with a linked task shows once, as the task, with who is waiting', () => {
+  const linked = task('Development', { title: 'F0 review', dependencyTicketId: 113 });
+  const { working } = buildMyWork({
+    tasks: [linked],
+    ownedTickets: [
+      { id: 113, status: 'open', title: 'F0 review', parentTaskId: 314, createdByName: 'Salman', dependencyTask: { id: linked.id } },
+      { id: 120, status: 'open', title: 'Other', parentTaskId: 315, createdByName: null, createdByEmail: 'ahmed@example.invalid' },
+    ],
+    userId: ME,
+    today,
+  });
+  assert.equal(working.length, 2);
+  const row = working.find((r) => r.key === `task-${linked.id}`);
+  assert.deepEqual([row.status, row.waiting], ['Working on it', 'Salman is waiting on you']);
+  assert.equal(working.find((r) => r.key === 'dep-120').status, 'ahmed@example.invalid is waiting on you');
+});
+
+test('waiting label names everyone waiting', () => {
+  assert.equal(waitingLabel(['Nadia']), 'Nadia is waiting on you');
+  assert.equal(waitingLabel(['Nadia', 'Ahmed']), 'Nadia and Ahmed are waiting on you');
+  assert.equal(waitingLabel(['Nadia', 'Ahmed', 'Sara', 'Nadia']), 'Nadia, Ahmed and Sara are waiting on you');
+  assert.equal(waitingLabel([null]), 'Someone is waiting on you');
+});
+
+test('blocker flags show as Blocked lines; a flag on a filed ticket shows once', () => {
+  const a = task('Development');
+  const b = task('Failed');
+  const { working } = buildMyWork({
+    tasks: [a, b],
+    inboundTickets: [{ id: 7, status: 'open', parentTaskId: a.id, ownerName: 'Ravi', title: 'DB access' }],
+    blockerFlags: new Map([
+      [a.id, { blockingOwnerName: 'Ravi', dependencyTicketId: 7, reason: 'Waiting for DB access' }],
+      [b.id, { blockingOwnerName: 'Vendor X', dependencyTicketId: null, reason: 'Payment sandbox is down' }],
+    ]),
+    userId: ME,
+    today,
+  });
+  assert.deepEqual(working.find((r) => r.key === `task-${a.id}`).blocked, ['Blocked: waiting on Ravi (DB access)']);
+  assert.deepEqual(working.find((r) => r.key === `task-${b.id}`).blocked, ['Blocked: waiting on Vendor X (Payment sandbox is down)']);
 });

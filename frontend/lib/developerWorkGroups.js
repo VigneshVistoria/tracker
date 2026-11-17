@@ -101,6 +101,16 @@ export function fixReason(task, reviews = []) {
   return `${who}: ${text || 'no reason given'}`;
 }
 
+// "Nadia is waiting on you" / "Nadia and Ahmed are waiting on you" /
+// "Nadia, Ahmed and Sara are waiting on you".
+export function waitingLabel(names) {
+  const list = [...new Set(names.filter(Boolean))];
+  if (list.length === 0) return 'Someone is waiting on you';
+  const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+  return `${joined} ${list.length === 1 ? 'is' : 'are'} waiting on you`;
+}
+const requesterName = (t) => t.createdByName || t.createdByEmail || null;
+
 const isShowstopper = (task) => task.status === 'Released - With Showstoppers' || /showstopper/i.test(task.severity || '');
 
 // Inputs (all from existing endpoints, plus GET /design-handovers/mine):
@@ -111,20 +121,42 @@ const isShowstopper = (task) => task.status === 'Released - With Showstoppers' |
 //   handovers      GET /design-handovers/mine
 //   trackingProjects  Set of projectIds with Performance Tracking on
 //   reasons        Map taskId -> fixReason() text
+//   blockerFlags   Map taskId -> open blocker flag (GET /task-flags?taskId=)
 export function buildMyWork({
   tasks = [], ownedTickets = [], inboundTickets = [], peerReviews = [], handovers = [],
-  trackingProjects = new Set(), reasons = new Map(), userId, today,
+  trackingProjects = new Set(), reasons = new Map(), blockerFlags = new Map(), userId, today,
 }) {
   const working = [];
   const submitted = [];
   const passedSince = new Date(dayNumber(today) * DAY_MS - PASSED_VISIBLE_DAYS * DAY_MS);
 
+  // Blocked: open dependency tickets I filed, plus open blocker flags
+  // (a flag linked to one of those tickets is shown once, as the ticket).
   const blockersByTask = new Map();
-  for (const t of inboundTickets) {
-    if (t.status !== 'open') continue;
-    if (!blockersByTask.has(t.parentTaskId)) blockersByTask.set(t.parentTaskId, []);
-    blockersByTask.get(t.parentTaskId).push(`Blocked: waiting on ${t.ownerName || t.ownerEmail || 'someone'} (${t.title})`);
+  const addBlocker = (taskId, text) => {
+    if (!blockersByTask.has(taskId)) blockersByTask.set(taskId, []);
+    blockersByTask.get(taskId).push(text);
+  };
+  const openInbound = new Map(inboundTickets.filter((t) => t.status === 'open').map((t) => [t.id, t]));
+  for (const t of openInbound.values()) addBlocker(t.parentTaskId, `Blocked: waiting on ${t.ownerName || t.ownerEmail || 'someone'} (${t.title})`);
+  for (const [taskId, f] of blockerFlags) {
+    if (f.dependencyTicketId != null && openInbound.get(f.dependencyTicketId)?.parentTaskId === taskId) continue;
+    const what = (f.dependencyTicketId != null && openInbound.get(f.dependencyTicketId)?.title) || f.reason || 'blocker';
+    addBlocker(taskId, `Blocked: waiting on ${f.blockingOwnerName || 'someone'} (${what.length > 80 ? `${what.slice(0, 77)}...` : what})`);
   }
+
+  // Dependency tickets others filed on me: when the ticket has a linked
+  // task assigned to me, the task row carries "<name> is waiting on you"
+  // instead of a second row for the ticket.
+  const ownedOpen = ownedTickets.filter((t) => t.status === 'open');
+  const ticketsByLinkedTask = new Map();
+  for (const t of ownedOpen) {
+    const linkedId = t.dependencyTask?.id ?? tasks.find((x) => x.dependencyTicketId === t.id)?.id;
+    if (linkedId == null) continue;
+    if (!ticketsByLinkedTask.has(linkedId)) ticketsByLinkedTask.set(linkedId, []);
+    ticketsByLinkedTask.get(linkedId).push(t);
+  }
+  const shownTicketIds = new Set();
 
   for (const task of tasks) {
     const info = statusInfo(task.status);
@@ -150,7 +182,13 @@ export function buildMyWork({
       reason: info.fix ? reasons.get(task.id) || null : null,
       blocked: blockersByTask.get(task.id) || [],
       showstopper: isShowstopper(task),
+      waiting: null,
     };
+    const waitingTickets = ticketsByLinkedTask.get(task.id) || [];
+    if (waitingTickets.length) {
+      row.waiting = waitingLabel(waitingTickets.map(requesterName));
+      for (const t of waitingTickets) shownTicketIds.add(t.id);
+    }
     (info.group === 'working' ? working : submitted).push(row);
 
     // Due date to confirm: one row per task - a Working row gets a
@@ -169,12 +207,13 @@ export function buildMyWork({
         late: 0,
         reason: null,
         blocked: [],
+        waiting: null,
       });
     }
   }
 
-  for (const t of ownedTickets) {
-    if (t.status !== 'open') continue;
+  for (const t of ownedOpen) {
+    if (shownTicketIds.has(t.id)) continue;
     working.push({
       key: `dep-${t.id}`,
       kind: 'action',
@@ -183,7 +222,7 @@ export function buildMyWork({
       ref: `Dependency #${t.id}`,
       projectId: null,
       projectName: t.parentTaskProjectName ?? null,
-      status: 'Someone is waiting on you',
+      status: waitingLabel([requesterName(t)]),
       fix: false,
       date: t.needByDate || null,
       late: daysLate(t.needByDate, today),

@@ -45,16 +45,24 @@ export default function DeveloperMyWork({ user }) {
           if (statusInfo(t.status) && needsDueDateCommit(t, user.id) && !commitByProject.has(t.projectId)) commitByProject.set(t.projectId, t.id);
         }
         const fixTasks = tasks.filter((t) => statusInfo(t.status)?.fix);
+        // Blocker flags (Performance Tracking): one read per Working task.
+        const workingTasks = tasks.filter((t) => statusInfo(t.status)?.group === 'working');
 
-        const [peer, handovers, tracking, reviews] = await Promise.all([
+        const [peer, handovers, tracking, reviews, flags] = await Promise.all([
           Promise.allSettled([apiFetch('/tasks/peer-review-queue')]).then(([r]) => r),
           Promise.allSettled([apiFetch('/design-handovers/mine')]).then(([r]) => r),
           Promise.allSettled([...commitByProject.entries()].map(([projectId, taskId]) => apiFetch(`/tasks/${taskId}/due-date`).then((s) => [projectId, s.trackingOn]))),
           Promise.allSettled(fixTasks.map((t) => apiFetch(`/tasks/${t.id}/qa-reviews`).then((r) => [t, r]))),
+          Promise.allSettled(workingTasks.map((t) => apiFetch(`/task-flags?taskId=${t.id}`).then((r) => [t.id, r]))),
         ]);
         if (peer.status !== 'fulfilled') missing.push('peer reviews to do');
         if (handovers.status !== 'fulfilled') missing.push('design handovers');
         if (tracking.some((r) => r.status !== 'fulfilled')) missing.push('due dates to confirm');
+        if (flags.some((r) => r.status !== 'fulfilled')) missing.push('blocker flags');
+        const blockerFlags = new Map();
+        for (const r of flags) {
+          if (r.status === 'fulfilled' && r.value[1]?.trackingOn && r.value[1].blocker) blockerFlags.set(r.value[0], r.value[1].blocker);
+        }
 
         const trackingProjects = new Set(tracking.filter((r) => r.status === 'fulfilled' && r.value[1]).map((r) => r.value[0]));
         const reasons = new Map();
@@ -73,6 +81,7 @@ export default function DeveloperMyWork({ user }) {
           handovers: settled(handovers, []),
           trackingProjects,
           reasons,
+          blockerFlags,
         });
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -143,10 +152,13 @@ export default function DeveloperMyWork({ user }) {
                         <p className={styles.meta}>
                           <span>{r.ref}</span>
                           {work.multiProject && r.projectName && <span>{r.projectName}</span>}
-                          <span className={r.fix ? styles.statusFix : styles.status}>{r.status}</span>
-                          {r.confirmDueDate && <span className={styles.status}>Confirm due date</span>}
+                          {/* Two labels: the action first, e.g. "Confirm due date · Working on it". */}
+                          <span className={r.fix ? styles.statusFix : styles.status}>
+                            {r.confirmDueDate ? `Confirm due date · ${r.status}` : r.status}
+                          </span>
                           {r.showstopper && <span className={styles.showstopper}>Showstopper</span>}
                         </p>
+                        {r.waiting && <p className={styles.waiting}>{r.waiting}</p>}
                         {r.reason && <p className={styles.reason}>{r.reason}</p>}
                         {r.blocked.map((b) => <p key={b} className={styles.blocked}>{b}</p>)}
                       </div>
