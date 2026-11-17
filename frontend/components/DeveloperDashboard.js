@@ -4,6 +4,8 @@ import DeveloperTaskWorkboard from './DeveloperTaskWorkboard';
 import { DashboardHeader } from './dashboard/DashboardParts';
 import issueStyles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
+import { NEW_UI } from '../lib/featureFlags';
+import DeveloperMyWork from './DeveloperMyWork';
 
 const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
 
@@ -13,7 +15,13 @@ const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
 // fetches - My Tasks (/tasks/mine), Dependency Clearance's own
 // "Outbound" queue (/task-dependency-tickets/mine), and the mirror-image
 // "Inbound" endpoint (/task-dependency-tickets/created-by-me).
+// NEW_UI (2026-11-17): the Working / Submitted "My work" view
+// (components/DeveloperMyWork.js) replaces the tiles. OFF = unchanged.
 export default function DeveloperDashboard({ user }) {
+  return NEW_UI ? <DeveloperMyWork user={user} /> : <LegacyDeveloperDashboard user={user} />;
+}
+
+function LegacyDeveloperDashboard({ user }) {
   const [tasks, setTasks] = useState([]);
   const [outbound, setOutbound] = useState([]);
   const [inbound, setInbound] = useState([]);

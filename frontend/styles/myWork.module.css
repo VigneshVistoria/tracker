@@ -1,0 +1,260 @@
+/* Developer home "My work" (NEW_UI, 2026-11-17) - Glass, text only.
+   Tokens only; colours swap with [data-theme] via tokens.css. */
+
+.wrap {
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-divider: rgba(15, 23, 42, 0.08);
+  --pill-bg: rgba(15, 23, 42, 0.06);
+  --pill-thumb: #111827;
+  --pill-thumb-text: #ffffff;
+  max-width: 880px;
+}
+
+:global(:root[data-theme='dark']) .wrap {
+  --glass-bg: rgba(30, 32, 44, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-divider: rgba(255, 255, 255, 0.08);
+  --pill-bg: rgba(255, 255, 255, 0.08);
+  --pill-thumb: #f3f4f6;
+  --pill-thumb-text: #111827;
+}
+
+.heading {
+  margin: 0 0 var(--ds-space-4);
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-text-xl);
+  color: var(--ds-text-primary);
+}
+
+/* Two-option toggle: a dark pill slides under the selected option. */
+.toggle {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: var(--ds-space-1);
+  margin-bottom: var(--ds-space-4);
+  border-radius: var(--ds-radius-full);
+  background: var(--pill-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  min-width: 320px;
+}
+
+.thumb {
+  position: absolute;
+  top: var(--ds-space-1);
+  bottom: var(--ds-space-1);
+  left: var(--ds-space-1);
+  width: calc(50% - var(--ds-space-1));
+  border-radius: var(--ds-radius-full);
+  background: var(--pill-thumb);
+  box-shadow: var(--ds-shadow-sm);
+  transition: transform 220ms ease;
+}
+
+.toggle[data-active='submitted'] .thumb {
+  transform: translateX(100%);
+}
+
+.tab {
+  position: relative;
+  z-index: 1;
+  padding: var(--ds-space-2) var(--ds-space-5);
+  border: 0;
+  border-radius: var(--ds-radius-full);
+  background: transparent;
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 220ms ease;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--pill-thumb-text);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumb,
+  .tab {
+    transition: none;
+  }
+}
+
+/* One glass list. */
+.panel {
+  border-radius: var(--ds-radius-xl);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: var(--ds-shadow-md);
+  overflow: hidden;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-4) var(--ds-space-5);
+}
+
+.row + .row {
+  border-top: 1px solid var(--glass-divider);
+}
+
+.row:hover {
+  background: var(--glass-divider);
+}
+
+.main {
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  display: block;
+  font-size: var(--ds-text-md);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+/* Whole row clickable; the title stays the one link for screen readers. */
+.title::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.title:hover {
+  text-decoration: underline;
+}
+
+.title:focus-visible {
+  outline: none;
+}
+
+.title:focus-visible::after {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-1) var(--ds-space-3);
+  margin: var(--ds-space-1) 0 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.status {
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.statusFix,
+.showstopper {
+  font-weight: 600;
+  color: var(--ds-color-error-dark);
+}
+
+.reason,
+.blocked {
+  margin: var(--ds-space-2) 0 0;
+  font-size: var(--ds-text-sm);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.reason {
+  color: var(--ds-color-error-dark);
+}
+
+.blocked {
+  color: var(--ds-text-secondary);
+}
+
+.date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dateLate,
+.lateText {
+  color: var(--ds-color-error-dark);
+  font-weight: 600;
+}
+
+.noDate {
+  color: var(--ds-text-secondary);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--ds-space-8) var(--ds-space-5);
+  text-align: center;
+  color: var(--ds-text-secondary);
+}
+
+.notice {
+  margin: 0 0 var(--ds-space-3);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.error {
+  color: var(--ds-color-error-dark);
+}
+
+@media (max-width: 640px) {
+  .toggle {
+    display: grid;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tab {
+    padding: var(--ds-space-2) var(--ds-space-3);
+  }
+
+  .row {
+    flex-direction: column;
+    gap: var(--ds-space-2);
+    padding: var(--ds-space-4);
+  }
+
+  .date {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--ds-space-2);
+  }
+}
