@@ -130,19 +130,39 @@ export function buildMyWork({
   const submitted = [];
   const passedSince = new Date(dayNumber(today) * DAY_MS - PASSED_VISIBLE_DAYS * DAY_MS);
 
-  // Blocked: open dependency tickets I filed, plus open blocker flags
-  // (a flag linked to one of those tickets is shown once, as the ticket).
+  // Blockers: open dependency tickets I filed, plus open blocker flags (a
+  // flag linked to one of those tickets counts once, as the ticket).
+  // Rules (user, 2026-11-17):
+  //  * blocked by ANOTHER person -> the task moves to Submitted, labelled
+  //    "Blocked: waiting on <name> (<task>)"; back to Working by itself once
+  //    the ticket is resolved / the flag cleared (nothing is stored here).
+  //  * blocked by MYSELF -> no "Blocked"; stays in Working, placed after the
+  //    dependency I must do first, with "Do <dependency> first".
+  const short = (text) => (text.length > 80 ? `${text.slice(0, 77)}...` : text);
   const blockersByTask = new Map();
-  const addBlocker = (taskId, text) => {
+  const addBlocker = (taskId, b) => {
     if (!blockersByTask.has(taskId)) blockersByTask.set(taskId, []);
-    blockersByTask.get(taskId).push(text);
+    blockersByTask.get(taskId).push(b);
+  };
+  const ticketRowKey = (t) => {
+    const linkedId = t.dependencyTask?.id ?? tasks.find((x) => x.dependencyTicketId === t.id)?.id;
+    return linkedId != null ? `task-${linkedId}` : `dep-${t.id}`;
   };
   const openInbound = new Map(inboundTickets.filter((t) => t.status === 'open').map((t) => [t.id, t]));
-  for (const t of openInbound.values()) addBlocker(t.parentTaskId, `Blocked: waiting on ${t.ownerName || t.ownerEmail || 'someone'} (${t.title})`);
+  for (const t of openInbound.values()) {
+    const self = t.ownerUserId != null && t.ownerUserId === userId;
+    addBlocker(t.parentTaskId, self
+      ? { self, text: `Do ${short(t.title)} first`, after: ticketRowKey(t) }
+      : { self, text: `Blocked: waiting on ${t.ownerName || t.ownerEmail || 'someone'} (${short(t.title)})` });
+  }
   for (const [taskId, f] of blockerFlags) {
-    if (f.dependencyTicketId != null && openInbound.get(f.dependencyTicketId)?.parentTaskId === taskId) continue;
-    const what = (f.dependencyTicketId != null && openInbound.get(f.dependencyTicketId)?.title) || f.reason || 'blocker';
-    addBlocker(taskId, `Blocked: waiting on ${f.blockingOwnerName || 'someone'} (${what.length > 80 ? `${what.slice(0, 77)}...` : what})`);
+    const ticket = f.dependencyTicketId != null ? openInbound.get(f.dependencyTicketId) : null;
+    if (ticket?.parentTaskId === taskId) continue;
+    const what = short(ticket?.title || f.reason || 'blocker');
+    const self = f.blockingOwnerUserId != null && f.blockingOwnerUserId === userId;
+    addBlocker(taskId, self
+      ? { self, text: `Do ${what} first`, after: ticket ? ticketRowKey(ticket) : null }
+      : { self, text: `Blocked: waiting on ${f.blockingOwnerName || 'someone'} (${what})` });
   }
 
   // Dependency tickets others filed on me: when the ticket has a linked
@@ -166,6 +186,12 @@ export function buildMyWork({
       if (!doneAt || new Date(doneAt) < passedSince) continue;
     }
     const date = effectiveDueDate(task);
+    const blockers = blockersByTask.get(task.id) || [];
+    const others = blockers.filter((b) => !b.self).map((b) => b.text);
+    const mine = blockers.filter((b) => b.self);
+    // Blocked by someone else: out of my hands -> Submitted.
+    const movedOut = info.group === 'working' && others.length > 0;
+    const group = movedOut ? 'submitted' : info.group;
     const row = {
       key: `task-${task.id}`,
       kind: 'task',
@@ -174,27 +200,32 @@ export function buildMyWork({
       ref: `#${task.id}`,
       projectId: task.projectId,
       projectName: task.projectName,
-      status: info.label,
-      fix: Boolean(info.fix),
+      status: movedOut ? others[0] : info.label,
+      blockedStatus: movedOut,
+      fix: Boolean(info.fix) && !movedOut,
       date,
       // Only work that is the developer's can be late (KPI rule).
-      late: info.group === 'working' ? daysLate(date, today) : 0,
+      late: group === 'working' ? daysLate(date, today) : 0,
       reason: info.fix ? reasons.get(task.id) || null : null,
-      blocked: blockersByTask.get(task.id) || [],
+      blocked: movedOut ? others.slice(1) : others,
+      doFirst: group === 'working' ? mine.map((b) => b.text) : [],
+      after: group === 'working' ? mine.map((b) => b.after).filter(Boolean) : [],
       showstopper: isShowstopper(task),
       waiting: null,
     };
     const waitingTickets = ticketsByLinkedTask.get(task.id) || [];
     if (waitingTickets.length) {
-      row.waiting = waitingLabel(waitingTickets.map(requesterName));
+      // My own ticket on myself is not "<me> is waiting on you".
+      const requesters = waitingTickets.filter((t) => t.createdByUserId !== userId);
+      if (requesters.length) row.waiting = waitingLabel(requesters.map(requesterName));
       for (const t of waitingTickets) shownTicketIds.add(t.id);
     }
-    (info.group === 'working' ? working : submitted).push(row);
+    (group === 'working' ? working : submitted).push(row);
 
     // Due date to confirm: one row per task - a Working row gets a
     // "Confirm due date" tag; a Submitted task gets its own Working row.
     if (trackingProjects.has(task.projectId) && needsDueDateCommit(task, userId)) {
-      if (info.group === 'working') {
+      if (group === 'working') {
         row.confirmDueDate = true;
         continue;
       }
@@ -207,6 +238,9 @@ export function buildMyWork({
         late: 0,
         reason: null,
         blocked: [],
+        doFirst: [],
+        after: [],
+        blockedStatus: false,
         waiting: null,
       });
     }
@@ -274,6 +308,14 @@ export function buildMyWork({
   // (no date last). Submitted: by date.
   const byDate = (a, b) => (a.date || '9999').localeCompare(b.date || '9999') || a.key.localeCompare(b.key);
   working.sort((a, b) => (b.late > 0) - (a.late > 0) || b.late - a.late || b.fix - a.fix || byDate(a, b));
+  // Self-dependencies: a task goes right after the dependency it waits on.
+  for (const row of working.filter((r) => r.after?.length)) {
+    const deps = row.after.map((k) => working.findIndex((r) => r.key === k)).filter((i) => i >= 0);
+    if (!deps.length) continue;
+    working.splice(working.indexOf(row), 1);
+    const last = Math.max(...row.after.map((k) => working.findIndex((r) => r.key === k)));
+    working.splice(last + 1, 0, row);
+  }
   submitted.sort(byDate);
 
   // Tickets carry the project name only, so compare by name.

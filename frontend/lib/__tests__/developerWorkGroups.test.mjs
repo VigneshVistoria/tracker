@@ -87,16 +87,33 @@ test('action rows: dependency, peer review, handover, due date to confirm (track
   assert.equal(working[0].status, 'Nadia is waiting on you'); // late first
 });
 
-test('blocked line and multi-project flag', () => {
+test('blocked by someone else: moves to Submitted with the Blocked label; multi-project flag', () => {
   const t = task('Development', { projectName: 'Insurance' });
-  const { working, multiProject } = buildMyWork({
+  const { working, submitted, multiProject } = buildMyWork({
     tasks: [t, task('Feedback')],
-    inboundTickets: [{ id: 1, status: 'open', parentTaskId: t.id, ownerName: 'Asha', title: 'DB access' }],
+    inboundTickets: [{ id: 1, status: 'open', parentTaskId: t.id, ownerUserId: 44, ownerName: 'Asha', title: 'DB access' }],
     userId: ME,
     today,
   });
-  assert.deepEqual(working[0].blocked, ['Blocked: waiting on Asha (DB access)']);
+  assert.equal(working.length, 0);
+  const row = submitted.find((r) => r.key === `task-${t.id}`);
+  assert.deepEqual([row.status, row.blockedStatus, row.blocked, row.late], ['Blocked: waiting on Asha (DB access)', true, [], 0]);
   assert.equal(multiProject, true);
+  // Resolved -> back in Working.
+  const back = buildMyWork({ tasks: [t], inboundTickets: [{ id: 1, status: 'resolved', parentTaskId: t.id, ownerUserId: 44, title: 'DB access' }], userId: ME, today });
+  assert.deepEqual([back.working.length, back.working[0].status], [1, 'Working on it']);
+});
+
+test('blocked by myself: stays in Working after the dependency, "Do X first", no Blocked', () => {
+  const dep = task('Development', { title: 'Build API', dependencyTicketId: 9, dueDate: '2026-11-30' });
+  const main = task('Development', { title: 'Screen', dueDate: '2026-11-18' });
+  const ticket = { id: 9, status: 'open', parentTaskId: main.id, ownerUserId: ME, createdByUserId: ME, createdByName: 'Me', title: 'Build API', dependencyTask: { id: dep.id } };
+  const { working, submitted } = buildMyWork({ tasks: [main, dep], inboundTickets: [ticket], ownedTickets: [ticket], userId: ME, today });
+  assert.equal(submitted.length, 0);
+  assert.deepEqual(working.map((r) => r.key), [`task-${dep.id}`, `task-${main.id}`]);
+  const m = working[1];
+  assert.deepEqual([m.status, m.blocked, m.doFirst], ['Working on it', [], ['Do Build API first']]);
+  assert.equal(working[0].waiting, null); // not "Me is waiting on you"
 });
 
 test('fix reason says who sent it back', () => {
@@ -140,19 +157,20 @@ test('waiting label names everyone waiting', () => {
   assert.equal(waitingLabel([null]), 'Someone is waiting on you');
 });
 
-test('blocker flags show as Blocked lines; a flag on a filed ticket shows once', () => {
+test('blocker flags: another person moves it to Submitted; a flag on a filed ticket counts once', () => {
   const a = task('Development');
   const b = task('Failed');
-  const { working } = buildMyWork({
+  const { working, submitted } = buildMyWork({
     tasks: [a, b],
-    inboundTickets: [{ id: 7, status: 'open', parentTaskId: a.id, ownerName: 'Ravi', title: 'DB access' }],
+    inboundTickets: [{ id: 7, status: 'open', parentTaskId: a.id, ownerUserId: 30, ownerName: 'Ravi', title: 'DB access' }],
     blockerFlags: new Map([
-      [a.id, { blockingOwnerName: 'Ravi', dependencyTicketId: 7, reason: 'Waiting for DB access' }],
-      [b.id, { blockingOwnerName: 'Vendor X', dependencyTicketId: null, reason: 'Payment sandbox is down' }],
+      [a.id, { blockingOwnerUserId: 30, blockingOwnerName: 'Ravi', dependencyTicketId: 7, reason: 'Waiting for DB access' }],
+      [b.id, { blockingOwnerUserId: null, blockingOwnerName: 'Vendor X', dependencyTicketId: null, reason: 'Payment sandbox is down' }],
     ]),
     userId: ME,
     today,
   });
-  assert.deepEqual(working.find((r) => r.key === `task-${a.id}`).blocked, ['Blocked: waiting on Ravi (DB access)']);
-  assert.deepEqual(working.find((r) => r.key === `task-${b.id}`).blocked, ['Blocked: waiting on Vendor X (Payment sandbox is down)']);
+  assert.equal(working.length, 0);
+  assert.deepEqual(submitted.map((r) => r.status).sort(), ['Blocked: waiting on Ravi (DB access)', 'Blocked: waiting on Vendor X (Payment sandbox is down)']);
+  assert.deepEqual(submitted.find((r) => r.key === `task-${a.id}`).blocked, []);
 });

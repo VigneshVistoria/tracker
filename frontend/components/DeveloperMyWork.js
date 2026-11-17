@@ -153,12 +153,13 @@ export default function DeveloperMyWork({ user }) {
                           <span>{r.ref}</span>
                           {work.multiProject && r.projectName && <span>{r.projectName}</span>}
                           {/* Two labels: the action first, e.g. "Confirm due date · Working on it". */}
-                          <span className={r.fix ? styles.statusFix : styles.status}>
+                          <span className={r.fix || r.blockedStatus ? styles.statusFix : styles.status}>
                             {r.confirmDueDate ? `Confirm due date · ${r.status}` : r.status}
                           </span>
                           {r.showstopper && <span className={styles.showstopper}>Showstopper</span>}
                         </p>
                         {r.waiting && <p className={styles.waiting}>{r.waiting}</p>}
+                        {r.doFirst?.map((d) => <p key={d} className={styles.waiting}>{d}</p>)}
                         {r.reason && <p className={styles.reason}>{r.reason}</p>}
                         {r.blocked.map((b) => <p key={b} className={styles.blocked}>{b}</p>)}
                       </div>
