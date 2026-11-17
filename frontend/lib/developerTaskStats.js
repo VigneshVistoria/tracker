@@ -34,6 +34,8 @@ export const AWAITING_REVIEW_STATUSES = ['Feedback', 'Re-Feedback', 'Peer Review
 const NEVER_OVERDUE_STATUSES = [
   'Pass', 'Junk', 'Released - No Showstoppers', 'Released - With Showstoppers', 'Hold', 'Closed',
   'Pending PM Review', 'Returned to QA', 'Disputed', ...AWAITING_REVIEW_STATUSES,
+  // Intervention (2026-11-17): with the PM - mirrors isDeveloperOverdue().
+  'Escalated',
 ];
 export function effectiveDueDate(task) {
   if (!task.dueDate) return null;

@@ -58,6 +58,9 @@ export function isDeveloperOverdue(
   reviewWaitDays = 0,
 ): boolean {
   if (AWAITING_REVIEW_STATUSES.includes(task.status)) return false;
+  // Intervention (Escalated): with the PM, not the developer (user
+  // decision 2026-11-17). KPI Overdue % and lists/cards both use this.
+  if (task.status === 'Escalated') return false;
   if (!isPastEffectiveDue(task, today)) return false;
   if (reviewWaitDays <= 0) return true;
   return developerDueDate(task, reviewWaitDays)! < today;

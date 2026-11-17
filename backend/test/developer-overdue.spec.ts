@@ -13,6 +13,11 @@ describe('isDeveloperOverdue', () => {
     }
   });
 
+  it('is not overdue during Intervention (with the PM, 2026-11-17)', () => {
+    expect(isDeveloperOverdue(task('Escalated'), today)).toBe(false);
+    expect(isDeveloperOverdue(task('Escalated'), today, 2)).toBe(false);
+  });
+
   it('is overdue again once sent back, counted from the original due date', () => {
     for (const s of ['Development', 'Failed', 'PM Feedback', 'Not Ready for Testing']) {
       expect(isDeveloperOverdue(task(s), today)).toBe(true);

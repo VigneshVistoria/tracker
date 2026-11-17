@@ -54,3 +54,7 @@ test('Open defects counts open defects only', () => {
   assert.equal(countMyTaskCard('defects', defects, today), 1);
   assert.equal(countMyTaskCard('unknown', defects, today), 0);
 });
+
+test('Intervention (Escalated) is with the PM, never the developer\'s overdue work (2026-11-17)', () => {
+  assert.equal(isOverdueTask(task('Escalated'), today), false);
+});
