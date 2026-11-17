@@ -4,7 +4,7 @@ import DeveloperTaskWorkboard from './DeveloperTaskWorkboard';
 import { DashboardHeader } from './dashboard/DashboardParts';
 import issueStyles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
-import { NEW_UI } from '../lib/featureFlags';
+import { DEV_MY_WORK } from '../lib/featureFlags';
 import DeveloperMyWork from './DeveloperMyWork';
 
 const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
@@ -15,10 +15,11 @@ const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
 // fetches - My Tasks (/tasks/mine), Dependency Clearance's own
 // "Outbound" queue (/task-dependency-tickets/mine), and the mirror-image
 // "Inbound" endpoint (/task-dependency-tickets/created-by-me).
-// NEW_UI (2026-11-17): the Working / Submitted "My work" view
-// (components/DeveloperMyWork.js) replaces the tiles. OFF = unchanged.
+// DEV_MY_WORK (2026-11-17, lib/featureFlags.js): the Working / Submitted
+// "My work" view (components/DeveloperMyWork.js) replaces the tiles.
+// false = the previous dashboard, unchanged.
 export default function DeveloperDashboard({ user }) {
-  return NEW_UI ? <DeveloperMyWork user={user} /> : <LegacyDeveloperDashboard user={user} />;
+  return DEV_MY_WORK ? <DeveloperMyWork user={user} /> : <LegacyDeveloperDashboard user={user} />;
 }
 
 function LegacyDeveloperDashboard({ user }) {
