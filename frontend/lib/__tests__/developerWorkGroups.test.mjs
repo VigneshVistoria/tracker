@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMyWork, statusInfo, fixReason, formatDmy, daysLate, waitingLabel } from '../developerWorkGroups.js';
+import { buildMyWork, statusInfo, fixReason, formatDmy, daysLate, waitingLabel, workingLabel } from '../developerWorkGroups.js';
 
 const today = '2026-11-17';
 const ME = 7;
@@ -51,16 +51,37 @@ test('Passed stays 14 days, then drops off', () => {
   assert.deepEqual(submitted.map((r) => r.key), [`task-${recent.id}`]);
 });
 
-test('only Working can be late; Working sorts late, then Fix needed, then date', () => {
+test('only Working can be late; Working sorts no due date ("Set due date"), then late (most first), then soonest date', () => {
   const late = task('Development', { dueDate: '2026-11-14' });
+  const later = task('Development', { dueDate: '2026-11-10' });
   const fix = task('Failed', { dueDate: '2026-11-30' });
   const soon = task('Development', { dueDate: '2026-11-20' });
   const none = task('Development');
   const qa = task('Feedback', { dueDate: '2026-11-01' });
-  const { working, submitted } = buildMyWork({ tasks: [none, soon, fix, late, qa], userId: ME, today });
-  assert.deepEqual(working.map((r) => r.key), [late, fix, soon, none].map((t) => `task-${t.id}`));
-  assert.equal(working[0].late, 3);
+  const { working, submitted } = buildMyWork({ tasks: [soon, fix, late, qa, later, none], userId: ME, today });
+  assert.deepEqual(working.map((r) => r.key), [none, later, late, soon, fix].map((t) => `task-${t.id}`));
+  assert.deepEqual(working.map((r) => Boolean(r.setDueDate)), [true, false, false, false, false]);
+  assert.deepEqual([working[1].late, working[2].late], [7, 3]);
   assert.equal(submitted[0].late, 0);
+  assert.equal(submitted[0].setDueDate, undefined);
+});
+
+test('Submitted sorts by submitted date, newest first; never submitted last', () => {
+  const a = task('Feedback', { dueDate: '2026-11-01' });
+  const b = task('Peer Review', { dueDate: '2026-11-30' });
+  const c = task('Hold', { dueDate: '2026-11-05' });
+  const d = task('Pass', { dueDate: '2026-11-02', completedAt: '2026-11-16T00:00:00Z' });
+  const activity = new Map([
+    [a.id, { taskId: a.id, lastSubmittedAt: '2026-11-10T09:00:00.000Z' }],
+    [b.id, { taskId: b.id, lastSubmittedAt: '2026-11-15T09:00:00.000Z' }],
+    [c.id, { taskId: c.id, lastSubmittedAt: null }],
+    [d.id, { taskId: d.id, lastSubmittedAt: '2026-11-12T09:00:00.000Z' }],
+  ]);
+  const { submitted } = buildMyWork({ tasks: [a, b, c, d], activity, userId: ME, today });
+  assert.deepEqual(submitted.map((r) => r.key), [b, d, a, c].map((t) => `task-${t.id}`));
+  // A handover / peer review / dependency without a date is not "Set due date".
+  const { working } = buildMyWork({ handovers: [{ id: 9, taskId: 60, taskTitle: 'Login', projectId: 1, projectName: 'LMS' }], userId: ME, today });
+  assert.equal(working[0].setDueDate, undefined);
 });
 
 test('action rows: dependency, peer review, handover, due date to confirm (tracking on only)', () => {
@@ -84,7 +105,8 @@ test('action rows: dependency, peer review, handover, due date to confirm (track
   const sub = task('Feedback', { dueDate: '2026-11-25', dueDateCommittedByUserId: null, projectId: 2 });
   const both = buildMyWork({ tasks: [sub], trackingProjects: new Set([2]), userId: ME, today });
   assert.deepEqual([both.working.map((r) => r.status), both.submitted.length], [['Confirm due date'], 1]);
-  assert.equal(working[0].status, 'Nadia is waiting on you'); // late first
+  // No date first (the handover), then late.
+  assert.deepEqual([working[0].status, working[1].status], ['Accept handover', 'Nadia is waiting on you']);
 });
 
 test('blocked by someone else: moves to Submitted with the Blocked label; multi-project flag', () => {
@@ -204,8 +226,33 @@ test('peer reviews: "Review <author>\'s work", review due date, late in red, nev
     today,
   });
   assert.deepEqual(working.map((r) => [r.ref, r.status, r.date, r.late]), [
+    ['#62', "Review x@example.invalid's work", null, 0],
     ['#60', "Review Ahmed's work", '2026-11-14', 3],
     ['#61', "Review James's work", '2026-11-20', 0],
-    ['#62', "Review x@example.invalid's work", null, 0],
   ]);
+});
+
+test('"Working on it" splits into Not started / In progress · updated N days ago (display only)', () => {
+  assert.equal(workingLabel(undefined, today), 'Working on it');
+  assert.equal(workingLabel({ lastActivityAt: null }, today), 'Not started');
+  assert.equal(workingLabel({ lastActivityAt: '2026-11-17T08:00:00.000Z' }, today), 'In progress · updated today');
+  assert.equal(workingLabel({ lastActivityAt: '2026-11-16T23:00:00.000Z' }, today), 'In progress · updated 1 day ago');
+  assert.equal(workingLabel({ lastActivityAt: '2026-11-05T10:00:00.000Z' }, today), 'In progress · updated 12 days ago');
+
+  const fresh = task('Development');
+  const busy = task('Development');
+  const fix = task('Failed');
+  const activity = new Map([
+    [fresh.id, { taskId: fresh.id, lastActivityAt: null }],
+    [busy.id, { taskId: busy.id, lastActivityAt: '2026-11-14T10:00:00.000Z' }],
+  ]);
+  const { working } = buildMyWork({ tasks: [fresh, busy, fix], activity, userId: ME, today });
+  const byKey = new Map(working.map((r) => [r.key, r.status]));
+  assert.equal(byKey.get(`task-${fresh.id}`), 'Not started');
+  assert.equal(byKey.get(`task-${busy.id}`), 'In progress · updated 3 days ago');
+  assert.equal(byKey.get(`task-${fix.id}`), 'Fix needed');
+  // Still Development underneath: same group, same sort, same counts.
+  assert.equal(working.length, 3);
+  // Call failed (no map) -> the plain label.
+  assert.equal(buildMyWork({ tasks: [fresh], userId: ME, today }).working[0].status, 'Working on it');
 });

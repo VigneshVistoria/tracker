@@ -48,7 +48,8 @@ export default function DeveloperMyWork({ user }) {
         // Blocker flags (Performance Tracking): one read per Working task.
         const workingTasks = tasks.filter((t) => statusInfo(t.status)?.group === 'working');
 
-        const [peer, handovers, tracking, reviews, flags] = await Promise.all([
+        const [activityRes, peer, handovers, tracking, reviews, flags] = await Promise.all([
+          Promise.allSettled([apiFetch('/tasks/mine/assignee-activity')]).then(([r]) => r),
           Promise.allSettled([apiFetch('/tasks/peer-review-queue')]).then(([r]) => r),
           Promise.allSettled([apiFetch('/design-handovers/mine')]).then(([r]) => r),
           Promise.allSettled([...commitByProject.entries()].map(([projectId, taskId]) => apiFetch(`/tasks/${taskId}/due-date`).then((s) => [projectId, s.trackingOn]))),
@@ -62,6 +63,7 @@ export default function DeveloperMyWork({ user }) {
           peer.value = peer.value.map((t, i) => (named[i].status === 'fulfilled' ? { ...t, assigneeFullName: named[i].value.assigneeFullName } : t));
         }
         if (handovers.status !== 'fulfilled') missing.push('design handovers');
+        if (activityRes.status !== 'fulfilled') missing.push('last activity');
         if (tracking.some((r) => r.status !== 'fulfilled')) missing.push('due dates to confirm');
         if (flags.some((r) => r.status !== 'fulfilled')) missing.push('blocker flags');
         const blockerFlags = new Map();
@@ -87,6 +89,7 @@ export default function DeveloperMyWork({ user }) {
           trackingProjects,
           reasons,
           blockerFlags,
+          activity: activityRes.status === 'fulfilled' ? new Map(activityRes.value.map((a) => [a.taskId, a])) : null,
         });
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -157,9 +160,9 @@ export default function DeveloperMyWork({ user }) {
                         <p className={styles.meta}>
                           <span>{r.ref}</span>
                           {work.multiProject && r.projectName && <span>{r.projectName}</span>}
-                          {/* Two labels: the action first, e.g. "Confirm due date · Working on it". */}
+                          {/* Two labels: the action first, e.g. "Confirm due date · Not started". */}
                           <span className={r.fix || r.blockedStatus ? styles.statusFix : styles.status}>
-                            {r.confirmDueDate ? `Confirm due date · ${r.status}` : r.status}
+                            {r.confirmDueDate ? `Confirm due date · ${r.status}` : r.setDueDate ? `Set due date · ${r.status}` : r.status}
                           </span>
                           {r.showstopper && <span className={styles.showstopper}>Showstopper</span>}
                         </p>

@@ -111,6 +111,19 @@ export function waitingLabel(names) {
   const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
   return `${joined} ${list.length === 1 ? 'is' : 'are'} waiting on you`;
 }
+// "Working on it" split (2026-11-17), display only - the status stays
+// Development. entry = one row of GET /tasks/mine/assignee-activity:
+// no status change or progress note by me since it was given to me ->
+// "Not started"; otherwise "In progress · updated N days ago". No entry
+// (the call failed) -> the plain status label.
+export function workingLabel(entry, today) {
+  if (!entry) return STATUS_MAP.Development.label;
+  if (!entry.lastActivityAt) return 'Not started';
+  const days = Math.max(0, Math.round(dayNumber(today) - dayNumber(String(entry.lastActivityAt).slice(0, 10))));
+  const ago = days === 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`;
+  return `In progress · updated ${ago}`;
+}
+
 // "Review Ahmed's work" (peer review I must do; author = the task's assignee).
 export function reviewLabel(author) {
   return author ? `Review ${author}'s work` : 'Review needed';
@@ -129,9 +142,11 @@ const isShowstopper = (task) => task.status === 'Released - With Showstoppers' |
 //   trackingProjects  Set of projectIds with Performance Tracking on
 //   reasons        Map taskId -> fixReason() text
 //   blockerFlags   Map taskId -> open blocker flag (GET /task-flags?taskId=)
+//   activity       Map taskId -> GET /tasks/mine/assignee-activity row
+//                  (Not started / In progress, and the Submitted sort date)
 export function buildMyWork({
   tasks = [], ownedTickets = [], inboundTickets = [], peerReviews = [], handovers = [],
-  trackingProjects = new Set(), reasons = new Map(), blockerFlags = new Map(), userId, today,
+  trackingProjects = new Set(), reasons = new Map(), blockerFlags = new Map(), activity = null, userId, today,
 }) {
   const working = [];
   const submitted = [];
@@ -209,7 +224,7 @@ export function buildMyWork({
       ref: `#${task.id}`,
       projectId: task.projectId,
       projectName: task.projectName,
-      status: movedOut ? others[0] : info.label,
+      status: movedOut ? others[0] : task.status === 'Development' && activity ? workingLabel(activity.get(task.id), today) : info.label,
       blockedStatus: movedOut,
       fix: Boolean(info.fix) && !movedOut,
       date,
@@ -221,6 +236,7 @@ export function buildMyWork({
       after: group === 'working' ? mine.map((b) => b.after).filter(Boolean) : [],
       showstopper: isShowstopper(task),
       waiting: null,
+      submittedAt: activity?.get(task.id)?.lastSubmittedAt || null,
     };
     const waitingTickets = ticketsByLinkedTask.get(task.id) || [];
     if (waitingTickets.length) {
@@ -317,10 +333,13 @@ export function buildMyWork({
     });
   }
 
-  // Working: late first (most late first), then Fix needed, then by date
-  // (no date last). Submitted: by date.
+  // Order (user, 2026-11-17): Working = no due date first (tasks say "Set
+  // due date"), then late (most overdue first), then by due date, soonest
+  // first. Submitted = by submitted date, newest first (never submitted
+  // last, then by due date).
   const byDate = (a, b) => (a.date || '9999').localeCompare(b.date || '9999') || a.key.localeCompare(b.key);
-  working.sort((a, b) => (b.late > 0) - (a.late > 0) || b.late - a.late || b.fix - a.fix || byDate(a, b));
+  for (const r of working) if (r.kind === 'task' && !r.date) r.setDueDate = true;
+  working.sort((a, b) => !b.date - !a.date || (b.late > 0) - (a.late > 0) || b.late - a.late || byDate(a, b));
   // Self-dependencies: a task goes right after the dependency it waits on.
   for (const row of working.filter((r) => r.after?.length)) {
     const deps = row.after.map((k) => working.findIndex((r) => r.key === k)).filter((i) => i >= 0);
@@ -329,7 +348,7 @@ export function buildMyWork({
     const last = Math.max(...row.after.map((k) => working.findIndex((r) => r.key === k)));
     working.splice(last + 1, 0, row);
   }
-  submitted.sort(byDate);
+  submitted.sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '') || byDate(a, b));
 
   // Tickets carry the project name only, so compare by name.
   const projects = new Set([...working, ...submitted].map((r) => r.projectName).filter(Boolean));

@@ -27,6 +27,8 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 import { sanitizeRichText } from '../common/sanitize-rich-text';
 import { addBusinessDays, toDateOnlyString } from '../common/business-days';
 import { isDeveloperOverdue } from './pm-review';
+import { ACTIVITY_AUDIT_ACTIONS, AssigneeActivity, assigneeActivity } from './assignee-activity';
+import { COMMITMENT_AUDIT_ACTIONS } from '../performance-metrics/commitment-events';
 import { RETURNED_TO_QA_STATUS } from './return-to-qa';
 import { NOT_READY_STATUS } from './qa-not-ready';
 import { dependencyTaskBlock } from '../task-dependency-tickets/dependency-tasks';
@@ -1216,6 +1218,47 @@ export class TasksService {
     });
     const taskIdsWithOpenDependency = new Set(openTickets.map((t) => t.parentTaskId));
     return withComputed.map((t) => ({ ...t, hasOpenDependency: taskIdsWithOpenDependency.has(t.id) }));
+  }
+
+  // Developer home "My work": for each of my open tasks, when it was given
+  // to me, when I last did something on it since then and when it was last
+  // submitted for review - see ./assignee-activity.ts. Read only.
+  async myAssigneeActivity(currentUser: { id: number }, tenantId: number): Promise<AssigneeActivity[]> {
+    const tasks = await this.tasksRepository.find({
+      where: { tenantId, assigneeUserId: currentUser.id, status: Not(In([JUNK_STATUS, 'Closed', 'Released - No Showstoppers'])) },
+      select: ['id', 'assigneeUserId', 'createdAt'],
+    });
+    if (tasks.length === 0) return [];
+    const ids = tasks.map((t) => t.id);
+    const actions = [...new Set([...COMMITMENT_AUDIT_ACTIONS, ...ACTIVITY_AUDIT_ACTIONS])];
+    const em = this.tasksRepository.manager;
+    const [audits, notes, submissions] = await Promise.all([
+      em.query(
+        `SELECT id, "tenantId", action, "entityType", "entityId", "userId", "userRole", details, "createdAt"
+           FROM audit_logs
+          WHERE "tenantId" = $1 AND "entityType" = 'ProjectTask' AND "entityId" = ANY($2) AND action = ANY($3)`,
+        [tenantId, ids, actions],
+      ),
+      em.query(
+        `SELECT "taskId", "authorUserId", "createdAt" FROM task_progress_notes WHERE "tenantId" = $1 AND "taskId" = ANY($2) AND "authorUserId" = $3`,
+        [tenantId, ids, currentUser.id],
+      ),
+      em.query(`SELECT "taskId", "submittedAt" FROM task_qa_reviews WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
+    ]);
+    const parse = (d: unknown) => {
+      if (d && typeof d === 'object') return d;
+      try {
+        return typeof d === 'string' && d ? JSON.parse(d) : null;
+      } catch {
+        return null;
+      }
+    };
+    return assigneeActivity(
+      tasks,
+      audits.map((a: any) => ({ ...a, details: parse(a.details) })),
+      notes,
+      submissions,
+    );
   }
 
   // Team Tasks view - every assigned task in the tenant, for Admin/

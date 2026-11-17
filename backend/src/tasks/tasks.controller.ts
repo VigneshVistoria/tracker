@@ -237,6 +237,14 @@ export class TasksController {
     return this.tasksService.findMine(currentUser, req.user.tenantId);
   }
 
+  // Developer home "My work": Not started vs In progress, and the
+  // Submitted sort date, for my open tasks (display only). Own tasks only.
+  @Get('mine/assignee-activity')
+  async myAssigneeActivity(@Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.tasksService.myAssigneeActivity(currentUser, req.user.tenantId);
+  }
+
   // Team Tasks - every team member's assigned tasks in one place.
   // Declared before ':id' for the same routing reason as 'backlog'/
   // 'qa-queue'/'peer-review-queue'/'mine' above.
