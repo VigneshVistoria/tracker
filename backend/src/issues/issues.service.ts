@@ -12,6 +12,9 @@ import { UpdateIssueDto } from './dto/update-issue.dto';
 import { CreateDependencyDto } from './dto/create-dependency.dto';
 import { UsersService } from '../users/users.service';
 import { UserRole, User } from '../users/user.entity';
+
+// Who is acting on an issue; projectIds = the user's assigned projects.
+export type IssueActor = { id: number; role: UserRole; projectIds?: number[] };
 import { ProjectsService } from '../projects/projects.service';
 import { EventsGateway } from '../events/events.gateway';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
@@ -277,8 +280,13 @@ export class IssuesService {
     userId: number,
     userEmail: string,
     tenantId: number,
+    actingUser?: IssueActor,
   ): Promise<Issue> {
     const parent = await this.findOne(parentId, tenantId);
+    // 2026-11-15 (G1): same people as changing the parent's content.
+    if (actingUser && !IssuesService.canChangeContent(parent, actingUser)) {
+      throw new ForbiddenException('Only the assignee, the reporter, a Program Manager on this project, or an Admin can add a dependency to this issue.');
+    }
 
     // Performance Dashboard's late-dependency penalty: frozen at this
     // exact moment, using the parent's status/assignee as they are right
@@ -328,8 +336,40 @@ export class IssuesService {
     [IssueStatus.QA_FAILED]: [IssueStatus.IN_PROGRESS],
   };
 
-  async update(id: number, dto: UpdateIssueDto, tenantId: number, actingUser?: { id: number; role: UserRole }): Promise<Issue> {
+  // 2026-11-15 (the user): an issue's content - title, description, assignee,
+  // project, module, phase, showstopper flag - may be changed only by an
+  // Admin, its assignee, its reporter, or a Program Manager on its project
+  // (and on the new project, when moving it). Everyone else: 403. Only
+  // fields whose value actually changes count - the issue page re-sends
+  // every field on each save, so a QA changing just the status still works.
+  // Status rules are separate (ALLOWED_SELF_SERVICE_TRANSITIONS).
+  static readonly CONTENT_FIELDS = ['title', 'description', 'assigneeUserId', 'projectId', 'moduleId', 'phaseId', 'showstopper'] as const;
+  static readonly CONTENT_REFUSAL =
+    'Only the assignee, the reporter, a Program Manager on this project, or an Admin can change this issue\'s title, description, assignee, project, module, phase or showstopper flag.';
+
+  static changedContentFields(issue: Issue, dto: Partial<Record<(typeof IssuesService.CONTENT_FIELDS)[number], unknown>>): string[] {
+    const norm = (field: string, v: unknown) => (field === 'showstopper' ? !!v : v === undefined || v === '' ? null : v);
+    return IssuesService.CONTENT_FIELDS.filter(
+      (f) => dto[f] !== undefined && norm(f, dto[f]) !== norm(f, (issue as any)[f]),
+    );
+  }
+
+  static canChangeContent(issue: Issue, user: IssueActor, targetProjectId?: number | null): boolean {
+    if (user.role === UserRole.ADMIN) return true;
+    if (issue.assigneeUserId === user.id || issue.createdByUserId === user.id) return true;
+    if (user.role !== UserRole.PROGRAM_MANAGER || issue.projectId == null) return false;
+    const mine = user.projectIds ?? [];
+    if (!mine.includes(issue.projectId)) return false;
+    return targetProjectId == null || mine.includes(targetProjectId);
+  }
+
+  async update(id: number, dto: UpdateIssueDto, tenantId: number, actingUser?: IssueActor): Promise<Issue> {
     const issue = await this.findOne(id, tenantId);
+    // No actingUser = a system caller (regression self-test), not a person.
+    if (actingUser && IssuesService.changedContentFields(issue, dto).length) {
+      const target = dto.projectId !== undefined && dto.projectId !== issue.projectId ? dto.projectId : undefined;
+      if (!IssuesService.canChangeContent(issue, actingUser, target)) throw new ForbiddenException(IssuesService.CONTENT_REFUSAL);
+    }
     const previousAssigneeUserId = issue.assigneeUserId;
     const previousShowstopper = issue.showstopper;
 

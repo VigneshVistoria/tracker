@@ -159,7 +159,7 @@ export class IssuesController {
     if (currentUser.role === UserRole.CLIENT) {
       throw new ForbiddenException('Clients cannot edit tickets after filing them - contact the team to make changes.');
     }
-    return this.issuesService.update(id, dto, req.user.tenantId, { id: currentUser.id, role: currentUser.role });
+    return this.issuesService.update(id, dto, req.user.tenantId, { id: currentUser.id, role: currentUser.role, projectIds: (currentUser.projects || []).map((p) => p.id) });
   }
 
   // Any developer/QA/admin can spin off a dependency ticket from a parent -
@@ -174,7 +174,11 @@ export class IssuesController {
     if (currentUser.role === UserRole.CLIENT) {
       throw new ForbiddenException('Clients cannot create dependency tickets.');
     }
-    return this.issuesService.createDependency(id, dto, currentUser.id, currentUser.email, req.user.tenantId);
+    return this.issuesService.createDependency(id, dto, currentUser.id, currentUser.email, req.user.tenantId, {
+      id: currentUser.id,
+      role: currentUser.role,
+      projectIds: (currentUser.projects || []).map((p) => p.id),
+    });
   }
 
   // Only the assignee (or an admin) can submit their own work for review.

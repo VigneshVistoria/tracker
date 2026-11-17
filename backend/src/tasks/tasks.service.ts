@@ -2540,11 +2540,16 @@ export class TasksService {
   async setQaReviewDueDate(
     id: number,
     qaReviewDueDate: string,
-    currentUser: { id: number; email: string; role: UserRole },
+    currentUser: UserWithProjects & { email: string },
     tenantId: number,
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
     this.assertNotJunk(task);
+    // 2026-11-15 (G4): a QA only on tasks they can open (canView) - before,
+    // any QA could change it on any task in the tenant. PM/Admin unchanged.
+    if (currentUser.role === UserRole.QA && !(await this.canView(task, currentUser))) {
+      throw new ForbiddenException('You can only change the QA Review Due Date on tasks you can open.');
+    }
     if (task.qaReviewDueDate === qaReviewDueDate) {
       return task;
     }

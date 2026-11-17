@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Dependency, DependencyStatus } from './dependency.entity';
@@ -6,6 +6,7 @@ import { CreateDependencyDto } from './dto/create-dependency.dto';
 import { UpdateDependencyDto } from './dto/update-dependency.dto';
 import { IssuesService } from '../issues/issues.service';
 import { UserRole } from '../users/user.entity';
+import { UsersService } from '../users/users.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 const STATUSES_THAT_CLOSE: DependencyStatus[] = [DependencyStatus.RESOLVED, DependencyStatus.CLOSED];
@@ -17,6 +18,7 @@ export class DependenciesService {
     private dependenciesRepository: Repository<Dependency>,
     private issuesService: IssuesService,
     private auditLogService: AuditLogService,
+    private usersService: UsersService,
   ) {}
 
   // Blocked-and-overdue first, matching the inbox's default triage order:
@@ -104,6 +106,17 @@ export class DependenciesService {
     if (!this.canEdit(dependency, currentUser)) {
       throw new ForbiddenException('You do not have access to edit this dependency.');
     }
+    // 2026-11-15 (G7): the owner (the person it waits on) moves its status
+    // (PATCH /:id/status) but can't rewrite the requester's text or hand it
+    // to someone else - only the creator, a Program Manager or an Admin.
+    if (!this.canEditDetails(dependency, currentUser)) {
+      throw new ForbiddenException('Only whoever filed this dependency, a Program Manager or an Admin can edit its details or owner.');
+    }
+    if (dto.ownerUserId != null && dto.ownerUserId !== dependency.ownerUserId) {
+      if (!(await this.usersService.findByIdAndTenant(dto.ownerUserId, tenantId))) {
+        throw new BadRequestException(`User #${dto.ownerUserId} not found.`);
+      }
+    }
 
     Object.assign(dependency, dto);
     const saved = await this.dependenciesRepository.save(dependency);
@@ -163,6 +176,10 @@ export class DependenciesService {
   // Admin/Program Manager override may edit it or move its status -
   // Executive stays read-only here same as everywhere else, and an
   // unrelated third party has no business touching it.
+  private canEditDetails(dependency: Dependency, user: { id: number; role: UserRole }): boolean {
+    return user.role === UserRole.ADMIN || user.role === UserRole.PROGRAM_MANAGER || dependency.createdByUserId === user.id;
+  }
+
   private canEdit(dependency: Dependency, user: { id: number; role: UserRole }): boolean {
     if (user.role === UserRole.ADMIN || user.role === UserRole.PROGRAM_MANAGER) {
       return true;
