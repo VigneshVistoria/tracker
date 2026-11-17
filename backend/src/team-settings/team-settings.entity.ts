@@ -65,6 +65,13 @@ export class TeamSettings {
   @Column({ type: 'jsonb', default: () => "'{}'" })
   submissionChecklistSettings: Record<string, unknown>;
 
+  // "New My work screen" (2026-11-17, migrations/2026-11-my-work-screen.sql):
+  // Admin/PM switch for the developer home "My work" screen, OFF by
+  // default, plus optional pilot users who get it while it is off.
+  // See my-work-screen/my-work-screen.ts.
+  @Column({ type: 'jsonb', default: () => `'{"enabled": false, "pilotUserIds": []}'` })
+  myWorkScreen: { enabled?: boolean; pilotUserIds?: number[] };
+
   @UpdateDateColumn()
   updatedAt: Date;
 

@@ -4,7 +4,6 @@ import DeveloperTaskWorkboard from './DeveloperTaskWorkboard';
 import { DashboardHeader } from './dashboard/DashboardParts';
 import issueStyles from '../styles/issues.module.css';
 import { apiFetch } from '../lib/api';
-import { DEV_MY_WORK } from '../lib/featureFlags';
 import DeveloperMyWork from './DeveloperMyWork';
 
 const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
@@ -15,11 +14,21 @@ const ACTIVE_CARD_STORAGE_KEY = 'dashboardActiveCard';
 // fetches - My Tasks (/tasks/mine), Dependency Clearance's own
 // "Outbound" queue (/task-dependency-tickets/mine), and the mirror-image
 // "Inbound" endpoint (/task-dependency-tickets/created-by-me).
-// DEV_MY_WORK (2026-11-17, lib/featureFlags.js): the Working / Submitted
+// "New My work screen" setting (2026-11-17, Admin/PM in Settings, default
+// OFF - replaced the DEV_MY_WORK code flag): when GET /my-work-screen/me
+// says on (everyone, or this user as a pilot), the Working / Submitted
 // "My work" view (components/DeveloperMyWork.js) replaces the tiles.
-// false = the previous dashboard, unchanged.
+// Off, still asking, or the call fails = the previous dashboard, unchanged.
 export default function DeveloperDashboard({ user }) {
-  return DEV_MY_WORK ? <DeveloperMyWork user={user} /> : <LegacyDeveloperDashboard user={user} />;
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/my-work-screen/me')
+      .then((r) => { if (!cancelled) setOn(r?.on === true); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user.id]);
+  return on ? <DeveloperMyWork user={user} /> : <LegacyDeveloperDashboard user={user} />;
 }
 
 function LegacyDeveloperDashboard({ user }) {

@@ -186,6 +186,8 @@ const GITHUB_DIR = path.join(SRC, 'github-releases');
 const GITHUB_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-releases.sql');
 // PR helpers (2026-11-11): 3 more github_settings columns, from the real migration.
 const GITHUB_PR_HELPERS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-pr-helpers.sql');
+// "New My work screen" setting (2026-11-17): team_settings.myWorkScreen, real migration.
+const MY_WORK_SCREEN_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-my-work-screen.sql');
 // Multi-stage release path (2026-11-11): 2 tables + 4 columns, real migration.
 const GITHUB_STAGES_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-release-stages.sql');
 // Dependency tasks Stage 1 (2026-11-05): switch, task link, ticket cancel
@@ -351,6 +353,7 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(GITHUB_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(GITHUB_PR_HELPERS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(GITHUB_STAGES_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(MY_WORK_SCREEN_MIGRATION, 'utf8'));
   for (const [table, cols] of Object.entries(DEPENDENCY_TASKS_COLUMNS)) {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }

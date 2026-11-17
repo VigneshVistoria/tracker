@@ -13,7 +13,6 @@ export const TASK_PAGE_V2 = true;
 // that attribute apply; when OFF the site is exactly as before.
 export const NEW_UI = process.env.NEXT_PUBLIC_NEW_UI === '1';
 
-// Developer home "My work" (Working / Submitted toggle) for Developer,
-// Designer and DevOps - live on its own since 2026-11-17, independent of
-// NEW_UI. Set to false (and deploy) to get the previous tiles dashboard back.
-export const DEV_MY_WORK = true;
+// Developer home "My work" is no longer a code flag: it is the Admin/PM
+// setting "New My work screen" (Settings, /admin/my-work-screen-settings,
+// default OFF) - see components/DeveloperDashboard.js.

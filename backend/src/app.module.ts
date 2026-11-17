@@ -137,6 +137,7 @@ import { ReleaseLogsModule } from './release-logs/release-logs.module';
 import { StatusReviewModule } from './status-review/status-review.module';
 import { DailyScrumModule } from './daily-scrum/daily-scrum.module';
 import { TeamSettings } from './team-settings/team-settings.entity';
+import { MyWorkScreenModule } from './my-work-screen/my-work-screen.module';
 import { ScrumExternalWait } from './daily-scrum/scrum-external-wait.entity';
 import { ProjectTimelineRow } from './project-timeline/project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline/project-timeline-team.entity';
@@ -322,6 +323,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     ClientMeasuresModule,
     WeeklyStatusModule,
     TaskHandoversModule,
+    MyWorkScreenModule,
     PermissionsModule,
     ReleaseLogsModule,
     GithubReleasesModule,

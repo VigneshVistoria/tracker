@@ -205,6 +205,8 @@ export const NAV_SECTIONS = [
       { href: '/admin/dependency-tasks-settings', label: 'Dependency Tasks', icon: GitBranch, roles: [ADMIN, PM] },
       // Hand over to development switch (2026-11-12) - matches DESIGN_HANDOVER_SWITCH_ROLES.
       { href: '/admin/design-handover-settings', label: 'Hand over to development', icon: GitBranch, roles: [ADMIN, PM] },
+      // "New My work screen" (2026-11-17) - matches MY_WORK_SCREEN_ROLES.
+      { href: '/admin/my-work-screen-settings', label: 'New My work screen', icon: LayoutDashboard, roles: [ADMIN, PM] },
       // Performance Tracking B4 (2026-10-30) - matches WorkCalendarService.assertEditor.
       { href: '/admin/work-calendars', label: 'Work Calendars', icon: CalendarClock, roles: [ADMIN, PM] },
       // P1/P2 from GitHub (2026-11-02) - matches GithubReleasesController.editor.
