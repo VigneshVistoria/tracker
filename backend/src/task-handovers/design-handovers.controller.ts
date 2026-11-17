@@ -28,6 +28,12 @@ export class DesignHandoversController {
     return this.designHandovers.setProjectSwitch(projectId, dto.enabled, await this.me(req), req.user.tenantId);
   }
 
+  // Pending design handovers sent to me (developer home, read-only).
+  @Get('design-handovers/mine')
+  async mine(@Req() req: any) {
+    return this.designHandovers.mine(await this.me(req), req.user.tenantId);
+  }
+
   @Get('tasks/:id/design-handover')
   async state(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     return this.designHandovers.state(id, await this.me(req), req.user.tenantId);

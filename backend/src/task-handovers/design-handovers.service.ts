@@ -232,6 +232,28 @@ export class DesignHandoversService {
     return this.state(taskId, user, tenantId);
   }
 
+  // GET design-handovers/mine - pending design handovers sent to me,
+  // for the developer home "Accept handover" rows (read-only, 2026-11-17).
+  async mine(user: User, tenantId: number) {
+    const rows = await this.handovers.find({ where: { tenantId, toUserId: user.id, kind: 'design', status: 'pending' }, order: { createdAt: 'ASC', id: 'ASC' } });
+    if (!rows.length) return [];
+    const tasks = await this.dataSource.getRepository(ProjectTask).find({ where: { tenantId, id: In(rows.map((r) => r.taskId)) } });
+    const taskById = new Map(tasks.map((t) => [t.id, t]));
+    const names = await this.names(rows, tenantId);
+    return rows.map((r) => {
+      const t = taskById.get(r.taskId);
+      return {
+        id: r.id,
+        taskId: r.taskId,
+        taskTitle: t?.title ?? null,
+        projectId: t?.projectId ?? null,
+        projectName: t?.projectName ?? null,
+        fromName: nameOf(names.get(r.fromUserId)),
+        createdAt: r.createdAt,
+      };
+    });
+  }
+
   private async pendingDesign(handoverId: number, tenantId: number) {
     const h = await this.handovers.findOne({ where: { id: handoverId, tenantId } });
     if (!h || h.kind !== 'design') throw new NotFoundException(`Design handover #${handoverId} not found.`);

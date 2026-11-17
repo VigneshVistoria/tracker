@@ -128,6 +128,14 @@ describe('Design handover - Hand over to development (e2e)', () => {
     const started = await notification(f.users.devNone.id, 'task.designHandoverStarted');
     expect(started).toMatchObject({ link: `/tasks/${designTask}#design-handover` });
     const id = await pendingId();
+    // GET /design-handovers/mine (2026-11-17, developer home): only the
+    // person it was sent to sees it, with the design task's title/project.
+    expect((await get(f.users.devNone, '/design-handovers/mine').expect(200)).body).toEqual([
+      expect.objectContaining({ id, taskId: designTask, taskTitle: 'Login screen design', projectId: f.projects.pA, projectName: 'Project A' }),
+    ]);
+    for (const u of [f.users.devA, f.users.pm, f.users.admin]) {
+      expect((await get(u, '/design-handovers/mine').expect(200)).body).toEqual([]);
+    }
     // One pending per task, of either kind; the C4 endpoints refuse it.
     await post(f.users.devA, `/tasks/${designTask}/design-handover`, { toUserId: f.users.devNone.id, notes, artifacts: links }).expect(400);
     await post(f.users.devNone, `/task-handovers/${id}/accept`).expect(400);
@@ -140,6 +148,8 @@ describe('Design handover - Hand over to development (e2e)', () => {
     await post(f.users.devNone, `/design-handovers/${id}/reject`, { reason: 'no' }).expect(400);
     const after = (await post(f.users.devNone, `/design-handovers/${id}/reject`, { reason: 'Mobile layout link is missing' }).expect(201)).body;
     expect(after).toEqual({ decided: true, canViewTask: false });
+    // Decided = no longer waiting.
+    expect((await get(f.users.devNone, '/design-handovers/mine').expect(200)).body).toEqual([]);
     expect((await taskRow(designTask)).status).toBe('Failed');
     expect(await notification(f.users.devA.id, 'task.designHandoverRejected')).toBeTruthy();
   });
