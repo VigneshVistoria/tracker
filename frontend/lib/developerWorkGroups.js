@@ -25,6 +25,8 @@ const STATUS_MAP = {
 export const HIDDEN_STATUSES = ['Released - No Showstoppers', 'Closed', 'Junk'];
 export const FIX_NEEDED_STATUSES = Object.keys(STATUS_MAP).filter((s) => STATUS_MAP[s].fix);
 export const PASSED_VISIBLE_DAYS = 14;
+// Mirrors DEPENDENCY_HIDDEN_PARENT_STATUSES (backend daily-scrum.compute.ts).
+export const WAITING_HIDDEN_PARENT_STATUSES = ['Hold', 'Closed', 'Junk'];
 
 // Tracking-commitment rule, mirrors backend/src/tasks/due-date-change.ts
 // (commitmentState + dueDatePermissions): the assignee must confirm a date
@@ -168,7 +170,9 @@ export function buildMyWork({
   // Dependency tickets others filed on me: when the ticket has a linked
   // task assigned to me, the task row carries "<name> is waiting on you"
   // instead of a second row for the ticket.
-  const ownedOpen = ownedTickets.filter((t) => t.status === 'open');
+  // Not while the requester's task is on Hold, Closed or Junk - nobody is
+  // actively waiting (same rule as Daily Scrum, 2026-11-17).
+  const ownedOpen = ownedTickets.filter((t) => t.status === 'open' && !WAITING_HIDDEN_PARENT_STATUSES.includes(t.parentTaskStatus));
   const ticketsByLinkedTask = new Map();
   for (const t of ownedOpen) {
     const linkedId = t.dependencyTask?.id ?? tasks.find((x) => x.dependencyTicketId === t.id)?.id;

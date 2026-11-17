@@ -174,3 +174,20 @@ test('blocker flags: another person moves it to Submitted; a flag on a filed tic
   assert.deepEqual(submitted.map((r) => r.status).sort(), ['Blocked: waiting on Ravi (DB access)', 'Blocked: waiting on Vendor X (Payment sandbox is down)']);
   assert.deepEqual(submitted.find((r) => r.key === `task-${a.id}`).blocked, []);
 });
+
+test('no "waiting on you" while the requester\'s task is on Hold / Closed / Junk', () => {
+  const linked = task('Development', { dependencyTicketId: 50 });
+  const { working } = buildMyWork({
+    tasks: [linked],
+    ownedTickets: [
+      { id: 50, status: 'open', title: 'A', parentTaskId: 1, parentTaskStatus: 'Hold', createdByName: 'Talha', dependencyTask: { id: linked.id } },
+      { id: 51, status: 'open', title: 'B', parentTaskId: 2, parentTaskStatus: 'Hold', createdByName: 'Talha' },
+      { id: 52, status: 'open', title: 'C', parentTaskId: 3, parentTaskStatus: 'Closed', createdByName: 'Talha' },
+      { id: 53, status: 'open', title: 'D', parentTaskId: 4, parentTaskStatus: 'Development', createdByName: 'Talha' },
+    ],
+    userId: ME,
+    today,
+  });
+  assert.deepEqual(working.map((r) => r.key).sort(), ['dep-53', `task-${linked.id}`].sort());
+  assert.equal(working.find((r) => r.key === `task-${linked.id}`).waiting, null);
+});
