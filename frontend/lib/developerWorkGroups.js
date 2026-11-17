@@ -111,6 +111,11 @@ export function waitingLabel(names) {
   const joined = list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
   return `${joined} ${list.length === 1 ? 'is' : 'are'} waiting on you`;
 }
+// "Review Ahmed's work" (peer review I must do; author = the task's assignee).
+export function reviewLabel(author) {
+  return author ? `Review ${author}'s work` : 'Review needed';
+}
+
 const requesterName = (t) => t.createdByName || t.createdByEmail || null;
 
 const isShowstopper = (task) => task.status === 'Released - With Showstoppers' || /showstopper/i.test(task.severity || '');
@@ -270,7 +275,11 @@ export function buildMyWork({
     });
   }
 
+  // Peer reviews assigned to me (GET /tasks/peer-review-queue lists only
+  // rounds where I am the reviewer); never my own task. Date = the review
+  // due date set on submission; late in red like any Working row.
   for (const t of peerReviews) {
+    if (t.assigneeUserId === userId) continue;
     working.push({
       key: `peer-${t.id}`,
       kind: 'action',
@@ -279,7 +288,7 @@ export function buildMyWork({
       ref: `#${t.id}`,
       projectId: t.projectId,
       projectName: t.projectName,
-      status: 'Review needed',
+      status: reviewLabel(t.assigneeFullName || t.assigneeEmail || null),
       fix: false,
       date: t.qaReviewDueDate || null,
       late: daysLate(t.qaReviewDueDate, today),

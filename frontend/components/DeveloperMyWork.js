@@ -56,6 +56,11 @@ export default function DeveloperMyWork({ user }) {
           Promise.allSettled(workingTasks.map((t) => apiFetch(`/task-flags?taskId=${t.id}`).then((r) => [t.id, r]))),
         ]);
         if (peer.status !== 'fulfilled') missing.push('peer reviews to do');
+        // Author names for "Review <author>'s work" - the queue has emails only.
+        if (peer.status === 'fulfilled' && peer.value.length) {
+          const named = await Promise.allSettled(peer.value.map((t) => apiFetch(`/tasks/${t.id}`)));
+          peer.value = peer.value.map((t, i) => (named[i].status === 'fulfilled' ? { ...t, assigneeFullName: named[i].value.assigneeFullName } : t));
+        }
         if (handovers.status !== 'fulfilled') missing.push('design handovers');
         if (tracking.some((r) => r.status !== 'fulfilled')) missing.push('due dates to confirm');
         if (flags.some((r) => r.status !== 'fulfilled')) missing.push('blocker flags');

@@ -69,7 +69,7 @@ test('action rows: dependency, peer review, handover, due date to confirm (track
   const { working } = buildMyWork({
     tasks: [unconfirmed, elsewhere],
     ownedTickets: [{ id: 5, status: 'open', title: 'API key', parentTaskId: 40, needByDate: '2026-11-16', parentTaskProjectName: 'LMS', createdByName: 'Nadia' }, { id: 6, status: 'resolved', title: 'x', parentTaskId: 40 }],
-    peerReviews: [{ id: 50, title: 'Review me', projectId: 1, projectName: 'LMS', qaReviewDueDate: '2026-11-19' }],
+    peerReviews: [{ id: 50, title: 'Review me', projectId: 1, projectName: 'LMS', qaReviewDueDate: '2026-11-19', assigneeUserId: 31, assigneeFullName: 'Ahmed' }],
     handovers: [{ id: 9, taskId: 60, taskTitle: 'Login design', projectId: 1, projectName: 'LMS' }],
     trackingProjects: new Set([2]),
     userId: ME,
@@ -77,7 +77,7 @@ test('action rows: dependency, peer review, handover, due date to confirm (track
   });
   const labels = working.map((r) => r.status).sort();
   // The Working task needing confirmation stays one row, tagged.
-  assert.deepEqual(labels, ['Accept handover', 'Nadia is waiting on you', 'Review needed', 'Working on it', 'Working on it']);
+  assert.deepEqual(labels, ['Accept handover', 'Nadia is waiting on you', "Review Ahmed's work", 'Working on it', 'Working on it']);
   assert.equal(working.find((r) => r.key === `task-${unconfirmed.id}`).confirmDueDate, true);
   assert.equal(working.find((r) => r.key === `task-${elsewhere.id}`).confirmDueDate, undefined);
   // A Submitted task needing confirmation gets its own Working row.
@@ -190,4 +190,22 @@ test('no "waiting on you" while the requester\'s task is on Hold / Closed / Junk
   });
   assert.deepEqual(working.map((r) => r.key).sort(), ['dep-53', `task-${linked.id}`].sort());
   assert.equal(working.find((r) => r.key === `task-${linked.id}`).waiting, null);
+});
+
+test('peer reviews: "Review <author>\'s work", review due date, late in red, never my own task', () => {
+  const { working } = buildMyWork({
+    peerReviews: [
+      { id: 60, title: 'A', projectId: 1, projectName: 'LMS', qaReviewDueDate: '2026-11-14', assigneeUserId: 31, assigneeFullName: 'Ahmed' },
+      { id: 61, title: 'B', projectId: 1, projectName: 'LMS', qaReviewDueDate: '2026-11-20', assigneeUserId: 32, assigneeFullName: 'James' },
+      { id: 62, title: 'C', projectId: 1, projectName: 'LMS', qaReviewDueDate: null, assigneeUserId: 33, assigneeFullName: null, assigneeEmail: 'x@example.invalid' },
+      { id: 63, title: 'Mine', projectId: 1, projectName: 'LMS', qaReviewDueDate: '2026-11-20', assigneeUserId: ME, assigneeFullName: 'Me' },
+    ],
+    userId: ME,
+    today,
+  });
+  assert.deepEqual(working.map((r) => [r.ref, r.status, r.date, r.late]), [
+    ['#60', "Review Ahmed's work", '2026-11-14', 3],
+    ['#61', "Review James's work", '2026-11-20', 0],
+    ['#62', "Review x@example.invalid's work", null, 0],
+  ]);
 });
