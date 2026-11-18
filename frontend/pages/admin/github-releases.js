@@ -50,6 +50,7 @@ const EMPTY_MAPPING = {
   repoFullName: '',
   projectId: '',
   appName: '',
+  appWorkflows: '',
   productionEnvironments: 'production',
   stagingEnvironments: 'staging',
   deployWorkflows: '',
@@ -148,6 +149,7 @@ export default function GithubReleasesPage() {
       repoFullName: m.repoFullName,
       projectId: String(m.projectId),
       appName: m.appName,
+      appWorkflows: toText(m.appWorkflows),
       ...Object.fromEntries(LISTS.map(([key]) => [key, toText(m[key])])),
       publishedReleaseIs: m.publishedReleaseIs,
       preReleaseIs: m.preReleaseIs,
@@ -204,6 +206,7 @@ export default function GithubReleasesPage() {
       repoFullName: mapping.repoFullName,
       projectId: Number(mapping.projectId),
       appName: mapping.appName,
+      appWorkflows: toList(mapping.appWorkflows),
       ...Object.fromEntries(LISTS.map(([key]) => [key, toList(mapping[key])])),
       publishedReleaseIs: mapping.publishedReleaseIs,
       preReleaseIs: mapping.preReleaseIs,
@@ -408,7 +411,10 @@ export default function GithubReleasesPage() {
                   {page.mappings.map((m) => (
                     <tr key={m.id}>
                       <td><code>{m.repoFullName}</code></td>
-                      <td>{projectName(m.projectId)} / {m.appName}</td>
+                      <td>
+                        {projectName(m.projectId)} / {m.appName}
+                        {(m.appWorkflows || []).length > 0 && <div className={styles.helpText}>Workflows: {toText(m.appWorkflows)}</div>}
+                      </td>
                       {(m.stages || []).length > 0 ? (
                         <td colSpan={2}>
                           Stages: {stagesSummary(m)}
@@ -462,6 +468,21 @@ export default function GithubReleasesPage() {
               <div className={styles.field} style={{ maxWidth: 560 }}>
                 <label className={styles.label} htmlFor="ghApp">App name (as on the Release Log)</label>
                 <input id="ghApp" className={styles.input} maxLength={255} value={mapping.appName} onChange={(e) => set('appName', e.target.value)} />
+              </div>
+              <div className={styles.field} style={{ maxWidth: 560 }}>
+                <label className={styles.label} htmlFor="ghAppWorkflows">App workflows</label>
+                <input
+                  id="ghAppWorkflows"
+                  className={styles.input}
+                  placeholder="Frontend CI/CD"
+                  aria-describedby="ghAppWorkflowsHelp"
+                  value={mapping.appWorkflows}
+                  onChange={(e) => set('appWorkflows', e.target.value)}
+                />
+                <p id="ghAppWorkflowsHelp" className={styles.helpText}>
+                  GitHub Actions workflow names that deploy this app, comma-separated. Leave empty if the repository holds only this app. When one repository
+                  holds several apps, add it once per app, each with its own workflows.
+                </p>
               </div>
               <fieldset style={{ border: 0, padding: 0, margin: '0 0 var(--ds-space-3)' }}>
                 <legend className={styles.label}>Release path</legend>

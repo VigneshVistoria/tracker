@@ -33,6 +33,8 @@ import {
   overlapProblem,
   signatureValid,
   taskRefs,
+  pickAppMapping,
+  appWorkflowsProblem,
 } from './github-releases';
 import { GithubRepoMapping, GithubSettings, GithubStageDeployment, GithubStagingDeployment, GithubWebhookDelivery, TaskStageProgress } from './github-releases.entity';
 import { RepoMappingDto, UpdateGithubSettingsDto } from './dto/github-releases.dto';
@@ -101,7 +103,14 @@ export class GithubReleasesService {
       enabled: true as const,
       taskKeyPrefix: s.taskKeyPrefix,
       branchPrefix: s.branchPrefix,
-      repos: repos.map((r) => ({ repoFullName: r.repoFullName, appName: r.appName })),
+      // One entry per repository (a shared repository lists its apps together).
+      repos: Object.values(
+        repos.reduce<Record<string, { repoFullName: string; appName: string }>>((acc, r) => {
+          const k = r.repoFullName.toLowerCase();
+          acc[k] = acc[k] ? { ...acc[k], appName: `${acc[k].appName} / ${r.appName}` } : { repoFullName: r.repoFullName, appName: r.appName };
+          return acc;
+        }, {}),
+      ),
     };
   }
 
@@ -136,11 +145,14 @@ export class GithubReleasesService {
     if (!(await this.settings(tenantId)).releaseStagesEnabled) return { enabled: false as const };
     const release = await this.releasesRepo.findOne({ where: { id: releaseId, tenantId } });
     if (!release) throw new NotFoundException(`Release #${releaseId} not found`);
-    const mapping = await this.mappingsRepo
+    // A shared repository has one mapping per app: prefer the release's app.
+    const found = await this.mappingsRepo
       .createQueryBuilder('m')
       .where('m.tenantId = :tenantId AND m.projectId = :projectId', { tenantId, projectId: release.projectId })
       .andWhere(release.githubRepo ? 'lower(m.repoFullName) = lower(:repo)' : 'lower(m.appName) = lower(:app)', { repo: release.githubRepo, app: release.appName })
-      .getOne();
+      .orderBy('m.id', 'ASC')
+      .getMany();
+    const mapping = found.find((m) => m.appName.toLowerCase() === (release.appName || '').toLowerCase()) ?? (found.length === 1 ? found[0] : null);
     if (!mapping || !(mapping.stages ?? []).length) return { enabled: false as const };
     const deploys = await this.stageDeploysRepo.find({ where: { tenantId, mappingId: mapping.id }, order: { deployedAt: 'ASC', id: 'ASC' } });
     const base = baseVersion(release.version) ?? release.version;
@@ -149,6 +161,7 @@ export class GithubReleasesService {
     return {
       enabled: true as const,
       repoFullName: mapping.repoFullName,
+      appName: mapping.appName,
       p1StageKey: resolveP1Stage(mapping.stages, mapping.p1StageKey)?.key ?? null,
       stages: mapping.stages.map((st) => {
         const d = deploys.find((x) => x.stageKey === st.key && matches(x));
@@ -200,8 +213,11 @@ export class GithubReleasesService {
       return { status: 400, outcome: 'refused', message: 'Missing X-GitHub-Event.' };
     }
 
-    const mapping = repo ? await this.mappingsRepo.createQueryBuilder('m').where('lower(m.repoFullName) = lower(:repo)', { repo }).getOne() : null;
-    const tenantId = mapping?.tenantId ?? null;
+    // A repository may hold several apps, told apart by workflow name.
+    const candidates = repo ? await this.mappingsRepo.createQueryBuilder('m').where('lower(m.repoFullName) = lower(:repo)', { repo }).orderBy('m.id', 'ASC').getMany() : [];
+    const picked = pickAppMapping(event, payload, candidates);
+    const mapping = picked && 'mapping' in picked ? picked.mapping : null;
+    const tenantId = mapping?.tenantId ?? candidates[0]?.tenantId ?? null;
     if (deliveryId) {
       const earlier = await this.deliveriesRepo
         .createQueryBuilder('d')
@@ -213,6 +229,10 @@ export class GithubReleasesService {
         return { status: 200, outcome: 'duplicate', message: 'Already received.' };
       }
     }
+    if (picked && 'reason' in picked) {
+      await log({ tenantId, signatureValid: true, outcome: 'ignored', reason: picked.reason });
+      return { status: 202, outcome: 'ignored', message: picked.reason };
+    }
     if (!mapping || !mapping.active) {
       const reason = event === 'ping' ? 'Ping from GitHub - the connection works.' : `Repository ${repo ?? '(none)'} is not ${mapping ? 'active' : 'mapped'} in Tracker.`;
       await log({ tenantId, signatureValid: true, outcome: 'ignored', reason });
@@ -220,7 +240,8 @@ export class GithubReleasesService {
     }
     const tenantSettings = await this.settings(mapping.tenantId);
     if (!tenantSettings.enabled) {
-      const reason = `GitHub releases are switched off - nothing recorded${event === 'ping' ? ' (ping: the connection works)' : ''}.`;
+      const app = candidates.length > 1 && event !== 'ping' ? ` (app: ${mapping.appName})` : '';
+      const reason = `GitHub releases are switched off - nothing recorded${event === 'ping' ? ' (ping: the connection works)' : app}.`;
       await log({ tenantId, signatureValid: true, outcome: 'ignored', reason });
       return { status: 202, outcome: 'ignored', message: reason };
     }
@@ -479,13 +500,16 @@ export class GithubReleasesService {
         filled.push('releasedByUserId');
       }
     }
-    if (!release.githubStagingDeployedOn) {
-      const staged = p1Stage ? await this.stageFor(mapping, p1Stage, event) : await this.stagingFor(mapping, event);
+    // Staging / Production path: the staging deploy of the same commit or
+    // version. Multi-stage path: by task, below (Test and Production are
+    // separate builds, so their commits differ).
+    if (!p1Stage && !release.githubStagingDeployedOn) {
+      const staged = await this.stagingFor(mapping, event);
       if (staged) {
         release.githubStagingDeployedOn = dateInZone(staged.deployedAt, zone);
         filled.push('githubStagingDeployedOn');
       } else if (release.stagingSignedOffOn == null) {
-        notes.push(`No ${p1Stage ? `${p1Stage.name} (P1 sign-off stage)` : 'staging'} deployment of this commit or version was seen before this release.`);
+        notes.push('No staging deployment of this commit or version was seen before this release.');
       }
     }
 
@@ -515,6 +539,15 @@ export class GithubReleasesService {
       added++;
     }
     if (added) filled.push('items');
+    if (p1Stage) {
+      const p1 = await this.p1ByTask(mapping, p1Stage, taskRefs(texts, taskKeyPrefix), event.at);
+      if (!release.githubStagingDeployedOn && p1.at) {
+        release.githubStagingDeployedOn = dateInZone(p1.at, zone);
+        filled.push('githubStagingDeployedOn');
+      }
+      if (p1.missing.length) notes.push(`No ${p1Stage.name} sign-off: ${p1.missing.map((id) => `${taskKeyPrefix}-${id}`).join(', ')} reached Production without a ${p1Stage.name} deploy seen first.`);
+      else if (!p1.at && release.stagingSignedOffOn == null) notes.push(`No ${p1Stage.name} sign-off: no tasks of this project are named in this release, so there is no ${p1Stage.name} date.`);
+    }
 
     release.githubFilled = [...new Set([...(release.githubFilled || []), ...filled])];
     release.githubNotes = [...new Set([...(release.githubNotes || []), ...notes])].slice(-NOTES_MAX);
@@ -534,24 +567,31 @@ export class GithubReleasesService {
     return { releaseId: release.id, summary, texts };
   }
 
-  // Multi-stage: the latest deploy to the P1 sign-off stage, before this
-  // release, of the same commit or version (1.2.0-rc.1 counts for 1.2.0).
-  private async stageFor(mapping: GithubRepoMapping, stage: ReleaseStage, event: ClassifiedEvent): Promise<GithubStageDeployment | null> {
-    const candidates = await this.stageDeploysRepo
-      .createQueryBuilder('s')
-      .where('s.tenantId = :tenantId AND s.mappingId = :mappingId AND s.stageKey = :key AND s.deployedAt <= :at', {
-        tenantId: mapping.tenantId,
-        mappingId: mapping.id,
-        key: stage.key,
-        at: event.at,
-      })
-      .orderBy('s.deployedAt', 'DESC')
-      .limit(200)
-      .getMany();
-    const base = baseVersion(event.version);
-    return (
-      candidates.find((s) => (event.sha && s.sha === event.sha) || (event.version && s.version === event.version) || (base && baseVersion(s.version) === base)) ?? null
+  // Multi-stage P1 by task (2026-11-18, the user's decision): for each task
+  // of this project named in the release, its last deploy to the P1 stage
+  // (e.g. Test) before this Production deploy. The release's staging date is
+  // the latest of those (the day its last task was on Test). Tasks never
+  // seen on that stage first are "missing" (flagged for the PM).
+  private async p1ByTask(mapping: GithubRepoMapping, p1Stage: ReleaseStage, ids: number[], at: Date): Promise<{ at: Date | null; missing: number[] }> {
+    if (!ids.length) return { at: null, missing: [] };
+    const tasks: Array<{ id: number }> = await this.progressRepo.query(
+      `SELECT id FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2 AND id = ANY($3) AND status <> 'Junk'`,
+      [mapping.tenantId, mapping.projectId, ids],
     );
+    if (!tasks.length) return { at: null, missing: [] };
+    const reached: Array<{ taskId: number; firstReachedAt: Date; lastReachedAt: Date }> = await this.progressRepo.query(
+      `SELECT "taskId", "firstReachedAt", "lastReachedAt" FROM task_stage_progress
+        WHERE "tenantId" = $1 AND "mappingId" = $2 AND "stageKey" = $3 AND "taskId" = ANY($4) AND "firstReachedAt" <= $5`,
+      [mapping.tenantId, mapping.id, p1Stage.key, tasks.map((t) => t.id), at],
+    );
+    let latest: Date | null = null;
+    for (const r of reached) {
+      const last = new Date(r.lastReachedAt);
+      const d = last <= at ? last : new Date(r.firstReachedAt);
+      if (!latest || d > latest) latest = d;
+    }
+    const seen = new Set(reached.map((r) => Number(r.taskId)));
+    return { at: latest, missing: tasks.map((t) => t.id).filter((id) => !seen.has(id)).sort((a, b) => a - b) };
   }
 
   // The latest staging deployment, before this release, of the same commit
@@ -658,6 +698,7 @@ export class GithubReleasesService {
       ['stagingEnvironments', 'Staging environments'],
       ['productionEnvironments', 'Production environments'],
       ['deployWorkflows', 'Deploy workflows'],
+      ['appWorkflows', 'App workflows'],
       ['stagingBranches', 'Staging branches'],
       ['productionBranches', 'Production branches'],
     ];
@@ -690,6 +731,18 @@ export class GithubReleasesService {
       overlapProblem(merged.stagingEnvironments ?? ['staging'], merged.productionEnvironments ?? ['production'], 'Environments') ||
       overlapProblem(merged.stagingBranches ?? [], merged.productionBranches ?? [], 'Branches');
     if (problem) throw new BadRequestException(problem);
+    // Other apps in the same repository (any tenant - a delivery has no tenant).
+    if (merged.repoFullName) {
+      const others = (await this.mappingsRepo.createQueryBuilder('m').where('lower(m.repoFullName) = lower(:repo)', { repo: merged.repoFullName }).getMany()).filter(
+        (m) => m.id !== current?.id,
+      );
+      if (others.some((m) => m.tenantId !== tenantId)) throw new ConflictException(`${merged.repoFullName} is already mapped.`);
+      if (others.some((m) => m.appName.trim().toLowerCase() === (merged.appName || '').trim().toLowerCase())) {
+        throw new ConflictException(`${merged.repoFullName} already has an app called ${merged.appName}.`);
+      }
+      const shared = appWorkflowsProblem({ appName: merged.appName, appWorkflows: merged.appWorkflows ?? [] }, others);
+      if (shared) throw new BadRequestException(shared);
+    }
     return out;
   }
 
@@ -700,7 +753,7 @@ export class GithubReleasesService {
     try {
       saved = await this.mappingsRepo.save(this.mappingsRepo.create({ ...fields, tenantId, createdByUserId: actor.id }));
     } catch (err) {
-      if (isUniqueViolation(err)) throw new ConflictException(`${fields.repoFullName} is already mapped.`);
+      if (isUniqueViolation(err)) throw new ConflictException(`${fields.repoFullName} already has an app called ${fields.appName}.`);
       throw err;
     }
     await this.audit.record({
@@ -725,7 +778,7 @@ export class GithubReleasesService {
     try {
       saved = await this.mappingsRepo.save(mapping);
     } catch (err) {
-      if (isUniqueViolation(err)) throw new ConflictException(`${mapping.repoFullName} is already mapped.`);
+      if (isUniqueViolation(err)) throw new ConflictException(`${mapping.repoFullName} already has an app called ${mapping.appName}.`);
       throw err;
     }
     await this.audit.record({

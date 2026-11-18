@@ -72,6 +72,11 @@ export class RepoMappingDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  appWorkflows?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   stagingBranches?: string[];
 
   @IsOptional()

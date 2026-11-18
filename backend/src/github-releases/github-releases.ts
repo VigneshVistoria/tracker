@@ -440,3 +440,51 @@ export function classifyStage(event: string, payload: any, stages: ReleaseStage[
 
   return { use: false, reason: `Event "${event}" is not used.` };
 }
+
+// ---------- Two apps in one repository (2026-11-18, the user's decision) ----------
+// One repository may hold several apps (e.g. lms-core-foundation: LMS
+// Frontend + LMS Backend), each mapped separately and told apart by the
+// GitHub Actions workflow that deployed it ("appWorkflows"). A repository
+// with one mapping and no workflows listed works exactly as before.
+
+// The workflow behind an event: workflow_run events carry it; deployment
+// and deployment_status events made by an Actions job (environment:) carry
+// the run and the workflow too. Releases, tags and pings name none.
+export function eventWorkflowName(payload: any): string | null {
+  const name = payload?.workflow_run?.name ?? payload?.workflow?.name ?? null;
+  return typeof name === 'string' && name.trim() ? name.trim() : null;
+}
+
+export interface AppMappingLike {
+  appName: string;
+  appWorkflows: string[];
+}
+
+// Which of a repository's mappings an event belongs to.
+export function pickAppMapping<T extends AppMappingLike>(event: string, payload: any, mappings: T[]): { mapping: T } | { reason: string } | null {
+  if (!mappings.length) return null;
+  const name = eventWorkflowName(payload);
+  const repo = payload?.repository?.full_name ?? 'this repository';
+  if (name) {
+    const hit = mappings.find((m) => has(m.appWorkflows ?? [], name)) ?? mappings.find((m) => !(m.appWorkflows ?? []).length);
+    if (hit) return { mapping: hit };
+    const apps = mappings.map((m) => `${m.appName}: ${(m.appWorkflows ?? []).join(', ')}`).join('; ');
+    return { reason: `Workflow "${name}" belongs to none of the apps mapped for ${repo} (${apps}).` };
+  }
+  if (mappings.length === 1 || event === 'ping') return { mapping: mappings[0] };
+  return { reason: `${repo} holds several apps (${mappings.map((m) => m.appName).join(', ')}) and this ${event} event names no workflow - it can't be matched to an app.` };
+}
+
+// Every mapping of a shared repository names its own workflows, and no
+// workflow belongs to two apps.
+export function appWorkflowsProblem(self: AppMappingLike, others: AppMappingLike[]): string | null {
+  if (!others.length) return null;
+  const all = [self, ...others];
+  const bare = all.find((m) => !(m.appWorkflows ?? []).length);
+  if (bare) return `This repository holds several apps - give ${bare.appName} its app workflows (e.g. Frontend CI/CD) so deploys can be told apart.`;
+  for (const o of others) {
+    const both = (self.appWorkflows ?? []).find((w) => has(o.appWorkflows ?? [], w));
+    if (both) return `Workflow "${both}" is already ${o.appName}'s - each workflow belongs to one app.`;
+  }
+  return null;
+}

@@ -43,7 +43,8 @@ export class GithubSettings {
 }
 
 // A repository -> Tracker project + app name, and what is staging or
-// production for it. A repository maps to one project (unique, any case).
+// production for it. One mapping per repository + app name (any case); a
+// repository shared by several apps tells them apart by appWorkflows.
 @Entity('github_repo_mappings')
 export class GithubRepoMapping {
   @PrimaryGeneratedColumn()
@@ -72,6 +73,11 @@ export class GithubRepoMapping {
 
   @Column({ type: 'jsonb', default: () => `'[]'` })
   deployWorkflows: string[];
+
+  // Two apps in one repository (migrations/2026-11-github-app-workflows.sql):
+  // the workflow names that belong to this app; empty = every workflow.
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  appWorkflows: string[];
 
   @Column({ type: 'jsonb', default: () => `'[]'` })
   stagingBranches: string[];

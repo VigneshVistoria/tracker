@@ -227,6 +227,8 @@ describe('GitHub multi-stage release path (e2e)', () => {
     expect(items.map((i: any) => i.taskId)).toEqual([t.res]);
     expect(rel.githubNotes.some((n: string) => n.startsWith(`TRK-${t.noRes}`))).toBe(true);
     expect((await progress(t.noRes)).map((p: any) => p.stageName)).toEqual(['Dev', 'Production']);
+    // P1 by task (2026-11-18): TRK-noRes never went through Test.
+    expect(rel.githubNotes).toContain(`No Test sign-off: TRK-${t.noRes} reached Production without a Test deploy seen first.`);
   });
 
   it('first/last reached: a later deploy moves "last"; an earlier one seen late moves "first"', async () => {
@@ -239,9 +241,10 @@ describe('GitHub multi-stage release path (e2e)', () => {
 
   it('a chosen P1 stage is used instead of Test', async () => {
     await http().patch(`/github-releases/mappings/${lmsId}`).set(auth(f.users.admin)).send({ p1StageKey: 'training' }).expect(200);
-    await deliver(LMS, 'deployment_status', deployed('test', SHA_A, '2026-11-12T08:00:00Z'));
-    await deliver(LMS, 'deployment_status', deployed('training', SHA_A, '2026-11-13T08:00:00Z'));
-    await deliver(LMS, 'deployment_status', deployed('production', SHA_A, '2026-11-14T08:00:00Z'));
+    // By task (2026-11-18): TRK-res was on Training (the chosen stage) on 11-13.
+    await deliver(LMS, 'deployment_status', deployed('test', SHA_A, '2026-11-12T08:00:00Z', `TRK-${t.res}`));
+    await deliver(LMS, 'deployment_status', deployed('training', SHA_A, '2026-11-13T08:00:00Z', `TRK-${t.res}`));
+    await deliver(LMS, 'deployment_status', deployed('production', SHA_A, '2026-11-14T08:00:00Z', `TRK-${t.res}`));
     const [rel] = await ds.query(`SELECT "githubStagingDeployedOn"::text FROM releases WHERE "githubSha" = $1`, [SHA_A]);
     expect(rel.githubStagingDeployedOn).toBe('2026-11-13');
   });
