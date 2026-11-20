@@ -146,6 +146,12 @@ export class PerformanceTrackingSettings {
   @Column({ type: 'int', default: 3 })
   releaseMinSample: number;
 
+  // Pilot rule (2026-11-20): releases, release tasks and "released by"
+  // that came from GitHub count in scores only when this is on
+  // (migrations/2026-11-performance-tracking-github-releases.sql).
+  @Column({ type: 'boolean', default: false })
+  countGithubReleases: boolean;
+
   // P3/P4 (migrations/2026-11-performance-tracking-security-findings.sql).
   @Column({ type: 'jsonb', default: () => `'{"critical": 2, "high": 5, "medium": 10, "low": 20}'` })
   securitySlaDays: SlaDays;

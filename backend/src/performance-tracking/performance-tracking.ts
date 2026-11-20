@@ -115,6 +115,10 @@ export interface PerformanceTrackingThresholds {
   // their own minimum number of releases before a score.
   releaseWindowDays: number;
   releaseMinSample: number;
+  // GitHub pilot rule: off = anything GitHub recorded in the Release Log
+  // (its releases, the tasks it added, a "released by" it filled) is left
+  // out of P1/P2, Q4 and L5.
+  countGithubReleases: boolean;
   // P3/P4: SLA working days per severity, who records and verifies
   // findings, and (like P1/P2) their own window and minimum.
   securitySlaDays: SlaDays;
@@ -164,6 +168,7 @@ export const PERFORMANCE_TRACKING_DEFAULTS: PerformanceTrackingThresholds = {
   escalationsPerRounds: 10,
   releaseWindowDays: 90,
   releaseMinSample: 3,
+  countGithubReleases: false,
   securitySlaDays: { ...DEFAULT_SLA_DAYS },
   securityRoles: [...SECURITY_ROLE_CHOICES],
   securityWindowDays: 90,

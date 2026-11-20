@@ -217,6 +217,10 @@ export class UpdatePerformanceTrackingSettingsDto {
   @Max(THRESHOLD_LIMITS.releaseMinSample[1])
   releaseMinSample?: number;
 
+  @IsOptional()
+  @IsBoolean()
+  countGithubReleases?: boolean;
+
   // P3/P4. SLA days are checked in the service.
   @IsOptional()
   @IsObject()

@@ -152,7 +152,7 @@ export class TrackingMetricsService {
       if (!since || dateInZone(since, calendar.timeZone) > snapshotDate) continue;
       const dayEnd = new Date(Math.min(now.getTime(), startOfDayInZone(addCalendarDays(snapshotDate, 1), calendar.timeZone).getTime() - 1));
       const { phase } = projectTrackingPhase(true, since, dayEnd, thresholds.baselineDays);
-      const input = await this.load(tenantId, project.id, snapshotDate, now);
+      const input = await this.load(tenantId, project.id, snapshotDate, now, thresholds.countGithubReleases);
       const result = computeTrackingMetrics({
         snapshotDate,
         now,
@@ -204,8 +204,14 @@ export class TrackingMetricsService {
   }
 
   // One project's raw data - only the columns the metrics read.
-  private async load(tenantId: number, projectId: number, snapshotDate: string, now: Date) {
+  private async load(tenantId: number, projectId: number, snapshotDate: string, now: Date, countGithubReleases = false) {
     const q = (sql: string, params: any[]) => this.dataSource.query(sql, params);
+    // GitHub pilot rule (setting countGithubReleases, default off): leave
+    // out releases GitHub created, release tasks GitHub added (no
+    // addedByUserId) and a "released by" GitHub filled in.
+    const ghRelease = (r: string) => (countGithubReleases ? 'true' : `${r}.source <> 'github'`);
+    const ghItem = (i: string, r: string) => (countGithubReleases ? 'true' : `NOT (${i}."addedByUserId" IS NULL AND ${r}."githubFilled" ? 'items')`);
+    const releasedBy = countGithubReleases ? '"releasedByUserId"' : `CASE WHEN "githubFilled" ? 'releasedByUserId' THEN NULL ELSE "releasedByUserId" END AS "releasedByUserId"`;
     const tasks: any[] = await q(
       `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact", "clientPriorityTier",
               "improvementDecision", "improvementDecidedAt",
@@ -241,7 +247,7 @@ export class TrackingMetricsService {
     ).map((r: any) => ({ id: r.id, revieweeUserId: r.revieweeUserId, reviewedAt: new Date(r.reviewedAt), average: Number(r.average) }));
     // P1/P2 Release Log entries belong to the project.
     const releases = await q(
-      `SELECT id, "releaseDate"::text AS "releaseDate", "releasedByUserId", "stagingSignedOffOn"::text AS "stagingSignedOffOn", "changeTicketRef" FROM releases WHERE "tenantId" = $1 AND "projectId" = $2`,
+      `SELECT id, "releaseDate"::text AS "releaseDate", ${releasedBy}, "stagingSignedOffOn"::text AS "stagingSignedOffOn", "changeTicketRef" FROM releases r WHERE "tenantId" = $1 AND "projectId" = $2 AND ${ghRelease('r')}`,
       [tenantId, projectId],
     );
     // P3/P4 security findings belong to the project.
@@ -267,9 +273,9 @@ export class TrackingMetricsService {
     const satisfaction = (
       await q(
         `SELECT s."releaseId", r."releaseDate"::text AS "releaseDate", s.average,
-                COALESCE((SELECT array_agg(i."taskId") FROM release_items i WHERE i."releaseId" = s."releaseId"), '{}') AS "taskIds"
+                COALESCE((SELECT array_agg(i."taskId") FROM release_items i WHERE i."releaseId" = s."releaseId" AND ${ghItem('i', 'r')}), '{}') AS "taskIds"
            FROM release_satisfaction s JOIN releases r ON r.id = s."releaseId"
-          WHERE s."tenantId" = $1 AND s."projectId" = $2`,
+          WHERE s."tenantId" = $1 AND s."projectId" = $2 AND ${ghRelease('r')}`,
         [tenantId, projectId],
       )
     ).map((r: any) => ({ releaseId: r.releaseId, releaseDate: r.releaseDate, average: Number(r.average), taskIds: (r.taskIds as number[]).map(Number) }));
@@ -290,7 +296,7 @@ export class TrackingMetricsService {
       q(`SELECT source, "dependencyTicketId", "requestedOfUserId", "requestedAt", "respondedAt" FROM task_requests WHERE "tenantId" = $1 AND "taskId" = ANY($2)`, [tenantId, ids]),
       q(
         `SELECT i."taskId", r."releaseDate"::text AS "releaseDate" FROM release_items i JOIN releases r ON r.id = i."releaseId"
-          WHERE i."tenantId" = $1 AND i."taskId" = ANY($2)`,
+          WHERE i."tenantId" = $1 AND i."taskId" = ANY($2) AND ${ghRelease('r')} AND ${ghItem('i', 'r')}`,
         [tenantId, ids],
       ),
     ]);

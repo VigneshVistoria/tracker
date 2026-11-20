@@ -149,6 +149,23 @@ export class GithubWebhookDelivery {
   @Column({ type: 'int', nullable: true })
   releaseId: number | null;
 
+  // Delivery log details (2026-11-20), signed deliveries only - see
+  // deliverySummary(). stageName above is also filled for ignored ones.
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  githubLogin: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  branch: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  title: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  workflowName: string | null;
+
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  taskIds: number[];
+
   @CreateDateColumn()
   receivedAt: Date;
 

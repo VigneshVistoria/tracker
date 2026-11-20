@@ -192,6 +192,10 @@ const MY_WORK_SCREEN_MIGRATION = path.resolve(__dirname, '../../migrations/2026-
 const GITHUB_STAGES_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-release-stages.sql');
 // Two apps in one repository (2026-11-18): appWorkflows + repo/app unique index, real migration.
 const GITHUB_APP_WORKFLOWS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-app-workflows.sql');
+// Delivery log details (2026-11-20): 5 github_webhook_deliveries columns, real migration.
+const GITHUB_DELIVERY_DETAILS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-github-delivery-log-details.sql');
+// GitHub pilot rule (2026-11-20): countGithubReleases setting, real migration.
+const COUNT_GITHUB_RELEASES_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-github-releases.sql');
 // Dependency tasks Stage 1 (2026-11-05): switch, task link, ticket cancel
 // fields and the sync trigger - dropped from what synchronize made, re-added
 // by the real migration, then checked against the entities.
@@ -356,6 +360,8 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(GITHUB_PR_HELPERS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(GITHUB_STAGES_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(GITHUB_APP_WORKFLOWS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(GITHUB_DELIVERY_DETAILS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(COUNT_GITHUB_RELEASES_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(MY_WORK_SCREEN_MIGRATION, 'utf8'));
   for (const [table, cols] of Object.entries(DEPENDENCY_TASKS_COLUMNS)) {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);

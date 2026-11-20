@@ -99,8 +99,12 @@ export class GithubReleasesController {
 
   // Deliveries that matched no mapped repository are shown to Admins only.
   @Get('deliveries')
-  async deliveries(@Query('limit') limit: string | undefined, @Req() req: any) {
+  async deliveries(@Query('limit') limit: string | undefined, @Query('search') search: string | undefined, @Query('show') show: string | undefined, @Req() req: any) {
     const user = await this.editor(req);
-    return this.github.deliveries(req.user.tenantId, user.role === UserRole.ADMIN, Number(limit) || 100);
+    if (show !== undefined && show !== '' && show !== 'recorded' && show !== 'ignored') throw new BadRequestException('show must be recorded or ignored.');
+    return this.github.deliveries(req.user.tenantId, user.role === UserRole.ADMIN, Number(limit) || 100, {
+      search: typeof search === 'string' ? search : undefined,
+      show,
+    });
   }
 }

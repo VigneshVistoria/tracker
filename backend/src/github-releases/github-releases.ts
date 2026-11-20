@@ -89,6 +89,18 @@ export function versionVariants(version: string): string[] {
   return [v.toLowerCase(), `v${v}`.toLowerCase()];
 }
 
+// The text of a deployment that may name tasks: its ref and descriptions,
+// plus - when an Actions job made it - the run's title and head commit
+// message, so a merge commit ("Merge TRK-335 ...") names its task even
+// without a pull request or the App's read access (2026-11-20).
+export function deploymentTexts(payload: any): string[] {
+  const d = payload?.deployment ?? {};
+  const run = payload?.workflow_run ?? {};
+  return [d.ref, d.description, payload?.deployment_status?.description, run.display_title, run.head_commit?.message].filter(
+    (t): t is string => typeof t === 'string' && !!t,
+  );
+}
+
 // Task numbers referenced as PREFIX-123 (any case), not inside a longer word.
 export function taskRefs(texts: (string | null | undefined)[], prefix: string): number[] {
   const re = new RegExp(`(?<![A-Za-z0-9])${prefix}-(\\d{1,9})(?![0-9])`, 'gi');
@@ -158,7 +170,7 @@ export function classify(event: string, payload: any, rules: RepoMappingRules): 
         version: versionFor(d.ref, sha),
         actorLogin: d.creator?.login ?? payload?.sender?.login ?? null,
         at: when(payload?.deployment_status?.created_at, payload?.deployment_status?.updated_at),
-        texts: [d.ref, d.description, payload?.deployment_status?.description].filter(Boolean),
+        texts: deploymentTexts(payload),
         link: payload?.deployment_status?.target_url || (sha && repo ? `https://github.com/${repo}/commit/${sha}` : null),
       },
     };
@@ -392,7 +404,7 @@ export function classifyStage(event: string, payload: any, stages: ReleaseStage[
       version: versionFor(d.ref, sha),
       actorLogin: d.creator?.login ?? payload?.sender?.login ?? null,
       at: when(payload?.deployment_status?.created_at, payload?.deployment_status?.updated_at),
-      texts: [d.ref, d.description, payload?.deployment_status?.description].filter(Boolean),
+      texts: deploymentTexts(payload),
       link: payload?.deployment_status?.target_url || (sha && repo ? `https://github.com/${repo}/commit/${sha}` : null),
     });
   }
@@ -487,4 +499,66 @@ export function appWorkflowsProblem(self: AppMappingLike, others: AppMappingLike
     if (both) return `Workflow "${both}" is already ${o.appName}'s - each workflow belongs to one app.`;
   }
   return null;
+}
+
+// ---------- Delivery log details (2026-11-20) ----------
+// What the delivery log shows for every signed delivery, recorded or not:
+// who triggered it, the branch, the PR title or commit message, the
+// workflow and the task numbers named in any of those. Still a summary -
+// the payload itself is never stored.
+export const DELIVERY_LOGIN_MAX = 100;
+export const DELIVERY_BRANCH_MAX = 255;
+export const DELIVERY_TITLE_MAX = 300;
+export const DELIVERY_WORKFLOW_MAX = 100;
+
+export interface DeliverySummary {
+  githubLogin: string | null;
+  branch: string | null;
+  title: string | null;
+  workflowName: string | null;
+  taskIds: number[];
+}
+
+const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const cut = (v: string | null, max: number) => (v && v.length > max ? v.slice(0, max) : v);
+
+export function deliverySummary(payload: any, prefix: string): DeliverySummary {
+  const run = payload?.workflow_run ?? {};
+  const job = payload?.workflow_job ?? {};
+  const pr = payload?.pull_request ?? {};
+  const d = payload?.deployment ?? {};
+  const r = payload?.release ?? {};
+  const githubLogin =
+    str(run.triggering_actor?.login) ?? str(run.actor?.login) ?? str(d.creator?.login) ?? str(pr.user?.login) ?? str(r.author?.login) ?? str(payload?.sender?.login);
+  const pushRef = str(payload?.ref);
+  const refBranch = pushRef && (pushRef.startsWith('refs/heads/') || payload?.ref_type === 'branch') ? pushRef.replace(/^refs\/heads\//, '') : null;
+  const branch = str(run.head_branch) ?? str(job.head_branch) ?? str(pr.head?.ref) ?? str(d.ref) ?? refBranch ?? str(r.target_commitish);
+  const message = str(run.head_commit?.message) ?? str(payload?.head_commit?.message);
+  const firstLine = message ? message.split('\n')[0].trim() : null;
+  const title = str(pr.title) ?? firstLine ?? str(run.display_title) ?? str(r.name) ?? str(d.description);
+  const workflowName = eventWorkflowName(payload) ?? str(job.workflow_name);
+  const taskIds = taskRefs([branch, str(pr.title), str(pr.head?.ref), message, str(run.display_title), str(r.name), str(d.description)], prefix);
+  return {
+    githubLogin: cut(githubLogin, DELIVERY_LOGIN_MAX),
+    branch: cut(branch, DELIVERY_BRANCH_MAX),
+    title: cut(title, DELIVERY_TITLE_MAX),
+    workflowName: cut(workflowName, DELIVERY_WORKFLOW_MAX),
+    taskIds,
+  };
+}
+
+// The stage a delivery is about, for the log only (recording still goes
+// through classifyStage): the deployment's environment, else the branch -
+// a stage's branches, or a stage environment of the same name (develop
+// branch -> develop environment), else a release tag's pattern.
+export function deliveryStageName(payload: any, branch: string | null, stages: ReleaseStage[]): string | null {
+  if (!stages?.length) return null;
+  const env = str(payload?.deployment?.environment);
+  const byEnv = env ? stages.find((s) => has(s.environments, env)) : null;
+  if (byEnv) return byEnv.name;
+  if (env) return null;
+  const tag = str(payload?.release?.tag_name);
+  if (tag) return stages.find((s) => s.tagPatterns.some((p) => globMatch(p, tag)))?.name ?? null;
+  if (!branch) return null;
+  return (stages.find((s) => has(s.branches, branch)) ?? stages.find((s) => has(s.environments, branch)))?.name ?? null;
 }

@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto';
-import { baseVersion, classify, cleanList, overlapProblem, RepoMappingRules, signatureValid, taskRefs, versionFor, versionVariants } from '../src/github-releases/github-releases';
+import { baseVersion, classify, classifyStage, cleanList, deploymentTexts, overlapProblem, RepoMappingRules, signatureValid, taskRefs, versionFor, versionVariants } from '../src/github-releases/github-releases';
 
 const rules: RepoMappingRules = {
   stagingEnvironments: ['staging', 'UAT'],
@@ -40,6 +40,30 @@ describe('GitHub releases (pure rules)', () => {
     expect(taskRefs(['TRK-255 Fix login (#12)', 'feature/trk-260-x', 'Merge pull request #7 from org/TRK-255-y', 'XTRK-9 no', 'TRK-12345678901 too long'], 'TRK')).toEqual([255, 260]);
     expect(taskRefs(['#255', 'TRK255', 'TRK-'], 'TRK')).toEqual([]);
     expect(taskRefs(['ABC-3 and TRK-4'], 'ABC')).toEqual([3]);
+  });
+
+  it('merge commits name their task: a deployment made by an Actions run carries the run title and head commit message (2026-11-20)', () => {
+    const merge = 'Merge TRK-335 F3 schema + create/picker/Add Property + busyGuard B1 fix (Bhavani, reviewed)';
+    const payload = {
+      deployment_status: { state: 'success', created_at: '2026-11-20T07:51:00Z' },
+      deployment: { environment: 'develop', ref: 'develop', sha: 'abc1234def' },
+      workflow_run: { name: 'Postgres migration frontend', display_title: merge.slice(0, 60), head_commit: { message: `${merge}\n\nMerge branch 'feature/f3-new-registration' into develop` } },
+      repository: { full_name: 'org/repo' },
+    };
+    expect(taskRefs(deploymentTexts(payload), 'TRK')).toEqual([335]);
+    // GitHub's own merge messages too: a PR merge names the branch, a local merge the branch name.
+    expect(taskRefs(["Merge pull request #12 from org/feature/TRK-77-login", "Merge branch 'feature/trk-78' into develop"], 'TRK')).toEqual([77, 78]);
+    const stages = [
+      { key: 'dev', name: 'Dev', environments: ['develop'], branches: [], workflows: [], tagPatterns: [], production: false },
+      { key: 'prod', name: 'Production', environments: ['production'], branches: [], workflows: [], tagPatterns: [], production: true },
+    ] as any;
+    const staged = classifyStage('deployment_status', payload, stages);
+    expect(staged.use).toBe(true);
+    if (staged.use) expect(taskRefs(staged.event.texts, 'TRK')).toEqual([335]);
+    const legacy = classify('deployment_status', payload, { stagingEnvironments: ['develop'], productionEnvironments: [], deployWorkflows: [], stagingBranches: [], productionBranches: [], publishedReleaseIs: 'production', preReleaseIs: 'staging' });
+    expect(legacy.use && taskRefs(legacy.event.texts, 'TRK')).toEqual([335]);
+    // No run in the payload (a hand-made deployment): only its own text, as before.
+    expect(deploymentTexts({ deployment: { ref: 'develop', description: 'TRK-9' } })).toEqual(['develop', 'TRK-9']);
   });
 
   it('deployment_status: success only, environment decides', () => {

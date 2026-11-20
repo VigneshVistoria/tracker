@@ -379,6 +379,15 @@ export default function PerformanceTrackingSettingsPage() {
               </label>
             </fieldset>
 
+            <fieldset style={fieldset}>
+              <legend className={styles.label}>Release Log data from GitHub</legend>
+              <label style={inline}>
+                <input type="checkbox" checked={!!form.countGithubReleases} onChange={(e) => set('countGithubReleases', e.target.checked)} />
+                Count GitHub releases in scores (default: off). While off, releases GitHub recorded, the tasks it added to a release and a
+                &quot;released by&quot; it filled in are left out of P1, P2, Q4 and L5. Entries a person makes in the Release Log always count.
+              </label>
+            </fieldset>
+
             <div className={styles.field} style={{ maxWidth: 560 }}>
               <label className={styles.label} htmlFor="ptClock">O1 blocker raise lag: the clock starts</label>
               <select id="ptClock" className={styles.input} value={form.blockerLagClockStart} onChange={(e) => set('blockerLagClockStart', e.target.value)}>

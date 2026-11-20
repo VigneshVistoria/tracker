@@ -182,7 +182,8 @@ describe('GitHub multi-stage release path (e2e)', () => {
   it('switch OFF: deliveries use the old Staging/Production rules - nothing recorded per stage', async () => {
     await http().patch('/github-releases/settings').set(auth(f.users.admin)).send({ enabled: true }).expect(200);
     const { row } = await deliver(LMS, 'deployment_status', deployed('test', SHA_A, '2026-11-04T08:00:00Z', `TRK-${t.res}`));
-    expect(row).toMatchObject({ outcome: 'ignored', stageName: null, reason: expect.stringContaining('staging or production list') });
+    // stageName is shown in the log for every delivery (2026-11-20); nothing is recorded per stage.
+    expect(row).toMatchObject({ outcome: 'ignored', stageName: 'Test', reason: expect.stringContaining('staging or production list') });
     expect((await ds.query(`SELECT count(*)::int AS n FROM github_stage_deployments`))[0].n).toBe(0);
   });
 

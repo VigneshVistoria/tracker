@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Brackets, In, Repository } from 'typeorm';
 import { AuditActions, AuditLogService } from '../audit/audit-log.service';
 import { Project } from '../projects/project.entity';
 import { Release } from '../release-logs/release.entity';
@@ -35,6 +35,8 @@ import {
   taskRefs,
   pickAppMapping,
   appWorkflowsProblem,
+  deliverySummary,
+  deliveryStageName,
 } from './github-releases';
 import { GithubRepoMapping, GithubSettings, GithubStageDeployment, GithubStagingDeployment, GithubWebhookDelivery, TaskStageProgress } from './github-releases.entity';
 import { RepoMappingDto, UpdateGithubSettingsDto } from './dto/github-releases.dto';
@@ -196,8 +198,10 @@ export class GithubReleasesService {
     }
     const repo = typeof payload?.repository?.full_name === 'string' ? payload.repository.full_name.slice(0, 200) : null;
     const action = typeof payload?.action === 'string' ? payload.action.slice(0, 50) : null;
+    // Who/what/which task, for the log - only once the signature is valid.
+    let details: Partial<GithubWebhookDelivery> = {};
     const log = (row: Partial<GithubWebhookDelivery>) =>
-      this.deliveriesRepo.save(this.deliveriesRepo.create({ deliveryId, event, action, repoFullName: repo, signatureValid: false, tenantId: null, ...row }));
+      this.deliveriesRepo.save(this.deliveriesRepo.create({ deliveryId, event, action, repoFullName: repo, signatureValid: false, tenantId: null, ...details, ...row }));
 
     const secrets = this.secrets();
     if (secrets.length === 0) {
@@ -218,6 +222,14 @@ export class GithubReleasesService {
     const picked = pickAppMapping(event, payload, candidates);
     const mapping = picked && 'mapping' in picked ? picked.mapping : null;
     const tenantId = mapping?.tenantId ?? candidates[0]?.tenantId ?? null;
+    try {
+      const prefix = tenantId ? (await this.settings(tenantId)).taskKeyPrefix : GITHUB_DEFAULT_TASK_KEY_PREFIX;
+      const summary = deliverySummary(payload, prefix);
+      const stages = (mapping ?? candidates.find((c) => (c.stages ?? []).length))?.stages ?? [];
+      details = { ...summary, stageName: event === 'ping' ? null : deliveryStageName(payload, summary.branch, stages) };
+    } catch (err: any) {
+      this.logger.warn(`GitHub delivery ${deliveryId}: could not summarise for the log: ${err.message}`);
+    }
     if (deliveryId) {
       const earlier = await this.deliveriesRepo
         .createQueryBuilder('d')
@@ -796,9 +808,41 @@ export class GithubReleasesService {
 
   // The newest deliveries for this tenant. Deliveries that matched no
   // mapped repository (or were refused) have no tenant - Admins see those.
-  deliveries(tenantId: number, includeUnmatched: boolean, limit = 100) {
-    const q = this.deliveriesRepo.createQueryBuilder('d').where('d.tenantId = :tenantId', { tenantId });
-    if (includeUnmatched) q.orWhere('d.tenantId IS NULL');
-    return q.orderBy('d.receivedAt', 'DESC').addOrderBy('d.id', 'DESC').limit(Math.min(Math.max(limit, 1), 500)).getMany();
+  // search: a task (TRK-335 or 335) or a name (GitHub username or the
+  // Tracker user's name). show: 'recorded' (processed) or 'ignored'.
+  // Each row gets trackerName - the user whose GitHub username it is.
+  async deliveries(tenantId: number, includeUnmatched: boolean, limit = 100, filters: { search?: string; show?: string } = {}) {
+    const q = this.deliveriesRepo.createQueryBuilder('d').where(
+      new Brackets((w) => {
+        w.where('d.tenantId = :tenantId', { tenantId });
+        if (includeUnmatched) w.orWhere('d.tenantId IS NULL');
+      }),
+    );
+    if (filters.show === 'recorded') q.andWhere("d.outcome = 'processed'");
+    else if (filters.show === 'ignored') q.andWhere("d.outcome = 'ignored'");
+    const search = (filters.search ?? '').trim().slice(0, 100);
+    if (search) {
+      const task = /^(?:[A-Za-z][A-Za-z0-9]{1,9}-)?#?(\d{1,9})$/.exec(search);
+      if (task) {
+        q.andWhere('d."taskIds" @> :taskJson::jsonb', { taskJson: JSON.stringify([Number(task[1])]) });
+      } else {
+        const like = `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+        q.andWhere(
+          new Brackets((w) => {
+            w.where('d."githubLogin" ILIKE :like', { like }).orWhere(
+              `lower(d."githubLogin") IN (SELECT lower(u."githubLogin") FROM users u WHERE u."tenantId" = :tenantId AND u."githubLogin" IS NOT NULL AND u."fullName" ILIKE :like)`,
+              { like, tenantId },
+            );
+          }),
+        );
+      }
+    }
+    const rows = await q.orderBy('d.receivedAt', 'DESC').addOrderBy('d.id', 'DESC').limit(Math.min(Math.max(limit, 1), 500)).getMany();
+    const logins = [...new Set(rows.map((r) => r.githubLogin?.toLowerCase()).filter((l): l is string => !!l))];
+    const users = logins.length
+      ? await this.usersRepo.createQueryBuilder('u').where('u.tenantId = :tenantId AND lower(u.githubLogin) IN (:...logins)', { tenantId, logins }).getMany()
+      : [];
+    const names = new Map(users.map((u) => [u.githubLogin!.toLowerCase(), u.fullName]));
+    return rows.map((r) => ({ ...r, trackerName: (r.githubLogin && names.get(r.githubLogin.toLowerCase())) || null }));
   }
 }

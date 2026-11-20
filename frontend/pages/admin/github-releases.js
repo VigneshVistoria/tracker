@@ -69,6 +69,8 @@ export default function GithubReleasesPage() {
   const [page, setPage] = useState(null);
   const [projects, setProjects] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
+  const [deliverySearch, setDeliverySearch] = useState('');
+  const [deliveryShow, setDeliveryShow] = useState('');
   const [prefix, setPrefix] = useState('TRK');
   // PR helpers (2026-11-11): own switch, project list, branch prefix.
   const [helpers, setHelpers] = useState(null);
@@ -79,10 +81,16 @@ export default function GithubReleasesPage() {
   const [settingsError, setSettingsError] = useState('');
   const [mappingError, setMappingError] = useState('');
 
-  const loadDeliveries = () =>
-    apiFetch('/github-releases/deliveries?limit=100')
+  // The saved prefix, not the one being typed in the settings box.
+  const keyPrefix = page?.settings?.taskKeyPrefix || 'TRK';
+  const loadDeliveries = (search = deliverySearch, show = deliveryShow) => {
+    const q = new URLSearchParams({ limit: '100' });
+    if (search.trim()) q.set('search', search.trim());
+    if (show) q.set('show', show);
+    return apiFetch(`/github-releases/deliveries?${q}`)
       .then(setDeliveries)
       .catch(() => setDeliveries([]));
+  };
   const load = () =>
     Promise.all([apiFetch('/github-releases/settings'), apiFetch('/projects')])
       .then(([p, allProjects]) => {
@@ -583,37 +591,124 @@ export default function GithubReleasesPage() {
 
           <div className={styles.card}>
             <h2 className={styles.cardTitle}>Delivery log (newest 100, kept 90 days)</h2>
-            <button className={styles.buttonSecondary} type="button" onClick={loadDeliveries} style={{ marginBottom: 'var(--ds-space-2)' }}>
-              Refresh
-            </button>
+            <form
+              role="search"
+              aria-label="Delivery log"
+              onSubmit={(e) => {
+                e.preventDefault();
+                loadDeliveries();
+              }}
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--ds-space-2)', alignItems: 'flex-end', marginBottom: 'var(--ds-space-2)' }}
+            >
+              <div className={styles.field} style={{ margin: 0 }}>
+                <label className={styles.label} htmlFor="ghDeliverySearch">Search</label>
+                <input
+                  id="ghDeliverySearch"
+                  type="search"
+                  className={styles.input}
+                  style={{ width: '16rem' }}
+                  maxLength={100}
+                  placeholder={`${keyPrefix}-335 or a name`}
+                  value={deliverySearch}
+                  onChange={(e) => setDeliverySearch(e.target.value)}
+                  aria-describedby="ghDeliverySearchHelp"
+                />
+              </div>
+              <div className={styles.field} style={{ margin: 0 }}>
+                <label className={styles.label} htmlFor="ghDeliveryShow">Show</label>
+                <select
+                  id="ghDeliveryShow"
+                  className={styles.select}
+                  value={deliveryShow}
+                  onChange={(e) => {
+                    setDeliveryShow(e.target.value);
+                    loadDeliveries(deliverySearch, e.target.value);
+                  }}
+                >
+                  <option value="">All deliveries</option>
+                  <option value="recorded">Only recorded</option>
+                  <option value="ignored">Only ignored</option>
+                </select>
+              </div>
+              <button className={styles.buttonSecondary} type="submit">Search</button>
+              {(deliverySearch || deliveryShow) && (
+                <button
+                  className={styles.buttonSecondary}
+                  type="button"
+                  onClick={() => {
+                    setDeliverySearch('');
+                    setDeliveryShow('');
+                    loadDeliveries('', '');
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+              <button className={styles.buttonSecondary} type="button" onClick={() => loadDeliveries()}>
+                Refresh
+              </button>
+            </form>
+            <p id="ghDeliverySearchHelp" className={styles.helpText} style={{ marginTop: 0 }}>
+              A task ({keyPrefix}-335 or 335), a GitHub username or a Tracker name. Deliveries from before 20 Nov 2026 have no user, branch, title or task details.
+            </p>
             <div className={styles.tableWrap}>
               <table className={styles.table}>
+                <caption className="sr-only">GitHub webhook deliveries, newest first</caption>
                 <thead>
                   <tr>
-                    <th>Received</th>
-                    <th>Event</th>
-                    <th>Repository</th>
-                    <th>Signature</th>
-                    <th>Outcome</th>
-                    <th>Details</th>
+                    <th scope="col">Received</th>
+                    <th scope="col">Event</th>
+                    <th scope="col">GitHub user</th>
+                    <th scope="col">Task IDs</th>
+                    <th scope="col">PR title or commit message</th>
+                    <th scope="col">Workflow</th>
+                    <th scope="col">Stage</th>
+                    <th scope="col">Outcome</th>
                   </tr>
                 </thead>
                 <tbody>
                   {deliveries.length === 0 && (
                     <tr>
-                      <td colSpan={6} className={styles.empty}>Nothing received yet.</td>
+                      <td colSpan={8} className={styles.empty}>{deliverySearch || deliveryShow ? 'No deliveries match.' : 'Nothing received yet.'}</td>
                     </tr>
                   )}
                   {deliveries.map((d) => (
                     <tr key={d.id}>
-                      <td>{formatDateTime(d.receivedAt)}</td>
-                      <td>{[d.event, d.action].filter(Boolean).join(' / ') || '-'}</td>
-                      <td>{d.repoFullName || '-'}</td>
-                      <td>{d.signatureValid ? 'Valid' : 'Invalid or missing'}</td>
-                      <td>{OUTCOME_LABEL[d.outcome] || d.outcome}{d.environment ? ` (${d.environment})` : ''}</td>
                       <td>
-                        {d.reason || ''}
-                        {d.releaseId ? ` Release #${d.releaseId}.` : ''}
+                        {formatDateTime(d.receivedAt)}
+                        <div className={styles.helpText}>#{d.id}</div>
+                      </td>
+                      <td>
+                        {[d.event, d.action].filter(Boolean).join(' / ') || '-'}
+                        {d.repoFullName && <div className={styles.helpText}>{d.repoFullName}</div>}
+                      </td>
+                      <td>
+                        {d.githubLogin || '-'}
+                        {d.githubLogin && <div className={styles.helpText}>{d.trackerName || 'Not a Tracker user'}</div>}
+                      </td>
+                      <td>
+                        {(d.taskIds || []).length === 0
+                          ? '-'
+                          : d.taskIds.map((id, i) => (
+                              <span key={id}>
+                                {i > 0 && ', '}
+                                <a href={`/tasks/${id}`}>{`${keyPrefix}-${id}`}</a>
+                              </span>
+                            ))}
+                        {d.branch && <div className={styles.helpText}>Branch: {d.branch}</div>}
+                      </td>
+                      <td style={{ maxWidth: '24rem', overflowWrap: 'anywhere' }}>{d.title || '-'}</td>
+                      <td>{d.workflowName || '-'}</td>
+                      <td>{d.stageName || (d.environment ? d.environment : '-')}</td>
+                      <td style={{ maxWidth: '24rem', overflowWrap: 'anywhere' }}>
+                        <strong>{OUTCOME_LABEL[d.outcome] || d.outcome}</strong>
+                        {!d.signatureValid && ' (signature invalid or missing)'}
+                        {(d.reason || d.releaseId) && (
+                          <div className={styles.helpText}>
+                            {d.reason || ''}
+                            {d.releaseId ? ` Release #${d.releaseId}.` : ''}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
