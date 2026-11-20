@@ -7,7 +7,8 @@ import { apiFetch } from '../../lib/api';
 import { useToast } from '../../lib/toast';
 import { useConfirm } from '../../lib/confirm';
 import { redirectToSignIn } from '../../lib/session';
-import { formatDateTime } from '../../lib/formatDate';
+import { formatDateTimeEAT } from '../../lib/formatDate';
+import logStyles from '../../styles/githubDeliveries.module.css';
 
 // P1/P2 from GitHub (2026-11-02) - Admin and Program Manager (backend:
 // GithubReleasesController). The switch (OFF by default), the task key
@@ -70,7 +71,8 @@ export default function GithubReleasesPage() {
   const [projects, setProjects] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
   const [deliverySearch, setDeliverySearch] = useState('');
-  const [deliveryShow, setDeliveryShow] = useState('');
+  // Default: only recorded deliveries; "All" is for troubleshooting.
+  const [deliveryShow, setDeliveryShow] = useState('recorded');
   const [prefix, setPrefix] = useState('TRK');
   // PR helpers (2026-11-11): own switch, project list, branch prefix.
   const [helpers, setHelpers] = useState(null);
@@ -625,20 +627,20 @@ export default function GithubReleasesPage() {
                     loadDeliveries(deliverySearch, e.target.value);
                   }}
                 >
-                  <option value="">All deliveries</option>
                   <option value="recorded">Only recorded</option>
                   <option value="ignored">Only ignored</option>
+                  <option value="">All deliveries (troubleshooting)</option>
                 </select>
               </div>
               <button className={styles.buttonSecondary} type="submit">Search</button>
-              {(deliverySearch || deliveryShow) && (
+              {(deliverySearch || deliveryShow !== 'recorded') && (
                 <button
                   className={styles.buttonSecondary}
                   type="button"
                   onClick={() => {
                     setDeliverySearch('');
-                    setDeliveryShow('');
-                    loadDeliveries('', '');
+                    setDeliveryShow('recorded');
+                    loadDeliveries('', 'recorded');
                   }}
                 >
                   Clear
@@ -649,14 +651,24 @@ export default function GithubReleasesPage() {
               </button>
             </form>
             <p id="ghDeliverySearchHelp" className={styles.helpText} style={{ marginTop: 0 }}>
-              A task ({keyPrefix}-335 or 335), a GitHub username or a Tracker name. Deliveries from before 20 Nov 2026 have no user, branch, title or task details.
+              A task ({keyPrefix}-335 or 335), a GitHub username or a Tracker name. Deliveries from before 20-11-2026 have no user, branch, title or task details.
             </p>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
+            <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Delivery log table (scrolls sideways on narrow screens)">
+              <table className={`${styles.table} ${logStyles.deliveryTable}`}>
                 <caption className="sr-only">GitHub webhook deliveries, newest first</caption>
+                <colgroup>
+                  <col className={logStyles.colReceived} />
+                  <col className={logStyles.colEvent} />
+                  <col className={logStyles.colUser} />
+                  <col className={logStyles.colTasks} />
+                  <col className={logStyles.colTitle} />
+                  <col className={logStyles.colWorkflow} />
+                  <col className={logStyles.colStage} />
+                  <col className={logStyles.colOutcome} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th scope="col">Received</th>
+                    <th scope="col">Received (EAT)</th>
                     <th scope="col">Event</th>
                     <th scope="col">GitHub user</th>
                     <th scope="col">Task IDs</th>
@@ -669,49 +681,75 @@ export default function GithubReleasesPage() {
                 <tbody>
                   {deliveries.length === 0 && (
                     <tr>
-                      <td colSpan={8} className={styles.empty}>{deliverySearch || deliveryShow ? 'No deliveries match.' : 'Nothing received yet.'}</td>
+                      <td colSpan={8} className={styles.empty}>
+                        {deliverySearch || deliveryShow === 'ignored' ? 'No deliveries match.' : deliveryShow === 'recorded' ? 'Nothing recorded yet - choose "All deliveries" to see everything received.' : 'Nothing received yet.'}
+                      </td>
                     </tr>
                   )}
-                  {deliveries.map((d) => (
-                    <tr key={d.id}>
-                      <td>
-                        {formatDateTime(d.receivedAt)}
-                        <div className={styles.helpText}>#{d.id}</div>
-                      </td>
-                      <td>
-                        {[d.event, d.action].filter(Boolean).join(' / ') || '-'}
-                        {d.repoFullName && <div className={styles.helpText}>{d.repoFullName}</div>}
-                      </td>
-                      <td>
-                        {d.githubLogin || '-'}
-                        {d.githubLogin && <div className={styles.helpText}>{d.trackerName || 'Not a Tracker user'}</div>}
-                      </td>
-                      <td>
-                        {(d.taskIds || []).length === 0
-                          ? '-'
-                          : d.taskIds.map((id, i) => (
-                              <span key={id}>
-                                {i > 0 && ', '}
-                                <a href={`/tasks/${id}`}>{`${keyPrefix}-${id}`}</a>
-                              </span>
-                            ))}
-                        {d.branch && <div className={styles.helpText}>Branch: {d.branch}</div>}
-                      </td>
-                      <td style={{ maxWidth: '24rem', overflowWrap: 'anywhere' }}>{d.title || '-'}</td>
-                      <td>{d.workflowName || '-'}</td>
-                      <td>{d.stageName || (d.environment ? d.environment : '-')}</td>
-                      <td style={{ maxWidth: '24rem', overflowWrap: 'anywhere' }}>
-                        <strong>{OUTCOME_LABEL[d.outcome] || d.outcome}</strong>
-                        {!d.signatureValid && ' (signature invalid or missing)'}
-                        {(d.reason || d.releaseId) && (
-                          <div className={styles.helpText}>
-                            {d.reason || ''}
-                            {d.releaseId ? ` Release #${d.releaseId}.` : ''}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {deliveries.map((d) => {
+                    const received = formatDateTimeEAT(d.receivedAt);
+                    const [day, time] = received.split(', ');
+                    const event = [d.event, d.action].filter(Boolean).join(' / ') || '-';
+                    const reason = `${d.reason || ''}${d.releaseId ? ` Release #${d.releaseId}.` : ''}`.trim();
+                    return (
+                      <tr key={d.id}>
+                        <td>
+                          <span className={logStyles.nowrap}>{day}</span>
+                          {time && <div className={`${styles.helpText} ${logStyles.nowrap}`}>{time}</div>}
+                          <div className={styles.helpText}>#{d.id}</div>
+                        </td>
+                        <td>
+                          <span className={logStyles.wrap}>{event}</span>
+                          {d.repoFullName && (
+                            <div className={`${styles.helpText} ${logStyles.oneLine}`} title={d.repoFullName}>
+                              {d.repoFullName}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={logStyles.wrap}>{d.githubLogin || '-'}</span>
+                          {d.githubLogin && <div className={`${styles.helpText} ${logStyles.wrap}`}>{d.trackerName || 'Not a Tracker user'}</div>}
+                        </td>
+                        <td>
+                          <span className={logStyles.wrap}>
+                            {(d.taskIds || []).length === 0
+                              ? '-'
+                              : d.taskIds.map((id, i) => (
+                                  <span key={id}>
+                                    {i > 0 && ', '}
+                                    <a href={`/tasks/${id}`} className={logStyles.nowrap}>{`${keyPrefix}-${id}`}</a>
+                                  </span>
+                                ))}
+                          </span>
+                          {d.branch && (
+                            <div className={`${styles.helpText} ${logStyles.oneLine}`} title={`Branch: ${d.branch}`}>
+                              Branch: {d.branch}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={logStyles.oneLine} title={d.title || undefined}>
+                            {d.title || '-'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={logStyles.wrap}>{d.workflowName || '-'}</span>
+                        </td>
+                        <td>
+                          <span className={logStyles.wrap}>{d.stageName || d.environment || '-'}</span>
+                        </td>
+                        <td>
+                          <strong>{OUTCOME_LABEL[d.outcome] || d.outcome}</strong>
+                          {!d.signatureValid && <span> (signature invalid or missing)</span>}
+                          {reason && (
+                            <div className={`${styles.helpText} ${logStyles.clamp2}`} title={reason}>
+                              {reason}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

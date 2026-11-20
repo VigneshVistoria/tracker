@@ -3569,9 +3569,9 @@ export default function TaskDetailPage() {
               {task.priority && <Badge tone={priorityTone(task.priority)}>{priorityLabel(task.priority)} priority</Badge>}
               {task.isDefect && <Badge tone="error">Defect</Badge>}
               <span className={`${styles.metaItem} ${isOverdueTask(task) ? styles.metaOverdue : ''}`}>
-                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · task due' : 'Task due'} ${formatDate(effectiveDueDate(task))}` : 'No task due date'}
+                {task.dueDate ? `${isOverdueTask(task) ? 'Overdue · task due' : 'Task due'} ${formatDateDMY(effectiveDueDate(task))}` : 'No task due date'}
                 {/* PM review gate: the working days spent waiting for a PM extend it. */}
-                {task.dueDate && task.pmWaitWorkingDays > 0 && ` (${formatDate(task.dueDate)} + ${task.pmWaitWorkingDays} working ${task.pmWaitWorkingDays === 1 ? 'day' : 'days'} with PM)`}
+                {task.dueDate && task.pmWaitWorkingDays > 0 && ` (${formatDateDMY(task.dueDate)} + ${task.pmWaitWorkingDays} working ${task.pmWaitWorkingDays === 1 ? 'day' : 'days'} with PM)`}
               </span>
               <span className={`${styles.metaItem} ${styles.metaPerson}`}>
                 {(task.assigneeFullName || task.assigneeEmail) && <Avatar name={task.assigneeFullName || task.assigneeEmail} size="xs" />}

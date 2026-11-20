@@ -1,0 +1,55 @@
+/* Admin > GitHub Releases > Delivery log (2026-11-20). Fixed column widths
+   so long text can't spill into the next column; the title column takes
+   what is left. Narrower screens scroll the table sideways (.tableWrap). */
+table.deliveryTable {
+  table-layout: fixed;
+  min-width: 1260px;
+}
+
+/* The shared .table keeps cells on one line (white-space: nowrap); here
+   cells may wrap, and .oneLine / .nowrap opt back out where wanted. */
+table.deliveryTable th,
+table.deliveryTable td {
+  padding-left: var(--ds-space-3);
+  padding-right: var(--ds-space-3);
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.colReceived { width: 8rem; }
+.colEvent { width: 10.5rem; }
+.colUser { width: 9rem; }
+.colTasks { width: 8.5rem; }
+.colTitle { width: auto; }
+.colWorkflow { width: 9rem; }
+.colStage { width: 5.5rem; }
+.colOutcome { width: 15rem; }
+
+/* One line, cut with "…"; the full text is in the title (hover) and is
+   still read in full by screen readers. */
+.oneLine {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Long unbroken names (workflow, GitHub user) wrap inside the column. */
+.wrap {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* The outcome reason: two lines at most, full text on hover. */
+.clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.nowrap {
+  white-space: nowrap;
+}

@@ -24,6 +24,20 @@ export function formatDateDMY(value) {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
 
+// "20-11-2026, 21:45 EAT" - DD-MM-YYYY, 24-hour clock, East Africa Time
+// (the team's zone, Africa/Addis_Ababa, UTC+3 all year), whatever the
+// viewer's browser zone. GitHub Delivery log (2026-11-20, the user's format).
+const EAT_PARTS = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Addis_Ababa', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+export function formatDateTimeEAT(value) {
+  if (!value) return '—';
+  const d = toDate(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const p = Object.fromEntries(EAT_PARTS.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.day}-${p.month}-${p.year}, ${p.hour}:${p.minute} EAT`;
+}
+
 // The one date format used everywhere in the app: "Sep 13, 2026". Locale is
 // pinned to 'en-US' (not the browser's default) so this can't drift into
 // "13 Sep 2026" or similar for a viewer with a different browser locale.
