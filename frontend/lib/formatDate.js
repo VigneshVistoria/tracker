@@ -14,6 +14,16 @@ function toDate(value) {
   return new Date(value);
 }
 
+// Day-month-year with dashes, "20-11-2026" (Release progress on the task
+// page, 2026-11-20 - the user's format). Viewer's local date, like formatDate.
+export function formatDateDMY(value) {
+  if (!value) return '—';
+  const d = toDate(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+}
+
 // The one date format used everywhere in the app: "Sep 13, 2026". Locale is
 // pinned to 'en-US' (not the browser's default) so this can't drift into
 // "13 Sep 2026" or similar for a viewer with a different browser locale.

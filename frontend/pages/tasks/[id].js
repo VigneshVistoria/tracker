@@ -18,7 +18,7 @@ import { stripHtmlForPreview } from '../../lib/richText';
 import { TASK_TITLE_MAX_LENGTH } from '../../lib/taskTitle';
 import { TASK_DEPENDENCY_TICKET_TITLE_MAX_LENGTH } from '../../lib/taskDependencyTicketTitle';
 import { TASK_PRIORITIES, priorityTone, priorityLabel, statusLabel, statusBadgeStyle } from '../../lib/taskTableShared';
-import { formatDate, formatDateTime } from '../../lib/formatDate';
+import { formatDate, formatDateDMY, formatDateTime } from '../../lib/formatDate';
 import JunkReasonModal from '../../components/JunkReasonModal';
 import RevertQaDecisionModal from '../../components/RevertQaDecisionModal';
 import SendBackToDeveloperModal from '../../components/SendBackToDeveloperModal';
@@ -4727,7 +4727,7 @@ function ReleaseProgress({ progress }) {
           {r.stages.map((st, i) => (
             <span key={st.key} title={st.firstReachedAt ? `First reached ${formatDateTime(st.firstReachedAt)}${st.firstVersion ? ` (${st.firstVersion})` : ''}` : 'Not reached yet'}>
               {i > 0 && ' · '}
-              {st.name} {st.firstReachedAt ? <>✓ {formatDate(st.firstReachedAt)}</> : <span className={styles.helpText}>–</span>}
+              {st.name} {st.firstReachedAt ? <>✓ {formatDateDMY(st.firstReachedAt)}</> : <span className={styles.helpText}>–</span>}
             </span>
           ))}
         </p>
