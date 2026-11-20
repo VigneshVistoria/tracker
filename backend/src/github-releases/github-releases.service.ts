@@ -230,11 +230,14 @@ export class GithubReleasesService {
     } catch (err: any) {
       this.logger.warn(`GitHub delivery ${deliveryId}: could not summarise for the log: ${err.message}`);
     }
+    // Only a delivery already received or recorded blocks a repeat. An
+    // ignored (e.g. switched off) or failed one is processed again when
+    // GitHub redelivers it - same delivery ID (2026-11-20, the user's rule).
     if (deliveryId) {
       const earlier = await this.deliveriesRepo
         .createQueryBuilder('d')
         .where('d.deliveryId = :deliveryId AND d.signatureValid = true', { deliveryId })
-        .andWhere("d.outcome NOT IN ('refused', 'duplicate')")
+        .andWhere("d.outcome IN ('received', 'processed')")
         .getOne();
       if (earlier) {
         await log({ tenantId, signatureValid: true, outcome: 'duplicate', reason: `Already received (delivery log #${earlier.id}).`, releaseId: earlier.releaseId });

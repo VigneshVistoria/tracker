@@ -137,6 +137,38 @@ describe('GitHub: delivery log details, search and filter (e2e)', () => {
     expect(row).toMatchObject({ outcome: 'processed', githubLogin: 'Bhavani-Elumalai', workflowName: 'Frontend CI/CD', taskIds: [12, 335], stageName: 'Dev' });
   });
 
+  it('a redelivery of an ignored delivery is processed; of a recorded one, a duplicate', async () => {
+    const body = JSON.stringify({
+      repository: { full_name: REPO },
+      deployment_status: { state: 'success', created_at: '2026-11-20T07:49:02Z' },
+      deployment: { environment: 'develop', sha: SHA, ref: 'develop', creator: { login: 'Bhavani-Elumalai' } },
+      workflow: { name: 'Frontend CI/CD' },
+      workflow_run: { name: 'Frontend CI/CD', head_branch: 'develop', display_title: 'Merge TRK-335 F3 schema…' },
+    });
+    const send = async () => {
+      const res = await http()
+        .post('/integrations/github/webhook')
+        .set('Content-Type', 'application/json')
+        .set('X-GitHub-Event', 'deployment_status')
+        .set('X-GitHub-Delivery', 'redeliver-1')
+        .set('X-Hub-Signature-256', `sha256=${createHmac('sha256', SECRET).update(body).digest('hex')}`)
+        .send(body);
+      await github.settled();
+      return { status: res.status, row: (await ds.query(`SELECT * FROM github_webhook_deliveries ORDER BY id DESC LIMIT 1`))[0] };
+    };
+    await http().patch('/github-releases/settings').set(auth(f.users.admin)).send({ enabled: false }).expect(200);
+    expect((await send()).row).toMatchObject({ outcome: 'ignored', reason: expect.stringContaining('switched off') });
+    await http().patch('/github-releases/settings').set(auth(f.users.admin)).send({ enabled: true }).expect(200);
+    const again = await send();
+    expect(again.status).toBe(202);
+    expect(again.row).toMatchObject({ outcome: 'processed', githubLogin: 'Bhavani-Elumalai', taskIds: [335], stageName: 'Dev' });
+    const third = await send();
+    expect(third.status).toBe(200);
+    expect(third.row).toMatchObject({ outcome: 'duplicate', reason: expect.stringContaining(`#${again.row.id}`) });
+    // Clean up so the log test below counts as before.
+    await ds.query(`DELETE FROM github_webhook_deliveries WHERE "deliveryId" = 'redeliver-1'`);
+  });
+
   it('the log: Tracker name, search by task or name, recorded/ignored filter', async () => {
     const all = await list(f.users.admin);
     expect(all.length).toBe(4);
