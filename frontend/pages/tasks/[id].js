@@ -229,10 +229,11 @@ function QaArtifactIcons({ artifacts }) {
   );
 }
 
-// Actual hours on a dependency task at Pass (2026-11-23) - Resolve skips
-// QA submit, where it's normally entered. The Assignee fills it once while
-// empty; a Program Manager can set or correct it (TasksService.setActualHours).
-function DependencyActualHours({ task, isAssignee, isPm, onSaved }) {
+// Actual hours on a Closed task or a dependency task at Pass (2026-11-23) -
+// neither went through QA submit, where it's normally entered. The Assignee
+// fills it once while empty; a Program Manager can set or correct it
+// (TasksService.setActualHours).
+function TaskActualHours({ task, isAssignee, isPm, onSaved, first = false }) {
   const current = task.actualHours == null ? null : Number(task.actualHours);
   const canEdit = isPm || (isAssignee && current == null);
   const [editing, setEditing] = useState(false);
@@ -265,7 +266,7 @@ function DependencyActualHours({ task, isAssignee, isPm, onSaved }) {
   };
 
   return (
-    <div style={{ marginTop: 'var(--space-3)' }}>
+    <div style={{ marginTop: first ? 0 : 'var(--space-3)' }}>
       {!showForm && (
         <p style={{ margin: 0 }}>
           <strong>Actual hours:</strong> {current}
@@ -860,6 +861,11 @@ export default function TaskDetailPage() {
     // Always the dialog now (2026-11-23) - it asks for optional Hours spent;
     // note/files only show with the attachments switch on.
     setResolveTarget({ ticket: dependencyTicket, from: 'dependencyTask' });
+  };
+
+  const handleActualHoursSaved = (saved) => {
+    setTask((prev) => ({ ...prev, actualHours: saved.actualHours }));
+    showToast('Actual hours saved', 'success');
   };
 
   // Stage 3: Cancel (open) / Reopen (resolved) - requester or PM, with a reason.
@@ -3692,17 +3698,14 @@ export default function TaskDetailPage() {
                 showAttachments={dependencyTicketAttachmentsOn}
                 showHours
               />
-              {task.status === 'Pass' && !isJunk && (
-                <DependencyActualHours
-                  task={task}
-                  isAssignee={isAssignee}
-                  isPm={canManage}
-                  onSaved={(saved) => {
-                    setTask((prev) => ({ ...prev, actualHours: saved.actualHours }));
-                    showToast('Actual hours saved', 'success');
-                  }}
-                />
+              {['Pass', 'Closed'].includes(task.status) && !isJunk && (
+                <TaskActualHours task={task} isAssignee={isAssignee} isPm={canManage} onSaved={handleActualHoursSaved} />
               )}
+            </div>
+          )}
+          {!editingTitle && !isDependencyTask && task.status === 'Closed' && (task.actualHours != null || isAssignee || canManage) && (
+            <div role="group" aria-label="Actual hours" className={styles.card} style={{ marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+              <TaskActualHours task={task} isAssignee={isAssignee} isPm={canManage} onSaved={handleActualHoursSaved} first />
             </div>
           )}
           {!editingTitle && nextStep && (

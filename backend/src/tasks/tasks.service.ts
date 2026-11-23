@@ -2615,8 +2615,9 @@ export class TasksService {
     return saved;
   }
 
-  // One-time Actual hours on a dependency task at Pass (2026-11-23): Resolve
-  // skips QA submit, so these tasks can end up with none. The Assignee
+  // One-time Actual hours on a task that finished without QA submit (where
+  // it's normally entered), 2026-11-23: a dependency task at Pass (Resolve
+  // skips QA submit) or any Closed task (Close needs no hours). The Assignee
   // fills it once while empty; Program Manager can set or correct it any
   // time - same lock pattern as Estimated Hours. Admin stays view-only.
   async setActualHours(
@@ -2627,8 +2628,9 @@ export class TasksService {
   ): Promise<ProjectTask> {
     const task = await this.findOne(id, tenantId);
     this.assertNotJunk(task);
-    if (task.dependencyTicketId == null || task.status !== 'Pass') {
-      throw new BadRequestException('Actual hours can only be added here on a dependency task at Pass.');
+    const isPassDependencyTask = task.dependencyTicketId != null && task.status === 'Pass';
+    if (!isPassDependencyTask && task.status !== 'Closed') {
+      throw new BadRequestException('Actual hours can only be added here on a Closed task or a dependency task at Pass.');
     }
     const isPm = MUTATE_ROLES.includes(currentUser.role);
     const isAssignee = task.assigneeUserId != null && task.assigneeUserId === currentUser.id;

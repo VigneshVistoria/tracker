@@ -301,6 +301,20 @@ describe('Dependency tasks (e2e)', () => {
       );
       expect(audit.map((a: any) => (typeof a.details === 'string' ? JSON.parse(a.details) : a.details)).map((d: any) => [d.previousActualHours, d.newActualHours])).toEqual([[null, 2.5], [2.5, 4]]);
     });
+
+    it('Actual hours on any Closed task (not a dependency task): assignee once, PM any time; not before Closed', async () => {
+      const taskId = await newTask();
+      const url = `/tasks/${taskId}/actual-hours`;
+      await patch(f.users.devA, url, { actualHours: 3 }).expect(400);
+      await patch(f.users.pm, `/tasks/${taskId}/close`).expect(200);
+      await patch(devC, url, { actualHours: 3 }).expect(403);
+      await patch(f.users.admin, url, { actualHours: 3 }).expect(403);
+      await patch(f.users.devA, url, { actualHours: 3 }).expect(200);
+      expect(Number((await taskRow(taskId)).actualHours)).toBe(3);
+      await patch(f.users.devA, url, { actualHours: 5 }).expect(403);
+      await patch(f.users.pm, url, { actualHours: 5 }).expect(200);
+      expect(Number((await taskRow(taskId)).actualHours)).toBe(5);
+    });
   });
 
   describe('the ticket follows the task status (trigger)', () => {

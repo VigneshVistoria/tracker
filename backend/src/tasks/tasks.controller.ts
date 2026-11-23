@@ -698,7 +698,8 @@ export class TasksController {
     return this.tasksService.setQaReviewDueDate(id, dto.qaReviewDueDate, currentUser, req.user.tenantId);
   }
 
-  // One-time Actual hours on a dependency task at Pass - Assignee once,
+  // One-time Actual hours on a Closed task or a dependency task at Pass -
+  // Assignee once,
   // Program Manager any time (rules in TasksService.setActualHours()).
   @Patch(':id/actual-hours')
   async setActualHours(@Param('id', ParseIntPipe) id: number, @Body() dto: SetActualHoursDto, @Req() req: any) {
