@@ -4,14 +4,15 @@ import { Repository } from 'typeorm';
 import { ProjectPlanEntry, ProjectPlanStatus } from './project-plan-entry.entity';
 import { CreateProjectPlanEntryDto } from './dto/create-project-plan-entry.dto';
 import { UpdateProjectPlanEntryDto } from './dto/update-project-plan-entry.dto';
-import { Issue, IssueStatus } from '../issues/issue.entity';
+import { ProjectTask } from '../tasks/project-task.entity';
+import { DONE_TASK_STATUSES, EXCLUDED_TASK_STATUSES } from '../modules/modules.service';
 import { ProjectsService } from '../projects/projects.service';
 import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 export interface ProjectPlanEntryWithCompletion extends ProjectPlanEntry {
   percentComplete: number | null;
-  completedIssueCount: number;
-  totalIssueCount: number;
+  completedTaskCount: number;
+  totalTaskCount: number;
 }
 
 @Injectable()
@@ -19,8 +20,8 @@ export class ProjectPlanningService {
   constructor(
     @InjectRepository(ProjectPlanEntry)
     private entriesRepository: Repository<ProjectPlanEntry>,
-    @InjectRepository(Issue)
-    private issuesRepository: Repository<Issue>,
+    @InjectRepository(ProjectTask)
+    private projectTasksRepository: Repository<ProjectTask>,
     private projectsService: ProjectsService,
     private auditLogService: AuditLogService,
   ) {}
@@ -31,28 +32,32 @@ export class ProjectPlanningService {
     }
   }
 
-  // Completion is never stored - always computed live from the real
-  // Issues in scope, mirroring ModulesService.summarize()'s exact
-  // completed/total ratio. Scope is Project (always) + Module/Phase if set
-  // on the entry - Team is never part of the scope, Issue has no teamId to
-  // filter by. totalIssueCount === 0 -> percentComplete: null, distinct
-  // from "0% done" (which means work exists but none is done).
+  // Completion is never stored - always computed live from the Tasks
+  // (project_tasks) in scope, same rule as the Project Overview / Modules
+  // list: Pass/Closed/Released done, Junk left out. Scope is Project
+  // (always) + Module/Phase if set on the entry - Team is never part of the
+  // scope. No counted tasks -> percentComplete: null, distinct from "0%
+  // done" (which means work exists but none is done).
   private async computeCompletion(entry: ProjectPlanEntry): Promise<ProjectPlanEntryWithCompletion> {
-    const where: Record<string, unknown> = { projectId: entry.projectId, tenantId: entry.tenantId };
-    if (entry.moduleId != null) where.moduleId = entry.moduleId;
-    if (entry.phaseId != null) where.phaseId = entry.phaseId;
+    const qb = this.projectTasksRepository
+      .createQueryBuilder('t')
+      .select('COUNT(*)', 'total')
+      .addSelect('COUNT(*) FILTER (WHERE t.status IN (:...done))', 'done')
+      .where('t.tenantId = :tenantId', { tenantId: entry.tenantId })
+      .andWhere('t.projectId = :projectId', { projectId: entry.projectId })
+      .andWhere('t.status NOT IN (:...excluded)', { excluded: EXCLUDED_TASK_STATUSES })
+      .setParameter('done', DONE_TASK_STATUSES);
+    if (entry.moduleId != null) qb.andWhere('t.moduleId = :moduleId', { moduleId: entry.moduleId });
+    if (entry.phaseId != null) qb.andWhere('t.phaseId = :phaseId', { phaseId: entry.phaseId });
 
-    const issues = await this.issuesRepository.find({ where });
-    const totalIssueCount = issues.length;
-
-    if (totalIssueCount === 0) {
-      return { ...entry, percentComplete: null, completedIssueCount: 0, totalIssueCount: 0 };
+    const row = await qb.getRawOne<{ total: string; done: string }>();
+    const totalTaskCount = Number(row?.total ?? 0);
+    if (totalTaskCount === 0) {
+      return { ...entry, percentComplete: null, completedTaskCount: 0, totalTaskCount: 0 };
     }
-
-    const completedIssueCount = issues.filter((i) => i.status === IssueStatus.READY_FOR_PRODUCTION).length;
-    const percentComplete = Math.round((completedIssueCount / totalIssueCount) * 100);
-
-    return { ...entry, percentComplete, completedIssueCount, totalIssueCount };
+    const completedTaskCount = Number(row.done);
+    const percentComplete = Math.round((completedTaskCount / totalTaskCount) * 100);
+    return { ...entry, percentComplete, completedTaskCount, totalTaskCount };
   }
 
   async findAll(tenantId: number): Promise<ProjectPlanEntryWithCompletion[]> {

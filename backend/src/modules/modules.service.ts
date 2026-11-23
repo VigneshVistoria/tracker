@@ -24,8 +24,8 @@ export type RiskLevel = 'Low' | 'Medium' | 'High';
 // legacy Issues table - all real work lives in tasks, so an issues-based
 // rollup showed every project as "Not Started 0%". Pass/Closed (and the
 // post-Pass Released statuses) count as done; Junk is left out entirely.
-const DONE_TASK_STATUSES = ['Pass', 'Closed', 'Released - No Showstoppers', 'Released - With Showstoppers'];
-const EXCLUDED_TASK_STATUSES = ['Junk'];
+export const DONE_TASK_STATUSES = ['Pass', 'Closed', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+export const EXCLUDED_TASK_STATUSES = ['Junk'];
 
 export interface TaskDrillDown {
   id: number;

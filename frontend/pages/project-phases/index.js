@@ -163,8 +163,8 @@ export default function ProjectPhasesPage() {
         <div>
           <h1 className={styles.pageTitle}>Project Phases</h1>
           <p className={styles.pageSubtitle}>
-            Create Phases within a Module. % Complete is computed live from the actual Issues linked to each Phase
-            - it's blank until issues are assigned.
+            Create Phases within a Module. % Complete is computed live from the Tasks in each Phase
+            (Pass/Closed count as done, Junk is excluded) - it's blank until the phase has tasks.
           </p>
         </div>
         {canManage && (

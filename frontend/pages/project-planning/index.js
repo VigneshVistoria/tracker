@@ -224,7 +224,7 @@ export default function ProjectPlanningPage() {
           <h1 className={styles.pageTitle}>Project Planning</h1>
           <p className={styles.pageSubtitle}>
             Plan work against a Project's Module/Phase/Team and timeline. % Complete is computed live from the
-            actual Issues in scope - it's never typed in.
+            Tasks in scope (Pass/Closed count as done, Junk is excluded) - it's never typed in.
           </p>
         </div>
         {canManage && (
