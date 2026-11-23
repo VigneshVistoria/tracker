@@ -822,7 +822,7 @@ export class TaskDependencyTicketsService {
     id: number,
     currentUser: { id: number; email: string; role: UserRole },
     tenantId: number,
-    opts: { note?: string | null; files?: UploadedTaskFile[] } = {},
+    opts: { note?: string | null; files?: UploadedTaskFile[]; hoursSpent?: number | null } = {},
   ): Promise<TaskDependencyTicket> {
     const ticket = await this.ticketsRepository.findOne({ where: { id, tenantId } });
     if (!ticket) {
@@ -898,7 +898,14 @@ export class TaskDependencyTicketsService {
       }
       const dependencyTask = await this.linkedTask(em, ticket.id, tenantId);
       if (dependencyTask && !DEPENDENCY_TASK_RESOLVED_STATUSES.includes(dependencyTask.status)) {
-        await em.update(ProjectTask, { id: dependencyTask.id, tenantId }, { status: 'Pass', completedAt: now });
+        // Optional "Hours spent" from the Resolve dialog - this path skips
+        // QA submit, so it's the only chance to record actualHours.
+        const hoursSpent = opts.hoursSpent ?? null;
+        await em.update(
+          ProjectTask,
+          { id: dependencyTask.id, tenantId },
+          { status: 'Pass', completedAt: now, ...(hoursSpent != null ? { actualHours: hoursSpent } : {}) },
+        );
         await this.auditLogService.recordWithin(em, {
           userId: currentUser.id,
           userEmail: currentUser.email,
@@ -907,7 +914,7 @@ export class TaskDependencyTicketsService {
           tenantId,
           entityType: 'ProjectTask',
           entityId: dependencyTask.id,
-          details: { dependencyTicketId: ticket.id, previousStatus: dependencyTask.status, newStatus: 'Pass' },
+          details: { dependencyTicketId: ticket.id, previousStatus: dependencyTask.status, newStatus: 'Pass', actualHours: hoursSpent },
         });
       }
       saved = savedTicket;

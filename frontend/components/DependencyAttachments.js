@@ -227,9 +227,12 @@ export function DependencyTicketFiles({ ticket, user, attachmentsEnabled, refres
 
 // Resolve with an optional note and files (switch on), sent together -
 // all or nothing. Errors stay in the dialog. `onResolved` gets the result.
-export function DependencyResolveModal({ ticket, onClose, onResolved, consequence }) {
+// `showHours`: optional "Hours spent", saved as the linked dependency
+// task's actualHours (Resolve skips QA submit, where it's normally entered).
+export function DependencyResolveModal({ ticket, onClose, onResolved, consequence, showAttachments = true, showHours = false }) {
   const open = !!ticket;
   const [note, setNote] = useState('');
+  const [hours, setHours] = useState('');
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -237,6 +240,7 @@ export function DependencyResolveModal({ ticket, onClose, onResolved, consequenc
   useEffect(() => {
     if (open) {
       setNote('');
+      setHours('');
       setFiles([]);
       setBusy(false);
       setError('');
@@ -245,10 +249,20 @@ export function DependencyResolveModal({ ticket, onClose, onResolved, consequenc
 
   const confirm = async () => {
     if (busy) return;
+    const trimmedHours = hours.trim();
+    const hoursSpent = showHours && trimmedHours !== '' ? Number(trimmedHours) : null;
+    if (hoursSpent != null && (!Number.isFinite(hoursSpent) || hoursSpent < 0 || hoursSpent > 999.99)) {
+      setError('Hours spent must be a number from 0 to 999.99.');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
-      const result = await resolveDependencyTicket(ticket.id, { note, files });
+      const result = await resolveDependencyTicket(ticket.id, {
+        note: showAttachments ? note : '',
+        files: showAttachments ? files : [],
+        hoursSpent,
+      });
       await onResolved(result, files.length);
     } catch (err) {
       setError(err.message);
@@ -274,23 +288,50 @@ export function DependencyResolveModal({ ticket, onClose, onResolved, consequenc
     >
       {ticket && <p style={{ marginTop: 0, fontWeight: 600 }}>{ticket.title || `Ticket #${ticket.id}`}</p>}
       {consequence && <p className={issueStyles.issueMeta}>{consequence}</p>}
-      <label className={issueStyles.label} htmlFor="dependencyResolutionNote">
-        Resolution note (optional)
-      </label>
-      <textarea
-        id="dependencyResolutionNote"
-        className={issueStyles.textarea}
-        rows={4}
-        maxLength={RESOLUTION_NOTE_MAX_LENGTH}
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        disabled={busy}
-        placeholder="e.g. Endpoint deployed to staging - see the attached Postman export"
-      />
-      <DependencyFilePicker files={files} onChange={setFiles} disabled={busy} />
-      <p className={styles.muted} style={{ marginTop: 'var(--ds-space-2)' }}>
-        The requester sees the note and files on their task.
-      </p>
+      {showHours && (
+        <>
+          <label className={issueStyles.label} htmlFor="dependencyHoursSpent">
+            Hours spent (optional)
+          </label>
+          <input
+            id="dependencyHoursSpent"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            max="999.99"
+            step="0.25"
+            className={issueStyles.input}
+            value={hours}
+            onChange={(e) => setHours(e.target.value)}
+            disabled={busy}
+            aria-describedby="dependencyHoursSpentHint"
+          />
+          <p id="dependencyHoursSpentHint" className={styles.muted} style={{ marginTop: 'var(--ds-space-1)' }}>
+            Total time spent on this dependency task.
+          </p>
+        </>
+      )}
+      {showAttachments && (
+        <>
+          <label className={issueStyles.label} htmlFor="dependencyResolutionNote">
+            Resolution note (optional)
+          </label>
+          <textarea
+            id="dependencyResolutionNote"
+            className={issueStyles.textarea}
+            rows={4}
+            maxLength={RESOLUTION_NOTE_MAX_LENGTH}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            disabled={busy}
+            placeholder="e.g. Endpoint deployed to staging - see the attached Postman export"
+          />
+          <DependencyFilePicker files={files} onChange={setFiles} disabled={busy} />
+          <p className={styles.muted} style={{ marginTop: 'var(--ds-space-2)' }}>
+            The requester sees the note and files on their task.
+          </p>
+        </>
+      )}
       {error && (
         <div className={issueStyles.error} role="alert" style={{ marginTop: 'var(--ds-space-3)', marginBottom: 0 }}>
           {error}

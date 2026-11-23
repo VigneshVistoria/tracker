@@ -49,17 +49,22 @@ export function uploadDependencyFiles(ticketId, side, files) {
   return apiUpload(`/task-dependency-tickets/${ticketId}/attachments`, form);
 }
 
-// Resolve, with the optional note and files (switch on) in the same request.
-export function resolveDependencyTicket(ticketId, { note = '', files = [] } = {}) {
+// Resolve, with the optional note and files (switch on) and optional
+// hours spent (saved as the linked task's actualHours) in the same request.
+export function resolveDependencyTicket(ticketId, { note = '', files = [], hoursSpent = null } = {}) {
   const trimmed = note.trim();
   if (files.length) {
     const form = new FormData();
     if (trimmed) form.append('note', trimmed);
+    if (hoursSpent != null) form.append('hoursSpent', String(hoursSpent));
     for (const file of files) form.append('files', file);
     return apiUpload(`/task-dependency-tickets/${ticketId}/resolve`, form, 'PATCH');
   }
+  const body = {};
+  if (trimmed) body.note = trimmed;
+  if (hoursSpent != null) body.hoursSpent = hoursSpent;
   return apiFetch(`/task-dependency-tickets/${ticketId}/resolve`, {
     method: 'PATCH',
-    ...(trimmed ? { body: JSON.stringify({ note: trimmed }) } : {}),
+    ...(Object.keys(body).length ? { body: JSON.stringify(body) } : {}),
   });
 }

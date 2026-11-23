@@ -221,7 +221,7 @@ export class TaskDependencyTicketsController {
     @Req() req: any,
   ) {
     const currentUser = await this.usersService.findById(req.user.sub);
-    return this.ticketsService.resolve(id, currentUser, req.user.tenantId, { note: dto?.note ?? null, files: files ?? [] });
+    return this.ticketsService.resolve(id, currentUser, req.user.tenantId, { note: dto?.note ?? null, files: files ?? [], hoursSpent: dto?.hoursSpent ?? null });
   }
 
   // Dependency tasks Stage 3: requester or Program Manager, with a reason

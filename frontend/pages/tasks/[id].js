@@ -774,18 +774,9 @@ export default function TaskDetailPage() {
   // moves this task straight to Pass (no review) and unblocks the parent.
   const handleResolveDependencyTask = async () => {
     if (!dependencyTicket) return;
-    if (dependencyTicketAttachmentsOn) {
-      setResolveTarget({ ticket: dependencyTicket, from: 'dependencyTask' });
-      return;
-    }
-    setError('');
-    try {
-      await apiFetch(`/task-dependency-tickets/${dependencyTicket.id}/resolve`, { method: 'PATCH' });
-      showToast('Resolved - the requester has been notified', 'success');
-      setTask(await apiFetch(`/tasks/${task.id}`));
-    } catch (err) {
-      setError(err.message);
-    }
+    // Always the dialog now (2026-11-23) - it asks for optional Hours spent;
+    // note/files only show with the attachments switch on.
+    setResolveTarget({ ticket: dependencyTicket, from: 'dependencyTask' });
   };
 
   // Stage 3: Cancel (open) / Reopen (resolved) - requester or PM, with a reason.
@@ -799,12 +790,12 @@ export default function TaskDetailPage() {
   };
 
   const handleResolveTicket = async (ticketId) => {
-    if (ticketAttachmentsOn) {
-      const ticket = tickets.find((t) => t.id === ticketId);
-      if (ticket) {
-        setResolveTarget({ ticket, from: 'parent' });
-        return;
-      }
+    // Dialog when there's something to ask: note/files (switch on) or
+    // Hours spent (a linked dependency task, Option B).
+    const ticket = tickets.find((t) => t.id === ticketId);
+    if (ticket && (ticketAttachmentsOn || ticket.dependencyTask)) {
+      setResolveTarget({ ticket, from: 'parent' });
+      return;
     }
     setError('');
     try {
@@ -2576,6 +2567,8 @@ export default function TaskDetailPage() {
         onClose={() => setResolveTarget(null)}
         onResolved={handleResolvedWithDialog}
         consequence="The parent task stops being blocked by it."
+        showAttachments={ticketAttachmentsOn}
+        showHours={!!resolveTarget?.ticket?.dependencyTask}
       />
       <DependencyTicketReasonModal
         mode={ticketReasonAction?.mode}
@@ -3613,6 +3606,8 @@ export default function TaskDetailPage() {
                 onClose={() => setResolveTarget(null)}
                 onResolved={handleResolvedWithDialog}
                 consequence="This task moves to Pass (no review) and the parent task stops being blocked by it."
+                showAttachments={dependencyTicketAttachmentsOn}
+                showHours
               />
             </div>
           )}

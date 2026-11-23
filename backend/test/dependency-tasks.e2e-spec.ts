@@ -257,6 +257,23 @@ describe('Dependency tasks (e2e)', () => {
       await patch(f.users.pm, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
       expect((await taskRow(dependencyTaskId!)).status).toBe('Pass');
     });
+
+    it('optional Hours spent on Resolve is saved as the task\'s actualHours; bad values 400; omitted leaves it empty', async () => {
+      await setSwitch(true);
+      const a = await newTicket();
+      for (const bad of [-1, 1000, 'abc']) {
+        await patch(devC, `/task-dependency-tickets/${a.ticketId}/resolve`, { hoursSpent: bad }).expect(400);
+      }
+      expect((await taskRow(a.dependencyTaskId!)).status).toBe('Development');
+      await patch(devC, `/task-dependency-tickets/${a.ticketId}/resolve`, { hoursSpent: 3.5 }).expect(200);
+      const task = await taskRow(a.dependencyTaskId!);
+      expect(task.status).toBe('Pass');
+      expect(Number(task.actualHours)).toBe(3.5);
+
+      const b = await newTicket();
+      await patch(devC, `/task-dependency-tickets/${b.ticketId}/resolve`).expect(200);
+      expect((await taskRow(b.dependencyTaskId!)).actualHours).toBeNull();
+    });
   });
 
   describe('the ticket follows the task status (trigger)', () => {
