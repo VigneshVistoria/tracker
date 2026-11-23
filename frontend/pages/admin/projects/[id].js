@@ -33,6 +33,13 @@ const STATUS_FILTERS = ['All', 'At Risk', 'In Progress', 'Completed'];
 // keep their original relative order.
 const RISK_SORT_RANK = { High: 0, Medium: 1, Low: 2 };
 
+// API sends YYYY-MM-DD; show DD-MM-YYYY like the rest of the app.
+function formatDueDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}-${m}-${y}`;
+}
+
 function RiskBadge({ level }) {
   return (
     <span className={styles.badge} style={RISK_STYLE[level] || RISK_STYLE.Low}>
@@ -41,13 +48,13 @@ function RiskBadge({ level }) {
   );
 }
 
-function StatRow({ completionPercent, riskLevel, keyFocusArea, status, issueCount }) {
+function StatRow({ completionPercent, riskLevel, keyFocusArea, status, taskCount }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center', flexWrap: 'wrap' }}>
         <span className={styles.badge}>{status}</span>
         <RiskBadge level={riskLevel} />
-        <span className={styles.issueMeta}>{issueCount} issue{issueCount === 1 ? '' : 's'}</span>
+        <span className={styles.issueMeta}>{taskCount} task{taskCount === 1 ? '' : 's'} (Junk excluded)</span>
         <span className={styles.issueMeta}>Key focus: {keyFocusArea}</span>
       </div>
       <div style={{ marginTop: 'var(--space-2)', maxWidth: '420px' }}>
@@ -233,40 +240,42 @@ function ModuleRow({ module, projectId, initialExpanded, canManageModules, onCha
 
       {expanded && (
         <div style={{ marginTop: 'var(--space-4)' }}>
-          {loading && <p className={styles.issueMeta}>Loading issues...</p>}
+          {loading && <p className={styles.issueMeta}>Loading tasks...</p>}
           {error && <div className={styles.error}>{error}</div>}
-          {detail && detail.issues.length === 0 && (
-            <p className={styles.issueMeta}>No issues in this module yet.</p>
+          {detail && detail.tasks.length === 0 && (
+            <p className={styles.issueMeta}>No tasks in this module yet.</p>
           )}
-          {detail && detail.issues.length > 0 && (
+          {detail && detail.tasks.length > 0 && (
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
                   <tr>
                     <th>Ticket #</th>
                     <th>Title</th>
-                    <th>% Complete</th>
+                    <th>Status</th>
                     <th>Risk</th>
-                    <th>Key Focus</th>
+                    <th>Phase</th>
+                    <th>Due</th>
                     <th>Assignee</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.issues.map((issue) => (
-                    <tr key={issue.id}>
+                  {detail.tasks.map((task) => (
+                    <tr key={task.id}>
                       <td
                         className={styles.issueId}
-                        style={{ borderLeft: `3px solid ${RISK_BORDER_COLOR[issue.riskLevel] || RISK_BORDER_COLOR.Low}` }}
+                        style={{ borderLeft: `3px solid ${RISK_BORDER_COLOR[task.riskLevel] || RISK_BORDER_COLOR.Low}` }}
                       >
-                        <Link href={`/issues/${issue.id}`}>#{issue.id}</Link>
+                        <Link href={`/tasks/${task.id}`}>#{task.id}</Link>
                       </td>
                       <td className={styles.tableTitleCell}>
-                        <Link href={`/issues/${issue.id}`}>{issue.title}</Link>
+                        <Link href={`/tasks/${task.id}`}>{task.title}</Link>
                       </td>
-                      <td>{issue.completionPercent}%</td>
-                      <td><RiskBadge level={issue.riskLevel} /></td>
-                      <td>{issue.keyFocusArea}</td>
-                      <td>{issue.assigneeEmail || 'Unassigned'}</td>
+                      <td>{task.status}</td>
+                      <td><RiskBadge level={task.riskLevel} /></td>
+                      <td>{task.keyFocusArea}</td>
+                      <td>{formatDueDate(task.dueDate)}</td>
+                      <td>{task.assigneeEmail || 'Unassigned'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -426,7 +435,7 @@ export default function ProjectOverview() {
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>{overview ? overview.project.name : 'Project'}</h1>
-          <p className={styles.pageSubtitle}>Status, completion, and risk, drilled down by module and issue.</p>
+          <p className={styles.pageSubtitle}>Status, completion, and risk from tasks, drilled down by module and task.</p>
         </div>
       </div>
 

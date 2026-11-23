@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In, Not } from 'typeorm';
 import { ProjectModule } from './project-module.entity';
-import { Issue, IssueStatus, IssueCategory } from '../issues/issue.entity';
+import { Issue, IssueStatus } from '../issues/issue.entity';
 import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { Phase } from '../phases/phase.entity';
@@ -20,34 +20,20 @@ export interface ProjectModuleWithCompletion extends ProjectModule {
 
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 
-// Same "no status change in N days" staleness window the Weekly Report
-// uses to flag a risk item - kept as its own constant here rather than
-// imported, since WeeklyReportsService doesn't export it and the two
-// features are independent (same reasoning as this app's other
-// self-contained per-service calculations, e.g. STATUS_HEALTH_WEIGHT).
-const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+// The project/module drill-down rolls up Tasks (project_tasks), not the
+// legacy Issues table - all real work lives in tasks, so an issues-based
+// rollup showed every project as "Not Started 0%". Pass/Closed (and the
+// post-Pass Released statuses) count as done; Junk is left out entirely.
+const DONE_TASK_STATUSES = ['Pass', 'Closed', 'Released - No Showstoppers', 'Released - With Showstoppers'];
+const EXCLUDED_TASK_STATUSES = ['Junk'];
 
-// How far along each status is, for a single issue's "% complete" -
-// distinct from the Weekly Report's completion % (which is a binary
-// done/not-done ratio across many issues). Backlog/QA Failed share a
-// value since QA Failed is a regression back to "still needs work", not
-// further along than a fresh Backlog item.
-const ISSUE_PROGRESS_PERCENT: Record<IssueStatus, number> = {
-  [IssueStatus.BACKLOG]: 0,
-  [IssueStatus.IN_PROGRESS]: 40,
-  [IssueStatus.IN_REVIEW]: 70,
-  [IssueStatus.QA_TESTING]: 85,
-  [IssueStatus.QA_FAILED]: 40,
-  [IssueStatus.READY_FOR_PRODUCTION]: 100,
-};
-
-export interface IssueDrillDown {
+export interface TaskDrillDown {
   id: number;
   title: string;
-  status: IssueStatus;
-  completionPercent: number;
+  status: string;
   riskLevel: RiskLevel;
   keyFocusArea: string;
+  dueDate: string | null;
   assigneeEmail: string;
 }
 
@@ -56,7 +42,7 @@ export interface GroupDrillDown {
   riskLevel: RiskLevel;
   keyFocusArea: string;
   status: string;
-  issueCount: number;
+  taskCount: number;
 }
 
 @Injectable()
@@ -262,99 +248,101 @@ export class ModulesService {
 
   // --- Drill-down: project -> module -> issue ---
 
-  private issueProgressPercent(issue: Issue): number {
-    return ISSUE_PROGRESS_PERCENT[issue.status] ?? 0;
+  private isTaskDone(task: ProjectTask): boolean {
+    return DONE_TASK_STATUSES.includes(task.status);
   }
 
-  private issueRiskLevel(issue: Issue): RiskLevel {
-    const isHighRiskCategory =
-      issue.category === IssueCategory.CRITICAL || issue.category === IssueCategory.SHOWSTOPPER;
-    if (issue.showstopper || isHighRiskCategory) {
-      return 'High';
-    }
-    const isStale = Date.now() - new Date(issue.updatedAt).getTime() >= STALE_AFTER_MS;
-    const isOpen = issue.status !== IssueStatus.READY_FOR_PRODUCTION;
-    if (isOpen && isStale) {
-      return 'Medium';
-    }
-    if (issue.status === IssueStatus.QA_FAILED) {
-      return 'Medium';
-    }
+  private todayIso(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  // Escalated = High (the task-world equivalent of a showstopper issue);
+  // Failed or open past its due date = Medium; everything else Low.
+  private taskRiskLevel(task: ProjectTask, today: string): RiskLevel {
+    if (this.isTaskDone(task)) return 'Low';
+    if (task.status === 'Escalated') return 'High';
+    if (task.status === 'Failed') return 'Medium';
+    if (task.dueDate && String(task.dueDate).slice(0, 10) < today) return 'Medium';
     return 'Low';
   }
 
-  private issueKeyFocusArea(issue: Issue): string {
-    return issue.category || 'Uncategorized';
+  private taskKeyFocusArea(task: ProjectTask): string {
+    return task.phaseName || 'No phase';
   }
 
-  private toIssueDrillDown(issue: Issue): IssueDrillDown {
+  private toTaskDrillDown(task: ProjectTask, today: string): TaskDrillDown {
     return {
-      id: issue.id,
-      title: issue.title,
-      status: issue.status,
-      completionPercent: this.issueProgressPercent(issue),
-      riskLevel: this.issueRiskLevel(issue),
-      keyFocusArea: this.issueKeyFocusArea(issue),
-      assigneeEmail: issue.assigneeEmail,
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      riskLevel: this.taskRiskLevel(task, today),
+      keyFocusArea: this.taskKeyFocusArea(task),
+      dueDate: task.dueDate ? String(task.dueDate).slice(0, 10) : null,
+      assigneeEmail: task.assigneeEmail,
     };
   }
 
-  // Rolls a group of issues (a module's issues, or a whole project's) up
-  // into one summary. Completion % is completed/total, the same ratio the
-  // Weekly Report uses at the org-wide level - not an average of each
-  // issue's individual progress %, so a project isn't "70% done" just
-  // because everything is in-flight at 70%. Risk rolls up as the worst
-  // level present. Key focus area is the most common category among the
-  // still-open issues (ties broken alphabetically for a stable result).
-  private summarize(issues: Issue[]): GroupDrillDown {
-    const issueCount = issues.length;
-    if (issueCount === 0) {
-      return { completionPercent: 0, riskLevel: 'Low', keyFocusArea: 'None', status: 'Not Started', issueCount: 0 };
+  private findCountedTasks(where: { projectId?: number; moduleId?: number; tenantId: number }) {
+    return this.projectTasksRepository.find({
+      where: { ...where, status: Not(In(EXCLUDED_TASK_STATUSES)) },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // Rolls a group of tasks (a module's, or a whole project's) up into one
+  // summary. Completion % is done/total (Junk excluded from both). Risk
+  // rolls up as the worst level present. Key focus area is the most common
+  // phase among the still-open tasks (ties broken alphabetically).
+  private summarize(tasks: ProjectTask[]): GroupDrillDown {
+    const taskCount = tasks.length;
+    if (taskCount === 0) {
+      return { completionPercent: 0, riskLevel: 'Low', keyFocusArea: 'None', status: 'Not Started', taskCount: 0 };
     }
 
-    const completed = issues.filter((i) => i.status === IssueStatus.READY_FOR_PRODUCTION).length;
-    const completionPercent = Math.round((completed / issueCount) * 100);
+    const today = this.todayIso();
+    const completed = tasks.filter((t) => this.isTaskDone(t)).length;
+    const completionPercent = Math.round((completed / taskCount) * 100);
 
-    const risks = issues.map((i) => this.issueRiskLevel(i));
+    const risks = tasks.map((t) => this.taskRiskLevel(t, today));
     const riskLevel: RiskLevel = risks.includes('High') ? 'High' : risks.includes('Medium') ? 'Medium' : 'Low';
 
-    const openIssues = issues.filter((i) => i.status !== IssueStatus.READY_FOR_PRODUCTION);
-    const focusPool = openIssues.length > 0 ? openIssues : issues;
-    const categoryCounts = new Map<string, number>();
-    for (const issue of focusPool) {
-      const key = this.issueKeyFocusArea(issue);
-      categoryCounts.set(key, (categoryCounts.get(key) || 0) + 1);
+    const openTasks = tasks.filter((t) => !this.isTaskDone(t));
+    const focusPool = openTasks.length > 0 ? openTasks : tasks;
+    const focusCounts = new Map<string, number>();
+    for (const task of focusPool) {
+      const key = this.taskKeyFocusArea(task);
+      focusCounts.set(key, (focusCounts.get(key) || 0) + 1);
     }
-    const keyFocusArea = Array.from(categoryCounts.entries()).sort(
+    const keyFocusArea = Array.from(focusCounts.entries()).sort(
       (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
     )[0][0];
 
     const status =
       completionPercent === 100 ? 'Completed' : riskLevel === 'High' ? 'At Risk' : 'In Progress';
 
-    return { completionPercent, riskLevel, keyFocusArea, status, issueCount };
+    return { completionPercent, riskLevel, keyFocusArea, status, taskCount };
   }
 
   // Level 1 + 2 of the drill-down: overall project rollup, plus each
-  // module's own rollup. Deliberately doesn't include individual issues -
+  // module's own rollup. Deliberately doesn't include individual tasks -
   // those are fetched separately (getModuleOverview) only when a module
   // is expanded, so this stays a light payload.
   async getProjectOverview(projectId: number, tenantId: number) {
     const project = await this.projectsService.findOne(projectId, tenantId);
-    const [modules, issues] = await Promise.all([
+    const [modules, tasks] = await Promise.all([
       this.findAllForProject(projectId, tenantId, { includeInactive: true }),
-      this.issuesRepository.find({ where: { projectId, tenantId } }),
+      this.findCountedTasks({ projectId, tenantId }),
     ]);
 
-    const issuesByModuleId = new Map<number, Issue[]>();
-    const unassignedIssues: Issue[] = [];
-    for (const issue of issues) {
-      if (issue.moduleId == null) {
-        unassignedIssues.push(issue);
+    const tasksByModuleId = new Map<number, ProjectTask[]>();
+    const unassignedTasks: ProjectTask[] = [];
+    for (const task of tasks) {
+      if (task.moduleId == null) {
+        unassignedTasks.push(task);
         continue;
       }
-      if (!issuesByModuleId.has(issue.moduleId)) issuesByModuleId.set(issue.moduleId, []);
-      issuesByModuleId.get(issue.moduleId).push(issue);
+      if (!tasksByModuleId.has(task.moduleId)) tasksByModuleId.set(task.moduleId, []);
+      tasksByModuleId.get(task.moduleId).push(task);
     }
 
     const moduleRows = modules.map((module) => ({
@@ -362,40 +350,43 @@ export class ModulesService {
       name: module.name,
       isActive: module.isActive,
       description: module.description,
-      ...this.summarize(issuesByModuleId.get(module.id) || []),
+      ...this.summarize(tasksByModuleId.get(module.id) || []),
     }));
 
-    // Issues not yet grouped into a module still count toward the
-    // project's own totals (computed from `issues` below), and still show
-    // up in the drill-down under a synthetic "Unassigned" bucket - not a
-    // real Module row, just id: null, so existing data with no modules
-    // set up yet still displays sensibly.
-    if (unassignedIssues.length > 0) {
+    // Tasks with no module (or a module not on this project) still count
+    // toward the project totals and show under a synthetic "Unassigned"
+    // bucket - id: null, not a real Module row.
+    const knownModuleIds = new Set(modules.map((m) => m.id));
+    for (const [moduleId, moduleTasks] of tasksByModuleId) {
+      if (!knownModuleIds.has(moduleId)) unassignedTasks.push(...moduleTasks);
+    }
+    if (unassignedTasks.length > 0) {
       moduleRows.push({
         id: null,
         name: 'Unassigned',
         isActive: true,
         description: null,
-        ...this.summarize(unassignedIssues),
+        ...this.summarize(unassignedTasks),
       });
     }
 
     return {
       project: { id: project.id, name: project.name, description: project.description },
-      ...this.summarize(issues),
+      ...this.summarize(tasks),
       modules: moduleRows,
     };
   }
 
-  // Level 3: one module's issues, each with their own rollup.
+  // Level 3: one module's tasks, each with their own risk.
   async getModuleOverview(moduleId: number, tenantId: number) {
     const module = await this.findOne(moduleId, tenantId);
-    const issues = await this.issuesRepository.find({ where: { moduleId, tenantId }, order: { createdAt: 'ASC' } });
+    const tasks = await this.findCountedTasks({ moduleId, tenantId });
+    const today = this.todayIso();
 
     return {
       module: { id: module.id, name: module.name, description: module.description, projectId: module.projectId },
-      ...this.summarize(issues),
-      issues: issues.map((i) => this.toIssueDrillDown(i)),
+      ...this.summarize(tasks),
+      tasks: tasks.map((t) => this.toTaskDrillDown(t, today)),
     };
   }
 
@@ -404,16 +395,18 @@ export class ModulesService {
   // module (moduleId: null in the URL).
   async getUnassignedOverview(projectId: number, tenantId: number) {
     await this.projectsService.findOne(projectId, tenantId);
-    const issues = await this.issuesRepository.find({
-      where: { projectId, tenantId },
-      order: { createdAt: 'ASC' },
-    });
-    const unassigned = issues.filter((i) => i.moduleId == null);
+    const [modules, tasks] = await Promise.all([
+      this.findAllForProject(projectId, tenantId, { includeInactive: true }),
+      this.findCountedTasks({ projectId, tenantId }),
+    ]);
+    const knownModuleIds = new Set(modules.map((m) => m.id));
+    const unassigned = tasks.filter((t) => t.moduleId == null || !knownModuleIds.has(t.moduleId));
+    const today = this.todayIso();
 
     return {
       module: { id: null, name: 'Unassigned', description: null, projectId },
       ...this.summarize(unassigned),
-      issues: unassigned.map((i) => this.toIssueDrillDown(i)),
+      tasks: unassigned.map((t) => this.toTaskDrillDown(t, today)),
     };
   }
 }
