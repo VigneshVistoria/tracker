@@ -229,6 +229,89 @@ function QaArtifactIcons({ artifacts }) {
   );
 }
 
+// Actual hours on a dependency task at Pass (2026-11-23) - Resolve skips
+// QA submit, where it's normally entered. The Assignee fills it once while
+// empty; a Program Manager can set or correct it (TasksService.setActualHours).
+function DependencyActualHours({ task, isAssignee, isPm, onSaved }) {
+  const current = task.actualHours == null ? null : Number(task.actualHours);
+  const canEdit = isPm || (isAssignee && current == null);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  if (current == null && !canEdit) return null;
+  const showForm = canEdit && (current == null || editing);
+
+  const save = async (e) => {
+    e.preventDefault();
+    const hours = Number(value);
+    if (value.trim() === '' || !Number.isFinite(hours) || hours < 0 || hours > 999.99) {
+      setError('Enter a number of hours from 0 to 999.99.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await apiFetch(`/tasks/${task.id}/actual-hours`, { method: 'PATCH', body: JSON.stringify({ actualHours: hours }) });
+      setEditing(false);
+      setValue('');
+      onSaved(saved);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 'var(--space-3)' }}>
+      {!showForm && (
+        <p style={{ margin: 0 }}>
+          <strong>Actual hours:</strong> {current}
+          {isPm && (
+            <button type="button" className={styles.button} style={{ marginLeft: 'var(--space-2)' }} onClick={() => { setValue(String(current)); setEditing(true); }}>
+              Change
+            </button>
+          )}
+        </p>
+      )}
+      {showForm && (
+        <form onSubmit={save} noValidate>
+          <label className={styles.label} htmlFor="depActualHours">Actual hours spent</label>
+          <input
+            className={styles.input}
+            id="depActualHours"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            max="999.99"
+            step="0.25"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            disabled={saving}
+            aria-describedby="depActualHoursHint"
+          />
+          <p id="depActualHoursHint" className={styles.helpText} style={{ margin: 'var(--space-1) 0 0' }}>
+            {isPm ? 'Total time spent on this task.' : 'Total time spent on this task. You can enter this once - after that only a Program Manager can change it.'}
+          </p>
+          {error && <p className={styles.error} role="alert" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>{error}</p>}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+            <button type="submit" className={`${styles.button} ${styles.buttonAccent}`} disabled={saving}>
+              {saving ? 'Saving...' : 'Save actual hours'}
+            </button>
+            {editing && (
+              <button type="button" className={styles.button} onClick={() => { setEditing(false); setError(''); }} disabled={saving}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 // One line of the "Dependency history" list, after the actor's name.
 function dependencyHistoryText(h) {
   const ticket = `"${h.ticketTitle || `#${h.ticketId}`}"`;
@@ -3609,6 +3692,17 @@ export default function TaskDetailPage() {
                 showAttachments={dependencyTicketAttachmentsOn}
                 showHours
               />
+              {task.status === 'Pass' && !isJunk && (
+                <DependencyActualHours
+                  task={task}
+                  isAssignee={isAssignee}
+                  isPm={canManage}
+                  onSaved={(saved) => {
+                    setTask((prev) => ({ ...prev, actualHours: saved.actualHours }));
+                    showToast('Actual hours saved', 'success');
+                  }}
+                />
+              )}
             </div>
           )}
           {!editingTitle && nextStep && (

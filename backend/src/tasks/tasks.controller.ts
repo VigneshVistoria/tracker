@@ -25,6 +25,7 @@ import { UpdateTaskDto } from './dto/update-task.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { BulkAssignTasksDto } from './dto/bulk-assign-tasks.dto';
 import { SetPeerReviewFlagDto } from './dto/set-peer-review-flag.dto';
+import { SetActualHoursDto } from './dto/set-actual-hours.dto';
 import { SetQaReviewDueDateDto } from './dto/set-qa-review-due-date.dto';
 import { LinkBlockingDefectDto } from './dto/link-blocking-defect.dto';
 import { BulkMarkJunkDto, JunkReasonDto } from './dto/mark-junk.dto';
@@ -695,6 +696,14 @@ export class TasksController {
       throw new ForbiddenException('Only QA, Program Manager, or Admin can change the QA Review Due Date.');
     }
     return this.tasksService.setQaReviewDueDate(id, dto.qaReviewDueDate, currentUser, req.user.tenantId);
+  }
+
+  // One-time Actual hours on a dependency task at Pass - Assignee once,
+  // Program Manager any time (rules in TasksService.setActualHours()).
+  @Patch(':id/actual-hours')
+  async setActualHours(@Param('id', ParseIntPipe) id: number, @Body() dto: SetActualHoursDto, @Req() req: any) {
+    const currentUser = await this.usersService.findById(req.user.sub);
+    return this.tasksService.setActualHours(id, dto.actualHours, currentUser, req.user.tenantId);
   }
 
   @Patch(':id')

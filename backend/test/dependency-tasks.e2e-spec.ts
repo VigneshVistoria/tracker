@@ -274,6 +274,33 @@ describe('Dependency tasks (e2e)', () => {
       await patch(devC, `/task-dependency-tickets/${b.ticketId}/resolve`).expect(200);
       expect((await taskRow(b.dependencyTaskId!)).actualHours).toBeNull();
     });
+
+    it('Actual hours after Pass: assignee once while empty, PM any time; others 403; only at Pass; audited', async () => {
+      await setSwitch(true);
+      const { parentId, ticketId, dependencyTaskId } = await newTicket();
+      const url = `/tasks/${dependencyTaskId}/actual-hours`;
+      // Not at Pass yet, and not a dependency task.
+      await patch(devC, url, { actualHours: 2 }).expect(400);
+      await patch(f.users.pm, `/tasks/${parentId}/actual-hours`, { actualHours: 2 }).expect(400);
+      await patch(devC, `/task-dependency-tickets/${ticketId}/resolve`).expect(200);
+      for (const bad of [-1, 1000, 'abc', null]) {
+        await patch(devC, url, { actualHours: bad }).expect(400);
+      }
+      for (const u of [f.users.devA, f.users.qaB, f.users.exec, f.users.admin]) {
+        await patch(u, url, { actualHours: 2 }).expect(403);
+      }
+      expect((await taskRow(dependencyTaskId!)).actualHours).toBeNull();
+      await patch(devC, url, { actualHours: 2.5 }).expect(200);
+      expect(Number((await taskRow(dependencyTaskId!)).actualHours)).toBe(2.5);
+      await patch(devC, url, { actualHours: 4 }).expect(403);
+      await patch(f.users.pm, url, { actualHours: 4 }).expect(200);
+      expect(Number((await taskRow(dependencyTaskId!)).actualHours)).toBe(4);
+      const audit = await ds.query(
+        `SELECT details FROM audit_logs WHERE action = 'task_actual_hours_set' AND "entityId" = $1 ORDER BY id`,
+        [dependencyTaskId],
+      );
+      expect(audit.map((a: any) => (typeof a.details === 'string' ? JSON.parse(a.details) : a.details)).map((d: any) => [d.previousActualHours, d.newActualHours])).toEqual([[null, 2.5], [2.5, 4]]);
+    });
   });
 
   describe('the ticket follows the task status (trigger)', () => {

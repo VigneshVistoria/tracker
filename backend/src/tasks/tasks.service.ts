@@ -2614,4 +2614,45 @@ export class TasksService {
 
     return saved;
   }
+
+  // One-time Actual hours on a dependency task at Pass (2026-11-23): Resolve
+  // skips QA submit, so these tasks can end up with none. The Assignee
+  // fills it once while empty; Program Manager can set or correct it any
+  // time - same lock pattern as Estimated Hours. Admin stays view-only.
+  async setActualHours(
+    id: number,
+    actualHours: number,
+    currentUser: { id: number; email: string; role: UserRole },
+    tenantId: number,
+  ): Promise<ProjectTask> {
+    const task = await this.findOne(id, tenantId);
+    this.assertNotJunk(task);
+    if (task.dependencyTicketId == null || task.status !== 'Pass') {
+      throw new BadRequestException('Actual hours can only be added here on a dependency task at Pass.');
+    }
+    const isPm = MUTATE_ROLES.includes(currentUser.role);
+    const isAssignee = task.assigneeUserId != null && task.assigneeUserId === currentUser.id;
+    if (!isPm && !isAssignee) {
+      throw new ForbiddenException("Only the task's assignee or a Program Manager can add Actual hours.");
+    }
+    const previous = task.actualHours == null ? null : Number(task.actualHours);
+    if (previous != null && !isPm) {
+      throw new ForbiddenException('Actual hours is locked after first entry - only Program Manager can change it now.');
+    }
+    task.actualHours = actualHours;
+    const saved = await this.tasksRepository.save(task);
+
+    await this.auditLogService.record({
+      userId: currentUser.id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: AuditActions.TASK_ACTUAL_HOURS_SET,
+      tenantId,
+      entityType: 'ProjectTask',
+      entityId: saved.id,
+      details: { previousActualHours: previous, newActualHours: actualHours },
+    });
+
+    return saved;
+  }
 }
