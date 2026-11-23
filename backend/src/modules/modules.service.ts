@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, Not } from 'typeorm';
 import { ProjectModule } from './project-module.entity';
-import { Issue, IssueStatus } from '../issues/issue.entity';
+import { Issue } from '../issues/issue.entity';
 import { ProjectPlanEntry } from '../project-planning/project-plan-entry.entity';
 import { ProjectTask } from '../tasks/project-task.entity';
 import { Phase } from '../phases/phase.entity';
@@ -14,8 +14,8 @@ import { AuditLogService, AuditActions } from '../audit/audit-log.service';
 
 export interface ProjectModuleWithCompletion extends ProjectModule {
   percentComplete: number | null;
-  completedIssueCount: number;
-  totalIssueCount: number;
+  completedTaskCount: number;
+  totalTaskCount: number;
 }
 
 export type RiskLevel = 'Low' | 'Medium' | 'High';
@@ -94,29 +94,38 @@ export class ModulesService {
     }
   }
 
-  // Same completed/total ratio ModulesService.summarize() already uses
-  // for the drill-down, and the identical convention
-  // ProjectPlanningService.computeCompletion() uses - null (not 0) when
-  // no issues are linked yet, distinct from "linked but none done".
-  private async computeCompletion(module: ProjectModule): Promise<ProjectModuleWithCompletion> {
-    const issues = await this.issuesRepository.find({ where: { moduleId: module.id, tenantId: module.tenantId } });
-    const totalIssueCount = issues.length;
-    if (totalIssueCount === 0) {
-      return { ...module, percentComplete: null, completedIssueCount: 0, totalIssueCount: 0 };
-    }
-    const completedIssueCount = issues.filter((i) => i.status === IssueStatus.READY_FOR_PRODUCTION).length;
-    const percentComplete = Math.round((completedIssueCount / totalIssueCount) * 100);
-    return { ...module, percentComplete, completedIssueCount, totalIssueCount };
-  }
-
-  // Tenant-wide (or project-filtered) list with %Complete attached -
-  // powers the Project Modules page. Includes inactive modules (shown
-  // with a status badge there), unlike findAllForProject's default.
+  // %Complete per module from its tasks (project_tasks) - same rule as
+  // the Project Overview: Pass/Closed/Released count as done, Junk is left
+  // out of both counts. null (not 0) when the module has no counted tasks,
+  // distinct from "has tasks but none done". One grouped query for all
+  // modules rather than one query per module.
   async findAllWithCompletion(tenantId: number, projectId?: number): Promise<ProjectModuleWithCompletion[]> {
     const where: Record<string, unknown> = { tenantId };
     if (projectId != null) where.projectId = projectId;
     const modules = await this.modulesRepository.find({ where, order: { createdAt: 'DESC' } });
-    return Promise.all(modules.map((m) => this.computeCompletion(m)));
+    if (modules.length === 0) return [];
+
+    const rows: { moduleId: number; total: string; done: string }[] = await this.projectTasksRepository
+      .createQueryBuilder('t')
+      .select('t.moduleId', 'moduleId')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect('COUNT(*) FILTER (WHERE t.status IN (:...done))', 'done')
+      .where('t.tenantId = :tenantId', { tenantId })
+      .andWhere('t.moduleId IN (:...moduleIds)', { moduleIds: modules.map((m) => m.id) })
+      .andWhere('t.status NOT IN (:...excluded)', { excluded: EXCLUDED_TASK_STATUSES })
+      .setParameter('done', DONE_TASK_STATUSES)
+      .groupBy('t.moduleId')
+      .getRawMany();
+    const countsByModuleId = new Map(rows.map((r) => [Number(r.moduleId), { total: Number(r.total), done: Number(r.done) }]));
+
+    return modules.map((module) => {
+      const counts = countsByModuleId.get(module.id);
+      if (!counts || counts.total === 0) {
+        return { ...module, percentComplete: null, completedTaskCount: 0, totalTaskCount: 0 };
+      }
+      const percentComplete = Math.round((counts.done / counts.total) * 100);
+      return { ...module, percentComplete, completedTaskCount: counts.done, totalTaskCount: counts.total };
+    });
   }
 
   async create(

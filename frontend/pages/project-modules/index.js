@@ -137,8 +137,8 @@ export default function ProjectModulesPage() {
         <div>
           <h1 className={styles.pageTitle}>Project Modules</h1>
           <p className={styles.pageSubtitle}>
-            Create Modules within a Project. % Complete is computed live from the actual Issues linked to each
-            Module - it's blank until issues are assigned.
+            Create Modules within a Project. % Complete is computed live from the Tasks in each Module
+            (Pass/Closed count as done, Junk is excluded) - it's blank until the module has tasks.
           </p>
         </div>
         {canManage && (
