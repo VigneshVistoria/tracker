@@ -7,6 +7,7 @@ import Modal from '../../components/ui/Modal';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import ReasonHint from '../../components/ReasonHint';
+import ScorecardViewSwitch from '../../components/ScorecardViewSwitch';
 import styles from '../../styles/issues.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
 import { redirectToSignIn } from '../../lib/session';
@@ -60,6 +61,7 @@ export default function ScorecardPage() {
   const [error, setError] = useState('');
   const [dialog, setDialog] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [role, setRole] = useState(null);
   const selected = router.query.user ? Number(router.query.user) : null;
 
   const loadList = useCallback(
@@ -87,6 +89,7 @@ export default function ScorecardPage() {
       redirectToSignIn(router);
       return;
     }
+    setRole(JSON.parse(localStorage.getItem('user')).role);
     loadList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
@@ -116,6 +119,8 @@ export default function ScorecardPage() {
 
   return (
     <AppShell>
+      {/* Weekly figures: Programme Manager only (2026-11-24). */}
+      <ScorecardViewSwitch role={role} current="scorecard" />
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.pageTitle}>Performance Scorecard</h1>

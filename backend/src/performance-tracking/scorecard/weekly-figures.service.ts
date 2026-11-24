@@ -236,7 +236,7 @@ export class WeeklyFiguresService {
     const taskTitles = Object.fromEntries([...ids].map((id) => [id, built.taskTitles.get(id) ?? null]));
     await this.audit(viewer, WEEKLY_FIGURES_AUDIT.PERSON_VIEWED, project.id, { week: monday, project: project.name, personUserId: userId });
     const { rows, cells, ...rest } = p;
-    return { ...this.header(monday, sunday, project, weeks, projects), minSample: built.minSample, c6On: built.c6On, person: rest, metrics: evidence, taskTitles };
+    return { ...this.header(monday, sunday, project, weeks, projects), minSample: built.minSample, c6On: built.c6On, c6MinSample: built.c6MinSample, person: rest, metrics: evidence, taskTitles };
   }
 
   async exportExcel(viewer: Viewer, week?: string, projectId?: number, now = new Date()): Promise<{ buffer: Buffer; filename: string }> {
@@ -297,10 +297,11 @@ export class WeeklyFiguresService {
 export function formatCell(c: WeeklyCell, unit: string, minSample: number): string {
   if (c.state === 'off') return 'C6 not switched on';
   if (c.state === 'na') return 'n/a';
-  const v = c.value as number;
+  // One decimal, like the screen (frontend/lib/weeklyFigures.js).
+  const v = Math.round((c.value as number) * 10) / 10;
   const ratio = c.denominator !== null && c.numerator !== null ? ` (${c.numerator}/${c.denominator})` : '';
   let s: string;
-  if (c.metric === 'C1') s = `median ${c.medianWorkingHours ?? 'n/a'} working h · ${v}% within ${c.targetWorkingHours ?? 4} working h${ratio}`;
+  if (c.metric === 'C1') s = `median ${c.medianWorkingHours == null ? 'n/a' : Math.round(c.medianWorkingHours * 10) / 10} working h · ${v}% within ${c.targetWorkingHours ?? 4} working h${ratio}`;
   else if (unit === 'percent') s = `${v}%${ratio}`;
   else if (unit === 'days') s = `${v} working days`;
   else if (c.metric === 'C2') s = `${v} working days`;
