@@ -7,6 +7,7 @@ import styles from '../styles/myWork.module.css';
 import { apiFetch } from '../lib/api';
 import { todayISO } from '../lib/developerTaskStats';
 import { buildMyWork, needsDueDateCommit, statusInfo, fixReason, formatDmy } from '../lib/developerWorkGroups';
+import { weeklyReportReminder } from '../lib/weeklyReportReminder';
 
 // Developer home "My work" (NEW_UI only, 2026-11-17): one Working /
 // Submitted toggle over one list. Grouping, labels, sorting and counts
@@ -21,6 +22,17 @@ const settled = (r, fallback) => (r.status === 'fulfilled' ? r.value : fallback)
 
 export default function DeveloperMyWork({ user }) {
   const [data, setData] = useState(null);
+  // Weekly report reminder: this week's page (GET /weekly-status). A failed
+  // call just shows nothing.
+  const [reportPage, setReportPage] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/weekly-status')
+      .then((p) => { if (!cancelled) setReportPage(p); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user.id]);
+  const reminder = weeklyReportReminder(reportPage);
   const [error, setError] = useState('');
   const [partial, setPartial] = useState([]);
   const [tab, setTab] = useState('working');
@@ -115,6 +127,13 @@ export default function DeveloperMyWork({ user }) {
 
       <section className={styles.wrap} aria-labelledby="my-work-heading">
         <h2 id="my-work-heading" className={styles.heading}>My work</h2>
+
+        {/* This week's weekly report, until it is submitted (2026-11-24). */}
+        {reminder && (
+          <p className={`${styles.reminder} ${reminder.overdue ? styles.reminderOverdue : ''}`}>
+            {reminder.text} · <Link href="/weekly-status" className={styles.reminderLink}>Submit now</Link>
+          </p>
+        )}
 
         {error && <p className={styles.error} role="alert">{error}</p>}
         {!error && !work && <LoadingState label="Loading your work" />}

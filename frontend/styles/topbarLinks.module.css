@@ -1,0 +1,38 @@
+/* Developer top bar: links that show their name, not only an icon
+   (2026-11-24 - the weekly report link). Tokens only. */
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  height: 36px;
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--ds-transition-fast), color var(--ds-transition-fast);
+}
+
+.textLink:hover,
+.textLink[aria-current='page'] {
+  background: var(--ds-bg-surface-sunken);
+  color: var(--ds-text-primary);
+}
+
+.textLink:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+/* Small screens: keep the words, drop the icon. */
+@media (max-width: 640px) {
+  .textLink {
+    padding: 0 var(--ds-space-2);
+  }
+
+  .textLinkIcon {
+    display: none;
+  }
+}

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ChevronDown, ChevronsLeft, ChevronsRight, LayoutDashboard, LifeBuoy, Search, LogOut, Menu, X, SquarePlus, UserCheck, CalendarCheck, Gauge, Award, ClipboardList, ShieldAlert } from 'lucide-react';
 import styles from '../styles/appshell.module.css';
+import topbarLinks from '../styles/topbarLinks.module.css';
 import SelfCreateTaskModal from './SelfCreateTaskModal';
 import CommandPalette, { recordRecentPage } from './CommandPalette';
 import ShortcutsDialog, { GO_SHORTCUTS, isMacPlatform } from './ShortcutsDialog';
@@ -449,12 +450,12 @@ export default function AppShell({ children, fullScreen = false }) {
             {hideSidebar && showScorecard && (
               <Link
                 href="/weekly-status"
-                className={styles.iconButton}
-                aria-label="My weekly report"
-                title="My weekly report"
+                className={topbarLinks.textLink}
                 aria-current={router.pathname === '/weekly-status' ? 'page' : undefined}
               >
-                <ClipboardList size={18} aria-hidden="true" />
+                {/* Shown as text, not only an icon (2026-11-24). */}
+                <ClipboardList size={18} aria-hidden="true" className={topbarLinks.textLinkIcon} />
+                Weekly report
               </Link>
             )}
             {/* Security findings they own (Performance Tracking P3/P4). */}

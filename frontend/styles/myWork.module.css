@@ -90,6 +90,33 @@
   }
 }
 
+/* Weekly report reminder (2026-11-24): one text line, until submitted. */
+.reminder {
+  margin: 0 0 var(--ds-space-4);
+  font-size: var(--ds-text-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.reminderOverdue {
+  color: var(--ds-color-error-dark);
+}
+
+.reminderLink {
+  color: var(--ds-text-link);
+  text-decoration: underline;
+}
+
+.reminderLink:hover {
+  color: var(--ds-text-link-hover);
+}
+
+.reminderLink:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--ds-radius-sm);
+}
+
 /* One glass list. */
 .panel {
   border-radius: var(--ds-radius-xl);
