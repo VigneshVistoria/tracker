@@ -117,7 +117,9 @@ export class TrackingMetricsService {
     }
   }
 
-  private async computeAndStore(tenantId: number, snapshotDate: string, now: Date, runId: number) {
+  // Settings, calendars and people - shared by the nightly run and the
+  // weekly figures so the two can never drift apart.
+  private async context(tenantId: number) {
     const thresholds = await this.tracking.thresholds(tenantId);
     const metricSettings = await this.metrics.getSettings(tenantId);
     const holidays = (await this.metrics.listHolidays(tenantId)).map((h) => h.date);
@@ -126,7 +128,6 @@ export class TrackingMetricsService {
     const people = (await this.usersService.findAll(tenantId))
       .filter((u) => DEVELOPER_EQUIVALENT_ROLES.includes(u.role) && u.email !== smokeTestEmail)
       .map((u) => u.id);
-    const tracked = await this.dataSource.getRepository(Project).find({ where: { tenantId, performanceTrackingEnabled: true }, order: { id: 'ASC' } });
     // B4: everyone's own calendar (default EAT, 07:30-15:30, Sat/Sun off).
     const { byUser, fallback } = await this.workCalendars.calendarsFor(tenantId);
     const hoursFor = (userId: number) => byUser.get(userId) ?? fallback;
@@ -135,6 +136,49 @@ export class TrackingMetricsService {
       // Tenant-wide holidays are already in the person's days off.
       return workingDaysCalendar(person, calendar.timeZone);
     };
+    return { thresholds, metricSettings, calendar, people, hoursFor, workingDaysFor };
+  }
+
+  // Weekly figures (PM view, 2026-11-24): the same metrics as the nightly
+  // run for one project over a 7-day window ending on `sunday`, with the
+  // evidence lists. Reads only - nothing is stored.
+  async computeWeek(tenantId: number, projectId: number, sunday: string, now = new Date()) {
+    const { thresholds, metricSettings, calendar, people, hoursFor, workingDaysFor } = await this.context(tenantId);
+    const project = await this.dataSource.getRepository(Project).findOne({ where: { id: projectId, tenantId } });
+    const since = project?.performanceTrackingSince ? new Date(project.performanceTrackingSince) : null;
+    if (!project || !since) return null;
+    const input = await this.load(tenantId, projectId, sunday, now, thresholds.countGithubReleases);
+    const result = computeTrackingMetrics({
+      snapshotDate: sunday,
+      now,
+      trackingSince: since,
+      windowDays: 7,
+      minSample: metricSettings.minSample,
+      calendar,
+      workingDaysFor,
+      hoursFor,
+      dueDateWorkingDays: metricSettings.dueDateWorkingDays,
+      thresholds,
+      people,
+      evidence: true,
+      ...input,
+    });
+    // Same "who is in this project" rule as the nightly rows.
+    const active = new Set(result.rows.filter((r) => r.sample > 0 || (r.value !== null && r.value !== 0)).map((r) => r.userId));
+    for (const id of input.assignees) active.add(id);
+    return {
+      windowFrom: result.windowFrom,
+      minSample: metricSettings.minSample,
+      timeZone: metricSettings.timeZone,
+      rows: result.rows.filter((r) => active.has(r.userId)),
+      assignees: input.assignees,
+      taskTitles: new Map(input.tasks.map((t: any) => [t.id as number, t.title as string])),
+    };
+  }
+
+  private async computeAndStore(tenantId: number, snapshotDate: string, now: Date, runId: number) {
+    const { thresholds, metricSettings, calendar, people, hoursFor, workingDaysFor } = await this.context(tenantId);
+    const tracked = await this.dataSource.getRepository(Project).find({ where: { tenantId, performanceTrackingEnabled: true }, order: { id: 'ASC' } });
 
     // Rows for this night of projects no longer ON go too.
     await this.snapshotsRepository
@@ -213,7 +257,7 @@ export class TrackingMetricsService {
     const ghItem = (i: string, r: string) => (countGithubReleases ? 'true' : `NOT (${i}."addedByUserId" IS NULL AND ${r}."githubFilled" ? 'items')`);
     const releasedBy = countGithubReleases ? '"releasedByUserId"' : `CASE WHEN "githubFilled" ? 'releasedByUserId' THEN NULL ELSE "releasedByUserId" END AS "releasedByUserId"`;
     const tasks: any[] = await q(
-      `SELECT id, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact", "clientPriorityTier",
+      `SELECT id, title, status, "assigneeUserId", "createdByUserId", "dueDate"::text AS "dueDate", "isDefect", "taskType", "requirementId", "clientImpact", "clientPriorityTier",
               "improvementDecision", "improvementDecidedAt",
               "createdAt", "foundInProduction", "escapedFromTaskId", "productionReleaseDate"::text AS "productionReleaseDate"
          FROM project_tasks WHERE "tenantId" = $1 AND "projectId" = $2 AND "dependencyTicketId" IS NULL AND "designHandoverId" IS NULL`,

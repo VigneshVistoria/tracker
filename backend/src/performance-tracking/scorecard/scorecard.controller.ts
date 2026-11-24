@@ -3,11 +3,17 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { UsersService } from '../../users/users.service';
 import { ScorecardService } from './scorecard.service';
+import { WeeklyFiguresService } from './weekly-figures.service';
 import { CreateScoreOverrideDto, RemoveScoreOverrideDto } from '../dto/scorecard.dto';
 
 const dateOf = (date: string | undefined) => {
   if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new BadRequestException('date must be YYYY-MM-DD.');
   return date;
+};
+const projectIdOf = (id: string | undefined) => {
+  if (id === undefined || id === '') return undefined;
+  if (!/^\d+$/.test(id)) throw new BadRequestException('projectId must be a number.');
+  return Number(id);
 };
 
 // Performance Tracking B3 - the scorecard. Who sees what is decided in
@@ -19,6 +25,7 @@ export class ScorecardController {
   constructor(
     private scorecard: ScorecardService,
     private usersService: UsersService,
+    private weeklyFigures: WeeklyFiguresService,
   ) {}
 
   private async me(req: any) {
@@ -43,6 +50,29 @@ export class ScorecardController {
   @Get('export')
   async export(@Query('date') date: string | undefined, @Req() req: any, @Res() res: Response) {
     const { buffer, filename } = await this.scorecard.exportExcel(await this.me(req), dateOf(date));
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    });
+    res.send(buffer);
+  }
+
+  // Weekly figures (2026-11-24): Programme Manager ONLY (403 for everyone
+  // else, Admin included), own tracked projects only, every view audited.
+  @Get('weekly')
+  async weekly(@Query('week') week: string | undefined, @Query('projectId') projectId: string | undefined, @Req() req: any) {
+    return this.weeklyFigures.table(await this.me(req), dateOf(week), projectIdOf(projectId));
+  }
+
+  @Get('weekly/people/:userId')
+  async weeklyPerson(@Param('userId', ParseIntPipe) userId: number, @Query('week') week: string | undefined, @Query('projectId') projectId: string | undefined, @Req() req: any) {
+    return this.weeklyFigures.person(await this.me(req), userId, dateOf(week), projectIdOf(projectId));
+  }
+
+  @Get('weekly/export')
+  async weeklyExport(@Query('week') week: string | undefined, @Query('projectId') projectId: string | undefined, @Req() req: any, @Res() res: Response) {
+    const { buffer, filename } = await this.weeklyFigures.exportExcel(await this.me(req), dateOf(week), projectIdOf(projectId));
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'Content-Disposition': `attachment; filename="${filename}"`,

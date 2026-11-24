@@ -298,6 +298,10 @@ export interface TrackingMetricsInput {
   weeklyStatus?: Array<{ userId: number; weekStart: string; submittedAt: Date; deadlineAt: Date }>;
   // Weeks (Mondays) C3 leaves out; defaults to C3_SKIPPED_WEEKS (tests override).
   c3SkippedWeeks?: readonly string[];
+  // Weekly figures (PM view, 2026-11-24): also list what each metric
+  // counted (countedTaskIds etc.). Off for the nightly run - its stored
+  // details stay exactly as before.
+  evidence?: boolean;
   thresholds: PerformanceTrackingThresholds;
   people: number[];
   tasks: TmTask[];
@@ -403,6 +407,9 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       enoughData: value !== null && (alwaysEnough || sample >= input.minSample),
       details,
     });
+  // Evidence only when asked for (weekly figures); {} for the nightly run.
+  const countedIds = (ids: Iterable<number>) => (input.evidence ? { countedTaskIds: [...new Set(ids)] } : {});
+  const extra = (more: Record<string, unknown>) => (input.evidence ? more : {});
 
   const byTask = <T extends { taskId: number }>(items: T[]) => {
     const m = new Map<number, T[]>();
@@ -612,7 +619,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
 
   // One pass over tasks x working days for everyone: who held each active
   // task at the end of each day, and whether it was fresh for them.
-  const freshness = new Map<number, { samples: number; fresh: number; stale: Set<number> }>();
+  const freshness = new Map<number, { samples: number; fresh: number; stale: Set<number>; tasks: Set<number> }>();
   for (const task of tasks.values()) {
     const statusEvents = statusByTask.get(task.id) ?? [];
     if (statusEvents.length === 0) continue;
@@ -633,9 +640,10 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       for (const e of statusEvents) if (e.actorUserId === userId || FRESHNESS_ACTIVE_STATUSES.includes(e.toStatus)) touch(e.occurredAt);
       for (const n of notes) if (n.authorUserId === userId) touch(n.createdAt);
       for (const e of assignments) if (e.assigneeUserId === userId) touch(e.occurredAt);
-      if (!freshness.has(userId)) freshness.set(userId, { samples: 0, fresh: 0, stale: new Set() });
+      if (!freshness.has(userId)) freshness.set(userId, { samples: 0, fresh: 0, stale: new Set(), tasks: new Set() });
       const f = freshness.get(userId)!;
       f.samples += 1;
+      f.tasks.add(task.id);
       if (last && workingDaysBetweenDays(day(new Date(last)), d, calOf(userId)) <= th.statusFreshWorkingDays) f.fresh += 1;
       else f.stale.add(task.id);
     }
@@ -649,6 +657,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'D1', pct(onTime, passes.length), passes.length, onTime, passes.length, {
       late: passes.filter((d) => !d.onTime).map((d) => ({ taskId: d.taskId, due: d.due, submitted: day(d.submittedAt), workingDaysLate: d.daysLate })),
       leftOutExternal: (passesBy.get(userId) ?? []).filter(externallyBlocked).map((d) => d.taskId),
+      ...countedIds(passes.map((d) => d.taskId)),
     });
 
     // D2
@@ -664,6 +673,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     const covered = coverage.filter((i) => i.outcome === 'on_time' || i.outcome === 'already_dated').length;
     push(userId, 'D2', pct(covered, coverage.length), coverage.length, covered, coverage.length, {
       missed: coverage.filter((i) => !(i.outcome === 'on_time' || i.outcome === 'already_dated')).map((i) => ({ taskId: i.taskId, outcome: i.outcome, dueBy: i.dueBy })),
+      ...countedIds(coverage.map((i) => i.taskId)),
     });
 
     // D4
@@ -677,6 +687,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       tasksMovedTooOften: [...movesPerTask].filter(([, n]) => n >= th.dateMovesFlagCount).map(([taskId, n]) => ({ taskId, moves: n })),
       lateDeliveries: lateDeliveries.length,
       slippageWorkingDays: lateDeliveries.reduce((s, d) => s + d.daysLate, 0),
+      ...countedIds(changes.map((c) => c.taskId)),
     });
 
     // D3: slipped = late delivery, or a later date change they started.
@@ -692,6 +703,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'D3', pct(warned.length, slipped.size), slipped.size, warned.length, slipped.size, {
       slippedTaskIds: [...slipped.keys()],
       warnedTaskIds: warned.map(([id]) => id),
+      ...countedIds(slipped.keys()),
     });
 
     // Q1 / Q2
@@ -699,11 +711,13 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     const q1ok = q1.filter((r) => r.status === 'approved').length;
     push(userId, 'Q1', pct(q1ok, q1.length), q1.length, q1ok, q1.length, {
       notAccepted: q1.filter((r) => r.status !== 'approved').map((r) => ({ taskId: r.taskId, verdict: r.status })),
+      ...countedIds(q1.map((r) => r.taskId)),
     });
     const q2 = q2By.get(userId) ?? [];
     const q2ok = q2.filter((r) => r.status === 'approved').length;
     push(userId, 'Q2', pct(q2ok, q2.length), q2.length, q2ok, q2.length, {
       failed: q2.filter((r) => r.status !== 'approved').map((r) => r.taskId),
+      ...countedIds(q2.map((r) => r.taskId)),
     });
 
     // Q3
@@ -717,6 +731,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     );
     push(userId, 'Q3', pct(reopens.length, allPasses.length), allPasses.length, reopens.length, allPasses.length, {
       reopenedTaskIds: reopens.map((r) => r.taskId),
+      ...countedIds(allPasses.map((d) => d.taskId)),
     });
 
     // Q4
@@ -818,6 +833,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
         medianWorkingHours: med === null ? null : round2(med / 60),
         unanswered: counted.filter((i) => !i.answered).length,
         waiting: items.length - counted.length,
+        ...extra({ items: counted.map((i) => ({ kind: i.kind, taskId: i.taskId, workingHours: round2(i.minutes / 60), answered: i.answered })) }),
       });
     }
 
@@ -870,6 +886,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'C3', pct(weeksOnTime, weeks.length), weeks.length, weeksOnTime, weeks.length, {
       late: weeks.filter((w) => w.submitted && !w.onTime).map((w) => w.week),
       missing: weeks.filter((w) => !w.submitted).map((w) => w.week),
+      ...extra({ weeks }),
     }, true);
 
     // C4
@@ -877,11 +894,12 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     const handedOver = given.filter((h) => h.status === 'accepted').length;
     push(userId, 'C4', pct(handedOver, given.length), given.length, handedOver, given.length, {
       rejectedTaskIds: given.filter((h) => h.status === 'rejected').map((h) => h.taskId),
+      ...countedIds(given.map((h) => h.taskId)),
     });
 
     // C5
-    const c5 = freshness.get(userId) ?? { samples: 0, fresh: 0, stale: new Set<number>() };
-    push(userId, 'C5', pct(c5.fresh, c5.samples), c5.samples, c5.fresh, c5.samples, { taskDays: c5.samples, freshTaskDays: c5.fresh, staleTaskIds: [...c5.stale] });
+    const c5 = freshness.get(userId) ?? { samples: 0, fresh: 0, stale: new Set<number>(), tasks: new Set<number>() };
+    push(userId, 'C5', pct(c5.fresh, c5.samples), c5.samples, c5.fresh, c5.samples, { taskDays: c5.samples, freshTaskDays: c5.fresh, staleTaskIds: [...c5.stale], ...countedIds(c5.tasks ?? []) });
 
     // O1
     const lags: Array<{ ticketId: number | null; taskId: number; lagWorkingDays: number }> = [];
@@ -926,6 +944,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     push(userId, 'O3', due.length ? (chases.length / due.length) * th.chasesPerTasks : null, due.length, chases.length, due.length, {
       perTasks: th.chasesPerTasks,
       chasedTaskIds: [...new Set(chases.map((c) => c.taskId))],
+      ...countedIds(due.map((t) => t.id)),
     });
 
     // O4
@@ -941,6 +960,7 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
       avoidableTaskIds: avoidable.map((r) => r.taskId),
       escalations: escalations.length,
       byReason,
+      ...countedIds(qaRounds.map((r) => r.taskId)),
     });
 
     // O5
@@ -954,11 +974,13 @@ export function computeTrackingMetrics(input: TrackingMetricsInput): TrackingMet
     const traced = features.filter((t) => (t.requirementId || '').trim().length > 0);
     push(userId, 'L1', pct(traced.length, features.length), features.length, traced.length, features.length, {
       missingTaskIds: features.filter((t) => !traced.includes(t)).map((t) => t.id),
+      ...countedIds(features.map((t) => t.id)),
     });
     const impactTasks = submitted.filter((t) => t.taskType === 'feature' || t.taskType === 'improvement');
     const withImpact = impactTasks.filter((t) => (t.clientImpact || '').trim().length >= CLIENT_IMPACT_MIN);
     push(userId, 'L2', pct(withImpact.length, impactTasks.length), impactTasks.length, withImpact.length, impactTasks.length, {
       missingTaskIds: impactTasks.filter((t) => !withImpact.includes(t)).map((t) => t.id),
+      ...countedIds(impactTasks.map((t) => t.id)),
     });
 
     // L3

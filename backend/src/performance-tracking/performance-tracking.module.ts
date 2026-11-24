@@ -13,6 +13,7 @@ import { PerformanceMetricRun } from './metrics/performance-metric-run.entity';
 import { TrackingMetricsService } from './metrics/tracking-metrics.service';
 import { PerformanceScoreOverride } from './scorecard/performance-score-override.entity';
 import { ScorecardService } from './scorecard/scorecard.service';
+import { WeeklyFiguresService } from './scorecard/weekly-figures.service';
 import { ScorecardController } from './scorecard/scorecard.controller';
 import { ScorecardFeedController } from './scorecard/scorecard-feed.controller';
 import { OwnMetricsVisibilityController } from './own-metrics-visibility.controller';
@@ -37,7 +38,7 @@ import { MeetingAttendanceModule } from '../meeting-attendance/meeting-attendanc
     MeetingAttendanceModule,
   ],
   controllers: [PerformanceTrackingController, ScorecardController, ScorecardFeedController, OwnMetricsVisibilityController],
-  providers: [TrackingMetricsService, ScorecardService],
+  providers: [TrackingMetricsService, ScorecardService, WeeklyFiguresService],
   // Settings service for TaskActivityModule and the rest.
   exports: [PerformanceTrackingCoreModule],
 })
