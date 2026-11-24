@@ -91,6 +91,32 @@ describe('Performance Tracking scorecard (B3, e2e)', () => {
       expect(body.cards).toEqual([]);
       await get(f.users.pmT2, `/performance-tracking/scorecard/people/${f.users.devA.id}`).expect(404);
     });
+
+    it('temporary test accounts (@vistoria-test.invalid) are never on the scorecard or the export', async () => {
+      const [{ email }] = await ds.query(`SELECT email FROM users WHERE id = $1`, [f.users.devNone.id]);
+      await ds.query(`UPDATE users SET email = 'test.hidden@Vistoria-Test.invalid' WHERE id = $1`, [f.users.devNone.id]);
+      try {
+        const body = (await get(f.users.pm, '/performance-tracking/scorecard').expect(200)).body;
+        expect(body.cards.map((c: any) => c.userId)).toEqual([f.users.devA.id]);
+        await get(f.users.pm, `/performance-tracking/scorecard/people/${f.users.devNone.id}`).expect(404);
+        const xlsx = await get(f.users.pm, '/performance-tracking/scorecard/export').buffer(true).parse((res, cb) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => cb(null, Buffer.concat(chunks)));
+        });
+        expect(xlsx.status).toBe(200);
+        const ExcelJS = (await import('exceljs')).default;
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(xlsx.body);
+        const cells: string[] = [];
+        wb.eachSheet((s) => s.eachRow((r) => r.eachCell((c) => cells.push(String(c.value)))));
+        expect(cells.join(' ')).not.toContain('test.hidden');
+      } finally {
+        await ds.query(`UPDATE users SET email = $1 WHERE id = $2`, [email, f.users.devNone.id]);
+        // The 'Excel export' test below counts export audit rows - drop this one.
+        await ds.query(`DELETE FROM audit_logs WHERE action = $1`, [SCORECARD_AUDIT.EXPORTED]);
+      }
+    });
   });
 
   describe('Baseline and Not enough data', () => {

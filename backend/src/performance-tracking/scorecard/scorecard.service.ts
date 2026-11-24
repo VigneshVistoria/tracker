@@ -26,6 +26,10 @@ export const SCORECARD_ALL_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM
 // Excel export: PM and Admin only (the user's rule), audited.
 export const SCORECARD_EXPORT_ROLES: UserRole[] = [UserRole.ADMIN, UserRole.PROGRAM_MANAGER];
 export const OVERRIDE_REASON_MIN = 10;
+// Temporary test accounts (2026-11-14, #69-#73) - never on the scorecard,
+// export or feed. Their nightly rows are still written, just not shown.
+export const SCORECARD_HIDDEN_EMAIL_DOMAIN = '@vistoria-test.invalid';
+export const hiddenFromScorecard = (email: string | null | undefined) => !!email && email.toLowerCase().endsWith(SCORECARD_HIDDEN_EMAIL_DOMAIN);
 
 export const SCORECARD_AUDIT = {
   OVERRIDE_SET: 'performance_score_override_set',
@@ -117,7 +121,8 @@ export class ScorecardService {
         ).map((r) => ({ ...r, value: r.value === null ? null : Number(r.value) }))
       : [];
     const overrides = date ? await this.activeOverrides(tenantId, date, onlyUserId) : [];
-    const userIds = [...new Set(rows.map((r) => r.userId))].filter((id) => onlyUserId === undefined || id === onlyUserId);
+    const hidden = new Set(users.filter((u) => hiddenFromScorecard(u.email)).map((u) => u.id));
+    const userIds = [...new Set(rows.map((r) => r.userId))].filter((id) => (onlyUserId === undefined || id === onlyUserId) && !hidden.has(id));
     let cards: Array<PersonScorecard & { name: string; email: string; role: string }> = userIds
       .map((userId) => ({
         ...scorePerson(userId, rows, {
@@ -207,7 +212,8 @@ export class ScorecardService {
     await this.assertOwnAllowed(viewer);
     const tenantId = viewer.tenantId;
     const target = await this.usersService.findByIdAndTenant(userId, tenantId);
-    if (!target) throw new NotFoundException(`User #${userId} not found`);
+    // Hidden test accounts: no page at all (their raw rows would show here).
+    if (!target || hiddenFromScorecard(target.email)) throw new NotFoundException(`User #${userId} not found`);
     const night = date ?? (await this.latestDate(tenantId));
     const built = await this.build(tenantId, night, userId);
     const card = built.cards[0] ?? null;
