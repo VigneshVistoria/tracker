@@ -26,10 +26,18 @@
   outline-offset: 2px;
 }
 
-/* Small screens: keep the words, drop the icon. */
+/* Small screens: keep the words, drop the icon, and let them wrap onto
+   two short lines ("Weekly / report") so the bar keeps its right-hand
+   buttons (notifications, theme, sign out) on screen. */
 @media (max-width: 640px) {
   .textLink {
-    padding: 0 var(--ds-space-2);
+    width: min-content;
+    padding: 0;
+    justify-content: center;
+    font-size: var(--ds-text-xs);
+    line-height: var(--ds-leading-tight);
+    text-align: center;
+    white-space: normal;
   }
 
   .textLinkIcon {
