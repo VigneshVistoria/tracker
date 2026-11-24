@@ -9,7 +9,7 @@ import styles from '../../styles/weeklyFigures.module.css';
 import { apiDownload, apiFetch } from '../../lib/api';
 import { redirectToSignIn } from '../../lib/session';
 import { useToast } from '../../lib/toast';
-import { cellText, detailText, dmy, evidenceGroups, valueText, weekLabel } from '../../lib/weeklyFigures';
+import { cellText, detailText, dmy, evidenceGroups, valueText, visibleItems, weekLabel } from '../../lib/weeklyFigures';
 
 const PM = 'program_manager';
 const ROLE_TEXT = { developer: 'Developer', designer: 'Designer', devops: 'DevOps', qa: 'QA' };
@@ -312,6 +312,26 @@ function WeekTable({ data }) {
   );
 }
 
+// First 5 items, then a "Show all (N)" / "Show fewer" text button.
+function EvidenceList({ items, label }) {
+  const [expanded, setExpanded] = useState(false);
+  const { shown, collapsible, total } = visibleItems(items, expanded);
+  return (
+    <>
+      <ul>
+        {shown.map((t, i) => (
+          <li key={i}>{t}</li>
+        ))}
+      </ul>
+      {collapsible && (
+        <button type="button" className={styles.showAll} aria-expanded={expanded} aria-label={`${expanded ? 'Show fewer' : `Show all ${total}`}: ${label}`} onClick={() => setExpanded(!expanded)}>
+          {expanded ? 'Show fewer' : `Show all (${total})`}
+        </button>
+      )}
+    </>
+  );
+}
+
 function PersonView({ person, backHref }) {
   const unitOf = Object.fromEntries(person.metricInfo.map((m) => [m.metric, m.unit]));
   const labelOf = Object.fromEntries(person.metricInfo.map((m) => [m.metric, m.label]));
@@ -355,11 +375,7 @@ function PersonView({ person, backHref }) {
                         <div key={grp.label}>
                           <dt>{grp.label}</dt>
                           <dd>
-                            <ul>
-                              {grp.items.map((t, i) => (
-                                <li key={i}>{t}</li>
-                              ))}
-                            </ul>
+                            <EvidenceList items={grp.items} label={`${metric} ${grp.label}`} />
                           </dd>
                         </div>
                       ))}

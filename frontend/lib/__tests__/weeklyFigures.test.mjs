@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dmy, weekLabel, valueText, detailText, cellText, evidenceGroups } from '../weeklyFigures.js';
+import { dmy, weekLabel, valueText, detailText, cellText, evidenceGroups, visibleItems } from '../weeklyFigures.js';
 
 test('dates are DD-MM-YYYY; a week is Monday to Sunday', () => {
   assert.equal(dmy('2026-11-16'), '16-11-2026');
@@ -60,4 +60,13 @@ test('evidence: unknown detail keys are still shown, empty ones are not', () => 
     { label: 'Something New', items: ['4'] },
     { label: 'Other Task Ids', items: ['#5'] },
   ]);
+});
+
+test('long evidence lists: first 5, then "Show all (N)"', () => {
+  const twelve = Array.from({ length: 12 }, (_, i) => `#${i + 1}`);
+  assert.deepEqual(visibleItems(twelve, false), { shown: twelve.slice(0, 5), collapsible: true, total: 12 });
+  assert.deepEqual(visibleItems(twelve, true), { shown: twelve, collapsible: true, total: 12 });
+  const five = twelve.slice(0, 5);
+  assert.deepEqual(visibleItems(five, false), { shown: five, collapsible: false, total: 5 });
+  assert.deepEqual(visibleItems(undefined, false), { shown: [], collapsible: false, total: 0 });
 });

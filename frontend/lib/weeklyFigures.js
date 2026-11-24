@@ -176,3 +176,11 @@ export function evidenceGroups(metric, details, titles = {}) {
   }
   return out;
 }
+
+// Long evidence lists show the first few, with "Show all (N)" (2026-11-24).
+export const EVIDENCE_PREVIEW = 5;
+export function visibleItems(items, expanded, limit = EVIDENCE_PREVIEW) {
+  const list = items || [];
+  const collapsible = list.length > limit;
+  return { shown: collapsible && !expanded ? list.slice(0, limit) : list, collapsible, total: list.length };
+}

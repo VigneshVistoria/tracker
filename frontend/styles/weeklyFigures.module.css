@@ -389,6 +389,28 @@
   overflow-wrap: anywhere;
 }
 
+.showAll {
+  margin: var(--ds-space-1) 0 0 var(--ds-space-5);
+  padding: var(--ds-space-1) 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-link);
+  cursor: pointer;
+}
+
+.showAll:hover {
+  text-decoration: underline;
+}
+
+.showAll:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--ds-radius-sm);
+}
+
 .noEvidence {
   margin: var(--ds-space-2) 0 0;
   font-size: var(--ds-text-sm);
