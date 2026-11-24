@@ -21,12 +21,15 @@ test('cells: raw value, counts, "fewer than N items", n/a, C6 off', () => {
   // C2 is a count of working days; 1 is singular.
   assert.equal(valueText({ metric: 'C2', value: 3 }, 'count'), '3 working days');
   assert.equal(valueText({ metric: 'C2', value: 1 }, 'count'), '1 working day');
+  // The table cell is compact; the header says what the unit is.
+  assert.equal(valueText({ metric: 'C2', value: 3 }, 'count', { compact: true }), '3 days');
+  assert.equal(valueText({ metric: 'C1', value: 0, medianWorkingHours: 21.53 }, 'percent', { compact: true }), '21.5 h median');
   assert.equal(valueText({ metric: 'O3', value: 2.5 }, 'rate'), '2.5 per 10 tasks due');
 });
 
 test('C1: median working hours and % within the target', () => {
   const c1 = { metric: 'C1', value: 0, numerator: 0, denominator: 2, sample: 2, state: 'small', medianWorkingHours: 21.53, targetWorkingHours: 4 };
-  assert.equal(cellText(c1, 'percent', 5), 'median 21.5 h (0% within 4 h · 0/2 · fewer than 5 items)');
+  assert.equal(cellText(c1, 'percent', 5), 'median 21.5 h (0% in 4 h · 0/2 · fewer than 5 items)');
 });
 
 test('evidence: counted and excluded tasks with titles, plain text', () => {

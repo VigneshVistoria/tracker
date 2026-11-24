@@ -175,7 +175,7 @@
 
 .table th,
 .table td {
-  padding: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-2);
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--glass-divider);

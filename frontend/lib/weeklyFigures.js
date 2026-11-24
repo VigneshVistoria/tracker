@@ -26,11 +26,14 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const RATE_PER = { O3: 'tasks due', O4: 'QA rounds' };
 
 // The value on its own ("57.7%", "3 working days", "median 21.5 h").
-export function valueText(cell, unit) {
+// compact = the table cell ("3 days", "21.5 h median"); the column header
+// and the person view say "working".
+export function valueText(cell, unit, { compact = false } = {}) {
   const v = cell.value;
-  if (cell.metric === 'C1') return `median ${cell.medianWorkingHours == null ? 'n/a' : `${round1(cell.medianWorkingHours)} h`}`;
+  const hours = cell.medianWorkingHours == null ? 'n/a' : `${round1(cell.medianWorkingHours)} h`;
+  if (cell.metric === 'C1') return compact ? `${hours} median` : `median ${hours}`;
   if (unit === 'percent') return `${round1(v)}%`;
-  if (unit === 'days' || cell.metric === 'C2') return `${round1(v)} working ${round1(v) === 1 ? 'day' : 'days'}`;
+  if (unit === 'days' || cell.metric === 'C2') return `${round1(v)} ${compact ? '' : 'working '}${round1(v) === 1 ? 'day' : 'days'}`;
   if (unit === 'rate') return `${round1(v)} per 10 ${RATE_PER[cell.metric] || 'items'}`;
   return String(round1(v));
 }
@@ -40,7 +43,7 @@ export function detailText(cell, minSample) {
   if (cell.state === 'off') return 'not switched on';
   if (cell.state === 'na') return '';
   const parts = [];
-  if (cell.metric === 'C1') parts.push(`${round1(cell.value)}% within ${cell.targetWorkingHours ?? 4} h`);
+  if (cell.metric === 'C1') parts.push(`${round1(cell.value)}% in ${cell.targetWorkingHours ?? 4} h`);
   if (cell.numerator != null && cell.denominator != null) parts.push(`${cell.numerator}/${cell.denominator}`);
   if (cell.state === 'small') parts.push(`fewer than ${minSample} items`);
   return parts.join(' · ');

@@ -194,7 +194,7 @@ function WeekTable({ data }) {
         <span className={styles.na}>{c.state === 'off' ? 'not on' : 'n/a'}</span>
       ) : (
         <>
-          <span className={styles.value}>{valueText(c, unitOf[c.metric])}</span>
+          <span className={styles.value}>{valueText(c, unitOf[c.metric], { compact: true })}</span>
           {detailText(c, minFor(c.metric)) && <span className={styles.sub}>{detailText(c, minFor(c.metric))}</span>}
         </>
       )}
@@ -211,6 +211,9 @@ function WeekTable({ data }) {
           Developers, designers and DevOps on this project. Select a name for the evidence behind each figure. Below {data.minSample} items a figure
           shows &quot;fewer than {data.minSample} items&quot;; &quot;n/a&quot; means no data this week.
           {!data.c6On && ' C6 (stand-up attendance) is not switched on for this project.'}
+        </p>
+        <p className={styles.panelNote}>
+          <strong>The table scrolls sideways:</strong> {data.groups.map((g) => `${g.label} (${g.metrics[0]}-${g.metrics[g.metrics.length - 1]})`).join(', ')}.
         </p>
         {data.people.length === 0 ? (
           <p className={styles.empty}>No figures for this week.</p>
@@ -318,7 +321,7 @@ function PersonView({ person, backHref }) {
   return (
     <>
       <Link href={backHref} shallow className={styles.back}>
-        ← All people
+        Back to all people
       </Link>
       <section className={styles.panel} aria-labelledby="wf-person">
         <h2 id="wf-person" className={styles.panelHead}>
