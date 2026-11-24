@@ -13,7 +13,8 @@ import { WEEKLY_FIGURES_AUDIT } from '../src/performance-tracking/scorecard/week
 // Weekly figures (2026-11-24, the user's decisions): Programme Manager ONLY
 // (403 for Admin, Executive, Developer, Designer, DevOps, QA); own tracked
 // projects only; completed Monday-Sunday weeks from 02-11-2026; RAW values
-// with the nightly definitions over 7 days; QA listed with C6 only; "n/a"
+// with the nightly definitions over 7 days; developer-type roles only (QA
+// not shown, 2026-11-24 - their data stays in the database); "n/a"
 // and "fewer than N items"; evidence per metric; Excel; everything audited.
 describe('Weekly figures (PM only, e2e)', () => {
   let app: INestApplication;
@@ -124,16 +125,18 @@ describe('Weekly figures (PM only, e2e)', () => {
     expect(cell(dev, 'C2')).toMatchObject({ value: 0, state: 'ok' });
     expect(cell(dev, 'C6')).toMatchObject({ value: 80, numerator: 4, denominator: 5, state: 'ok' });
     expect(JSON.stringify(body)).not.toMatch(/"score"/);
-    // QA separately, C6 only.
+    // Developer-type roles only: QA is not shown (no QA list at all), though
+    // their stand-up rows are still in the database.
     expect(body.people.map((p: any) => p.userId)).not.toContain(f.users.qaB.id);
-    const qa = body.qa.find((p: any) => p.userId === f.users.qaB.id);
-    expect(cell(qa, 'C6')).toMatchObject({ value: 0, numerator: 0, denominator: 5, state: 'ok' });
-    expect(cell(qa, 'Q1')).toMatchObject({ state: 'na' });
+    expect(body).not.toHaveProperty('qa');
+    expect(body.people.every((p: any) => ['developer', 'designer', 'devops'].includes(p.role))).toBe(true);
+    const [{ n }] = await ds.query(`SELECT count(*)::int AS n FROM meeting_attendance WHERE "userId" = $1`, [f.users.qaB.id]);
+    expect(n).toBe(5);
     // Project members only (C3 alone would list every developer); hidden test accounts never.
     expect(body.people.map((p: any) => p.userId)).toContain(f.users.devNone.id);
     expect(body.people.map((p: any) => p.userId)).not.toContain(extra.devElsewhere.id);
     // Hidden test accounts never appear.
-    expect([...body.people, ...body.qa].map((p: any) => p.userId)).not.toContain(extra.hidden.id);
+    expect(body.people.map((p: any) => p.userId)).not.toContain(extra.hidden.id);
     const [a] = await audits(WEEKLY_FIGURES_AUDIT.VIEWED);
     expect(a).toMatchObject({ userId: f.users.pm.id, entityType: 'Project', entityId: f.projects.pLms });
     expect(JSON.parse(a.details)).toMatchObject({ week: lastMonday, project: 'LMS' });
@@ -171,7 +174,7 @@ describe('Weekly figures (PM only, e2e)', () => {
 
   it('a person: each metric with its evidence (tasks counted, with titles; stand-ups), audited', async () => {
     const body = (await get(f.users.pm, `/performance-tracking/scorecard/weekly/people/${f.users.devA.id}`).expect(200)).body;
-    expect(body.person).toMatchObject({ userId: f.users.devA.id, qa: false });
+    expect(body.person).toMatchObject({ userId: f.users.devA.id, role: 'developer' });
     const q1 = body.metrics.find((m: any) => m.metric === 'Q1');
     expect(q1.details.countedTaskIds).toEqual([taskId]);
     expect(body.taskTitles[taskId]).toBe('Weekly task one');
@@ -183,6 +186,8 @@ describe('Weekly figures (PM only, e2e)', () => {
     // Not in this project (or a hidden test account): 404.
     await get(f.users.pm, `/performance-tracking/scorecard/weekly/people/${extra.devElsewhere.id}`).expect(404);
     await get(f.users.pm, `/performance-tracking/scorecard/weekly/people/${extra.hidden.id}`).expect(404);
+    // QA is not shown here.
+    await get(f.users.pm, `/performance-tracking/scorecard/weekly/people/${f.users.qaB.id}`).expect(404);
   });
 
   it('Excel export: PM only, raw values with "fewer than 5 items", audited', async () => {
@@ -197,6 +202,10 @@ describe('Weekly figures (PM only, e2e)', () => {
     expect(devRow.getCell(header.indexOf('C4') + 1).value).toBe('n/a');
     expect(devRow.getCell(header.indexOf('C6') + 1).value).toBe('80% (4/5)');
     expect(wb.getWorksheet('Evidence')).toBeTruthy();
+    // No QA rows.
+    const names = ws.getRows(2, ws.rowCount - 1)!.map((r) => r.getCell(1).value);
+    expect(names).not.toContain('Name qaB');
+    expect(ws.getRows(2, ws.rowCount - 1)!.map((r) => r.getCell(2).value).every((v) => ['developer', 'designer', 'devops'].includes(String(v)))).toBe(true);
     const [a] = await audits(WEEKLY_FIGURES_AUDIT.EXPORTED);
     expect(a.userId).toBe(f.users.pm.id);
   });

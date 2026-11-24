@@ -18,8 +18,9 @@ import { hiddenFromScorecard } from './scorecard.service';
 // ONLY view of each person's RAW metric values for one completed Monday-
 // Sunday week (from 02-11-2026) in one of the PM's own tracked projects -
 // the same definitions as the nightly metrics, computed live over a 7-day
-// window, nothing stored. No 1-5 scores. QA people are listed separately
-// with C6 only (the nightly metrics cover developer-type roles). Every
+// window, nothing stored. No 1-5 scores. Developer-type roles only
+// (Developer, Designer, DevOps) - QA is not shown here (2026-11-24, the
+// user's change; their data stays in the database). Every
 // view, person view and export is audited.
 export const WEEKLY_FIGURES_ROLES: UserRole[] = [UserRole.PROGRAM_MANAGER];
 export const WEEKLY_FIGURES_FIRST_WEEK = '2026-11-02';
@@ -132,8 +133,6 @@ export class WeeklyFiguresService {
     const inProject = (id: number) => members.has(id) || !!week?.assignees.has(id);
     const rows = (week?.rows ?? []).filter((r) => visible(r.userId) && inProject(r.userId) && DEVELOPER_EQUIVALENT_ROLES.includes(byId.get(r.userId)!.role));
     const devIds = [...new Set(rows.map((r) => r.userId))];
-    // QA: the project's QA members (C6 only).
-    const qaIds = [...members].filter((id) => visible(id) && byId.get(id)!.role === UserRole.QA);
 
     // C6: only while switched on, and only for its projects.
     const c6Settings = await this.meetingAttendance.settings(tenantId);
@@ -141,7 +140,7 @@ export class WeeklyFiguresService {
     const { timeZone } = await this.metrics.getSettings(tenantId);
     const from = startOfDayInZone(monday, timeZone);
     const to = startOfDayInZone(addCalendarDays(monday, 7), timeZone);
-    const c6 = c6On ? await this.meetingAttendance.c6ByUser(tenantId, [...devIds, ...qaIds], from, to) : new Map();
+    const c6 = c6On ? await this.meetingAttendance.c6ByUser(tenantId, devIds, from, to) : new Map();
 
     const c6Cell = (userId: number): WeeklyCell => {
       if (!c6On) return { metric: 'C6', value: null, numerator: null, denominator: null, sample: 0, state: 'off' };
@@ -158,18 +157,17 @@ export class WeeklyFiguresService {
       }
       return cell;
     };
-    const person = (userId: number, qa: boolean) => {
+    const person = (userId: number) => {
       const u = byId.get(userId)!;
       const mine = new Map(rows.filter((r) => r.userId === userId).map((r) => [r.metric, r]));
       const cells = METRICS.map((m): WeeklyCell =>
-        m === 'C6' ? c6Cell(userId) : qa ? { metric: m, value: null, numerator: null, denominator: null, sample: 0, state: 'na' } : cellOf(mine.get(m), m),
+        m === 'C6' ? c6Cell(userId) : cellOf(mine.get(m), m),
       );
-      return { userId, name: u.fullName || u.email, email: u.email, role: u.role, qa, cells, rows: mine };
+      return { userId, name: u.fullName || u.email, email: u.email, role: u.role, cells, rows: mine };
     };
     const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-    const people = devIds.map((id) => person(id, false)).sort(byName);
-    const qa = qaIds.filter((id) => !devIds.includes(id)).map((id) => person(id, true)).sort(byName);
-    return { people, qa, c6On, c6MinSample: c6Settings.meetingMinSample, minSample: week?.minSample ?? null, taskTitles: week?.taskTitles ?? new Map<number, string>(), from, to };
+    const people = devIds.map((id) => person(id)).sort(byName);
+    return { people, c6On, c6MinSample: c6Settings.meetingMinSample, minSample: week?.minSample ?? null, taskTitles: week?.taskTitles ?? new Map<number, string>(), from, to };
   }
 
   private header(monday: string, sunday: string, project: { id: number; name: string } | null, weeks: string[], projects: Array<{ id: number; name: string }>) {
@@ -201,19 +199,19 @@ export class WeeklyFiguresService {
     const base = this.header(monday, sunday, project, weeks, projects);
     if (!project) {
       await this.audit(viewer, WEEKLY_FIGURES_AUDIT.VIEWED, null, { week: monday, project: null, people: 0 });
-      return { ...base, minSample: null, c6On: false, people: [], qa: [] };
+      return { ...base, minSample: null, c6On: false, people: [] };
     }
     const built = await this.compute(viewer, monday, sunday, project.id, now);
     const strip = ({ rows, ...p }: any) => p;
-    await this.audit(viewer, WEEKLY_FIGURES_AUDIT.VIEWED, project.id, { week: monday, project: project.name, people: built.people.length, qa: built.qa.length });
-    return { ...base, minSample: built.minSample, c6On: built.c6On, c6MinSample: built.c6MinSample, people: built.people.map(strip), qa: built.qa.map(strip) };
+    await this.audit(viewer, WEEKLY_FIGURES_AUDIT.VIEWED, project.id, { week: monday, project: project.name, people: built.people.length });
+    return { ...base, minSample: built.minSample, c6On: built.c6On, c6MinSample: built.c6MinSample, people: built.people.map(strip) };
   }
 
   async person(viewer: Viewer, userId: number, week?: string, projectId?: number, now = new Date()) {
     const { monday, sunday, weeks, projects, project } = await this.resolve(viewer, week, projectId, now);
     if (!project) throw new NotFoundException(`User #${userId} has no figures here.`);
     const built = await this.compute(viewer, monday, sunday, project.id, now);
-    const p = [...built.people, ...built.qa].find((x) => x.userId === userId);
+    const p = built.people.find((x) => x.userId === userId);
     if (!p) throw new NotFoundException(`User #${userId} has no figures for this week and project.`);
     // C6 evidence: each stand-up of the week.
     const meetings = built.c6On
@@ -252,8 +250,8 @@ export class WeeklyFiguresService {
       { header: 'Role', key: 'role', width: 12 },
       ...METRICS.map((m) => ({ header: m, key: m, width: m === 'C1' ? 30 : 22 })),
     ];
-    for (const p of [...built.people, ...built.qa]) {
-      ws.addRow({ name: p.name, role: p.qa ? 'QA (C6 only)' : p.role, ...Object.fromEntries(p.cells.map((c) => [c.metric, text(c)])) });
+    for (const p of built.people) {
+      ws.addRow({ name: p.name, role: p.role, ...Object.fromEntries(p.cells.map((c) => [c.metric, text(c)])) });
     }
     ws.getRow(1).font = { bold: true };
     ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1 }];
@@ -282,12 +280,12 @@ export class WeeklyFiguresService {
       ['Values', 'RAW values, same definitions as the nightly metrics, over this 7-day window. No 1-5 scores during the baseline (until 30-11-2026).'],
       ['Minimum sample', `${built.minSample ?? 5} items (C6: ${built.c6MinSample} meetings); below it the value is marked "fewer than N items".`],
       ['C6', built.c6On ? 'Switched on for this project (shown only).' : 'Not switched on for this project.'],
-      ['QA', 'QA people are listed with C6 only; the other metrics cover developer-type roles.'],
+      ['People', 'Developer-type roles only (Developer, Designer, DevOps).'],
       ['Exported', `${new Date(now).toISOString().slice(0, 16).replace('T', ' ')} UTC by ${viewer.email}`],
       ['Note', 'Personal performance data - handle as confidential.'],
     ]);
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
-    await this.audit(viewer, WEEKLY_FIGURES_AUDIT.EXPORTED, project.id, { week: monday, project: project.name, people: built.people.length, qa: built.qa.length, format: 'xlsx' });
+    await this.audit(viewer, WEEKLY_FIGURES_AUDIT.EXPORTED, project.id, { week: monday, project: project.name, people: built.people.length, format: 'xlsx' });
     const slug = project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `project-${project.id}`;
     return { buffer, filename: `weekly-figures-${slug}-${ddmmyyyy(monday)}.xlsx` };
   }

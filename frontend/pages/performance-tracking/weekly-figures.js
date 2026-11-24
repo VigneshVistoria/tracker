@@ -12,11 +12,12 @@ import { useToast } from '../../lib/toast';
 import { cellText, detailText, dmy, evidenceGroups, valueText, visibleItems, weekLabel } from '../../lib/weeklyFigures';
 
 const PM = 'program_manager';
-const ROLE_TEXT = { developer: 'Developer', designer: 'Designer', devops: 'DevOps', qa: 'QA' };
+const ROLE_TEXT = { developer: 'Developer', designer: 'Designer', devops: 'DevOps' };
 
 // Weekly figures (2026-11-24, the user's decisions): RAW values for one
 // completed Monday-Sunday week in one of the PM's own tracked projects,
-// the nightly definitions over 7 days; QA with C6 only; no 1-5 scores.
+// the nightly definitions over 7 days; developer-type roles only (QA is
+// not shown here, 2026-11-24); no 1-5 scores.
 // Programme Manager ONLY - WeeklyFiguresService refuses everyone else
 // (403); this page just doesn't call it for them. Every view, person view
 // and export is audited by the backend.
@@ -208,7 +209,7 @@ function WeekTable({ data }) {
           {data.project.name} · {weekLabel(data.week.monday)}
         </h2>
         <p className={styles.panelNote}>
-          Developers, designers and DevOps on this project. Select a name for the evidence behind each figure. Below {data.minSample} items a figure
+          Developers, designers and DevOps on this project (QA is not shown here). Select a name for the evidence behind each figure. Below {data.minSample} items a figure
           shows &quot;fewer than {data.minSample} items&quot;; &quot;n/a&quot; means no data this week.
           {!data.c6On && ' C6 (stand-up attendance) is not switched on for this project.'}
         </p>
@@ -272,42 +273,6 @@ function WeekTable({ data }) {
         </details>
       </section>
 
-      {data.qa.length > 0 && (
-        <section className={styles.panel} aria-labelledby="wf-qa">
-          <h2 id="wf-qa" className={styles.panelHead}>
-            QA
-          </h2>
-          <p className={styles.panelNote}>QA shows C6 only; the other figures are n/a - they cover developer-type roles.</p>
-          <div className={styles.scroll}>
-            <table className={styles.table}>
-              <caption className="sr-only">QA stand-up attendance (C6), {weekLabel(data.week.monday)}</caption>
-              <thead>
-                <tr>
-                  <th scope="col" className={styles.sticky}>
-                    Person
-                  </th>
-                  <th scope="col">C6 {labelOf.C6}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.qa.map((p) => {
-                  const c = p.cells.find((x) => x.metric === 'C6');
-                  return (
-                    <tr key={p.userId}>
-                      <th scope="row" className={styles.sticky}>
-                        <Link href={linkFor(p.userId)} shallow className={styles.personLink}>
-                          {p.name}
-                        </Link>
-                      </th>
-                      <td>{cellText(c, unitOf.C6, data.c6MinSample)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
     </>
   );
 }
@@ -337,7 +302,7 @@ function PersonView({ person, backHref }) {
   const labelOf = Object.fromEntries(person.metricInfo.map((m) => [m.metric, m.label]));
   const byMetric = Object.fromEntries(person.metrics.map((m) => [m.metric, m]));
   const minFor = (metric) => (metric === 'C6' ? person.c6MinSample ?? 4 : person.minSample);
-  const groups = person.person.qa ? person.groups.map((g) => ({ ...g, metrics: g.metrics.filter((m) => m === 'C6') })).filter((g) => g.metrics.length) : person.groups;
+  const groups = person.groups;
   return (
     <>
       <Link href={backHref} shallow className={styles.back}>
@@ -349,7 +314,6 @@ function PersonView({ person, backHref }) {
         </h2>
         <p className={styles.panelNote}>
           {ROLE_TEXT[person.person.role] || person.person.role} · {person.project.name} · {weekLabel(person.week.monday)}
-          {person.person.qa && ' · QA: C6 only, the other figures are n/a'}
         </p>
       </section>
       {groups.map((g) => (
