@@ -10,6 +10,7 @@ export default function NewUser() {
   const router = useRouter();
   const { showToast } = useToast();
   const [projects, setProjects] = useState([]);
+  const [baOn, setBaOn] = useState(false);
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -22,6 +23,8 @@ export default function NewUser() {
 
   useEffect(() => {
     apiFetch('/projects').then(setProjects).catch(() => {});
+    // BA is offered only while Requirements is switched on (backend checks too).
+    apiFetch('/requirements/me').then((me) => setBaOn(!!me.on)).catch(() => {});
   }, []);
 
   const handleChange = (e) => {
@@ -126,6 +129,7 @@ export default function NewUser() {
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
               <option value="client">Client</option>
+              {baOn && <option value="ba">BA (Business Analyst - Requirements only)</option>}
             </select>
           </div>
 

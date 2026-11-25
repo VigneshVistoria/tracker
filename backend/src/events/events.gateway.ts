@@ -8,6 +8,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ClientAccessService } from '../client-portal/client-access.service';
+import { DataSource } from 'typeorm';
 
 function tenantRoom(tenantId: number): string {
   return `tenant:${tenantId}`;
@@ -31,6 +32,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private jwtService: JwtService,
     private clientAccess: ClientAccessService,
+    private dataSource: DataSource,
   ) {}
 
   // Every real-time payload below carries data belonging to exactly one
@@ -59,7 +61,10 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // carries internal, all-client data (full issues, sprints, ...).
       // They still get their own personal room below.
       const portalUser = payload.sub ? await this.clientAccess.isPortalClientUser(payload.sub, payload.tenantId) : false;
-      if (!portalUser) client.join(tenantRoom(payload.tenantId));
+      // Business Analysts (2026-11-25) are kept out of it too: they may only
+      // use Requirements, and the tenant feed carries full issue/task data.
+      const baUser = payload.sub ? (await this.dataSource.query(`SELECT 1 FROM users WHERE id = $1 AND role::text = 'ba'`, [payload.sub])).length > 0 : false;
+      if (!portalUser && !baUser) client.join(tenantRoom(payload.tenantId));
       // Personal room for in-app notifications - only this user's own
       // sockets ever join it (keyed by the verified JWT's own user id).
       if (payload.sub) client.join(userRoom(payload.sub));

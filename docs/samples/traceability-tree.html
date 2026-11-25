@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tracker · Lien, Litigation & Court Collateral · requirements traceability</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+
+:root{
+  --font:Inter,"Segoe UI",Roboto,system-ui,sans-serif;
+  --ink:#1E2430;--mute:#626B7A;--late:#B4443C;--brand:#3D5AE0;--ok:#2F855A;--warn:#9A5B0C;
+  --bg:linear-gradient(160deg,#F4F6FF 0%,#F8FAFC 50%,#F1FBFD 100%);
+  --light1:rgba(165,180,252,.45);--light2:rgba(165,243,252,.45);
+  --glass:rgba(255,255,255,.42);--glass-hi:rgba(255,255,255,.66);--edge:rgba(255,255,255,.8);--sep:rgba(30,36,48,.07);
+  --glow:rgba(99,102,241,.10);--bar:rgba(255,255,255,.38);--dlg:rgba(255,255,255,.76);--btn:#1E2430;--btn-ink:#fff;--field:rgba(255,255,255,.55);
+  --blur:blur(14px);--ease:cubic-bezier(.2,.8,.2,1);
+}
+[data-theme="dark"]{
+  --ink:#E8EBF2;--mute:#9AA3B2;--late:#F0A39B;--brand:#9DAEFF;--ok:#7FD1A6;--warn:#E8B86D;
+  --bg:linear-gradient(160deg,#0E1220 0%,#111827 55%,#0B1A20 100%);
+  --light1:rgba(99,102,241,.28);--light2:rgba(34,211,238,.18);
+  --glass:rgba(255,255,255,.05);--glass-hi:rgba(255,255,255,.09);--edge:rgba(255,255,255,.10);--sep:rgba(255,255,255,.07);
+  --glow:rgba(157,174,255,.12);--bar:rgba(14,18,32,.5);--dlg:rgba(22,27,40,.8);--btn:#E8EBF2;--btn-ink:#111827;--field:rgba(255,255,255,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg) fixed;min-height:100%}
+body{font:15px/1.7 var(--font);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{background:none;border:0;cursor:pointer}
+a{color:var(--brand);text-decoration:none}
+:focus-visible{outline:1px solid var(--brand);outline-offset:3px;border-radius:8px}
+.light{position:fixed;z-index:-1;border-radius:50%;filter:blur(90px);pointer-events:none}
+.l1{width:460px;height:460px;top:-180px;left:-120px;background:var(--light1);animation:d1 26s ease-in-out infinite alternate}
+.l2{width:420px;height:420px;bottom:-180px;right:-120px;background:var(--light2);animation:d2 30s ease-in-out infinite alternate}
+@keyframes d1{to{transform:translate(90px,60px)}}@keyframes d2{to{transform:translate(-80px,-50px)}}
+
+/* top bar: text only */
+header{position:sticky;top:0;z-index:10;background:var(--bar);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:1px solid var(--sep)}
+.bar{max-width:1040px;margin:0 auto;height:56px;padding:0 20px;display:flex;align-items:center;gap:26px;font-size:14px}
+.logo{font-weight:500}
+nav{display:flex;gap:22px}
+nav a{color:var(--mute)}
+nav a:hover{color:var(--ink)}
+nav a[aria-current="page"]{color:var(--ink)}
+.right{margin-left:auto;display:flex;gap:18px;align-items:center}
+.tlink{color:var(--mute)}.tlink:hover{color:var(--ink)}
+.tlink.brand{color:var(--brand)}
+.menu{display:none}
+
+main{max-width:1040px;margin:0 auto;padding:48px 20px 80px}
+.narrow{max-width:720px;margin:0 auto}
+h1{font-size:32px;font-weight:300;letter-spacing:-.015em;line-height:1.2}
+.sub{color:var(--mute);font-size:14px;margin:6px 0 36px}
+h2{font-size:13px;font-weight:400;color:var(--mute);margin:30px 0 10px 4px;display:flex;justify-content:space-between}
+.view{display:none}.view.on{display:block;animation:rise .6s var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}}
+
+.glass{background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--edge);border-radius:18px}
+.list{list-style:none;overflow:hidden}
+.list li+li{border-top:1px solid var(--sep)}
+a.row{color:inherit}
+.row{width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:17px 22px;text-align:left;position:relative;transition:background .25s}
+.row::before{content:"";position:absolute;inset:0;background:radial-gradient(240px circle at var(--x,50%) var(--y,50%),var(--glow),transparent 70%);opacity:0;transition:opacity .3s;pointer-events:none}
+.row:hover::before{opacity:1}.row:hover{background:var(--glass-hi)}
+.row small,.muted{color:var(--mute);font-size:13px}
+.row small{display:block}
+.due{font-size:14px;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums}
+.late{color:var(--late)!important}
+.okc{color:var(--ok)}.warnc{color:var(--warn)}
+
+/* text filters */
+.filters{display:flex;gap:18px;font-size:14px;margin:0 0 12px 4px;flex-wrap:wrap}
+.filters button{color:var(--mute);padding:2px 0;border-bottom:1px solid transparent}
+.filters button[aria-pressed="true"]{color:var(--ink);border-color:var(--ink)}
+
+/* table */
+.tbl{width:100%;border-collapse:collapse;font-size:14.5px}
+.tbl th{text-align:left;font-weight:400;font-size:13px;color:var(--mute);padding:14px 22px;border-bottom:1px solid var(--sep)}
+.tbl td{padding:15px 22px;border-bottom:1px solid var(--sep)}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr{cursor:pointer;transition:background .2s}
+.tbl tbody tr:hover{background:var(--glass-hi)}
+.tbl .num{font-variant-numeric:tabular-nums;text-align:right}
+
+/* task page */
+.back{font-size:14px;color:var(--mute);display:inline-block;margin-bottom:18px}
+.path{display:flex;gap:10px;flex-wrap:wrap;font-size:14px;color:var(--mute);margin:18px 0 28px}
+.path b{color:var(--ink);font-weight:500}
+.facts{display:grid;grid-template-columns:repeat(4,1fr)}
+.facts div{padding:16px 22px}
+.facts div+div{border-left:1px solid var(--sep)}
+.facts span{display:block;font-size:13px;color:var(--mute)}
+.two{display:grid;grid-template-columns:1.2fr 1fr;gap:20px;margin-top:20px}
+.pad{padding:20px 22px}
+.check{list-style:none}
+.check li{padding:8px 0;display:flex;gap:10px;align-items:center}
+.check input{accent-color:var(--brand);width:16px;height:16px}
+.activity{list-style:none;font-size:14px}
+.activity li{padding:8px 0}
+.activity li+li{border-top:1px solid var(--sep)}
+textarea,input[type=text],input[type=date],input[type=email],input[type=password],select{width:100%;background:var(--field);border:1px solid var(--edge);border-radius:12px;padding:11px 14px;outline:none;transition:border-color .2s,box-shadow .2s}
+textarea:focus,input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--glow)}
+textarea{min-height:90px;resize:vertical}
+label{display:block;font-size:13px;color:var(--mute);margin:0 0 6px 2px}
+.field{margin-bottom:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:22px}
+.btn{height:40px;padding:0 20px;border-radius:99px;border:1px solid var(--sep);background:var(--glass-hi);font-size:14px;transition:transform .15s}
+.btn:hover{transform:translateY(-1px)}.btn:active{transform:scale(.97)}
+.btn.main{background:var(--btn);border-color:var(--btn);color:var(--btn-ink)}
+.textbtn{color:var(--mute);font-size:14px}.textbtn:hover{color:var(--ink)}
+.inline{display:flex;gap:16px;font-size:14px}
+.inline button{color:var(--brand)}.inline button.neg{color:var(--late)}
+
+/* reports */
+.nums{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:8px}
+.nums div{padding:20px 22px}
+.nums b{display:block;font-size:34px;font-weight:300;font-variant-numeric:tabular-nums;line-height:1.2}
+.nums span{font-size:13px;color:var(--mute)}
+
+/* settings */
+.set li{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:17px 22px}
+.toggle{font-size:14px;min-width:42px;text-align:right;color:var(--mute)}
+.toggle[aria-checked="true"]{color:var(--ok)}
+
+/* login */
+.login{max-width:380px;margin:60px auto}
+.login h1{text-align:center;margin-bottom:6px}
+.login .sub{text-align:center}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,16px);display:flex;gap:14px;align-items:center;padding:11px 20px;border-radius:99px;border:1px solid var(--edge);background:var(--dlg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);font-size:14px;opacity:0;visibility:hidden;transition:all .35s var(--ease);z-index:50}
+.toast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+.toast button{color:var(--brand)}
+.note{margin-top:28px;font-size:12.5px;color:var(--mute);text-align:center}
+
+@supports not (backdrop-filter:blur(1px)){.glass,header,.toast{background:rgba(255,255,255,.9)}[data-theme="dark"] .glass,[data-theme="dark"] header,[data-theme="dark"] .toast{background:#161B28}}
+@media (prefers-reduced-motion:reduce){*,*::before{animation:none!important;transition:none!important}}
+@media (max-width:820px){
+  nav{display:none;position:absolute;top:56px;left:0;right:0;flex-direction:column;gap:0;background:var(--dlg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-bottom:1px solid var(--sep);padding:6px 20px}
+  nav a{padding:12px 0}
+  body.nav-open nav{display:flex}
+  .menu{display:inline}
+  .right .hide-sm{display:none}
+  main{padding-top:32px}h1{font-size:27px}
+  .facts,.nums{grid-template-columns:1fr 1fr}
+  .facts div:nth-child(3){border-left:0}
+  .two,.grid2{grid-template-columns:1fr}
+  .tbl .hide-sm{display:none}
+  .tbl td,.tbl th{padding:13px 16px}
+}
+
+.tabs{display:flex;gap:22px;font-size:14px;margin:0 4px 26px;flex-wrap:wrap}
+.tabs button{color:var(--mute);border-bottom:1px solid transparent;padding:2px 0}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-color:var(--ink)}
+.tree{list-style:none;padding:6px 0}
+.tree ul{list-style:none;margin-left:22px;border-left:1px solid var(--sep);padding-left:10px}
+.node{display:flex;align-items:center;gap:12px;padding:9px 14px;border-radius:10px;cursor:pointer}
+.node:hover{background:var(--glass-hi)}
+.node .tw{width:14px;color:var(--mute);font-size:12px;flex:none;transition:transform .2s}
+.node.open>.tw{transform:rotate(90deg)}
+.node .lvl{font-size:11.5px;color:var(--mute);min-width:74px;flex:none}
+.node .name{flex:1;min-width:0}
+.node .name small{color:var(--mute);font-size:12.5px;margin-left:6px}
+.node .meta{display:flex;gap:16px;align-items:center;font-size:13px;color:var(--mute);white-space:nowrap}
+.pbar{width:80px;height:5px;border-radius:3px;background:var(--sep);overflow:hidden;flex:none}
+.pbar i{display:block;height:100%;background:var(--ink);opacity:.55}
+.leaf{cursor:default}.leaf .tw{visibility:hidden}
+.hidden{display:none}
+.st-late{color:var(--late)}.st-ok{color:var(--ok)}.st-warn{color:var(--warn)}
+.toolbar{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap;align-items:center}
+.toolbar input,.toolbar select{flex:1;min-width:180px}
+input[type=search]{width:100%;background:var(--field);border:1px solid var(--edge);border-radius:12px;padding:11px 14px;outline:none}
+input[type=search]:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--glow)}
+.legend{font-size:13px;color:var(--mute);margin:12px 4px 0}
+.banner{padding:14px 18px;margin-bottom:18px;font-size:14px;display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;align-items:center}
+.banner b{font-weight:500}
+.crumb{font-size:13px;color:var(--mute);margin-bottom:8px}
+.crumb a{color:var(--mute)}.crumb a:hover{color:var(--ink)}
+.story-head{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start}
+.us{font-size:16px;line-height:1.6;margin:6px 0 18px}
+.us b{font-weight:500}
+.ac{list-style:none}
+.ac li{display:grid;grid-template-columns:34px 1fr auto;gap:10px;padding:13px 0;border-top:1px solid var(--sep);align-items:start}
+.ac li:first-child{border-top:0}
+.ac .n{font-size:12.5px;color:var(--mute);padding-top:2px}
+.ac .res{font-size:13px;white-space:nowrap;display:flex;gap:10px;align-items:center}
+.ac .res button{color:var(--brand);font-size:13px}
+.ac small{display:block;color:var(--mute);font-size:12.5px;margin-top:2px}
+.pill{display:inline-block;font-size:12px;padding:2px 10px;border-radius:99px;border:1px solid var(--sep);color:var(--mute);white-space:nowrap}
+.pill.ok{color:var(--ok);border-color:currentColor}.pill.late{color:var(--late);border-color:currentColor}.pill.warn{color:var(--warn);border-color:currentColor}
+.reqs{list-style:none;font-size:14px}
+.reqs li{padding:8px 0;border-top:1px solid var(--sep)}
+.reqs li:first-child{border-top:0}
+.reqs b{font-weight:500;margin-right:6px}
+.tasks{list-style:none;font-size:14px}
+.tasks li{padding:8px 0;border-top:1px solid var(--sep)}
+.tasks li:first-child{border-top:0}
+.stages{display:flex;gap:6px;flex-wrap:wrap;font-size:12.5px;margin-top:6px}
+.stages span{padding:1px 9px;border-radius:99px;border:1px solid var(--sep);color:var(--mute)}
+.stages span.done{color:var(--ok);border-color:currentColor}
+#sumBox div b{display:block;font-size:24px;font-weight:300;font-variant-numeric:tabular-nums}#sumBox div span{font-size:12.5px;color:var(--mute)}
+.flag{display:block;font-size:12.5px;margin-top:2px}
+@media (max-width:820px){#sumBox{grid-template-columns:1fr 1fr!important}}
+.kv{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
+.kv div{padding:18px 20px}.kv b{display:block;font-size:28px;font-weight:300;line-height:1.2;font-variant-numeric:tabular-nums}.kv span{font-size:13px;color:var(--mute)}
+.cov td.y{color:var(--ok)}.cov td.n{color:var(--late)}.cov td.p{color:var(--warn)}
+.cov tbody tr{cursor:pointer}
+.cov td:first-child,.cov td:nth-child(3),.cov td:nth-child(n+4){white-space:nowrap}
+.storypick{max-width:520px;margin-bottom:18px}
+dialog.gd{margin:auto;width:min(480px,94vw);padding:24px;border:1px solid var(--edge);border-radius:20px;background:var(--dlg);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);color:var(--ink)}
+dialog.gd::backdrop{background:rgba(120,130,160,.18);backdrop-filter:blur(6px)}
+dialog.gd h3{font-size:18px;font-weight:400;margin-bottom:12px}
+.err{display:none;color:var(--late);font-size:13px;margin-top:6px}.err.on{display:block}
+@media (max-width:820px){.node .meta .pbar,.node .lvl{display:none}.kv{grid-template-columns:1fr 1fr}.ac li{grid-template-columns:30px 1fr}.ac .res{grid-column:2}.two{grid-template-columns:1fr!important}}
+</style>
+</head>
+<body>
+<div class="light l1"></div><div class="light l2"></div>
+<header><div class="bar">
+  <span class="logo">Tracker</span>
+  <nav aria-label="Main"><a href="#">Home</a><a href="#">Work items</a><a href="#" aria-current="page">Requirements</a><a href="#">Releases</a></nav>
+  <div class="right"><button class="tlink" id="theme">Dark</button></div>
+</div></header>
+
+<main>
+  <div class="tabs" role="group" aria-label="View">
+    <button aria-pressed="true" data-v="tree">Tree view</button>
+    <button aria-pressed="false" data-v="story">User story</button>
+    <button aria-pressed="false" data-v="cov">Coverage report</button>
+    <button aria-pressed="false" data-v="open">Open items</button>
+  </div>
+
+  <!-- TREE -->
+  <section id="v-tree">
+    <h1>Requirements</h1>
+    <p class="sub">Lien, Litigation &amp; Court Collateral Management · SRS v1.0 · 16-11-2026</p>
+    <div class="glass banner"><span id="bannerTxt"></span><div class="filters" role="group" aria-label="Show" style="margin:0"><button aria-pressed="true" data-m="demo">Example: work in progress</button><button aria-pressed="false" data-m="now">Today: before sign-off</button></div></div>
+    <div class="glass" id="sumBox" style="padding:16px 20px;margin-bottom:16px;display:grid;grid-template-columns:repeat(5,1fr);gap:12px"></div>
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search a requirement ID (e.g. LN-10), epic, story or TRK number" aria-label="Search">
+      <button class="tlink" id="expandAll">Expand all</button>
+      <button class="tlink" id="collapseAll">Collapse all</button>
+    </div>
+    <div class="glass" style="padding:8px"><ul class="tree" id="tree" role="tree"></ul></div>
+    <p class="legend">Structure: SRS → Epic (SRS section) → User story (traced to requirement IDs) → acceptance criteria → Dev and QA tasks → Release (Dev → Test → Training → Production, from GitHub). Progress rolls up from acceptance criteria passed in QA.</p>
+  </section>
+
+  <!-- STORY -->
+  <section id="v-story" hidden>
+    <select class="storypick" id="storyPick" aria-label="Choose a user story"></select>
+    <div class="crumb" id="sCrumb"></div>
+    <div class="story-head">
+      <div><h1 id="sTitle"></h1><p class="sub" style="margin-bottom:0" id="sSub"></p></div>
+      <span class="pill" id="sState"></span>
+    </div>
+    <p class="us" id="sUs"></p>
+    <div class="two" style="grid-template-columns:1.3fr 1fr">
+      <div class="glass pad">
+        <h2 style="margin:0 0 6px">Acceptance criteria <span id="acCount" style="float:right"></span></h2>
+        <ul class="ac" id="acList"></ul>
+        <button class="tlink brand" style="margin-top:8px" onclick="toast('Add criterion (sample)')">+ Add criterion</button>
+      </div>
+      <div>
+        <div class="glass pad">
+          <h2 style="margin:0 0 6px">Traces to SRS</h2>
+          <ul class="reqs" id="sReqs"></ul>
+        </div>
+        <div class="glass pad" style="margin-top:16px">
+          <h2 style="margin:0 0 6px">Development and QA tasks</h2>
+          <ul class="tasks" id="sTasks"></ul>
+          <button class="btn" id="mkTasks" style="margin-top:10px">Create dev and QA tasks</button>
+        </div>
+        <div class="glass pad" style="margin-top:16px" id="sFlags" hidden></div>
+        <div class="glass pad" style="margin-top:16px" id="sOpenBox" hidden>
+          <h2 style="margin:0 0 6px">Waiting on a client decision</h2>
+          <p style="font-size:14px" id="sOpen"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COVERAGE -->
+  <section id="v-cov" hidden>
+    <h1>Coverage report</h1>
+    <p class="sub">Every SRS requirement: is it covered by a story, built, tested and released?</p>
+    <div class="kv" id="covKv"></div>
+    <div class="toolbar">
+      <div class="filters" role="group" aria-label="Filter" style="margin:0"><button aria-pressed="true" data-c="all">All</button><button aria-pressed="false" data-c="High">High priority</button><button aria-pressed="false" data-c="gap">Gaps only</button></div>
+    </div>
+    <div class="glass" style="overflow:auto"><table class="tbl cov"><thead><tr><th>ID</th><th>Requirement</th><th>Priority</th><th>User story</th><th>Criteria passed</th><th>Build</th><th>Furthest stage</th></tr></thead><tbody id="covRows"></tbody></table></div>
+    <div class="actions"><button class="btn" onclick="toast('Excel file downloaded')">Export to Excel</button><button class="btn" onclick="toast('PDF downloaded')">Export to PDF</button></div>
+  </section>
+
+  <!-- OPEN ITEMS -->
+  <section id="v-open" hidden><div class="narrow">
+    <h1>Open items</h1>
+    <p class="sub">SRS section 10: to confirm at the client meeting. They don't block sign-off; the system supports every option through configuration.</p>
+    <ul class="glass list" id="openList"></ul>
+  </div></section>
+</main>
+
+<dialog class="gd" id="failDlg"><form id="failForm" novalidate><h3 id="failT">Fail: reason required</h3><label for="failR">What failed?</label><textarea id="failR" placeholder="Steps, expected and actual result"></textarea><div class="err" id="failE">Please give a reason (at least 10 characters).</div><div class="actions"><button class="btn main" type="submit">Save</button><button class="textbtn" type="button" onclick="failDlg.close()">Cancel</button></div></form></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="tm"></span></div>
+
+<script>
+// ===== SRS requirements (verbatim IDs, text summarised, priority from SRS) =====
+const REQ={
+ 'LN-01':['A formal lien can be recorded only against a registered title deed; title deed reference is mandatory','High'],
+ 'LN-02':['Ownership is verified against the title deed register before approval','High'],
+ 'LN-03':['For past liens on unregistered properties, guide the user to register the property first','High'],
+ 'LN-04':['An approved, active lien applies a deed lock that blocks transfer or sale','High'],
+ 'LN-05':['Lien release; after approval the lock is removed','High'],
+ 'LN-06':['More than one lien on the same title deed, each with its own priority order','Medium'],
+ 'LN-07':['Past start date allowed for existing liens','High'],
+ 'LN-08':['Record title deed owner(s) and customer (borrower) separately','High'],
+ 'LN-09':['Record the relationship between owner and customer','High'],
+ 'LN-10':['If the customer is not the owner, a signed, verified owner consent document is mandatory','High'],
+ 'LN-11':['Consent required from every owner of a co-owned property','High'],
+ 'LN-12':['All owners and the customer are notified on approval and release','Medium'],
+ 'HL-01':['Record historical liens against property/parcel ID and coordinates, without a title deed','High'],
+ 'HL-02':['Label "Historical – Unregistered" and keep separate from formal liens','High'],
+ 'HL-03':['Approved record applies a parcel lock and shows on the map viewer','High'],
+ 'HL-04':['Convert to a formal lien when the property is registered, keeping full history','High'],
+ 'HL-05':['Report of unregistered historical liens for bank follow-up','Medium'],
+ 'LT-01':['Create, view, update and close litigation records against a property','High'],
+ 'LT-02':['Title deed optional; otherwise recorded against parcel ID and coordinates','High'],
+ 'LT-03':['"Blocked from transfer" = Yes applies a deed or parcel lock on approval','High'],
+ 'LT-04':['Past filing date allowed for existing cases','High'],
+ 'LT-05':['Closing a case removes the lock unless another active record exists','High'],
+ 'CC-01':['Record a property pledged as court collateral, linked to the court case','High'],
+ 'CC-02':['Record surety, accused/defendant and their relationship','High'],
+ 'CC-03':['Approved collateral applies a deed or parcel lock until court release','High'],
+ 'CC-04':['Only an approved court release order removes the lock','High'],
+ 'CC-05':['Forfeiture sets status Forfeited; lock stays','High'],
+ 'CC-06':['Collateral shown as a separate map viewer layer','Medium'],
+ 'CM-01':['Mobile app Yes/No question; Yes flags the property for office verification','High'],
+ 'CM-02':['Verification officer checks the physical file and logs a verified record','High'],
+ 'CM-03':['Upload supporting documents (PDF or image) on every record','High'],
+ 'CM-04':['Request a surveyor to collect coordinates or boundaries','Medium'],
+ 'CM-05':['Map layers: Lien, Historical Unregistered Lien, Litigation, Court Collateral','Medium'],
+ 'CM-06':['Transfer or sale of a locked property is blocked and active records are shown','High'],
+ 'CM-07':['Search and report by status, bank, court, case number, owner, customer and date','Medium'],
+ 'CM-08':['Audit trail for create, update, approve, reject, release and convert','High'],
+ 'NFR-1':['Role-based access: banks see only their liens; court users only litigation and collateral','High'],
+ 'NFR-2':['Record history kept and cannot be edited','High'],
+ 'NFR-3':['Personal details visible only to authorised roles','High'],
+ 'NFR-4':['Mobile question must not slow down field collection','Medium']
+};
+const OPEN=[
+ [1,'Will banks and courts log records directly, or will client staff log them in-house?','Both supported through roles','Client',['US-23']],
+ [2,'Legal position on a relative or third party using the owner\'s property, with consent','Supported, consent from every owner (LN-09 to LN-11)','Client / Legal',['US-02']],
+ [3,'Should a Historical Unregistered Lien block transfer, or only warn?','Block (parcel lock); can switch to warning','Client',['US-08']],
+ [4,'Master lists: lien types, case types, courts, banks, relationship values','Section 7 lists used as defaults','Client',['US-01','US-11','US-13']],
+ [5,'Plan to encourage registration of past properties (e.g. bank campaign)','Supported by the HL-05 report','Client',['US-10']]
+];
+// ===== Epics and proposed user stories =====
+const EPICS=[
+ {id:'E1',name:'Formal lien',sec:'SRS 4.1, 4.3, 4.4',stories:[
+  {id:'US-01',t:'Record a formal lien against a registered title deed',as:'bank officer',want:'to record a lien against a registered title deed with the customer and loan details',so:'the bank\'s security is on record against the verified owner',req:['LN-01','LN-02','LN-07','LN-08'],
+   ac:['The title deed reference is mandatory and must exist in the title deed register','Owner(s) are filled from the title deed; the customer is recorded separately','A past start date can be entered for existing liens','The lien cannot be approved until ownership is verified','Lien type, lender, amount and currency, priority and documents are mandatory (SRS 7.1)']},
+  {id:'US-02',t:'Capture relationship and owner consent',as:'bank officer',want:'to record how the customer is related to the owner and upload the owner\'s consent',so:'a relative or partner can use the property as security legally',req:['LN-09','LN-10','LN-11'],
+   ac:['Relationship list: Self, Spouse, Parent, Child, Sibling, Other relative, Business partner, Other','If relationship is not Self, a signed consent document is mandatory','For co-owned property, consent is required from every owner','The verification officer must mark each consent as verified before approval']},
+  {id:'US-03',t:'Approve a lien and apply the deed lock',as:'approver',want:'to approve or reject a lien with a reason',so:'an approved lien blocks transfer or sale of the property',req:['LN-04','LN-12'],
+   ac:['Approval applies a deed lock; rejection requires a reason','A transfer or sale attempt on the deed is blocked and the active lien is shown','All owners and the customer are notified on approval']},
+  {id:'US-04',t:'Record a second lien with priority order',as:'bank officer',want:'to add a second charge on the same title deed',so:'each lender\'s rank is clear',req:['LN-06'],
+   ac:['More than one active lien is allowed on a title deed','Each lien has a priority number (1 = first charge) and duplicates are refused']},
+  {id:'US-05',t:'Release a lien when the loan is repaid',as:'bank officer',want:'to request release of a lien',so:'the owner can sell or transfer the property again',req:['LN-05','LN-12'],
+   ac:['The bank submits a release request with a document','After approval the status becomes Released','The deed lock is removed only if no other active record exists','Owners and the customer are notified on release']},
+  {id:'US-06',t:'Guide past liens to register the property first',as:'bank officer',want:'to be guided to register an unregistered property before recording its past lien',so:'ownership can be verified (preferred route)',req:['LN-03'],
+   ac:['If the property has no registered title deed, the screen explains the registration route first','The user can still choose the Historical Unregistered Lien register (US-07)']}]},
+ {id:'E2',name:'Historical unregistered lien',sec:'SRS 4.2',stories:[
+  {id:'US-07',t:'Record a historical lien without a title deed',as:'bank officer',want:'to record an old lien against a parcel and its coordinates',so:'existing liens are captured even before the property is registered',req:['HL-01','HL-02'],
+   ac:['Parcel ID and coordinates are mandatory; title deed is not','Records are labelled "Historical – Unregistered" everywhere','They are kept separate from formal liens in screens and reports','Original start date (past) is mandatory']},
+  {id:'US-08',t:'Lock the parcel and show it on the map',as:'approver',want:'an approved historical lien to lock the parcel',so:'the land cannot be transferred while the lien exists',req:['HL-03'],
+   ac:['Approval applies a parcel lock (configurable to warning only, open item 3)','The record appears on the Historical Unregistered Lien map layer']},
+  {id:'US-09',t:'Convert to a formal lien when the property is registered',as:'verification officer',want:'to convert a historical lien once a title deed is registered',so:'it becomes a formal lien without losing history',req:['HL-04'],
+   ac:['Conversion links the new title deed number','Status becomes "Converted to formal lien" and full history is kept','The parcel lock becomes a deed lock']},
+  {id:'US-10',t:'Follow-up report of unregistered historical liens',as:'bank officer',want:'a list of my unregistered historical liens',so:'I can encourage customers to register',req:['HL-05'],
+   ac:['Report lists active unregistered liens by bank, with age and customer','Exportable to Excel']}]},
+ {id:'E3',name:'Litigation',sec:'SRS 5.1',stories:[
+  {id:'US-11',t:'Record a litigation case with or without a title deed',as:'court officer',want:'to record a court case against a property',so:'disputed properties are known',req:['LT-01','LT-02','LT-04'],
+   ac:['Title deed is optional; parcel ID and coordinates are used if none','Case number, court, parties, case type and filing date are mandatory','A past filing date is allowed','Records can be viewed, updated and closed']},
+  {id:'US-12',t:'Lock a property under litigation and unlock on closure',as:'approver',want:'cases marked "Blocked from transfer" to lock the property',so:'it cannot be sold during the case',req:['LT-03','LT-05'],
+   ac:['"Blocked from transfer" = Yes applies a deed lock, or a parcel lock if there is no deed','Closing the case (after approval) removes the lock','The lock stays if another active record exists on the property']}]},
+ {id:'E4',name:'Court collateral',sec:'SRS 5.2',stories:[
+  {id:'US-13',t:'Record a property pledged as court collateral',as:'court officer',want:'to record a property pledged as bail or court security',so:'the court\'s security is on record',req:['CC-01','CC-02'],
+   ac:['Linked to the court case number and court','Surety (owner), accused and their relationship are mandatory','Court order reference and date are mandatory']},
+  {id:'US-14',t:'Lock collateral until release or forfeiture',as:'approver',want:'collateral to stay locked until the court decides',so:'pledged property cannot be sold',req:['CC-03','CC-04','CC-05'],
+   ac:['Approval applies a deed or parcel lock','Only an approved court release order (reference and date) removes the lock','Forfeiture sets status Forfeited and the lock stays']},
+  {id:'US-15',t:'Show court collateral on the map',as:'verification officer',want:'collateral properties as their own map layer',so:'they are easy to spot',req:['CC-06'],
+   ac:['Separate Court Collateral layer, can be switched on and off']}]},
+ {id:'E5',name:'Common: field flag, locks, map, documents, audit',sec:'SRS 6',stories:[
+  {id:'US-16',t:'Flag a property from the field and verify it in the office',as:'field surveyor',want:'to answer one Yes/No question',so:'properties with a lien, case or collateral are checked in the office',req:['CM-01','CM-02','NFR-4'],
+   ac:['Mobile app shows only the Yes/No question (no details captured)','Yes flags the property for office verification','The verification officer can open flagged properties and log the correct record type','The question adds no noticeable delay to field collection']},
+  {id:'US-17',t:'Upload documents and request coordinates',as:'officer',want:'to attach documents and ask a surveyor for coordinates',so:'every record is complete',req:['CM-03','CM-04'],
+   ac:['PDF or image upload on every record type','A request for coordinates or boundaries can be sent to a surveyor']},
+  {id:'US-18',t:'Map viewer layers',as:'user',want:'to see lien, historical lien, litigation and collateral layers',so:'I can see encumbrances on the map',req:['CM-05'],
+   ac:['Four layers, each can be switched on and off','Clicking a property shows its active records']},
+  {id:'US-19',t:'Block transfer or sale of a locked property',as:'registry officer',want:'transfers of locked properties to be blocked',so:'no encumbered property is sold by mistake',req:['CM-06'],
+   ac:['Any transfer or sale attempt on a locked deed or parcel is refused','The message lists the active lien, case or collateral records']},
+  {id:'US-20',t:'Search and reports',as:'supervisor',want:'to search and report on all records',so:'I can follow up',req:['CM-07'],
+   ac:['Search by status, bank, court, case number, owner, customer and date','Results exportable to Excel']},
+  {id:'US-21',t:'Audit trail',as:'auditor',want:'a full history of every action',so:'nothing can be changed without a trace',req:['CM-08','NFR-2'],
+   ac:['Create, update, approve, reject, release and convert are all logged with user and time','History cannot be edited or deleted']}]},
+ {id:'E6',name:'Security and access',sec:'SRS 3, 9',stories:[
+  {id:'US-22',t:'Protect personal details',as:'system administrator',want:'owner, customer and surety details shown only to authorised roles',so:'personal data is protected',req:['NFR-3'],
+   ac:['Personal details are hidden from roles without permission','Access is logged']},
+  {id:'US-23',t:'Role-based access for banks and courts',as:'system administrator',want:'banks to see only their own liens and court users only litigation and collateral',so:'each organisation sees only its records',req:['NFR-1'],
+   ac:['Roles: Field surveyor, Verification officer, Bank officer, Court officer, Approver, System administrator','A bank officer sees only liens of their bank','Court officers see only litigation and collateral','Works whether banks/courts log directly or client staff log in-house (open item 1)']}]}
+];
+const ALLST=EPICS.flatMap(e=>e.stories.map(s=>(s.epic=e,s.res=s.res||s.ac.map(()=>''),s.tasks=s.tasks||[],s)));
+let nextTrk=401;
+const STG=['Dev','Test','Training','Production'];
+// Example progress (illustrative): [results per AC: p=pass f=fail .=not run], stage reached by dev task (0-4), blocker, dependency, fail notes
+const DEMO={
+ 'US-01':['ppppp',4],'US-02':['pf..',1,'','',{1:'QA: consent upload not enforced when relationship is Spouse'}],'US-03':['ppp',2],'US-04':['....',0,'','Depends on client master list of lenders (open item 4)'],
+ 'US-05':['p...',1],'US-06':['pp',3],
+ 'US-07':['pppp',3],'US-08':['..',0,'Waiting for client decision: block or warn only (open item 3)'],'US-09':['...',0,'','Depends on US-07 (historical lien) being released'],'US-10':['..',0],
+ 'US-11':['pp..',1],'US-12':['pf.',1,'','',{1:'QA: lock not applied when there is no title deed (parcel lock missing)'}],
+ 'US-13':['ppp',4],'US-14':['p..',1,'Waiting for a sample court release order from the client'],'US-15':['.',0,'','Depends on GIS team publishing the collateral map layer'],
+ 'US-16':['pppp',4],'US-17':['p.',1],'US-18':['..',0,'','Depends on GIS map server upgrade (external)'],'US-19':['pp',2],'US-20':['..',0],'US-21':['pp',3],
+ 'US-22':['..',0],'US-23':['....',0,'Waiting for client decision: who logs records (open item 1)']};
+const DEVS=['Bhavani','Salman','Talha','Ahmed','Nadia'];
+let mode='demo';
+function applyMode(m){mode=m;nextTrk=401;
+  ALLST.forEach((s,i)=>{s.notes=[];s.block='';s.dep='';
+    if(m==='now'){s.res=s.ac.map(()=>'');s.tasks=[];return}
+    const d=DEMO[s.id];s.res=d[0].split('').map(c=>c==='p'?'pass':c==='f'?'fail':'');s.block=d[2]||'';s.dep=d[3]||'';
+    if(d[4])Object.entries(d[4]).forEach(([k,v])=>s.notes[k]=v);
+    const started=d[0].includes('p')||d[0].includes('f')||d[1]>0;
+    s.tasks=started||s.block||s.dep?[{id:'TRK-'+(nextTrk++),t:s.t,k:'Dev task',who:DEVS[i%5],stage:d[1],st:d[1]?'Deployed to '+STG[d[1]-1]:(s.block?'Blocked':'Working on it')},{id:'TRK-'+(nextTrk++),t:'Test: '+s.t,k:'QA task',who:'Lina',stage:0,st:d[0].includes('f')?'Failed criteria':d[0].includes('p')?(d[0].includes('.')?'Testing':'Passed'):'Not started'}]:[];});
+  document.querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.m===m));
+  bannerTxt.innerHTML=m==='now'?'<b>Today:</b> SRS v1.0 ready for sign-off (reviewed by Samira Ahmed, Abdirahman Hassan). Stories are drafts; nothing built yet.':'<b>Example:</b> how this page looks a few weeks after sign-off, with illustrative progress, failures, blockers and dependencies.';
+  drawTree();drawStory();drawCov(cf);drawSum()}
+function drawSum(){const n=ALLST.length,done=ALLST.filter(s=>passed(s)===s.ac.length).length,fail=ALLST.filter(s=>s.res.includes('fail')).length,blk=ALLST.filter(s=>s.block).length,dep=ALLST.filter(s=>s.dep).length;
+  const tot=ALLST.reduce((a,s)=>a+s.ac.length,0),pa=ALLST.reduce((a,s)=>a+passed(s),0);
+  sumBox.innerHTML=`<div><b>${Math.round(100*pa/tot)}%</b><span>overall (${pa} of ${tot} criteria passed)</span></div><div><b class="st-ok">${done}</b><span>stories done (100%)</span></div><div><b class="st-late">${fail}</b><span>stories with failed criteria</span></div><div><b class="st-late">${blk}</b><span>blocked</span></div><div><b class="st-warn">${dep}</b><span>waiting on a dependency</span></div>`}
+
+// ===== helpers =====
+const passed=s=>s.res.filter(r=>r==='pass').length;
+const pct=s=>Math.round(100*passed(s)/s.ac.length);
+const epicPct=e=>Math.round(e.stories.reduce((a,s)=>a+pct(s),0)/e.stories.length);
+const stLabel=s=>{const p=passed(s);if(s.block)return '<span class="st-late">Blocked</span>';if(s.dep)return '<span class="st-warn">Waiting on dependency</span>';if(s.res.some(r=>r==='fail'))return '<span class="st-late">'+p+' of '+s.ac.length+' · failed</span>';if(p===s.ac.length)return '<span class="st-ok">Done</span>';if(!s.tasks.length)return mode==='now'?'Draft · no tasks yet':'Not started';return p+' of '+s.ac.length+' passed'};
+const bar=p=>`<span class="pbar"><i style="width:${p}%"></i></span><span>${p}%</span>`;
+const openFor=id=>OPEN.filter(o=>o[4].includes(id));
+
+// ===== tree =====
+function drawTree(){
+  const total=ALLST.length,done=ALLST.filter(s=>passed(s)===s.ac.length).length;
+  const srsPct=Math.round(ALLST.reduce((a,s)=>a+pct(s),0)/total);
+  document.getElementById('tree').innerHTML=`<li><div class="node open" role="treeitem" aria-expanded="true"><span class="tw">›</span><span class="lvl">SRS</span><span class="name">Lien, Litigation &amp; Court Collateral v1.0<small>${Object.keys(REQ).length} requirements · ${EPICS.length} epics · ${total} stories</small></span><span class="meta">${bar(srsPct)}<span>${done} of ${total} stories done</span></span></div>
+  <ul>${EPICS.map(e=>`<li><div class="node" role="treeitem" aria-expanded="false"><span class="tw">›</span><span class="lvl">Epic ${e.id}</span><span class="name">${e.name}<small>${e.sec}</small></span><span class="meta">${bar(epicPct(e))}<span>${e.stories.length} stories</span></span></div>
+    <ul class="hidden">${e.stories.map(s=>`<li><div class="node" role="treeitem" aria-expanded="false"><span class="tw">›</span><span class="lvl">Story</span><span class="name">${s.id} ${s.t}<small>${s.req.join(', ')}</small> <button class="tlink brand" data-open="${s.id}" style="font-size:12.5px;margin-left:6px">Open</button>${s.block?`<span class="flag st-late">Blocked: ${s.block}</span>`:''}${s.dep?`<span class="flag st-warn">Depends on: ${s.dep.replace(/^Depends on /,'')}</span>`:''}</span><span class="meta">${bar(pct(s))}<span>${stLabel(s)}</span></span></div>
+      <ul class="hidden">${s.ac.map((a,i)=>`<li><div class="node leaf"><span class="tw">›</span><span class="lvl">AC${i+1}</span><span class="name">${a}</span><span class="meta">${s.res[i]==='pass'?'<span class="st-ok">Pass</span>':s.res[i]==='fail'?'<span class="st-late">Fail</span>':'Not run'}</span></div></li>`).join('')}
+      ${s.tasks.map(t=>`<li><div class="node leaf"><span class="tw">›</span><span class="lvl">${t.k}</span><span class="name">${t.id} ${t.t}<small>${t.who||''}</small></span><span class="meta">${t.stage===4?'<span class="st-ok">'+t.st+'</span>':t.st}</span></div></li>`).join('')||`<li><div class="node leaf"><span class="tw">›</span><span class="lvl">Tasks</span><span class="name muted">No dev or QA tasks yet</span><span class="meta"></span></div></li>`}</ul></li>`).join('')}</ul></li>`).join('')}</ul></li>`;
+}
+const tree=document.getElementById('tree');
+tree.addEventListener('click',e=>{const o=e.target.closest('[data-open]');if(o){openStory(o.dataset.open);return}
+  const nd=e.target.closest('.node');if(!nd||nd.classList.contains('leaf'))return;const ul=nd.nextElementSibling;const open=ul.classList.toggle('hidden')===false;nd.classList.toggle('open',open);nd.setAttribute('aria-expanded',open)});
+function setAll(open){tree.querySelectorAll('.node:not(.leaf)').forEach(nd=>{nd.classList.toggle('open',open);nd.setAttribute('aria-expanded',open);nd.nextElementSibling.classList.toggle('hidden',!open)})}
+expandAll.onclick=()=>setAll(true);collapseAll.onclick=()=>{setAll(false);const r=tree.querySelector('.node');r.classList.add('open');r.nextElementSibling.classList.remove('hidden')};
+q.oninput=()=>{const v=q.value.trim().toLowerCase();if(!v){tree.querySelectorAll('li').forEach(li=>li.style.display='');return}setAll(true);tree.querySelectorAll('li').forEach(li=>li.style.display=li.textContent.toLowerCase().includes(v)?'':'none')};
+
+// ===== story =====
+storyPick.innerHTML=EPICS.map(e=>`<optgroup label="${e.id} ${e.name}">${e.stories.map(s=>`<option value="${s.id}">${s.id} ${s.t}</option>`).join('')}</optgroup>`).join('');
+let cur=ALLST[1];
+function openStory(id){cur=ALLST.find(s=>s.id===id);storyPick.value=id;drawStory();show('story')}
+storyPick.onchange=()=>{cur=ALLST.find(s=>s.id===storyPick.value);drawStory()};
+function drawStory(){const s=cur;
+  sCrumb.innerHTML=`<a href="#" data-go="tree">SRS v1.0</a> › <a href="#" data-go="tree">${s.epic.id} ${s.epic.name}</a> › ${s.id}`;
+  sTitle.textContent=s.t;
+  sSub.textContent=`${s.id} · Epic ${s.epic.id} ${s.epic.name} (${s.epic.sec}) · Owner: Abdifatah (BA) · ${pct(s)}% complete`;
+  sUs.innerHTML=`<b>As ${/^[aeiou]/i.test(s.as)?'an':'a'}</b> ${s.as}, <b>I want</b> ${s.want}, <b>so that</b> ${s.so}.`;
+  const p=passed(s);acCount.textContent=`${p} of ${s.ac.length} passed`;
+  sState.textContent=s.block?'Blocked':s.dep?'Waiting on dependency':p===s.ac.length?'Done · 100%':s.res.some(r=>r==='fail')?`${p} of ${s.ac.length} passed · failed criteria`:s.tasks.length?`In progress · ${p} of ${s.ac.length} passed`:(mode==='now'?'Draft':'Not started');
+  sState.className='pill'+(s.block?' late':s.dep?' warn':p===s.ac.length?' ok':s.res.some(r=>r==='fail')?' late':'');
+  sFlags.hidden=!(s.block||s.dep);sFlags.innerHTML=(s.block?`<p class="st-late" style="font-size:14px"><b style="font-weight:500">Blocked:</b> ${s.block}</p>`:'')+(s.dep?`<p class="st-warn" style="font-size:14px"><b style="font-weight:500">Dependency:</b> ${s.dep}</p>`:'');
+  acList.innerHTML=s.ac.map((a,i)=>`<li><span class="n">AC${i+1}</span><span>${a}${s.notes&&s.notes[i]?`<small class="st-late">${s.notes[i]}</small>`:''}</span><span class="res">${s.res[i]==='pass'?'<span class="pill ok">Pass</span>':s.res[i]==='fail'?'<span class="pill late">Fail</span>':'<span class="pill">Not run</span>'}<button data-p="${i}">Pass</button><button data-f="${i}" style="color:var(--late)">Fail</button></span></li>`).join('');
+  sReqs.innerHTML=s.req.map(r=>`<li><b>${r}</b>${REQ[r][0]}<br><span class="muted" style="font-size:12.5px">Priority: ${REQ[r][1]}</span></li>`).join('');
+  sTasks.innerHTML=s.tasks.length?s.tasks.map(t=>`<li>${t.id} ${t.t}<br><span class="muted" style="font-size:13px">${t.k}${t.who?' · '+t.who:''} · ${t.st}</span>${t.k==='Dev task'?`<div class="stages">${STG.map((g,j)=>`<span class="${j<t.stage?'done':''}">${g}${j<t.stage?' ✓':''}</span>`).join('')}</div>`:''}</li>`).join(''):'<li class="muted">No tasks yet. Create them after the SRS is signed off.</li>';
+  mkTasks.hidden=!!s.tasks.length;
+  const o=openFor(s.id);sOpenBox.hidden=!o.length;sOpen.innerHTML=o.map(x=>`Item ${x[0]}: ${x[1]}<br><span class="muted" style="font-size:13px">Baseline: ${x[2]} · Owner: ${x[3]}</span>`).join('<br><br>');
+}
+mkTasks.onclick=()=>{cur.tasks=[{id:'TRK-'+(nextTrk++),t:cur.t,k:'Dev task',st:'Not started',stage:0},{id:'TRK-'+(nextTrk++),t:'Test: '+cur.t,k:'QA task',st:'Not started',stage:0}];drawStory();drawTree();drawCov(cf);toast(`${cur.tasks[0].id} and ${cur.tasks[1].id} created and linked to ${cur.id}`)};
+let failIdx=null;
+acList.addEventListener('click',e=>{const p=e.target.dataset.p,f=e.target.dataset.f;
+  if(p!==undefined){cur.res[p]='pass';if(cur.notes)cur.notes[p]='';drawStory();drawTree();drawCov(cf);drawSum();toast(`AC${+p+1} passed`)}
+  if(f!==undefined){failIdx=+f;failT.textContent=`AC${failIdx+1} failed: reason required`;failR.value='';failE.classList.remove('on');failDlg.showModal()}});
+failForm.addEventListener('submit',e=>{e.preventDefault();if(failR.value.trim().length<10){failE.classList.add('on');return}
+  cur.res[failIdx]='fail';cur.notes=cur.notes||[];cur.notes[failIdx]='QA: '+failR.value.trim();failDlg.close();drawStory();drawTree();drawCov(cf);drawSum();toast(`AC${failIdx+1} failed, developer notified`)});
+
+// ===== coverage =====
+let cf='all';
+function drawCov(f){cf=f;
+  drawSum&&typeof sumBox!=='undefined'&&0;const rows=Object.entries(REQ).map(([id,[t,pr]])=>{const ss=ALLST.filter(s=>s.req.includes(id));const ac=ss.reduce((a,s)=>a+s.ac.length,0),pa=ss.reduce((a,s)=>a+passed(s),0);const tk=ss.some(s=>s.tasks.length);const rel=ss.length&&ss.every(s=>s.tasks.some(t=>t.stage===4));const stg=Math.max(0,...ss.flatMap(s=>s.tasks.map(t=>t.stage||0)));const bl=ss.some(s=>s.block),dp=ss.some(s=>s.dep);return {id,t,pr,ss,ac,pa,tk,rel,stg,bl,dp}});
+  const noStory=rows.filter(r=>!r.ss.length).length,noTask=rows.filter(r=>!r.tk).length,high=rows.filter(r=>r.pr==='High').length;
+  covKv.innerHTML=`<div class="glass"><b>${rows.length}</b><span>SRS requirements (${high} High)</span></div><div class="glass"><b class="${noStory?'st-late':'st-ok'}">${rows.length-noStory}</b><span>covered by a user story</span></div><div class="glass"><b class="st-warn">${noTask}</b><span>with no dev task yet</span></div><div class="glass"><b class="st-ok">${rows.filter(r=>r.rel).length}</b><span>released to Production</span></div>`;
+  covRows.innerHTML=rows.filter(r=>f==='all'||(f==='High'&&r.pr==='High')||(f==='gap'&&(!r.ss.length||!r.tk||r.bl||r.dp||r.pa<r.ac))).map(r=>`<tr data-story="${r.ss[0]?r.ss[0].id:''}"><td>${r.id}</td><td>${r.t}</td><td class="${r.pr==='High'?'':'muted'}">${r.pr}</td><td class="${r.ss.length?'':'n'}">${r.ss.map(s=>s.id).join(', ')||'None'}</td><td class="${r.pa===r.ac&&r.ac?'y':r.pa?'p':''}">${r.pa} of ${r.ac}</td><td class="${r.bl?'n':r.dp?'p':r.tk?'y':'n'}">${r.bl?'Blocked':r.dp?'Dependency':r.tk?'Yes':'Not yet'}</td><td class="${r.rel?'y':''}">${r.rel?'Production ✓':r.stg?STG[r.stg-1]+' ✓':'<span class="muted">Not yet</span>'}</td></tr>`).join('');
+}
+document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-c]').forEach(x=>x.setAttribute('aria-pressed',x===b));drawCov(b.dataset.c)});
+covRows.addEventListener('click',e=>{const tr=e.target.closest('tr[data-story]');if(tr&&tr.dataset.story)openStory(tr.dataset.story)});
+
+// ===== open items =====
+openList.innerHTML=OPEN.map(o=>`<li><div class="row" style="cursor:default"><span>Item ${o[0]}: ${o[1]}<small>Baseline: ${o[2]} · Owner: ${o[3]} · Affects ${o[4].map(id=>`<button class="tlink brand" data-open="${id}" style="font-size:13px">${id}</button>`).join(', ')}</small></span><span class="due">Open</span></div></li>`).join('');
+openList.addEventListener('click',e=>{const o=e.target.closest('[data-open]');if(o)openStory(o.dataset.open)});
+
+// ===== views =====
+function show(v){document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v));['tree','story','cov','open'].forEach(x=>document.getElementById('v-'+x).hidden=x!==v);scrollTo(0,0)}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{if(b.dataset.v==='story')drawStory();show(b.dataset.v)});
+document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g){e.preventDefault();show(g.dataset.go)}});
+const root=document.documentElement;function setTheme(m){root.dataset.theme=m;theme.textContent=m==='dark'?'Light':'Dark'}
+if(matchMedia('(prefers-color-scheme: dark)').matches)setTheme('dark');theme.onclick=()=>setTheme(root.dataset.theme==='dark'?'light':'dark');
+let tt;function toast(m){tm.textContent=m;const t=document.getElementById('toast');t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),3200)}
+document.querySelectorAll('[data-m]').forEach(x=>x.onclick=()=>applyMode(x.dataset.m));
+applyMode('demo');
+</script>
+</body>
+</html>

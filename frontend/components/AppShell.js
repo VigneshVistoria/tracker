@@ -84,6 +84,25 @@ function loadOwnMetricsVisible() {
   return ownMetricsVisible;
 }
 
+// Requirements traceability (2026-11-25): the Requirements link shows only
+// while the requirements_tree switch is ON and the role may view it. Asked
+// once per tab; resetRequirementsMe() after the switch changes.
+let requirementsMe = null;
+function loadRequirementsMe() {
+  if (!requirementsMe) {
+    requirementsMe = apiFetch('/requirements/me')
+      .then((r) => !!r.canView)
+      .catch((err) => {
+        requirementsMe = null;
+        throw err;
+      });
+  }
+  return requirementsMe;
+}
+export function resetRequirementsMe() {
+  requirementsMe = null;
+}
+
 export default function AppShell({ children, fullScreen = false }) {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
@@ -107,6 +126,7 @@ export default function AppShell({ children, fullScreen = false }) {
   const [showScorecard, setShowScorecard] = useState(false);
   // May this user see their own performance figures? (false until known)
   const [canSeeOwnMetrics, setCanSeeOwnMetrics] = useState(false);
+  const [canSeeRequirements, setCanSeeRequirements] = useState(false);
   // Developer/Designer/DevOps header badge - peer reviews waiting on me.
   const [peerReviewCount, setPeerReviewCount] = useState(null);
   const pendingGo = useRef(null);
@@ -136,6 +156,11 @@ export default function AppShell({ children, fullScreen = false }) {
     loadOwnMetricsVisible()
       .then(setCanSeeOwnMetrics)
       .catch(() => {});
+    if (!DEVELOPER_EQUIVALENT_ROLES.includes(JSON.parse(storedUser).role)) {
+      loadRequirementsMe()
+        .then(setCanSeeRequirements)
+        .catch(() => {});
+    }
     if (DEVELOPER_EQUIVALENT_ROLES.includes(JSON.parse(storedUser).role)) {
       loadScorecardVisible()
         .then(setShowScorecard)
@@ -203,8 +228,8 @@ export default function AppShell({ children, fullScreen = false }) {
 
   const hideSidebar = !!user && DEVELOPER_EQUIVALENT_ROLES.includes(user.role);
   const sections = useMemo(
-    () => (hideSidebar ? [] : navSectionsFor(user, { clientTickets: canSeeClientTickets, ownMetrics: canSeeOwnMetrics })),
-    [user, hideSidebar, canSeeClientTickets, canSeeOwnMetrics],
+    () => (hideSidebar ? [] : navSectionsFor(user, { clientTickets: canSeeClientTickets, ownMetrics: canSeeOwnMetrics, requirements: canSeeRequirements })),
+    [user, hideSidebar, canSeeClientTickets, canSeeOwnMetrics, canSeeRequirements],
   );
   const visibleItems = useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const availableHrefs = useMemo(() => new Set(visibleItems.map((i) => i.href)), [visibleItems]);

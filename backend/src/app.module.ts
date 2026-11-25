@@ -138,6 +138,7 @@ import { StatusReviewModule } from './status-review/status-review.module';
 import { DailyScrumModule } from './daily-scrum/daily-scrum.module';
 import { TeamSettings } from './team-settings/team-settings.entity';
 import { MyWorkScreenModule } from './my-work-screen/my-work-screen.module';
+import { RequirementsModule, REQUIREMENTS_ENTITIES } from './requirements/requirements.module';
 import { ScrumExternalWait } from './daily-scrum/scrum-external-wait.entity';
 import { ProjectTimelineRow } from './project-timeline/project-timeline-row.entity';
 import { ProjectTimelineTeam } from './project-timeline/project-timeline-team.entity';
@@ -226,6 +227,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
           MeetingOccurrence,
           MeetingAttendance,
           MeetingAttendanceImport,
+          ...REQUIREMENTS_ENTITIES,
           ReleaseSatisfaction,
           TaskPriorityTierEvent,
           GithubSettings,
@@ -324,6 +326,7 @@ import { TaskQaReviewAttachment } from './tasks/task-qa-review-attachment.entity
     WeeklyStatusModule,
     TaskHandoversModule,
     MyWorkScreenModule,
+    RequirementsModule,
     PermissionsModule,
     ReleaseLogsModule,
     GithubReleasesModule,

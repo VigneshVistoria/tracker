@@ -28,6 +28,8 @@ export default function EditUser() {
   const [error, setError] = useState('');
   const [impersonating, setImpersonating] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [baOn, setBaOn] = useState(false);
+  const [savedRole, setSavedRole] = useState(null);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -64,8 +66,11 @@ export default function EditUser() {
     setError('');
     setEmail('');
 
+    // BA is offered only while Requirements is switched on, or to keep an existing BA.
+    apiFetch('/requirements/me').then((me) => setBaOn(!!me.on)).catch(() => {});
     Promise.all([apiFetch(`/users/${id}`), apiFetch('/projects')])
       .then(([user, allProjects]) => {
+        setSavedRole(user.role);
         setEmail(user.email);
         setForm({
           fullName: user.fullName || '',
@@ -163,6 +168,7 @@ export default function EditUser() {
               <option value="qa">QA</option>
               <option value="executive">Executive</option>
               <option value="client">Client</option>
+              {(baOn || savedRole === 'ba') && <option value="ba">BA (Business Analyst - Requirements only)</option>}
             </select>
             <p className={styles.helpText}>
               {Number(id) === currentUserId

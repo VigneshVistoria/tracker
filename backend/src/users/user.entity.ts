@@ -34,6 +34,12 @@ export enum UserRole {
   // DEVELOPER_EQUIVALENT_ROLES below instead.
   DESIGNER = 'designer',
   DEVOPS = 'devops',
+  // Business Analyst (2026-11-25, Requirements traceability Stage 2): may
+  // use ONLY the Requirements feature - every other API refuses a BA
+  // (common/ba-scope.guard.ts) and BA users never join the tenant-wide live
+  // feed (events.gateway.ts). Only assignable while the requirements_tree
+  // switch is ON. migrations/2026-11-requirements-s2.sql.
+  BA = 'ba',
 }
 
 // Every place in the app that grants Developer a permission or a piece

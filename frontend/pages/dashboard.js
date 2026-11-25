@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -58,6 +59,8 @@ export default function Dashboard() {
   if (DEVELOPER_EQUIVALENT_ROLES.includes(user.role)) return <DeveloperDashboard user={user} />;
   if (user.role === 'qa') return <QaHome user={user} />;
   if (user.role === 'client') return <ClientHome user={user} />;
+  // Business Analyst (2026-11-25): Requirements is their only screen.
+  if (user.role === 'ba') return <BaHome />;
   return <LeadershipHome user={user} />;
 }
 
@@ -471,6 +474,28 @@ function QaHome({ user }) {
 }
 
 const CLIENT_IN_FLIGHT = ISSUE_STATUS_GROUPS['in-progress'].statuses;
+
+// Business Analyst (2026-11-25): their home is Requirements. While the
+// requirements_tree switch is off they have nothing to use, so say so
+// instead of bouncing between pages.
+function BaHome() {
+  const router = useRouter();
+  const [off, setOff] = useState(false);
+  useEffect(() => {
+    apiFetch('/requirements/me')
+      .then((me) => (me.canView ? router.replace('/requirements') : setOff(true)))
+      .catch(() => setOff(true));
+  }, [router]);
+  return (
+    <AppShell>
+      {off && (
+        <p role="status" style={{ padding: 'var(--ds-space-6)', color: 'var(--ds-text-secondary)' }}>
+          Requirements is switched off at the moment. Ask a Program Manager to switch it on.
+        </p>
+      )}
+    </AppShell>
+  );
+}
 
 function ClientHome({ user }) {
   const [data, reload] = useDashboardData({ issues: '/issues', mine: '/tasks/mine' });

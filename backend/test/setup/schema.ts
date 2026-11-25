@@ -236,6 +236,13 @@ const OWN_METRICS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-
 const MEETING_TABLES = ['meeting_occurrences', 'meeting_attendance', 'meeting_attendance_imports'];
 // B3: score overrides (same folder) and the overrideRoles setting.
 const SCORECARD_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-performance-tracking-scorecard.sql');
+// Requirements traceability Stages 1-2 (2026-11-25): the srs_* tables (folder
+// left out of synchronize) and team_settings."requirementsTree", from the
+// real migration; every column checked against the entities below.
+const REQUIREMENTS_DIR = path.join(SRC, 'requirements');
+const REQUIREMENTS_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-requirements-s1.sql');
+const REQUIREMENTS_S2_MIGRATION = path.resolve(__dirname, '../../migrations/2026-11-requirements-s2.sql');
+const REQUIREMENTS_TABLES = ['srs_documents', 'srs_requirements', 'srs_epics', 'srs_stories', 'srs_story_requirements', 'srs_criteria', 'srs_criterion_results', 'srs_story_tickets', 'srs_ticket_criteria', 'srs_client_items', 'srs_client_item_stories'];
 
 function entityFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
@@ -258,7 +265,7 @@ function dataSource(entities: string[]) {
 export async function buildTestSchema() {
   const all = entityFiles(SRC);
   const existing = all.filter(
-    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== DEPENDENCY_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(SECURITY_DIR) && !f.startsWith(CLIENT_MEASURES_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(HANDOVERS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR) && !f.startsWith(GITHUB_DIR) && !f.startsWith(ARTIFACT_TYPES_DIR) && !f.startsWith(MEETING_DIR),
+    (f) => !f.startsWith(PORTAL_DIR) && !f.startsWith(TEAM_SETTINGS_DIR) && f !== TASK_ATTACHMENT_ENTITY && f !== DEPENDENCY_ATTACHMENT_ENTITY && f !== EXTERNAL_WAIT_ENTITY && f !== REFRESH_SESSION_ENTITY && f !== QA_REVIEW_ATTACHMENT_ENTITY && f !== DEFECT_TRIAGE_ENTITY && f !== DUE_DATE_ENTITY && f !== TASK_REOPEN_ENTITY && !f.startsWith(FLAGS_DIR) && !f.startsWith(ACTIVITY_DIR) && !f.startsWith(CALENDAR_DIR) && !f.startsWith(REQUESTS_DIR) && !f.startsWith(TECH_REVIEWS_DIR) && !f.startsWith(SECURITY_DIR) && !f.startsWith(CLIENT_MEASURES_DIR) && !f.startsWith(WEEKLY_STATUS_DIR) && !f.startsWith(HANDOVERS_DIR) && !f.startsWith(TIMELINE_DIR) && !f.startsWith(PERFORMANCE_DIR) && !f.startsWith(TRACKING_DIR) && !f.startsWith(GITHUB_DIR) && !f.startsWith(ARTIFACT_TYPES_DIR) && !f.startsWith(MEETING_DIR) && !f.startsWith(REQUIREMENTS_DIR),
   );
   const portal = all.filter((f) => f.startsWith(PORTAL_DIR));
 
@@ -363,6 +370,8 @@ export async function buildTestSchema() {
   await base.query(fs.readFileSync(GITHUB_DELIVERY_DETAILS_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(COUNT_GITHUB_RELEASES_MIGRATION, 'utf8'));
   await base.query(fs.readFileSync(MY_WORK_SCREEN_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(REQUIREMENTS_MIGRATION, 'utf8'));
+  await base.query(fs.readFileSync(REQUIREMENTS_S2_MIGRATION, 'utf8'));
   for (const [table, cols] of Object.entries(DEPENDENCY_TASKS_COLUMNS)) {
     await base.query(`ALTER TABLE "${table}" ${cols.map((c) => `DROP COLUMN "${c}"`).join(', ')}`);
   }
@@ -532,6 +541,28 @@ export async function buildTestSchema() {
     if (table !== 'performance_tracking_settings') {
       for (const db of dbCols) if (!meta.columns.some((c) => c.databaseName === db.column_name)) problems.push(`${table}.${db.column_name}: missing from entity`);
     }
+  }
+  // Requirements: every column of the srs_* entities, both ways.
+  for (const table of REQUIREMENTS_TABLES) {
+    const meta = check.entityMetadatas.find((m) => m.tableName === table);
+    if (!meta) {
+      problems.push(`${table}: entity missing`);
+      continue;
+    }
+    const dbCols: Array<{ column_name: string; is_nullable: string; data_type: string }> = await check.query(
+      `select column_name, is_nullable, data_type from information_schema.columns where table_schema = 'public' and table_name = $1`,
+      [table],
+    );
+    for (const col of meta.columns) {
+      const db = dbCols.find((c) => c.column_name === col.databaseName);
+      if (!db) {
+        problems.push(`${table}.${col.databaseName}: missing from migration`);
+        continue;
+      }
+      if ((db.is_nullable === 'YES') !== col.isNullable) problems.push(`${table}.${col.databaseName}: nullable mismatch`);
+      if (check.driver.normalizeType(col) !== db.data_type) problems.push(`${table}.${col.databaseName}: type mismatch (entity ${check.driver.normalizeType(col)}, db ${db.data_type})`);
+    }
+    for (const db of dbCols) if (!meta.columns.some((c) => c.databaseName === db.column_name)) problems.push(`${table}.${db.column_name}: missing from entity`);
   }
   for (const name of QA_REVERT_COLUMNS) {
     const col = reviewMeta.columns.find((c) => c.databaseName === name);

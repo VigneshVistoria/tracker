@@ -10,7 +10,9 @@ import {
   ParseIntPipe,
   Req,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -27,7 +29,17 @@ export class UsersController {
   constructor(
     private usersService: UsersService,
     private auditLogService: AuditLogService,
+    private dataSource: DataSource,
   ) {}
+
+  // BA (Business Analyst, 2026-11-25) can only be given while the
+  // Requirements switch (team_settings."requirementsTree") is ON - it is a
+  // Requirements-only role. Keeping an existing BA's role is always fine.
+  private async assertBaAssignable(role: UserRole | undefined, currentRole: UserRole | null, tenantId: number) {
+    if (role !== UserRole.BA || currentRole === UserRole.BA) return;
+    const rows: Array<{ on: boolean }> = await this.dataSource.query(`SELECT "requirementsTree" AS on FROM team_settings WHERE "tenantId" = $1`, [tenantId]);
+    if (rows[0]?.on !== true) throw new BadRequestException('The BA role is only available while Requirements is switched on.');
+  }
 
   // Any logged-in user can see their own full profile - used by the
   // frontend to know things like "am I the Program Manager" without
@@ -76,6 +88,7 @@ export class UsersController {
   @Post()
   @UseGuards(AdminGuard)
   async create(@Body() dto: CreateUserDto, @Req() req: any) {
+    await this.assertBaAssignable(dto.role, null, req.user.tenantId);
     const user = await this.usersService.adminCreate(dto, req.user.tenantId);
     return this.toSafeUser(user);
   }
@@ -90,6 +103,10 @@ export class UsersController {
     // route - including the fix itself - was then a 403 for them).
     if (id === req.currentUser.id && dto.role !== undefined && dto.role !== req.currentUser.role) {
       throw new ForbiddenException('You cannot change your own role');
+    }
+    if (dto.role === UserRole.BA) {
+      const target = await this.usersService.findByIdAndTenant(id, req.user.tenantId);
+      await this.assertBaAssignable(dto.role, target?.role ?? null, req.user.tenantId);
     }
     const before = dto.githubLogin !== undefined ? (await this.usersService.findByIdAndTenant(id, req.user.tenantId))?.githubLogin ?? null : null;
     const user = await this.usersService.update(id, dto, req.user.tenantId);

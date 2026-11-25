@@ -72,6 +72,12 @@ export class TeamSettings {
   @Column({ type: 'jsonb', default: () => `'{"enabled": false, "pilotUserIds": []}'` })
   myWorkScreen: { enabled?: boolean; pilotUserIds?: number[] };
 
+  // Requirements traceability switch "requirements_tree" (2026-11-25,
+  // migrations/2026-11-requirements-s1.sql): Admin/PM, OFF by default.
+  // See requirements/requirements.ts.
+  @Column({ default: false })
+  requirementsTree: boolean;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

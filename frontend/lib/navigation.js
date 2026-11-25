@@ -46,6 +46,7 @@ import {
   Scale,
   ShieldQuestion,
   GanttChart,
+  ListTree,
 } from 'lucide-react';
 
 // Single source of truth for the sidebar and the command palette.
@@ -65,6 +66,8 @@ const PM = 'program_manager';
 const EXEC = 'executive';
 const QA = 'qa';
 const CLIENT = 'client';
+// Business Analyst (2026-11-25): Requirements only (backend BaScopeGuard).
+const BA = 'ba';
 
 export const NAV_SECTIONS = [
   {
@@ -112,6 +115,11 @@ export const NAV_SECTIONS = [
       // Project Timeline (2026-10-16) - matches ProjectTimelineController: PM and
       // Admin edit, Executive view only.
       { href: '/project-timeline', label: 'Project Timeline', icon: GanttChart, roles: [ADMIN, PM, EXEC] },
+      // Requirements traceability (2026-11-25) - matches canViewRequirements
+      // (QA and BA: own projects, scoped by the backend). Only while the
+      // requirements_tree switch is ON (GET /requirements/me). The only
+      // entry a BA ever gets.
+      { href: '/requirements', label: 'Requirements', icon: ListTree, roles: [ADMIN, PM, EXEC, QA, BA], requirements: true },
     ],
   },
   {
@@ -209,6 +217,8 @@ export const NAV_SECTIONS = [
       { href: '/admin/design-handover-settings', label: 'Hand over to development', icon: GitBranch, roles: [ADMIN, PM] },
       // "New My work screen" (2026-11-17) - matches MY_WORK_SCREEN_ROLES.
       { href: '/admin/my-work-screen-settings', label: 'New My work screen', icon: LayoutDashboard, roles: [ADMIN, PM] },
+      // Requirements switch (2026-11-25) - matches REQUIREMENTS_SETTINGS_ROLES.
+      { href: '/admin/requirements-settings', label: 'Requirements Settings', icon: ListTree, roles: [ADMIN, PM] },
       // Performance Tracking B4 (2026-10-30) - matches WorkCalendarService.assertEditor.
       { href: '/admin/work-calendars', label: 'Work Calendars', icon: CalendarClock, roles: [ADMIN, PM] },
       // P1/P2 from GitHub (2026-11-02) - matches GithubReleasesController.editor.
@@ -233,13 +243,14 @@ export const CLIENT_TICKETS_ITEM = { href: '/client-tickets', label: 'Client tic
 // Sections (with their items filtered) visible to this user, empty
 // sections dropped. `clientTickets` adds the Client tickets entry to My Work.
 // `ownMetrics` = may this user see their own performance figures (2026-11-11).
-export function navSectionsFor(user, { clientTickets = false, ownMetrics = false } = {}) {
+// `requirements` = the requirements_tree switch is ON for this user (2026-11-25).
+export function navSectionsFor(user, { clientTickets = false, ownMetrics = false, requirements = false } = {}) {
   if (!user) return [];
   const wide = [ADMIN, PM, EXEC].includes(user.role);
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
     items: [
-      ...section.items.filter((item) => item.roles.includes(user.role) && (!item.ownMetrics || wide || ownMetrics)),
+      ...section.items.filter((item) => item.roles.includes(user.role) && (!item.ownMetrics || wide || ownMetrics) && (!item.requirements || requirements)),
       ...(clientTickets && section.id === 'work' ? [CLIENT_TICKETS_ITEM] : []),
     ],
   })).filter((section) => section.items.length > 0);
